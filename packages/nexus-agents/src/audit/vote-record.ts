@@ -66,6 +66,8 @@
  * @module audit/vote-record
  */
 
+// Keep the schema and canonical hash projection together; 1.15 adds eight counted lines.
+/* eslint max-lines: ["error", { "max": 410, "skipBlankLines": true, "skipComments": true }] */
 import * as crypto from 'node:crypto';
 
 import { z } from 'zod';
@@ -74,6 +76,7 @@ import {
   HEX_256_PATTERN,
   findReasoningCommitmentDefect,
   isReasoningDigestTier,
+  isUnhashedReasoningField,
   reasoningCommitmentShapeDefect,
 } from './reasoning-commitment.js';
 import {
@@ -157,11 +160,15 @@ export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSche
  */
 export const MAX_VOTER_REASONING_CHARS = 20_000;
 
+/** Conditions are preserved verbatim; exceeding either bound rejects persistence. */
+export const MAX_VOTER_CONDITIONS = 20;
+export const MAX_VOTER_CONDITION_CHARS = 2_000;
+
 /**
  * Clip a voter-entry text to {@link MAX_VOTER_REASONING_CHARS} with a marker
  * (#5373): the returned `truncated` is the flag the record stores beside the
  * text (`reasoningTruncated`, `retriedFrom.errorTruncated`), present only when
- * the clip fired. ONE clip for every bounded voter string — the builder's
+ * the clip fired. ONE clip for voter reasoning and retry errors — the builder's
  * `reasoningFields` and the live retry's carried cause (#6246) both call this,
  * so there is one number and one marker rule, not a silent slice somewhere.
  */
@@ -352,7 +359,8 @@ export const VoterSummarySchema = z
     reasoningNonce: z.string().regex(HEX_256_PATTERN).optional(),
     /**
      * `sha256(reasoningNonce ‖ reasoning)` as lowercase hex (#6263, schema
-     * 1.13) — see `computeReasoningDigest` in reasoning-commitment.ts. The
+     * 1.13) — see `computeReasoningDigest` in reasoning-commitment.ts. On
+     * 1.15 the preimage bundles reasoning and conditions via reasoningCommitmentText. The
      * commitment to the text: {@link verifyVoteRecordSet} re-opens it
      * whenever nonce and text are both present, so a text edited without
      * re-committing is a `hash_mismatch` exactly as it was when the text
@@ -364,6 +372,19 @@ export const VoterSummarySchema = z
     selectedOption: z.string().min(1).optional(),
     /** Present only when the approving seat was re-asked once (#4495). */
     optionReask: z.object({ resolved: z.boolean() }).strict().optional(),
+    /**
+     * Voter-sent approval conditions (#7134, schema 1.15). Advisory and
+     * unenforced: they do not change the tally. Absent means not supplied;
+     * an empty array means explicitly no conditions. Preserve prose, including
+     * Unicode, within the caps: at most 20 strings of 2,000 UTF-16 code units
+     * each. The response parser visibly marks clipped strings and dropped items.
+     * On 1.15 they share the reasoningNonce/reasoningDigest commitment and
+     * are removed with reasoning and nonce at sanctioned redaction.
+     */
+    conditions: z
+      .array(z.string().max(MAX_VOTER_CONDITION_CHARS))
+      .max(MAX_VOTER_CONDITIONS)
+      .optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -447,33 +468,9 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // 1.14 (#4495): appended, present-only; historical hashes stay unchanged.
   'selectedOption',
   'optionReask',
+  // 1.15 (#7134): conditions join the commitment opening; never folded on 1.15.
+  'conditions',
 ] as const satisfies readonly (keyof VoterSummary)[]);
-
-/**
- * The 1.13 keys — outside the hash on every TEXT tier, where the schema
- * refuses them anyway (they would be unhashed decoration there).
- */
-const REASONING_TIER_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
-  'reasoningNonce',
-  'reasoningDigest',
-]);
-
-/**
- * The OPENING of the commitment — outside the hash on the DIGEST tier: the
- * raw text and its salt, `reasoningNonce`. Both, not the text alone (#6274
- * panel 1): the hash folds only `reasoningDigest`, so a redaction (#6264) can drop
- * text and nonce together while the hash and any signature over it verify
- * unchanged, and the unknown 256-bit salt keeps the digest an opaque
- * commitment rather than a dictionary target. The clip marker
- * `reasoningTruncated` is a boolean with no privacy content that redaction
- * keeps, so it stays folded on every tier like any other present-only key — an
- * unhashed marker would let "this argument was clipped" be erased from a
- * committed record without `hash_mismatch` (#6274 review).
- */
-const REASONING_OPENING_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
-  'reasoning',
-  'reasoningNonce',
-]);
 
 /** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
 type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
@@ -534,10 +531,10 @@ export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetr
 }
 
 /**
- * One voter field for the canonical hash. The two nested keys are rebuilt by
- * their own projectors; every other value is a scalar and is carried as-is.
+ * One voter field for the canonical hash. Nested evidence objects are rebuilt
+ * by their own projectors; 1.15 conditions share the digest opening.
  *
- * `digestTier` (#6263) is the one place the fold depends on the record's
+ * `version` (#6263) is the one place the fold depends on the record's
  * tier: on the digest tier the opening keys (text and nonce) project to
  * ABSENT and the digest is carried; on every other tier the 1.13 keys project
  * to absent and the text is carried exactly as it was — the pinned 1.7–1.12
@@ -547,8 +544,8 @@ export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetr
  * change what the hash covers (the schema refuses both shapes; this makes the
  * fold not depend on that refusal).
  */
-function projectVoterField(v: VoterSummary, key: keyof VoterSummary, digestTier: boolean): unknown {
-  if (digestTier ? REASONING_OPENING_KEYS.has(key) : REASONING_TIER_KEYS.has(key)) return undefined;
+function projectVoterField(v: VoterSummary, key: keyof VoterSummary, version: string): unknown {
+  if (isUnhashedReasoningField(version, key)) return undefined;
   if (key === 'fallback') {
     return v.fallback === undefined ? undefined : projectSeatFallback(v.fallback);
   }
@@ -569,10 +566,10 @@ function projectVoterField(v: VoterSummary, key: keyof VoterSummary, digestTier:
  * canonical string byte-identical. The optional flags are `literal(true)`,
  * so `!== undefined` is exactly the old `=== true`.
  */
-function projectVoterSummary(v: VoterSummary, digestTier: boolean): Partial<VoterSummary> {
+function projectVoterSummary(v: VoterSummary, version: string): Partial<VoterSummary> {
   const out: Record<string, unknown> = {};
   for (const key of VOTER_SUMMARY_KEYS) {
-    const value = projectVoterField(v, key, digestTier);
+    const value = projectVoterField(v, key, version);
     if (value !== undefined) out[key] = value;
   }
   return out;
@@ -669,7 +666,8 @@ export const VoteRecordSchema = z
      * and — the one tier that changes what an EXISTING key means to the
      * hash — folds those instead of `reasoning` (#6263; the clip marker
      * `reasoningTruncated` stays folded). '1.14' adds per-seat selections and
-     * re-ask outcomes (#4495), keeping the digest fold. Every tier is accepted — a 1.1 record
+     * re-ask outcomes (#4495), keeping the digest fold. '1.15' adds advisory
+     * voter conditions (#7134), also keeping the digest fold. Every tier is accepted — a 1.1 record
      * (no `ratifies`) verifies unchanged because each optional is folded into
      * the self-hash ONLY when present (see {@link computeVoteRecordHash}).
      * Tiers are labels, not ordered numbers: '1.10' follows '1.9' by
@@ -690,6 +688,7 @@ export const VoteRecordSchema = z
       '1.12',
       '1.13',
       '1.14',
+      '1.15',
     ]),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
@@ -855,7 +854,7 @@ export const VoteRecordSchema = z
   .superRefine((record, ctx) => {
     const digestTier = isReasoningDigestTier(record.version);
     for (const [i, v] of record.voters.entries()) {
-      const defect = reasoningCommitmentShapeDefect(digestTier, v);
+      const defect = reasoningCommitmentShapeDefect(digestTier, v, record.version === '1.15');
       if (defect !== null) {
         ctx.addIssue({ code: 'custom', path: ['voters', i, defect.key], message: defect.message });
       }
@@ -987,9 +986,7 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
     // `reasoningNonce` stays outside the hash with the text (the clip marker
     // stays folded); the text is bound by the digest, which
     // `verifyVoteRecordSet` re-opens with the nonce.
-    voters: payload.voters.map((v) =>
-      projectVoterSummary(v, isReasoningDigestTier(payload.version))
-    ),
+    voters: payload.voters.map((v) => projectVoterSummary(v, payload.version)),
     correlationId: payload.correlationId ?? null,
   };
   const canonical = JSON.stringify(foldOptionalFields(base, payload));

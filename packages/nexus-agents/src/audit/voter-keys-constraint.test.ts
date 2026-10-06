@@ -48,6 +48,7 @@ type VoterSummaryKeysMirror = readonly [
   'servedModel',
   'selectedOption',
   'optionReask',
+  'conditions',
 ];
 
 /** The mirror with `retried` dropped — the #6077 mutation, as a type. */
@@ -67,6 +68,7 @@ type MissingRetried = readonly [
   'servedModel',
   'selectedOption',
   'optionReask',
+  'conditions',
 ];
 
 /** The record's nested retried-from shape, derived the way the projector sees it (#6246). */

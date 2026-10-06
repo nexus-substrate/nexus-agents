@@ -12,6 +12,7 @@ import {
   parseVoteRecordsText,
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 import { evaluateLedgerEvidence } from './governor-ledger-evidence.js';
+import { signCommitted } from './append-ratification-signing.js';
 import { parseRedactArgs } from './redact-vote-record-args.js';
 import { redactVoteRecord, type RedactOutcome } from './redact-vote-record.js';
 import {
@@ -22,7 +23,7 @@ import { VOTE_RECORD_SIGNATURE_NAMESPACE } from '../packages/nexus-agents/src/au
 
 const SHA = 'a'.repeat(40);
 const AT = '2026-09-15T00:00:00.000Z';
-function fixture(id = 'target', sequence = 0): VoteRecord {
+function fixture(id = 'target', sequence = 0, conditions?: string[]): VoteRecord {
   const votes: AgentVoteResult[] = ['architect', 'security', 'scope_steward'].map((role) => ({
     role: role as AgentVoteResult['role'],
     vote: { decision: 'approve', confidence: 0.8, reasoning: `because ${role}` },
@@ -30,6 +31,7 @@ function fixture(id = 'target', sequence = 0): VoteRecord {
     source: 'llm',
     model: role === 'architect' ? 'claude-opus-4-6' : 'gpt-5',
   }));
+  if (conditions !== undefined) votes[0]!.vote.conditions = conditions;
   return buildVoteRecord({
     id,
     sequence,
@@ -150,6 +152,52 @@ describe('redactVoteRecord', () => {
       kind: 'ratified',
       appendOnlyChecked: true,
     });
+  });
+
+  it('redacts 1.15 conditions with the reasoning opening and passes the governor gate', () => {
+    const original = fixture('target', 0, ['remove TESTFAKE private context', 'Add tests']);
+    const base = JSON.stringify(original) + '\n';
+    writeFileSync(ledgerPath, base);
+    expect(run().kind).toBe('redacted');
+    const head = readFileSync(ledgerPath, 'utf8');
+    const parsed = parseVoteRecordsText(head);
+    const redacted = parsed.records[0]!;
+    expect(redacted.voters[0]).not.toHaveProperty('conditions');
+    expect(redacted.voters[0]).not.toHaveProperty('reasoning');
+    expect(redacted.voters[0]).not.toHaveProperty('reasoningNonce');
+    expect(redacted.hash).toBe(original.hash);
+    expect(redacted.voters[0]?.reasoningDigest).toBe(original.voters[0]?.reasoningDigest);
+    expect(redacted.voters.slice(1)).toEqual(original.voters.slice(1));
+    expect(audit.verifyVoteRecordSet(parsed.records, parsed.redactions)).toMatchObject({
+      ok: true,
+    });
+    expect(
+      evaluateLedgerEvidence({
+        ledgerText: head,
+        baseLedgerText: base,
+        pr: 6265,
+        head: { sha: SHA, commitFiles: ['scripts/redact-vote-record.ts'] },
+        signatureVerifier: () => ({
+          code: 'signed',
+          keyId: 'nexus-agent@fixture',
+          principal: 'nexus-agent@fixture',
+          signerKind: 'agent',
+        }),
+      })
+    ).toMatchObject({ kind: 'ratified', appendOnlyChecked: true });
+    // A redaction cannot authorize any other evidence edit on that seat.
+    const changed = {
+      ...redacted,
+      voters: [{ ...redacted.voters[0]!, confidence: 0.1 }, ...redacted.voters.slice(1)],
+    };
+    expect(
+      evaluateLedgerEvidence({
+        ledgerText: JSON.stringify(changed) + '\n' + head.split('\n').slice(1).join('\n'),
+        baseLedgerText: base,
+        pr: 6265,
+        head: { sha: SHA, commitFiles: ['scripts/redact-vote-record.ts'] },
+      })
+    ).toMatchObject({ kind: 'ledger-rewritten' });
   });
 
   it('appends past existing redactions and preserves another record’s redacted state', () => {
@@ -274,7 +322,7 @@ describe('redactVoteRecord', () => {
     ).toBe('refused');
     expect(readFileSync(ledgerPath, 'utf8')).toBe(before);
   });
-  it('signs the redaction with the configured key and reports the agent principal (#6372)', () => {
+  it('keeps a signed 1.15 target verifiable and signs its redaction (#6372)', () => {
     // Ephemeral ed25519 key, listed under the agent principal in an
     // allowed_signers beside the ledger — the real ssh-keygen path.
     const keyPath = join(dir, 'agent.key');
@@ -289,6 +337,14 @@ describe('redactVoteRecord', () => {
     const allowedSignersPath = join(dir, 'allowed_signers');
     const allowedSigners = `${agent} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${keyPath}.pub`, 'utf8')}`;
     writeFileSync(allowedSignersPath, allowedSigners);
+    const signed = signCommitted(fixture('target', 0, ['Remove TESTFAKE private context']), {
+      keyPath,
+      allowedSignersPath,
+      source: 'flag',
+      asOwner: false,
+    });
+    if (!signed.ok) throw new Error(signed.detail);
+    writeFileSync(ledgerPath, JSON.stringify(signed.record) + '\n');
     const outcome = redactVoteRecord({
       ledgerPath,
       recordId: 'target',
@@ -302,6 +358,13 @@ describe('redactVoteRecord', () => {
     expect(outcome.record.signature?.keyId).toBe(agent);
     const persisted = parseVoteRecordsText(readFileSync(ledgerPath, 'utf8'));
     expect(persisted.invalidLines).toEqual([]);
+    const target = persisted.records[0]!;
+    expect(target.hash).toBe(signed.record.hash);
+    expect(target.signature).toEqual(signed.record.signature);
+    expect(target.voters[0]).not.toHaveProperty('conditions');
+    expect(verifyVoteRecordSignature({ record: target, allowedSigners })).toMatchObject({
+      code: 'signed',
+    });
     const redaction = persisted.redactions[0];
     if (redaction === undefined) throw new Error('no redaction persisted');
     expect(verifyVoteRecordSignature({ record: redaction, allowedSigners })).toMatchObject({

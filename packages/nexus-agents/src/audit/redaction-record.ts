@@ -5,7 +5,7 @@
  *
  * A REDACTION is the one sanctioned edit of a committed vote record: the
  * OPENING of a voter's reasoning commitment — the text and its salt,
- * `reasoning` + `reasoningNonce` — is dropped, and the hash-covered
+ * `reasoning` + `reasoningNonce` (and `conditions` on 1.15) — is dropped, and the hash-covered
  * `reasoningDigest` stays. Because the digest tier folds only the digest
  * (`vote-record.ts`, #6263), the record's hash — and any signature over it —
  * is unchanged by the drop; the 256-bit unknown salt leaves the digest an
@@ -122,20 +122,36 @@ export function buildRedactionRecord(
 }
 
 /**
- * Drop the OPENING — `reasoning` and `reasoningNonce`, together — of every
+ * Drop the OPENING — reasoning and nonce, plus conditions on 1.15 — of every
  * voter entry whose role is in `roles`; every other entry, and every other
  * key of a named entry (the digest, the clip marker, the tally fields), is
  * returned as-is. This is the whole edit a redaction makes to a vote record;
- * the record hash does not change (`computeVoteRecordHash` folds neither key
- * on the digest tier).
+ * the record hash does not change (opening keys are outside the hash on
+ * their tier). The default tier preserves the 1.13/1.14 behavior.
  */
 export function redactVoterOpenings<V extends ReasoningCommitmentFields>(
   voters: readonly V[],
   roles: ReadonlySet<string>
-): Omit<V, 'reasoning' | 'reasoningNonce'>[] {
+): Omit<V, 'reasoning' | 'reasoningNonce'>[];
+export function redactVoterOpenings<V extends ReasoningCommitmentFields, T extends string>(
+  voters: readonly V[],
+  roles: ReadonlySet<string>,
+  version: T
+): Omit<V, 'reasoning' | 'reasoningNonce' | ('1.15' extends T ? 'conditions' : never)>[];
+export function redactVoterOpenings<V extends ReasoningCommitmentFields>(
+  voters: readonly V[],
+  roles: ReadonlySet<string>,
+  version = '1.13'
+): (
+  Omit<V, 'reasoning' | 'reasoningNonce'> | Omit<V, 'reasoning' | 'reasoningNonce' | 'conditions'>
+)[] {
   return voters.map((v) => {
     if (!roles.has(v.role)) return v;
-    const { reasoning: _reasoning, reasoningNonce: _reasoningNonce, ...rest } = v;
+    if (version === '1.15') {
+      const { reasoning: _reasoning, reasoningNonce: _nonce, conditions: _conditions, ...rest } = v;
+      return rest;
+    }
+    const { reasoning: _reasoning, reasoningNonce: _nonce, ...rest } = v;
     return rest;
   });
 }
@@ -170,6 +186,7 @@ export interface RedactedRecordReport {
 interface RedactionTarget {
   readonly id: string;
   readonly sequence: number;
+  readonly version?: string;
   readonly voters: readonly ReasoningCommitmentFields[];
 }
 
@@ -184,6 +201,15 @@ export function redactedRolesByTarget(
     byTarget.set(r.targetId, roles);
   }
   return byTarget;
+}
+
+/** A 1.15 opening includes conditions; older openings include only reasoning and nonce. */
+function hasOpening(v: ReasoningCommitmentFields, version: string | undefined): boolean {
+  return (
+    v.reasoning !== undefined ||
+    v.reasoningNonce !== undefined ||
+    (version === '1.15' && v.conditions !== undefined)
+  );
 }
 
 /**
@@ -220,7 +246,7 @@ function redactionBindingDefect(
         if (v.reasoningDigest === undefined) {
           return `names role '${role}' on '${target.id}', which carries no reasoning commitment`;
         }
-        if (v.reasoning !== undefined || v.reasoningNonce !== undefined) {
+        if (hasOpening(v, target.version)) {
           return `names role '${role}' on '${target.id}' whose opening is still present — the redaction is recorded but not applied`;
         }
       }

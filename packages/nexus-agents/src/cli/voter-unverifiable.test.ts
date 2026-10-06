@@ -258,6 +258,17 @@ describe('markUnverifiable', () => {
     expect(markUnverifiable(llm(), 'stderr').selectedOption).toBeUndefined();
   });
 
+  it.each(['stderr', 'reasoning'] as const)(
+    'drops conditions from an unread artifact (%s)',
+    (signal) => {
+      const original = llm();
+      original.vote.conditions = ['Ship only after adding tests'];
+      const marked = markUnverifiable(original, signal);
+      expect(marked.vote).not.toHaveProperty('conditions');
+      expect(original.vote.conditions).toEqual(['Ship only after adding tests']);
+    }
+  );
+
   it('keeps the provenance that IS real — reasoning, model, cli, tokens', () => {
     const marked = markUnverifiable(llm(), 'stderr');
     expect(marked.vote.reasoning).toBe(LEDGER_FIXTURES[5]);

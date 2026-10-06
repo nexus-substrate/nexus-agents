@@ -60,7 +60,9 @@ function matchesLedgerLine(
       if (!isRecord(voter) || typeof voter['role'] !== 'string' || !roles.has(voter['role']))
         return voter;
       const { reasoning: _reasoning, reasoningNonce: _reasoningNonce, ...rest } = voter;
-      return rest;
+      if (base['version'] !== '1.15') return rest;
+      const { conditions: _conditions, ...redacted } = rest;
+      return redacted;
     });
     return stableJson({ ...base, voters }) === stableJson(head);
   } catch {
