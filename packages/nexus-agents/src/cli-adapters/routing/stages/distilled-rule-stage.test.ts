@@ -108,12 +108,11 @@ function createMockDistiller(rules: DistilledRule[] = []): StrategyDistiller {
     checkPersistedTrigger: vi.fn().mockReturnValue(false),
     distill: vi.fn(),
     getStats: vi.fn().mockReturnValue({
-      ruleCountByStatus: { draft: 0, active: rules.length, promoted: 0, expired: 0 },
+      ruleCountByStatus: { draft: 0, active: rules.length, expired: 0 },
       totalRules: rules.length,
       lastDistillAt: undefined,
       outcomesSinceLastDistill: 0,
     }),
-    promote: vi.fn().mockReturnValue(0),
   } as unknown as StrategyDistiller;
 }
 

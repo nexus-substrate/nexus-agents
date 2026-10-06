@@ -3138,7 +3138,6 @@ InterfaceDeclaration DistillerConfig
   readonly maxRules: number
   readonly minObservationsForActive: number
   readonly minObservationsForDraft: number
-  readonly promotionConfidence: number
   readonly ruleExpiryMs: number
   readonly successRateThreshold: number
   readonly triggerThreshold: number
@@ -8014,7 +8013,7 @@ TypeAliasDeclaration RulesSnapshot
 VariableDeclaration RulesSnapshotSchema
   : z.ZodObject<{ eligibleOutcomes: z.ZodOptional<z.ZodNumber>; rules: z.ZodArray<z.ZodObject<{ action: z.ZodEnum<{ avoid: "avoid"; boost: "boost"; penalize: "penalize"; }>; category: z.ZodString; cli: z.ZodEnum<{ claude: "claude"; codex: "codex"; gemini: "gemini"; opencode: "opencode"; }>; confidence: z.ZodNumber; createdAt: z.ZodNumber; effect: z.ZodOptional<z.ZodNumber>; id: z.ZodString; metric: z.ZodNumber; observationCount: z.ZodNumber; patternType: z.ZodEnum<{ "failure-rate": "failure-rate"; "latency-spike": "latency-spike"; "success-rate": "success-rate"; }>; status: z.ZodEnum<{ active: "active"; draft: "draft"; expired: "expired"; promoted: "promoted"; }>; support: z.ZodOptional<z.ZodNumber>; updatedAt: z.ZodNumber; }, z.core.$strip>>; savedAt: z.ZodString; version: z.ZodLiteral<1>; }, z.core.$strip>
 TypeAliasDeclaration RuleStatus
-  = 'active' | 'draft' | 'expired' | 'promoted'
+  = 'active' | 'draft' | 'expired'
 FunctionDeclaration runAdapterLatencyBenchmark
   : (adapters: readonly ICliAdapter[], scenarios?: readonly LatencyScenario[], config?: Partial<AdapterLatencyConfig>) => Promise<AdapterLatencyResult>
 FunctionDeclaration runAdaptiveOrchestrator
@@ -9065,7 +9064,6 @@ ClassDeclaration StrategyDistiller
   getRules(status?: RuleStatus) => readonly DistilledRule[]
   getStats() => DistillerStats
   onOutcome() => void
-  promote(routingMemory: IRoutingMemory) => number
 ClassDeclaration StreamCancelledError
   extends NexusError
 TypeAliasDeclaration StreamChunk

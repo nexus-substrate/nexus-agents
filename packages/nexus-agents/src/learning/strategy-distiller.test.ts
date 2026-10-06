@@ -5,7 +5,7 @@
  * (Source: Issue #999 - Automatic Strategy Distillation)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   StrategyDistiller,
   createStrategyDistiller,
@@ -19,7 +19,6 @@ import type { DistillerConfig } from './strategy-distiller-types.js';
 import { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
 import { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
-import type { IRoutingMemory } from '../context/routing-memory.js';
 
 // ============================================================================
 // Helpers
@@ -56,35 +55,6 @@ function populateStore(opts: PopulateOpts): void {
       makeOutcome({ cli: opts.cli, category: opts.category, success: opts.success, durationMs })
     );
   }
-}
-
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function createMockRoutingMemory() {
-  return {
-    storePreference: vi.fn(),
-    getPreferences: vi.fn().mockReturnValue([]),
-    recordExperience: vi.fn(),
-    getExperiencePatterns: vi.fn().mockReturnValue([]),
-    getResearchMaturityReport: vi.fn().mockReturnValue({
-      byBucket: {
-        none: { count: 0, attempts: 0, successRate: 0 },
-        low: { count: 0, attempts: 0, successRate: 0 },
-        high: { count: 0, attempts: 0, successRate: 0 },
-      },
-      highVsNoneDelta: 0,
-      totalRecords: 0,
-    }),
-    cacheAction: vi.fn(),
-    getCachedAction: vi.fn(),
-    getRecommendation: vi.fn(),
-    getStats: vi.fn().mockReturnValue({
-      totalPreferences: 0,
-      totalExperiences: 0,
-      cacheHits: 0,
-      cacheMisses: 0,
-      recommendationsMade: 0,
-    }),
-  } satisfies IRoutingMemory;
 }
 
 // ============================================================================
@@ -835,101 +805,6 @@ describe('StrategyDistiller', () => {
       expect(stats.totalRules).toBeGreaterThan(0);
     });
   });
-
-  /* eslint-disable @typescript-eslint/no-deprecated -- promote() and
-     promotionConfidence are deprecated (#5004 finding 4, removal #5467);
-     these tests exist to prove the deprecation is non-breaking. */
-  describe('promote() — deprecated, kept callable (#5004 finding 4, removal #5467)', () => {
-    it('promotes active rules to RoutingMemory', () => {
-      // 40/40 failed: support sigmoid(40) ≈ 0.88 × effect 1 clears the 0.7 gate.
-      // This previously used 35/40, which the sample-size-only confidence
-      // (0.88) passed but the product (0.88 × 0.6875 ≈ 0.61) does not — see
-      // the gate test below.
-      populateStore({
-        store,
-        cli: 'claude',
-        category: 'code_generation',
-        count: 40,
-        success: false,
-      });
-
-      distiller.distill();
-      const memory = createMockRoutingMemory();
-      const count = distiller.promote(memory);
-
-      expect(count).toBeGreaterThan(0);
-      expect(memory.storePreference).toHaveBeenCalled();
-
-      // Verify promoted status
-      const promoted = distiller.getRules('promoted');
-      expect(promoted.length).toBeGreaterThan(0);
-    });
-
-    it('gates on the support × effect product, not on sample size', () => {
-      // 35/40 failed: rate 0.875 → effect 0.6875; support 0.88 → product ≈ 0.61.
-      // The old sigmoid-only confidence (0.88) would have promoted this.
-      populateStore({
-        store,
-        cli: 'claude',
-        category: 'code_generation',
-        count: 35,
-        success: false,
-      });
-      populateStore({ store, cli: 'claude', category: 'code_generation', count: 5, success: true });
-
-      distiller.distill();
-      const rule = distiller.getRules('active')[0];
-      expect(rule?.support).toBeGreaterThan(DEFAULT_DISTILLER_CONFIG.promotionConfidence);
-      expect(rule?.confidence).toBeLessThan(DEFAULT_DISTILLER_CONFIG.promotionConfidence);
-
-      const memory = createMockRoutingMemory();
-      expect(distiller.promote(memory)).toBe(0);
-      expect(memory.storePreference).not.toHaveBeenCalled();
-    });
-
-    it('is still callable with no rules — the deprecation is non-breaking', () => {
-      const memory = createMockRoutingMemory();
-      expect(distiller.promote(memory)).toBe(0);
-    });
-
-    it('does not promote draft rules', () => {
-      populateStore({
-        store,
-        cli: 'claude',
-        category: 'code_generation',
-        count: 3,
-        success: false,
-      });
-      const lowThreshold = new StrategyDistiller(store, undefined, {
-        failureRateThreshold: 0.5,
-        minObservationsForDraft: 2,
-        minObservationsForActive: 100,
-      });
-      lowThreshold.distill();
-
-      const memory = createMockRoutingMemory();
-      const count = lowThreshold.promote(memory);
-      expect(count).toBe(0);
-      expect(memory.storePreference).not.toHaveBeenCalled();
-    });
-
-    it('promotes a rule distilled from a consistent failure pattern', () => {
-      populateStore({
-        store,
-        cli: 'claude',
-        category: 'code_generation',
-        count: 40,
-        success: false,
-      });
-
-      distiller.distill();
-      const memory = createMockRoutingMemory();
-
-      expect(distiller.promote(memory)).toBeGreaterThan(0);
-    });
-  });
-
-  /* eslint-enable @typescript-eslint/no-deprecated */
 
   describe('createStrategyDistiller factory', () => {
     it('creates an instance', () => {
