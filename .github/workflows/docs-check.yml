@@ -2,7 +2,7 @@ name: Documentation Gate
 
 on:
   pull_request:
-    branches: [main, 'release/10.0']
+    branches: [main, 'release/11.0']
   push:
     branches: [main]
     paths:

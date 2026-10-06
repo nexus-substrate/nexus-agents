@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, 'release/10.0']
+    branches: [main, 'release/11.0']
   pull_request:
-    branches: [main, 'release/10.0']
+    branches: [main, 'release/11.0']
   workflow_dispatch:
 
 permissions: read-all
