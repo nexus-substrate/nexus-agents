@@ -182,8 +182,16 @@ export const SecurityConfigSchema = z.object({
     .object({
       /** Enable authentication for network-exposed transports (default: true) */
       enabled: z.boolean().default(true),
-      /** Authentication method (default: 'token') */
-      method: z.enum(['token', 'oauth2']).default('token'),
+      /** Authentication method (only 'token' is supported) */
+      method: z
+        .enum(['token'], {
+          error: (issue) =>
+            issue.input === 'oauth2'
+              ? "security.auth.method 'oauth2' was never implemented and is no longer accepted. " +
+                "Set security.auth.method to 'token' for bearer-token authentication (#5681)."
+              : undefined,
+        })
+        .default('token'),
       /** Header name for bearer token (default: 'Authorization') */
       tokenHeader: z.string().default('Authorization'),
       /** Token file path (default: ~/.nexus-agents/auth/server-token) */
