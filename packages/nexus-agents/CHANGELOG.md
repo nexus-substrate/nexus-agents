@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 9.4.1
+
+### Patch Changes
+
+- [#7147](https://github.com/nexus-substrate/nexus-agents/pull/7147) [`810078a`](https://github.com/nexus-substrate/nexus-agents/commit/810078a807310ab4684dbecc7bc53968d9bc30fa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve unreadable outcome records during purge and reclassification rewrites so 9.x readers cannot delete outcomes written by newer versions ([#7146](https://github.com/nexus-substrate/nexus-agents/issues/7146)). Unreadable lines, including malformed JSON, are appended verbatim in their original relative order after readable records. Rewrites use an atomic temporary-file rename, and each load warns with the skipped count without logging line contents.
+
 ## 9.4.0
 
 ### Minor Changes
