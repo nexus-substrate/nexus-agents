@@ -274,7 +274,11 @@ class GatewayArmAdapter implements IResilientAdapter {
       });
       return;
     }
-    if (rateLimitLike) return;
+    if (rateLimitLike) {
+      // An exempt throttle provides no breaker verdict; keep recovery probes available.
+      breaker.releaseHalfOpenProbe();
+      return;
+    }
     breaker.recordFailure(category);
     this.deps.logger.warn('Gateway arm failure recorded to circuit breaker', {
       arm: this.armId,

@@ -307,6 +307,41 @@ describe('opted-in endpoint arms through production wiring (#7151)', () => {
     expect(breaker.getState()).toBe('closed');
   });
 
+  it('releases exempt transient throttles so a half-open endpoint can still recover', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    vi.mocked(model.complete).mockResolvedValue(err(new ModelError('429 rate limit exceeded')));
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const integration = new CliCircuitBreakerIntegration([endpoint]);
+    const breaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM);
+    const config = breaker.getSnapshot().config;
+    for (let i = 0; i < config.failureThreshold; i++) breaker.recordFailure('unknown');
+    vi.advanceTimersByTime(config.resetTimeoutMs + 1);
+
+    for (let i = 0; i < config.halfOpenMaxRequests + 1; i++) {
+      const result = await integration.execute(endpoint, TASK);
+      expect(result).toMatchObject({ ok: false, error: { code: 'RATE_LIMITED' } });
+      expect(breaker.getSnapshot()).toMatchObject({
+        state: 'half-open',
+        failureCount: 0,
+        halfOpenRequests: 0,
+      });
+    }
+    vi.mocked(model.complete).mockResolvedValue(
+      ok({
+        content: [],
+        stopReason: 'end_turn',
+        model: model.modelId,
+      })
+    );
+    for (let i = 0; i < config.halfOpenSuccessThreshold; i++) {
+      expect((await integration.execute(endpoint, TASK)).ok).toBe(true);
+    }
+    expect(breaker.getState()).toBe('closed');
+  });
+
   it('still enforces a private integration breaker independently of endpoint ownership', async () => {
     vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
     const model = gatewayModel();
