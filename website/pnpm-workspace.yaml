@@ -14,3 +14,10 @@ strictDepBuilds: true
 # platform binary, which pnpm already installed as an optional dependency.
 ignoredBuiltDependencies:
   - esbuild
+
+# Advisory overrides for the docs site (its own root, see above).
+overrides:
+  # GHSA-ch52-4w7c-c8xp (high): http-cache-semantics <=4.2.0, via astro.
+  http-cache-semantics@<=4.2.0: '>=4.3.0'
+  # GHSA-238p-pmpm-9mq7 (low): katex >=0.11.0 <0.18.2.
+  katex@<0.18.2: '>=0.18.2'
