@@ -95,43 +95,32 @@ type MemoryType = 'core' | 'episodic' | 'semantic' | 'procedural' | 'resource' |
 
 ## Routing Memory (IRoutingMemory)
 
-Bridges memory and routing systems for learning-based model selection.
+Bridges MobiMem and routing systems for learning-based model selection. The
+supported contract is the synchronous
+[`IRoutingMemory` in `context/routing-memory.ts`](../../packages/nexus-agents/src/context/routing-memory.ts),
+implemented by `RoutingMemory` and re-exported through the CLI adapters entry.
+The asynchronous Result-returning contract from #238 was never implemented by
+shipped code and is removed in 10.0 (#5715).
 
 ```typescript
-interface IRoutingMemory {
-  // Preference Storage (#148 - Preference-Trained Routing)
-  storePreference(
-    decision: RoutingDecisionRecord,
-    outcome: TaskOutcomeRecord,
-    preference?: PreferenceSignal
-  ): Promise<Result<void, MemoryError>>;
-  getPreferences(
-    filter: PreferenceFilter,
-    limit: number
-  ): Promise<Result<PreferenceRecord[], MemoryError>>;
+import type { IRoutingMemory } from 'nexus-agents';
 
-  // Experience Memory (#149 - MobiMem Evolution)
-  storeExperience(experience: ExperienceRecord): Promise<Result<void, MemoryError>>;
-  getExperiences(query: string, limit: number): Promise<Result<ExperienceRecord[], MemoryError>>;
-
-  // Action Memory (#149 - MobiMem Evolution)
-  storeAction(action: ActionRecord): Promise<Result<void, MemoryError>>;
-  getActions(taskType: string, limit: number): Promise<Result<ActionRecord[], MemoryError>>;
-
-  // Export/Import for training
-  export(): Promise<Result<RoutingMemoryExport, MemoryError>>;
-  import(data: RoutingMemoryExport): Promise<Result<void, MemoryError>>;
-
-  // Statistics
-  getStats(): Promise<Result<RoutingMemoryStats, MemoryError>>;
+function recordModelPerformance(memory: IRoutingMemory): void {
+  memory.storePreference('claude', 'code', {
+    avgQuality: 0.9,
+    successRate: 1,
+    avgLatencyMs: 1000,
+    avgTokens: 500,
+    observations: 1,
+  });
 }
 ```
 
 ### Integration Points
 
-- **Preference-Trained Routing (RouteLLM)**: Export preference data for training
-- **MobiMem Evolution**: Experience/action memory for post-deployment learning
-- **CompositeRouter**: Feeds routing decisions into LinUCB bandit
+- **Model preferences**: Store performance and retrieve preferences by task type
+- **MobiMem Evolution**: Record workflow experience and cache action results
+- **CompositeRouter**: Consult routing memory for model selection and record outcomes
 
 ---
 
@@ -292,7 +281,7 @@ memory:
 | `src/context/session-memory.ts`    | Session persistence         |
 | `src/context/agentic-memory.ts`    | A-MEM implementation        |
 | `src/context/mobimem.ts`           | MobiMem evolution           |
-| `src/core/types/routing-memory.ts` | Routing memory interface    |
+| `src/context/routing-memory.ts`    | Routing memory bridge       |
 
 ---
 

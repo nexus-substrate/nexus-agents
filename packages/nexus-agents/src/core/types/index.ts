@@ -95,6 +95,3 @@ export { isRegistryItem } from './registry.js';
 
 // Database types (ISQLiteDatabase - canonical SQLite interface)
 export type { ISQLiteDatabase, ISQLiteStatement, ISQLiteRunResult } from './database-types.js';
-
-// Note: Routing Memory types moved to cli-adapters/routing-memory-types.ts (Issue #286)
-// Import from 'nexus-agents' or 'nexus-agents/cli-adapters' instead of core/types
