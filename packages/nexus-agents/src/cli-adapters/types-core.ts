@@ -86,6 +86,17 @@ export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
 }
 
 /**
+ * CLI slot for a slot-level measurement. Dynamic gateway endpoints have no
+ * CLI slot; the built-in vendor API arms retain their existing slot mapping.
+ * Gateway endpoint validation reserves those vendor names (#6409).
+ */
+export function routingArmCliSlot(armId: RoutingArmId): CliName | undefined {
+  return isCliName(armId) || ApiArmIdSchema.safeParse(armId).success
+    ? routingArmDisplaySlot(armId)
+    : undefined;
+}
+
+/**
  * Endpoint-identity segment of an {@link EndpointArmId} (#4392): an
  * operator-named endpoint. Lowercase alphanumerics plus `.`, `_`, `-`; must
  * start alphanumeric; 1–64 chars. `:`, `/`, `@` and whitespace are excluded
@@ -306,8 +317,8 @@ export interface CliError {
   readonly code: CliErrorCode;
   /** Human-readable message */
   readonly message: string;
-  /** CLI that produced the error */
-  readonly cli: CliName;
+  /** CLI slot or API endpoint that produced the error. */
+  readonly cli: RoutingArmId;
   /** Underlying error (if any) */
   readonly cause?: Error;
   /** Whether the error is retryable */

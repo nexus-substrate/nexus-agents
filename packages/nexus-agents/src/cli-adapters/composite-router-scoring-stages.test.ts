@@ -757,3 +757,14 @@ describe('cross-stage routing signals (#4866)', () => {
     );
   });
 });
+
+it('skips TOPSIS measurement when every arm is an endpoint (#7151)', () => {
+  const deps = makeDeps();
+  deps.config.enableTopsisRanking = true;
+  deps.topsisRouter = { selectModel: vi.fn() } as unknown as StageDependencies['topsisRouter'];
+  const stages: string[] = [];
+  const result = runTopsisStage(analyzeTaskProfile(mockTask, []), ['api:lab'], stages, deps);
+  expect(result.score).toBeUndefined();
+  expect(stages).not.toContain('topsis-ranking');
+  expect(deps.topsisRouter?.selectModel).not.toHaveBeenCalled();
+});

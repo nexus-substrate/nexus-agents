@@ -25,7 +25,8 @@ const catalogs = new Map<EndpointArmId, readonly string[]>();
 
 /**
  * Record the model ids `arm` fronts, in the gateway's listing order (the
- * first is the arm's delegate and the default pricing model). Replaces an
+ * first remains the legacy fallback pricing model; execution resolves the
+ * ranked default through resolveGatewayDefault). Replaces an
  * earlier catalogue for the same arm, mirroring `registerApiArm`. Throws on an
  * empty list: an empty catalogue is not a catalogue, and storing one would
  * make `catalog[0]` an undefined pricing key.

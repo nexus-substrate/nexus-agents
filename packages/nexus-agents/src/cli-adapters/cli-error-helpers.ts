@@ -21,7 +21,7 @@ import { APIUserAbortError as OpenAiAbortError } from 'openai/core/error';
 import { APIUserAbortError as AnthropicAbortError } from '@anthropic-ai/sdk/core/error';
 import { parseRetryAfterMs, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import { AbortError, isTimeoutAbortReason } from '../adapters/abort-utils.js';
-import type { CliError, CliErrorCode, CliName } from './types.js';
+import type { CliError, CliErrorCode, RoutingArmId } from './types.js';
 import { ConfigError, ValidationError } from '../core/errors.js';
 
 /** Error codes the retry machinery treats as transient. */
@@ -63,7 +63,7 @@ export function isTimeoutText(text: string): boolean {
 export function createCliError(
   code: CliErrorCode,
   message: string,
-  cli: CliName,
+  cli: RoutingArmId,
   cause?: Error
 ): CliError {
   const retryable = isRetryableErrorCode(code) && !isDurableCapacityText(message);
@@ -90,7 +90,7 @@ export function createCliError(
  * must not count it, or one bad model preference opens the breaker for every
  * caller of that CLI. Non-retryable: the same input fails the same way.
  */
-export function createCallerInputCliError(message: string, cli: CliName): CliError {
+export function createCallerInputCliError(message: string, cli: RoutingArmId): CliError {
   return createCliError('EXECUTION_ERROR', message, cli, new ValidationError(message));
 }
 
@@ -110,7 +110,7 @@ class HostUnavailableError extends ConfigError {
  * A host/environment condition that cannot change within this process (#6846),
  * so no layer should re-run it. Marked by a {@link HostUnavailableError} cause.
  */
-export function createHostUnavailableCliError(message: string, cli: CliName): CliError {
+export function createHostUnavailableCliError(message: string, cli: RoutingArmId): CliError {
   return createCliError('EXECUTION_ERROR', message, cli, new HostUnavailableError(message));
 }
 
@@ -155,7 +155,7 @@ export function isCallerAbortError(error: { readonly cause?: unknown }): boolean
 export function createCallerAbortCliError(
   reason: unknown,
   message: string,
-  cli: CliName
+  cli: RoutingArmId
 ): CliError {
   if (isTimeoutAbortReason(reason)) {
     return createCliError('TIMEOUT', message, cli, new CallerDeadlineAbortError(message));

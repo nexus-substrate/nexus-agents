@@ -15,6 +15,7 @@ import { getFallbackChainForCategory } from './fallback-chains.js';
 import type {
   ICliAdapter,
   CliName,
+  RoutingArmId,
   CliTask,
   CliResponse,
   CliError,
@@ -52,7 +53,7 @@ const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
 
 /** Configuration for CLI circuit breaker integration. */
 export interface CliCircuitBreakerConfig {
-  readonly perCliConfig?: Partial<Record<CliName, Partial<CircuitBreakerConfig>>>;
+  readonly perCliConfig?: Partial<Record<RoutingArmId, Partial<CircuitBreakerConfig>>>;
   readonly fallbackChain?: ReadonlyArray<CliName>;
   readonly enableFallback?: boolean;
   readonly maxFallbackAttempts?: number;
@@ -61,7 +62,7 @@ export interface CliCircuitBreakerConfig {
 /** Result of a circuit-protected execution with fallback info. */
 export interface CircuitProtectedResult {
   readonly response: CliResponse;
-  readonly executedBy: CliName;
+  readonly executedBy: RoutingArmId;
   readonly usedFallback: boolean;
   readonly fallbackAttempts?: ReadonlyArray<CliName>;
 }
@@ -69,7 +70,7 @@ export interface CircuitProtectedResult {
 /** Health status for all CLIs with circuit state. */
 export interface CliCircuitHealthStatus {
   readonly clis: ReadonlyArray<{
-    readonly name: CliName;
+    readonly name: RoutingArmId;
     readonly healthy: boolean;
     readonly circuitState: 'closed' | 'open' | 'half-open';
     readonly failureCount: number;
@@ -88,8 +89,8 @@ export interface ICliCircuitBreakerIntegration {
     taskCategory?: TaskCategory
   ): Promise<Result<CircuitProtectedResult, CircuitError | CliError>>;
   getHealthStatus(): CliCircuitHealthStatus;
-  getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot>;
-  resetCircuit(cliName: CliName): void;
+  getCircuitSnapshots(): Map<RoutingArmId, CircuitBreakerSnapshot>;
+  resetCircuit(cliName: RoutingArmId): void;
   resetAllCircuits(): void;
   addStateChangeListener(listener: CircuitStateChangeListener): void;
 }
@@ -138,7 +139,7 @@ export function getCliCircuitBreakerSnapshot(cliName: CliName): CircuitBreakerSn
  */
 export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegration {
   private readonly registry: CircuitBreakerRegistry;
-  private readonly adapters: Map<CliName, ICliAdapter> = new Map();
+  private readonly adapters: Map<RoutingArmId, ICliAdapter> = new Map();
   private readonly config: Required<CliCircuitBreakerConfig>;
   private readonly logger: ILogger;
 
@@ -223,15 +224,15 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     };
   }
 
-  getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot> {
-    const snapshots = new Map<CliName, CircuitBreakerSnapshot>();
+  getCircuitSnapshots(): Map<RoutingArmId, CircuitBreakerSnapshot> {
+    const snapshots = new Map<RoutingArmId, CircuitBreakerSnapshot>();
     for (const [name, adapter] of this.adapters) {
       snapshots.set(name, this.breakerFor(adapter).breaker.getSnapshot());
     }
     return snapshots;
   }
 
-  resetCircuit(cliName: CliName): void {
+  resetCircuit(cliName: RoutingArmId): void {
     const adapter = this.adapters.get(cliName);
     this.registry.resetArm(adapter === undefined ? cliName : this.breakerFor(adapter).key);
     this.logger.info('Circuit reset', { cliName });
@@ -333,16 +334,16 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     };
   }
 
-  /** Marked gateway slots record in the shared registry; private registries own their records. */
+  /** Gateway arms/slots record in the shared registry; private registries own their records. */
   private ownsBreakerOutcome(adapter: ICliAdapter): boolean {
     return (
       this.registry !== defaultCliCircuitBreakerRegistry ||
-      gatewayServedSlotOf(adapter)?.arm === undefined
+      (gatewayServedSlotOf(adapter)?.arm === undefined && !adapter.name.startsWith('api:'))
     );
   }
 
   private getFallbackClis(
-    excludeCli: CliName,
+    excludeCli: RoutingArmId,
     taskCategory?: TaskCategory,
     task?: CliTask
   ): CliName[] {

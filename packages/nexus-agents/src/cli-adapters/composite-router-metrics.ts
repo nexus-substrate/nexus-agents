@@ -11,7 +11,7 @@
 import type { ILogger } from '../core/index.js';
 import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import type { CliName } from './types.js';
-import { routingArmDisplaySlot } from './types.js';
+import { routingArmCliSlot } from './types.js';
 import type {
   CompositeRoutingDecision,
   IRoutingMetricsCollector,
@@ -53,13 +53,19 @@ export function recordDecisionToMetrics(
 
   // RoutingMetrics is slot-level; collapse the distinct arm (and its
   // alternatives) to their display slots (#3422).
-  const selectedModel = routingArmDisplaySlot(decision.cliName);
+  // This metrics sink only represents CLI slots; endpoint decisions are
+  // recorded by the arm-aware outcome/trace sinks instead of aliasing a CLI.
+  const selectedModel = routingArmCliSlot(decision.cliName);
+  if (selectedModel === undefined) return;
 
   deps.metricsCollector.recordDecision({
     timestamp: getTimeProvider().nowIso(),
     traceId,
     selectedModel,
-    alternativeModels: decision.alternatives.map(routingArmDisplaySlot),
+    alternativeModels: decision.alternatives.flatMap((arm) => {
+      const slot = routingArmCliSlot(arm);
+      return slot === undefined ? [] : [slot];
+    }),
     isExploration: decision.ucbScore !== undefined && decision.ucbScore > 0.5,
     taskType: decision.taskProfile.taskType,
     contextTokens: decision.taskProfile.contextRequired,

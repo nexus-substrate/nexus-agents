@@ -11,8 +11,10 @@ import {
   getTimeProvider,
   createSharedTaskAnalyzer,
   taskAnalysisResultToTaskProfile,
+  ConfigError,
 } from '../../core/index.js';
 import type { CliName, CliTask, ICliAdapter } from '../../cli-adapters/types.js';
+import { isCliName } from '../../cli-adapters/types.js';
 import type { Task } from '../../core/types/agent.js';
 import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router-types.js';
 import type {
@@ -68,6 +70,10 @@ export function createRoutingDecisionDetails(
   decision: RoutingDecision,
   task: Task
 ): RoutingDecisionDetails {
+  // This evaluation schema scores CLI preferences; endpoint arms have no CLI slot.
+  if (!isCliName(decision.adapter.name)) {
+    throw new ConfigError('CLI evaluation cannot represent an endpoint routing decision');
+  }
   const analysis = sharedAnalyzer.analyze(task);
   const taskProfile = taskAnalysisResultToTaskProfile(analysis);
 
@@ -77,7 +83,7 @@ export function createRoutingDecisionDetails(
     reason: decision.reason,
     taskProfile,
     decisionTimeMs: decision.decisionTimeMs,
-    alternatives: decision.alternatives.map((alt) => alt.name),
+    alternatives: decision.alternatives.map((alt) => alt.name).filter(isCliName),
   };
 }
 
@@ -215,6 +221,8 @@ export async function routeTask(
     return null;
   }
   const decision = routeResult.value;
+  // Endpoint arms are excluded from this CLI-only evaluation framework.
+  if (!isCliName(decision.adapter.name)) return null;
   const details = createRoutingDecisionDetails(decision, agentTask);
   return { decision, details };
 }

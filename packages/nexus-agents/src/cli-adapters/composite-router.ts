@@ -47,7 +47,7 @@ import type {
   ExecutionOptions,
 } from './types.js';
 import { mapObserverRoutingDecision } from '../learning/routing-decision-mappers.js';
-import { routingArmDisplaySlot } from './types.js';
+import { routingArmCliSlot, routingArmDisplaySlot } from './types.js';
 import { armsForAccessMode } from './composite-router-access-mode.js';
 import type { IOrchestrationObserver } from '../agents/observability/orchestration-observer-types.js';
 import { BudgetRouter } from './budget-router.js';
@@ -448,9 +448,8 @@ export class CompositeRouter implements ICompositeRouter {
       type: 'routing.decision',
       timestamp: getTimeProvider().now(),
       taskId: taskDescription.slice(0, 100),
-      // Trace attribution is slot-level; collapse the api:* arm (#3422) so this
-      // sink matches every other telemetry sink (the bandit keeps the arm).
-      selectedModel: routingArmDisplaySlot(decision.cliName),
+      // Built-in vendor arms retain slot display; endpoints retain their own identity.
+      selectedModel: routingArmCliSlot(decision.cliName) ?? decision.cliName,
       reasoning: decision.reason,
       decisionPath: decision.stagesExecuted,
     });
@@ -590,7 +589,10 @@ export class CompositeRouter implements ICompositeRouter {
     // failure, so an outcome writer records both against the arm routed to.
     // #6552: the arm id too, which the slot alone loses for an api:* arm.
     const routed = {
-      routedCli: routingArmDisplaySlot(decision.cliName),
+      // A gateway endpoint has no routed CLI; routedArm carries its identity.
+      ...(routingArmCliSlot(decision.cliName) !== undefined && {
+        routedCli: routingArmDisplaySlot(decision.cliName),
+      }),
       routedArm: decision.cliName,
       routedDurationMs: armDurationMs,
     };
@@ -606,10 +608,10 @@ export class CompositeRouter implements ICompositeRouter {
   ): void {
     // The bandit and the quality reward read the DISTINCT arm (#6552: the
     // reward uses the arm's own history, falling back to its slot's while it
-    // has none). Latency, routing memory and metrics collapse to the display
-    // slot so CLI and API telemetry stay attributed to the vendor (#3422).
+    // has none). Slot-only sinks retain vendor mappings and skip gateway
+    // endpoints, which have no CLI slot to measure.
     const arm = decision.cliName;
-    const slot = routingArmDisplaySlot(arm);
+    const slot = routingArmCliSlot(arm);
 
     // Record bandit outcome with quality-enriched reward (Issue #929). The
     // history is the ARM's (#6552): outcome rows are keyed on the arm id.
@@ -619,7 +621,17 @@ export class CompositeRouter implements ICompositeRouter {
     // Record difficulty outcome for ZeroRouter learning
     this.recordExecutedDifficultyOutcome(decision, task, success);
 
+    this.logger.debug('Auto-recorded feedback', {
+      cli: arm,
+      success,
+      durationMs,
+      reward,
+    });
+    // Slot-only sinks cannot represent gateway outcomes.
+    if (slot === undefined) return;
+
     // Record latency for latency-based routing (Issue #361)
+    // Slot-only learning cannot represent an endpoint; skip it explicitly.
     if (this.latencyTracker !== undefined) {
       this.latencyTracker.record(slot, durationMs, success);
     }
@@ -651,13 +663,6 @@ export class CompositeRouter implements ICompositeRouter {
         { metricsCollector: this.metricsCollector, logger: this.logger }
       );
     }
-
-    this.logger.debug('Auto-recorded feedback', {
-      cli: arm,
-      success,
-      durationMs,
-      reward,
-    });
   }
 
   /** Task type inference keywords. */
@@ -758,10 +763,13 @@ export class CompositeRouter implements ICompositeRouter {
         return this.cliNames;
       }
       const sourcesWithModels = new Set(all.map((m) => m.source));
-      // Availability is tracked per CLI source/slot; an api:* arm is gated on
-      // its display slot's source (#3422).
-      const filtered = this.cliNames.filter((name) =>
-        sourcesWithModels.has(routingArmDisplaySlot(name))
+      // The cache is sourced by CLI transports, not endpoint catalogues.
+      // Endpoint availability was established by gateway discovery; skip this
+      // CLI-only gate instead of aliasing an endpoint to opencode.
+      const filtered = this.cliNames.filter(
+        (name) =>
+          routingArmCliSlot(name) === undefined ||
+          sourcesWithModels.has(routingArmDisplaySlot(name))
       );
       // Guard against fully empty filter — never let the gate wedge routing.
       if (filtered.length === 0) {
@@ -852,7 +860,9 @@ export class CompositeRouter implements ICompositeRouter {
     // Concrete model resolution is registry/slot-level; collapse an api:* arm
     // to its display slot for the lookup (#3422).
     const model =
-      isRouteModelSelectionEnabled() && params.difficultyTier !== undefined
+      isRouteModelSelectionEnabled() &&
+      params.difficultyTier !== undefined &&
+      routingArmCliSlot(params.selectedCli) !== undefined
         ? resolveModelForTier(routingArmDisplaySlot(params.selectedCli), params.difficultyTier)
         : undefined;
 
@@ -880,9 +890,10 @@ export class CompositeRouter implements ICompositeRouter {
 
   private updateStats(selectedCli: RoutingArmId, decisionTimeMs: number): void {
     this.totalDecisions++;
-    // decisionsPerCli stays slot-keyed; an api:* arm increments its display
-    // slot's counter so no api:* key ever enters the record (#3422).
-    this.decisionsPerCli[routingArmDisplaySlot(selectedCli)]++;
+    // decisionsPerCli counts CLI slots; gateway endpoints have no slot.
+    // Gateway endpoints have no CLI counter; totalDecisions still counts them.
+    const slot = routingArmCliSlot(selectedCli);
+    if (slot !== undefined) this.decisionsPerCli[slot]++;
     this.totalDecisionTimeMs += decisionTimeMs;
   }
 
@@ -921,7 +932,8 @@ export class CompositeRouter implements ICompositeRouter {
     if (
       this.config.enableStrategyDistillation &&
       this.distilledRuleStage !== undefined &&
-      success !== undefined
+      success !== undefined &&
+      routingArmCliSlot(cliName) !== undefined
     ) {
       this.distilledRuleStage.recordOutcome({
         selectedCli: routingArmDisplaySlot(cliName),

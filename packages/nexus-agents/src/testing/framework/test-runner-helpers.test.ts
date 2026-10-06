@@ -3,10 +3,16 @@
  * @module testing/framework/test-runner-helpers.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { EvaluationTask, TestRunResult, TaskTestResult } from './types.js';
-import type {} from '../../cli-adapters/types.js';
-import { filterTasksByCli, createRunCompleteLog } from './test-runner-helpers.js';
+import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
+import type { ITaskRouter } from '../../cli-adapters/router-types.js';
+import { ok } from '../../core/index.js';
+import {
+  filterTasksByCli,
+  createRunCompleteLog,
+  resolveCliForTask,
+} from './test-runner-helpers.js';
 
 // ============================================================================
 // Test Helpers
@@ -43,6 +49,19 @@ function makeTaskResult(overrides: Partial<TaskTestResult> = {}): TaskTestResult
     ...overrides,
   };
 }
+
+it('falls back to a CLI when the router selects an endpoint for CLI evaluation', async () => {
+  const router = {
+    routeWithDetails: vi
+      .fn()
+      .mockResolvedValue(ok({ adapter: { name: 'api:corp-proxy' }, alternatives: [] })),
+  } as unknown as ITaskRouter;
+  const adapters = new Map<CliName, ICliAdapter>([['claude', { name: 'claude' } as ICliAdapter]]);
+
+  expect(await resolveCliForTask({ task: makeTask(), adapters, router })).toEqual({
+    selectedCli: 'claude',
+  });
+});
 
 // ============================================================================
 // filterTasksByCli

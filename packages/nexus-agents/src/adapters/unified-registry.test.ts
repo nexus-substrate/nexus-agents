@@ -25,6 +25,7 @@ import {
   RegistryAlreadyInitializedError,
 } from './unified-registry.js';
 import { ConfigError } from '../core/errors.js';
+import * as resilientAdapters from './resilient-adapter.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
@@ -460,7 +461,7 @@ describe('UnifiedAdapterRegistry — routing re-resolves on read (#3185)', () =>
 
 describe('the registry singleton has a designated composition root (#6012)', () => {
   /** Files allowed to CLAIM the singleton (choose its logger), relative to src/. */
-  const COMPOSITION_ROOTS = ['cli.ts', 'mcp/server.ts'];
+  const COMPOSITION_ROOTS = ['cli.ts', 'cli-server.ts', 'mcp/server.ts'];
 
   function sourceFiles(dir: string, acc: string[] = []): string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -502,10 +503,19 @@ describe('the registry singleton has a designated composition root (#6012)', () 
     resetGlobalRegistry();
     const first = { ...mockLogger } as unknown as Parameters<typeof claimGlobalRegistry>[0];
     const second = { ...mockLogger } as unknown as Parameters<typeof claimGlobalRegistry>[0];
-    const a = claimGlobalRegistry(first);
+    const created = vi.spyOn(resilientAdapters, 'createResilientAdapter');
+    const a = claimGlobalRegistry(first, { defaultCliTimeoutMs: 30_000 });
     const b = claimGlobalRegistry(second);
     expect(b).toBe(a);
     expect(a.getLogger()).toBe(first);
+    a.getAdapterForCli('claude');
+    expect(created).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultCliTimeoutMs: 30_000,
+        circuitBreakerRegistry: getDefaultCliCircuitBreakerRegistry(),
+      })
+    );
+    created.mockRestore();
   });
 });
 

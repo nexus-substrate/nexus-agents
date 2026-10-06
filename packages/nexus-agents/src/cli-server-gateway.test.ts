@@ -471,6 +471,8 @@ describe('registerGatewayArm (#4392 inc 2 step 2)', () => {
     const adapters = [makeMockAdapter('gw-a'), makeMockAdapter('gw-b')];
 
     const arm = registerGatewayArm(adapters, 'openai-compat', registry);
+    // wireGateway registers the family catalogue after constructing the arm.
+    setGatewaySlotCatalog(adapters);
 
     expect(arm).toBe('api:openai-compat');
     expect(registry.registerApiArm).toHaveBeenCalledTimes(1);

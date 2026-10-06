@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { TaskProfile } from '../core/index.js';
 import type { CliName, CliTask, RoutingArmId } from './types.js';
+import type { TopsisRouter } from './topsis-router.js';
 import type { TopsisModelProfile } from './topsis-types.js';
 import type {} from './zero-router-types.js';
 import {
@@ -1123,4 +1124,44 @@ describe('taskProfileToBanditContext budget feature (#4834)', () => {
 
     expect(low).not.toBe(high);
   });
+});
+
+describe('endpoint exclusion from CLI TOPSIS (#7151)', () => {
+  it('does not inherit opencode TOPSIS scores or capability profiles', () => {
+    const selectModel = vi.fn().mockReturnValue({
+      scores: [{ cliName: 'opencode', closenessScore: 0.9 }],
+      selectedModel: 'opencode',
+    });
+    const router = { selectModel } as unknown as TopsisRouter;
+    const result = applyTopsisRanking(makeTaskProfile(), ['opencode', 'api:lab'], router);
+    expect(result.scoresByArm?.has('api:lab')).toBe(false);
+    expect(result.scoresByArm?.get('opencode')).toBe(0.9);
+    expect(selectModel.mock.calls[0]?.[0].profiles).toHaveLength(1);
+  });
+});
+
+it('keeps endpoint arms outside CLI preference tiers (#7151)', () => {
+  const result = filterByPreferenceTier(['claude', 'api:lab'], 'strong');
+  expect(result).toContain('api:lab');
+});
+
+it('keeps an unranked endpoint alternative score absent (#7151)', () => {
+  const result = buildDecisionFields({
+    selectedCli: 'claude',
+    candidates: ['claude', 'api:lab'],
+    topsisRanking: ['claude', 'api:lab'],
+    topsisScoresByArm: new Map([['claude', 0.9]]),
+    stagesExecuted: ['topsis-ranking'],
+    decisionTimeMs: 10,
+    withinBudget: true,
+    difficultyEstimate: undefined,
+    difficultyTier: undefined,
+    preferenceScore: undefined,
+    preferenceTier: undefined,
+    topsisScore: 0.9,
+    ucbScore: undefined,
+    taskProfile: makeTaskProfile(),
+  });
+  expect(result.alternatives).toContain('api:lab');
+  expect(result.alternativeScores?.has('api:lab')).toBe(false);
 });

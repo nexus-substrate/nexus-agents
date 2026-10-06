@@ -15,6 +15,8 @@ import {
 } from './routing/stages/index.js';
 import type { CapacityStatus, ICliAdapter, RoutingArmId } from './types.js';
 
+import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import type { LinUCBBandit } from './linucb-bandit.js';
 import { ok } from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
 import { CompositeRoutingError } from './composite-router-types.js';
@@ -706,4 +708,34 @@ describe('runDistilledRuleStage supplies the task category (#4832)', () => {
 
     expect(result.rulesApplied).toBe(1);
   });
+});
+
+it('does not apply opencode performance floor to an endpoint (#7151)', async () => {
+  const store = getOutcomeStore();
+  const summary = store.summarize();
+  const spy = vi.spyOn(store, 'summarize').mockReturnValue({
+    ...summary,
+    byCli: new Map([
+      ['opencode', { count: 30, successRate: 0.1, avgDurationMs: 100, avgQuality: 0.1 }],
+    ]),
+  });
+  const bandit = {
+    select: vi.fn().mockReturnValue({ armName: 'api:lab', ucbScore: 1 }),
+  } as unknown as LinUCBBandit;
+  const deps = makeDeps({ linucbBandit: bandit });
+  deps.config.enableLinUCBSelection = true;
+  deps.config.enableTopsisRanking = true;
+  deps.topsisRouter = {
+    selectModel: vi.fn().mockReturnValue({ scores: [{ cliName: 'claude', closenessScore: 0.8 }] }),
+  } as unknown as StageDependencies['topsisRouter'];
+  const stages: string[] = [];
+  const profile = analyzeTaskProfile({ content: 'Implement a feature' }, []);
+  const result = await runPipeline(mockTask, profile, stages, ['claude', 'api:lab'], deps);
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    expect(result.value.selectedCli).toBe('api:lab');
+    expect(result.value.topsisScore).toBeUndefined();
+  }
+  expect(stages).not.toContain('perf-floor-override');
+  spy.mockRestore();
 });

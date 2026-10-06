@@ -700,3 +700,23 @@ describe('createCliCircuitBreakerIntegration', () => {
     expect(integration2).toBeDefined();
   });
 });
+
+describe('gateway endpoint health isolation (#7151)', () => {
+  it('gates and reports the endpoint breaker separately from opencode', () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    const endpoint = { ...createMockAdapter('opencode'), name: 'api:lab' } as ICliAdapter;
+    const integration = new CliCircuitBreakerIntegration([createMockAdapter('opencode'), endpoint]);
+    const breaker = registry.getArmBreaker('api:lab');
+    for (let i = 0; i < 5; i++) breaker.recordFailure('unknown');
+    const health = integration.getHealthStatus();
+    expect(health.clis).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'api:lab', circuitState: 'open' }),
+        expect.objectContaining({ name: 'opencode', circuitState: 'closed' }),
+      ])
+    );
+    expect(integration.getCircuitSnapshots().get('api:lab')?.state).toBe('open');
+    registry.resetAll();
+  });
+});

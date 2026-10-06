@@ -13,7 +13,7 @@
  */
 import type { ILogger, TaskProfile } from '../core/index.js';
 import type { CliName, RoutingArmId, CliTask } from './types.js';
-import { routingArmDisplaySlot } from './types.js';
+import { routingArmCliSlot } from './types.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { TopsisRouter } from './topsis-router.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
@@ -47,12 +47,22 @@ import {
 /**
  * Collapse a routing-arm candidate set to its unique display CLI slots (#3422).
  * The RoutingContext-based stages (confidence-cascade, capability-match,
- * quality-constraint, etc.) score/filter at slot granularity, so an api:* arm
- * is represented by its vendor slot. De-duplicated to avoid double-scoring when
+ * quality-constraint, etc.) score/filter at slot granularity. Built-in vendor
+ * API arms retain their slot; gateway endpoints are excluded from measurement.
+ * De-duplicated to avoid double-scoring when
  * both a CLI slot and its API arm are present.
  */
 export function armsToSlots(candidates: readonly RoutingArmId[]): CliName[] {
-  return [...new Set(candidates.map(routingArmDisplaySlot))];
+  // These stages only understand CLI slots: endpoint arms are unmeasured,
+  // never represented by opencode or another CLI's profile.
+  return [
+    ...new Set(
+      candidates.flatMap((arm) => {
+        const slot = routingArmCliSlot(arm);
+        return slot === undefined ? [] : [slot];
+      })
+    ),
+  ];
 }
 
 /**
@@ -64,7 +74,11 @@ function keepArmsForSlots(
   survivingSlots: readonly CliName[]
 ): RoutingArmId[] {
   const slotSet = new Set(survivingSlots);
-  return candidates.filter((arm) => slotSet.has(routingArmDisplaySlot(arm)));
+  // Preserve endpoint arms: exclusion from measurement is not exclusion from routing.
+  return candidates.filter((arm) => {
+    const slot = routingArmCliSlot(arm);
+    return slot === undefined || slotSet.has(slot);
+  });
 }
 
 /** Dependencies required for pipeline stage execution. */
@@ -481,7 +495,12 @@ export function runTopsisStage(
   /** #5269: per-arm closeness, absent when no ranking ran. */
   scoresByArm?: ReadonlyMap<RoutingArmId, number>;
 } {
-  if (!deps.config.enableTopsisRanking || deps.topsisRouter === undefined) {
+  // No endpoint has a CLI TOPSIS profile: an endpoint-only set is unmeasured.
+  if (
+    !deps.config.enableTopsisRanking ||
+    deps.topsisRouter === undefined ||
+    armsToSlots(candidates).length === 0
+  ) {
     return { ranking: candidates, score: undefined };
   }
   const topsisOptions: Parameters<typeof applyTopsisRanking>[3] = {
@@ -575,12 +594,11 @@ export function runLatencyStage(
     return { latencyScore: undefined, latencyAdjustedRanking: candidates };
   }
 
-  // Latency is tracked per slot; collapse arms and let an api:* arm sort by
-  // its display slot's latency score (#3422).
+  // Latency is slot-level. Endpoint arms have no slot and no latency score.
   const scores = deps.latencyTracker.getScores(armsToSlots(candidates));
   stagesExecuted.push('latency-scoring');
   const scoreOf = (arm: RoutingArmId): number =>
-    scores.find((s) => s.cli === routingArmDisplaySlot(arm))?.score ?? 0;
+    scores.find((s) => s.cli === routingArmCliSlot(arm))?.score ?? 0;
 
   // Sort candidates by latency score (higher is better/faster)
   const sortedCandidates = [...candidates].sort((a, b) => scoreOf(b) - scoreOf(a));
@@ -588,7 +606,7 @@ export function runLatencyStage(
   const topArm = sortedCandidates[0];
   const topScore =
     topArm !== undefined
-      ? scores.find((s) => s.cli === routingArmDisplaySlot(topArm))?.score
+      ? scores.find((s) => s.cli === routingArmCliSlot(topArm))?.score
       : undefined;
 
   deps.logger.debug('Latency scoring applied', {

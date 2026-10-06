@@ -113,7 +113,7 @@ InterfaceDeclaration AdapterRateLimiterConfig
 InterfaceDeclaration AdapterRegisterOptions
   allowOverwrite?: boolean | undefined
 InterfaceDeclaration AdapterScenarioResult
-  readonly adapterName: "claude" | "codex" | "gemini" | "opencode"
+  readonly adapterName: RoutingArmId
   readonly errors: readonly string[]
   readonly failureCount: number
   readonly latency: LatencyMetrics
@@ -701,7 +701,7 @@ TypeAliasDeclaration AuthorizationMethod
 VariableDeclaration AuthorizationMethodSchema
   : z.ZodEnum<{ explicit: "explicit"; inherited: "inherited"; role: "role"; }>
 TypeAliasDeclaration AuthProbeResult
-  = { readonly cli: CliName; readonly envFallback?: string; readonly fixCommand: string; readonly fixUrl?: string; readonly reason: string; readonly state: 'needs-login'; } | { readonly cli: CliName; readonly meta?: Readonly<Record<string, unknown>>; readonly state: 'authenticated'; readonly via: 'cli-credentials' | 'env-var'; } | { readonly cli: CliName; readonly reason: string; readonly state: 'error'; } | { readonly cli: CliName; readonly reason: string; readonly state: 'not-installed'; } | { readonly cli: CliName; readonly reason: string; readonly state: 'unknown'; }
+  = { readonly cli: CliName; readonly envFallback?: string; readonly fixCommand: string; readonly fixUrl?: string; readonly reason: string; readonly state: 'needs-login'; } | { readonly cli: CliName; readonly meta?: Readonly<Record<string, unknown>>; readonly state: 'authenticated'; readonly via: 'cli-credentials' | 'env-var'; } | { readonly cli: CliName; readonly reason: string; readonly state: 'error'; } | { readonly cli: CliName; readonly reason: string; readonly state: 'not-installed'; } | { readonly cli: RoutingArmId; readonly reason: string; readonly state: 'unknown'; }
 ClassDeclaration AvailabilityCache
   clear() => void
   entries() => ReadonlyArray<ProbeResult>
@@ -1358,7 +1358,7 @@ TypeAliasDeclaration|VariableDeclaration CircuitErrorCode
   : { readonly CIRCUIT_HALF_OPEN_REJECTED: "CIRCUIT_HALF_OPEN_REJECTED"; readonly CIRCUIT_OPEN: "CIRCUIT_OPEN"; readonly EXECUTION_FAILED: "EXECUTION_FAILED"; }
   = (typeof CircuitErrorCode)[keyof typeof CircuitErrorCode]
 InterfaceDeclaration CircuitProtectedResult
-  readonly executedBy: "claude" | "codex" | "gemini" | "opencode"
+  readonly executedBy: RoutingArmId
   readonly fallbackAttempts?: readonly ("claude" | "codex" | "gemini" | "opencode")[] | undefined
   readonly response: CliResponse
   readonly usedFallback: boolean
@@ -1504,17 +1504,17 @@ InterfaceDeclaration CliCircuitBreakerConfig
   readonly enableFallback?: boolean | undefined
   readonly fallbackChain?: readonly ("claude" | "codex" | "gemini" | "opencode")[] | undefined
   readonly maxFallbackAttempts?: number | undefined
-  readonly perCliConfig?: Partial<Record<"claude" | "codex" | "gemini" | "opencode", Partial<CircuitBreakerConfig>>> | undefined
+  readonly perCliConfig?: Partial<Record<RoutingArmId, Partial<CircuitBreakerConfig>>> | undefined
 ClassDeclaration CliCircuitBreakerIntegration
   addStateChangeListener(listener: CircuitStateChangeListener) => void
   execute(adapter: ICliAdapter, task: CliTask, taskCategory?: TaskCategory) => Promise<Result<CircuitProtectedResult, CircuitError | CliError>>
-  getCircuitSnapshots() => Map<CliName, CircuitBreakerSnapshot>
+  getCircuitSnapshots() => Map<RoutingArmId, CircuitBreakerSnapshot>
   getHealthStatus() => CliCircuitHealthStatus
   implements ICliCircuitBreakerIntegration
   resetAllCircuits() => void
-  resetCircuit(cliName: CliName) => void
+  resetCircuit(cliName: RoutingArmId) => void
 InterfaceDeclaration CliCircuitHealthStatus
-  readonly clis: readonly { readonly circuitState: "closed" | "half-open" | "open"; readonly failureCount: number; readonly healthy: boolean; readonly lastFailureTime: null | number; readonly name: CliName; }[]
+  readonly clis: readonly { readonly circuitState: "closed" | "half-open" | "open"; readonly failureCount: number; readonly healthy: boolean; readonly lastFailureTime: null | number; readonly name: RoutingArmId; }[]
   readonly healthyCount: number
   readonly systemHealthy: boolean
   readonly timestamp: number
@@ -1537,7 +1537,7 @@ VariableDeclaration CliDetectionCacheConfigSchema
   : z.ZodObject<{ ttlMs: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>
 InterfaceDeclaration CliError
   readonly cause?: Error | undefined
-  readonly cli: "claude" | "codex" | "gemini" | "opencode"
+  readonly cli: RoutingArmId
   readonly code: CliErrorCode
   readonly message: string
   readonly retryAfterMs?: number | undefined
@@ -4605,16 +4605,16 @@ InterfaceDeclaration ICliAdapter
   readonly capabilities: CapabilityProfile
   readonly enforcesReadOnlyAnalysis?: boolean | undefined
   readonly enforcesWorkspaceEdit?: boolean | undefined
-  readonly name: "claude" | "codex" | "gemini" | "opencode"
+  readonly name: RoutingArmId
   readonly transport: CliTransport
   serves((modelId: string) => Promise<"no" | "unknown" | "yes">) | undefined
 InterfaceDeclaration ICliCircuitBreakerIntegration
   addStateChangeListener(listener: CircuitStateChangeListener) => void
   execute(adapter: ICliAdapter, task: CliTask, taskCategory?: TaskCategory) => Promise<Result<CircuitProtectedResult, CircuitError | CliError>>
-  getCircuitSnapshots() => Map<CliName, CircuitBreakerSnapshot>
+  getCircuitSnapshots() => Map<RoutingArmId, CircuitBreakerSnapshot>
   getHealthStatus() => CliCircuitHealthStatus
   resetAllCircuits() => void
-  resetCircuit(cliName: CliName) => void
+  resetCircuit(cliName: RoutingArmId) => void
 InterfaceDeclaration ICliDetectionCache
   get(cli: CliName) => CliHealthResult | undefined
   getAll() => ReadonlyMap<CliName, CliHealthResult>

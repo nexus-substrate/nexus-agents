@@ -1,3 +1,4 @@
+import { isCliName } from './types.js';
 /**
  * CLI-to-Model Adapter Bridge
  *
@@ -206,7 +207,8 @@ export class CliToModelAdapter implements IModelAdapter {
    * adapter default stays the honest report.
    */
   private reportedForwardedModel(forwarded: string | undefined): string | undefined {
-    if (forwarded === undefined) return undefined;
+    // Endpoint model IDs are discovered, never looked up as CLI models.
+    if (forwarded === undefined || !isCliName(this.cliAdapter.name)) return undefined;
     return findCanonicalModel(this.cliAdapter.name, forwarded)?.id;
   }
 

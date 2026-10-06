@@ -515,6 +515,9 @@ describe('startServer', () => {
     });
     const { startServer } = await import('./cli-server.js');
     await startServer(false, 'server', true);
+    const { wireGateway } = await import('./cli-server-gateway.js');
+    const { getGlobalRegistry } = await import('./adapters/unified-registry.js');
+    expect(wireGateway).toHaveBeenCalledWith(expect.anything(), getGlobalRegistry());
     expect(mcpModule.connectTransport).toHaveBeenCalledOnce();
   });
 

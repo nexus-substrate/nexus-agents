@@ -10,6 +10,12 @@
  */
 
 import type { ICliAdapter, CliName, RoutingArmId, CliTransport } from './types.js';
+import { isEndpointArmId } from './types.js';
+import { getGlobalRegistry } from '../adapters/unified-registry.js';
+import { readOpenAICompatEndpoint } from '../adapters/openai-compat-adapter.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
+import { gatewayCostGap, resolveGatewayCostDeclaration } from '../adapters/sdk/gateway-cost.js';
+import { createModelToCliAdapter } from './model-to-cli-adapter.js';
 import { createLogger, getTimeProvider } from '../core/index.js';
 import { collectApiRoutingArms } from '../adapters/auto-adapter.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
@@ -24,7 +30,7 @@ import { probeCli } from '../cli/cli-auth-probe.js';
 import { cliAuthBlocks, isCliAdmitted } from './cli-admission.js';
 import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
 import { isCliDisabled } from './disabled-clis.js';
-import { buildGatewaySlotRouterArm } from './gateway-slot-arm.js';
+import { buildGatewaySlotRouterArm, gatewaySlotEndpointOf } from './gateway-slot-arm.js';
 import {
   codexMcpServerAvailable,
   CodexMcpServerUnavailableError,
@@ -141,8 +147,11 @@ function createCodexAdapter(
  * `NEXUS_BILLING_MODE=api`, the direct-API adapters whose keys are present are
  * ALSO appended as distinct `api:<vendor>` routing arms (#3422) so the router /
  * bandit can score them separately from the CLI slots. DEFAULT (plan) mode
- * returns CLIs only — never surprise API spend. Key-presence-only and
- * deterministic; keys are never validated by calling out.
+ * adds no endpoint arms. NEXUS_ROUTE_GATEWAY_ARMS explicitly opts in to
+ * registered endpoint arms in either mode, with a required cost declaration.
+ * Endpoints already reachable through family slots (even an undecided slot)
+ * are omitted, avoiding duplicate endpoint history and breaker identities.
+ * Construction never discovers endpoints or validates keys by calling out.
  *
  * @param logger - Optional shared logger
  * @param codexTransport - Transport for Codex; unset selects by probe
@@ -179,7 +188,39 @@ export function createAllAdapters(
     }
   }
 
+  appendRegisteredEndpointArms(adapters, logger ?? factoryLogger);
   return adapters;
+}
+
+/** Admit declared endpoints only under operator opt-in; CLI slots remain raw (#5191). */
+function appendRegisteredEndpointArms(
+  adapters: Map<RoutingArmId, ICliAdapter>,
+  logger: ILogger
+): void {
+  if (!parseBoolEnv('NEXUS_ROUTE_GATEWAY_ARMS', false)) return;
+  const registry = getGlobalRegistry();
+  const configuredArm = `api:${readOpenAICompatEndpoint(process.env, logger)}`;
+  const slotEndpoints = new Set([...adapters.values()].map(gatewaySlotEndpointOf));
+  for (const arm of registry.getSnapshot().cachedArms) {
+    if (!isEndpointArmId(arm)) continue;
+    if (slotEndpoints.has(arm)) {
+      logger.debug('Gateway routing arm omitted: family slot already represents endpoint', { arm });
+      continue;
+    }
+    if (resolveGatewayCostDeclaration(arm) === undefined) {
+      logger.warn('Gateway routing arm excluded: NEXUS_GATEWAY_COST declaration required', {
+        arm,
+        reason: gatewayCostGap(arm),
+      });
+      continue;
+    }
+    const endpoint = registry.getAdapterForArm(arm);
+    if (endpoint === undefined) continue;
+    // The legacy single-model API arm reads the same configured URL/key.
+    // Replace it only on successful admission; flag-off and exclusions retain it.
+    if (arm === configuredArm) adapters.delete('api:custom-openai');
+    adapters.set(arm, createModelToCliAdapter(endpoint, { name: arm }));
+  }
 }
 
 /**

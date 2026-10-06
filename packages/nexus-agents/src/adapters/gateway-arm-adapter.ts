@@ -11,7 +11,7 @@
  * It is an {@link IResilientAdapter} so `UnifiedAdapterRegistry.registerApiArm`
  * can hold it next to the CLI slots, but it is NOT a `ResilientAdapter`: there
  * is no lazy detection and no failover (the gateway is the endpoint), so the
- * proxy is a thin delegate over the first discovered model, plus the breaker
+ * proxy is a thin delegate over the ranked gateway default, plus the breaker
  * recording `ResilientAdapter.recordBreakerFailure` does — copied, not
  * subclassed, because subclassing would drag detection and failover in.
  *
@@ -44,6 +44,7 @@ import {
 } from './rate-limit-detector.js';
 import type { AdapterHealthInfo, IResilientAdapter } from './resilient-adapter-types.js';
 import { clearGatewayCatalog } from './sdk/gateway-catalog.js';
+import { resolveGatewayDefault } from './gateway-family-slots.js';
 
 /** What the arm needs from its host: the SHARED breaker registry and a logger. */
 export interface GatewayArmDeps {
@@ -57,8 +58,10 @@ export interface GatewayArmDeps {
 
 /**
  * Build the one arm for a gateway's whole catalogue. `models` is the
- * discovered list in the gateway's order; the first is the delegate for
- * `complete`/`stream`/`countTokens`, and `listModels` returns them all.
+ * discovered list in the gateway's order; `resolveGatewayDefault` chooses the
+ * delegate after bootstrap registers the catalogue, and `listModels` returns
+ * them all. There is no fallback to an arbitrary model when no chat default
+ * resolves.
  * Throws on an empty list — the named empty case: an arm with no model
  * cannot complete, and registering one would fail on first use instead.
  */
@@ -67,11 +70,10 @@ export function createGatewayArmAdapter(
   models: readonly IModelAdapter[],
   deps: GatewayArmDeps
 ): IResilientAdapter {
-  const delegate = models[0];
-  if (delegate === undefined) {
+  if (models.length === 0) {
     throw new ConfigError(`Gateway arm ${armId} has no models; nothing to register`);
   }
-  return new GatewayArmAdapter(armId, delegate, models, deps);
+  return new GatewayArmAdapter(armId, models, deps);
 }
 
 class GatewayArmAdapter implements IResilientAdapter {
@@ -79,7 +81,6 @@ class GatewayArmAdapter implements IResilientAdapter {
 
   constructor(
     private readonly armId: EndpointArmId,
-    private readonly delegate: IModelAdapter,
     private readonly models: readonly IModelAdapter[],
     private readonly deps: GatewayArmDeps
   ) {}
@@ -117,11 +118,12 @@ class GatewayArmAdapter implements IResilientAdapter {
    * sat half-open forever with any single error re-opening it.
    */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
-    const result = await this.delegate.complete(request);
+    const delegate = this.delegate;
+    const result = await delegate.complete(request);
     if (result.ok) {
       this.deps.circuitBreakerRegistry.getArmBreaker(this.armId).recordSuccess();
     } else {
-      this.recordFailure(result.error);
+      this.recordFailure(result.error, delegate.providerId);
     }
     return result;
   }
@@ -191,6 +193,19 @@ class GatewayArmAdapter implements IResilientAdapter {
 
   // --- Private ---
 
+  /** Resolve lazily: wireGateway registers the family catalogue AFTER the arm. */
+  private get delegate(): IModelAdapter {
+    const resolved = resolveGatewayDefault(process.env, this.deps.logger);
+    if (resolved.kind !== 'resolved') {
+      throw new ConfigError(`Gateway arm ${this.armId} has no chat default`);
+    }
+    const delegate = this.models.find((model) => model === resolved.adapter);
+    if (delegate === undefined) {
+      throw new ConfigError(`Gateway default does not belong to arm ${this.armId}`);
+    }
+    return delegate;
+  }
+
   /**
    * `ResilientAdapter.recordBreakerFailure`, keyed on the ARM (#3423, #5359):
    * a transient rate limit is recorded by the telemetry branch and exempt from
@@ -199,19 +214,19 @@ class GatewayArmAdapter implements IResilientAdapter {
    * is rate-limit-shaped, because it never clears; everything else counts.
    * Every rate-limit-shaped failure, durable or not, is a telemetry event.
    */
-  private recordFailure(error: ModelError): void {
+  private recordFailure(error: ModelError, provider: string): void {
     const breaker = this.deps.circuitBreakerRegistry.getArmBreaker(this.armId);
     const category = mapModelErrorToCategory(error);
     // Telemetry first, for EVERY rate-limit-like error — durable caps included
     // — exactly as `ResilientAdapter.complete` does before its breaker branch;
     // otherwise `getRateLimitStats()` under-counts the gateway (#6403 review).
     const rateLimitLike = category === 'rate_limit' || isRateLimitLikeError(error);
-    if (rateLimitLike) this.recordRateLimit(error);
+    if (rateLimitLike) this.recordRateLimit(error, provider);
     if (isDurableCapacityError(error)) {
       breaker.recordFailure(category);
       this.deps.logger.warn('Durable capacity cap recorded to gateway arm breaker', {
         arm: this.armId,
-        provider: this.delegate.providerId,
+        provider,
         category,
       });
       return;
@@ -220,14 +235,13 @@ class GatewayArmAdapter implements IResilientAdapter {
     breaker.recordFailure(category);
     this.deps.logger.warn('Gateway arm failure recorded to circuit breaker', {
       arm: this.armId,
-      provider: this.delegate.providerId,
+      provider,
       category,
     });
   }
 
   /** The telemetry branch of `ResilientAdapter.complete`, for the exempted case. */
-  private recordRateLimit(error: ModelError): void {
-    const provider = this.delegate.providerId;
+  private recordRateLimit(error: ModelError, provider: string): void {
     const rlError = toRateLimitError(error, provider);
     recordRateLimitEvent({
       provider,

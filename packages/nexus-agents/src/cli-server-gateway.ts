@@ -37,6 +37,7 @@ import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-adapters/cli-circuit-breaker.js';
 import { isEndpointArmId, type EndpointArmId } from './cli-adapters/types-core.js';
 import { detectSandbox } from './config/sandbox-detection.js';
+import { getGlobalRegistry } from './adapters/unified-registry.js';
 import { EXIT_CODES } from './cli-types.js';
 
 /**
@@ -234,7 +235,7 @@ export function registerGatewayArm(
  */
 export async function wireGateway(
   logger: ILogger,
-  registry: Parameters<typeof registerGatewayArm>[2]
+  registry: Parameters<typeof registerGatewayArm>[2] = getGlobalRegistry()
 ): Promise<readonly IModelAdapter[] | undefined> {
   const { adapters, retryable } = await wireGatewayOnce(logger);
   const endpoint = readOpenAICompatEndpoint(process.env, logger);

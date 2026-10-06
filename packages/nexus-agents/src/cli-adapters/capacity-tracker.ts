@@ -10,7 +10,8 @@
  * @see Issue #456 - Real API rate limit tracking
  */
 
-import type { CliName, TokenUsage, CapacityStatus } from './types-core.js';
+import { isCliName } from './types-core.js';
+import type { CliName, RoutingArmId, TokenUsage, CapacityStatus } from './types-core.js';
 import { getTimeProvider } from '../core/index.js';
 import { clampPercent } from '../utils/math-utils.js';
 
@@ -65,7 +66,12 @@ interface UsageEntry {
 /**
  * Creates default configuration for a CLI from environment or defaults.
  */
-export function getDefaultConfig(cli: CliName): CapacityTrackerConfig {
+export function getDefaultConfig(cli: RoutingArmId): CapacityTrackerConfig {
+  // Endpoints have no declared local rate window. Keep capacity unmeasured
+  // until usage/provider signals arrive; never borrow a CLI's plan limits.
+  if (!isCliName(cli)) {
+    return { tokenLimit: Infinity, requestLimit: Infinity, windowMs: RATE_LIMIT_WINDOW_MS };
+  }
   const envPrefix = `NEXUS_${cli.toUpperCase()}`;
   const tokenEnv = process.env[`${envPrefix}_TOKEN_LIMIT`];
   const requestEnv = process.env[`${envPrefix}_REQUEST_LIMIT`];
@@ -338,6 +344,6 @@ export class CapacityTracker {
 /**
  * Creates a capacity tracker for a specific CLI.
  */
-export function createCapacityTracker(cli: CliName): CapacityTracker {
+export function createCapacityTracker(cli: RoutingArmId): CapacityTracker {
   return new CapacityTracker(getDefaultConfig(cli));
 }

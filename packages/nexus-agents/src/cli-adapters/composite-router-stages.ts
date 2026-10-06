@@ -20,7 +20,7 @@ import {
 } from '../core/index.js';
 import { parseBoolEnv } from '../config/defaults-env.js';
 import type { CliName, RoutingArmId, CliTask } from './types.js';
-import { routingArmDisplaySlot } from './types.js';
+import { isCliName, routingArmCliSlot } from './types.js';
 import { restrictedAccessMode } from './access-mode.js';
 import { CompositeRoutingError, type PipelineResult } from './composite-router-types.js';
 import { CAPACITY_EXHAUSTED } from './routing/stages/index.js';
@@ -207,7 +207,9 @@ function getPerformanceDataForCategory(taskContent: string): PerformanceFloorRea
     const summary = getOutcomeStore().summarize({ category: match.category });
     const result = new Map<CliName, PerformanceFloorEntry>();
     for (const [cli, stats] of summary.byCli) {
-      result.set(cli as CliName, {
+      // Endpoint outcomes do not constitute a measurement of a CLI slot.
+      if (!isCliName(cli)) continue;
+      result.set(cli, {
         successRate: stats.successRate,
         sampleCount: stats.count,
       });
@@ -419,13 +421,18 @@ function applyCategoryOverride(
   const override = CATEGORY_CHAIN_OVERRIDES[match.category];
   if (override === undefined) return ok(candidates);
 
-  // Override chains are slot-level (#3422). Keep arms whose display slot is in
-  // the override chain, preserving the chain's slot order (an api:* arm follows
-  // its vendor slot's position).
+  // Override chains are CLI-slot policies. Endpoints bypass preference chains;
+  // sensitive categories exclude them explicitly because no slot is admitted.
   const overrideSet = new Set(override);
-  const orderIndex = (arm: RoutingArmId): number => override.indexOf(routingArmDisplaySlot(arm));
+  const orderIndex = (arm: RoutingArmId): number => {
+    const slot = routingArmCliSlot(arm);
+    return slot === undefined ? override.length : override.indexOf(slot);
+  };
   const filtered = candidates
-    .filter((arm) => overrideSet.has(routingArmDisplaySlot(arm)))
+    .filter((arm) => {
+      const slot = routingArmCliSlot(arm);
+      return slot === undefined ? !isCategoryFailClosed(match.category) : overrideSet.has(slot);
+    })
     .sort((a, b) => orderIndex(a) - orderIndex(b));
 
   if (filtered.length === 0) {
@@ -461,10 +468,11 @@ function applyLinUCBFloorOverride(
     stagesExecuted: string[];
   }
 ): RoutingArmId {
-  if (opts.perfData === undefined) return linucbCli;
-  // Performance-floor data is slot-keyed; an api:* arm is judged on its
-  // display slot's success rate (#3422).
-  const cliPerf = opts.perfData.get(routingArmDisplaySlot(linucbCli));
+  // Performance floors are CLI-slot measurements. Endpoint arms bypass this
+  // stage rather than inheriting opencode's failure history.
+  const slot = routingArmCliSlot(linucbCli);
+  if (opts.perfData === undefined || slot === undefined) return linucbCli;
+  const cliPerf = opts.perfData.get(slot);
   if (cliPerf === undefined || cliPerf.sampleCount < 20 || cliPerf.successRate >= 0.5) {
     return linucbCli;
   }
@@ -619,7 +627,8 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
     preferenceScore: p.prefResult.preferenceScore,
     preferenceTier: p.prefResult.preferenceTier,
     topsisRanking: p.topsisResult.ranking,
-    topsisScore: p.topsisResult.score,
+    // An endpoint did not participate in TOPSIS; do not report a CLI score.
+    topsisScore: routingArmCliSlot(p.selectedCli) === undefined ? undefined : p.topsisResult.score,
     topsisScoresByArm: p.topsisResult.scoresByArm,
     selectedCli: p.selectedCli,
     ucbScore: p.linucbResult.ucbScore,

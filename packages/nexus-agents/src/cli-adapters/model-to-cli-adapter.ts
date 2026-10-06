@@ -6,8 +6,8 @@
  * `ICliAdapter`, so a CompositeRouter — which operates on `Map<_, ICliAdapter>`
  * — can route to API adapters and record their bandit outcomes on a *distinct*
  * arm (epic #3317 step 1, Option C). The routing arm id is the Map key
- * (`api:<vendor>`), kept separate from this adapter's display `name` (a CLI
- * slot), so CLI and API telemetry are never merged.
+ * (`api:<vendor>`). Built-in vendor bridges retain their display CLI slot;
+ * gateway bridges use `api:<endpoint>` as their own name for health/breakers.
  *
  * @module cli-adapters/model-to-cli-adapter
  */
@@ -44,7 +44,7 @@ import type {
   CliError,
   CliErrorCode,
   CliModelInfo,
-  CliName,
+  RoutingArmId,
   CliTransport,
   CapabilityProfile,
   ExecutionOptions,
@@ -58,12 +58,10 @@ import { isEndpointArmId } from './types.js';
 /** Configuration for {@link ModelToCliAdapter}. */
 export interface ModelToCliAdapterConfig {
   /**
-   * Display CLI slot for attribution/`getModelInfo` (e.g. `claude` for the
-   * Anthropic API). This is NOT the routing arm id — the router indexes arms by
-   * the adapter Map key (`api:<vendor>`), so the display name can be the slot
-   * without merging CLI and API telemetry.
+   * Adapter identity. Gateway endpoints use their `api:<endpoint>` arm id so
+   * health and breaker readers cannot confuse them with a CLI slot.
    */
-  readonly name: CliName;
+  readonly name: RoutingArmId;
   /**
    * Routing capability profile (TOPSIS/preference scoring). Supply the
    * display slot's registry profile; falls back to a neutral mid profile.
@@ -90,7 +88,7 @@ const API_TRANSPORT: CliTransport = 'subprocess';
  * Bridge adapter that wraps `IModelAdapter` to implement `ICliAdapter`.
  */
 export class ModelToCliAdapter implements ICliAdapter {
-  readonly name: CliName;
+  readonly name: RoutingArmId;
   readonly transport: CliTransport = API_TRANSPORT;
   readonly capabilities: CapabilityProfile;
   /**

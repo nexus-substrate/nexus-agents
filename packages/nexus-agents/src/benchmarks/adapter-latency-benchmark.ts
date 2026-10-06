@@ -10,7 +10,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ICliAdapter } from '../cli-adapters/types-capability.js';
-import type { CliName, CliTransport } from '../cli-adapters/types-core.js';
+import type { RoutingArmId, CliTransport } from '../cli-adapters/types-core.js';
 import {
   createBenchmarkSummary,
   LatencySampler,
@@ -88,8 +88,8 @@ export const DEFAULT_SCENARIOS: readonly LatencyScenario[] = [
  * Result for a single adapter + scenario combination.
  */
 export interface AdapterScenarioResult {
-  /** CLI adapter name. */
-  readonly adapterName: CliName;
+  /** The observed routing arm, including endpoint adapters. */
+  readonly adapterName: RoutingArmId;
   /** Transport type used. */
   readonly transport: CliTransport;
   /** Scenario name. */
