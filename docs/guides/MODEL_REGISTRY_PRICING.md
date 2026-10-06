@@ -61,7 +61,7 @@ Implementation: [model-registry.ts](../../packages/nexus-agents/src/config/model
 
 Reach for the operator manifest (#2547) whenever automatic resolution can't or shouldn't apply: version-less decorations, ambiguous names, sub-SKUs (which fail closed since #4183 and need their own price declared), or gateway-only models the registry has never heard of.
 
-The operator manifest lives at `<NEXUS_DATA_DIR>/models-manifest.yaml` (default `~/.nexus-agents/models-manifest.yaml`), or wherever `NEXUS_MODELS_OVERLAY_PATH` points. A per-user overlay (`models.yaml` / `NEXUS_MODEL_REGISTRY_OVERLAY`, #3351) uses the same schema at lower precedence — the operator entry wins on id collision. Manifest entries sit at the **top** of the pricing chain, above in-tree data.
+The operator manifest lives at `<NEXUS_DATA_DIR>/models-manifest.yaml` (default `~/.nexus-agents/models-manifest.yaml`), or wherever `NEXUS_MODELS_OVERLAY_PATH` points. A per-user overlay (`models.yaml` / `NEXUS_MODEL_REGISTRY_OVERLAY`, #3351) uses the same schema at lower precedence — the operator entry wins on id collision. Manifest entries sit at the **top** of the pricing chain, above in-tree data. Prices supplied by this overlay tier are reported with basis **`declared`**, because they are operator-asserted rates, including negotiated or zero rates. In-tree and catalog prices retain basis `list`; metadata-only overlays do not declare an inherited price. The `declared` caveat describes an operator-declared rate without warning that their contract may differ.
 
 ```yaml
 # ~/.nexus-agents/models-manifest.yaml

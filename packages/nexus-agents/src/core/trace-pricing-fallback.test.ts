@@ -67,7 +67,7 @@ describe('price provenance (#4406)', () => {
 
   it('caveats declared rates as the operator statement, not a published rate', () => {
     expect(priceBasisCaveat('declared')).toBe(
-      'Based on the operator’s NEXUS_GATEWAY_COST declaration, not a published rate.'
+      'Based on an operator-declared rate, not a verified published price.'
     );
   });
 

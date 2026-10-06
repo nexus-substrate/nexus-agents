@@ -102,12 +102,12 @@ export interface VoterCostInput {
    */
   readonly costUsd?: number | undefined;
   /**
-   * What kind of rate `costUsd` rests on (#4406). A cost the registry chain
-   * resolved arrives as `'list'` — an assumed published rate, so an estimate
-   * rather than a figure verified against the operator's bill. It is NOT a
-   * guarantee the number is a vendor list price: see {@link PriceBasis} for the
-   * overlay and fuzzy-match paths that report something else under that label.
-   * Explicit gateway rates arrive as `'declared'`, the operator's statement.
+   * What kind of rate `costUsd` rests on (#4406). Assumed published
+   * registry-chain rates arrive as `'list'` — an estimate rather than a figure
+   * verified against the operator's bill. A fuzzy match may resolve a different
+   * model's rate; see {@link PriceBasis}. Manifest-overlay prices (user or
+   * operator tier) and explicit gateway rates arrive as `'declared'`, the
+   * operator's statement, including through a match to an overlay entry.
    *
    * Orthogonal to `unmeasured`: that flag is about evidence of CONSUMPTION
    * (were tokens reported?), this is about the PRICE the money figure was

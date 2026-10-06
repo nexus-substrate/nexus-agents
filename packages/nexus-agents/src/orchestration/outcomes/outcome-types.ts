@@ -161,8 +161,9 @@ export const TaskOutcomeSchema = z.object({
    */
   costUsd: z.number().nonnegative().optional(),
   /**
-   * What `costUsd` rests on (#6624): `'list'` for a registry-chain rate,
-   * `'declared'` for an explicit gateway rate (including free/local), and
+   * What `costUsd` rests on (#6624): `'list'` for an assumed published
+   * registry-chain rate, `'declared'` for a manifest-overlay price (user or
+   * operator tier) or an explicit gateway rate (including free/local), and
    * `'unknown'` when pricing was attempted but none resolved. Absent when no
    * lookup was made because the adapter reported no token usage.
    */

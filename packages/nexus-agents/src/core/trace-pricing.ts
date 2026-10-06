@@ -2,17 +2,17 @@
  * nexus-agents/core - Model Pricing
  *
  * Cost calculation functions using the canonical model registry.
- * All pricing data lives in config/in-tree-data.ts — this module
- * provides a convenience function to calculate costs from token usage.
+ * Pricing resolves through the overlay-bearing canonical registry, with legacy
+ * in-tree alias/prefix support, to calculate costs from token usage.
  *
- * @see config/in-tree-data.ts — single source of truth for model pricing
+ * @see config/model-registry.ts — canonical pricing tiers
  * @module core/trace-pricing
  * (Source: Issue #807, Issue #1149)
  */
 
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
-import { getDefaultRegistry } from '../config/model-registry.js';
+import { getDefaultRegistry, type EntrySource } from '../config/model-registry.js';
 import type { PriceBasis } from './price-basis.js';
 
 // The vocabulary lives in a dependency-free leaf module (#4406 review) so the
@@ -22,16 +22,17 @@ import type { PriceBasis } from './price-basis.js';
 export { PriceBasisSchema, priceBasisCaveat, type PriceBasis } from './price-basis.js';
 
 /**
- * Whether the pricing chain resolved a rate for this model.
+ * The basis of the rate selected by the pricing chain for this model.
  *
- * `'list'` means a rate WAS resolved and should be read as an assumed published
- * rate — not a guarantee that it is the vendor's list price rather than an
- * operator override or a fuzzy-matched sibling's rate. `'unknown'` means the
- * chain produced nothing, which is not the same as "no price exists". Both
- * caveats are spelled out on {@link PriceBasis} in `core/price-basis.ts`.
+ * Manifest overlay pricing reports `'declared'`: an operator-asserted rate.
+ * Other resolved rates report `'list'`, an assumed published rate with the
+ * fuzzy-match caveat on {@link PriceBasis}. `'unknown'` means the chain
+ * produced nothing, which is not the same as "no price exists".
  */
 export function priceBasisFor(model: string): PriceBasis {
-  return lookupCanonicalPricing(model) === undefined ? 'unknown' : 'list';
+  const { pricing, source } = lookupCanonicalPricing(model);
+  if (pricing === undefined) return 'unknown';
+  return source === 'manifest' ? 'declared' : 'list';
 }
 
 // =============================================================================
@@ -79,41 +80,40 @@ function isPrefixMatch(
 }
 
 /**
- * Looks up pricing for a model.
+ * Select pricing and its existing registry-tier provenance together.
  *
- * Order: the curated in-tree entries first (exact, then prefix), then the full
- * `ModelRegistry` — which merges the models.dev catalogue tier on top of
- * in-tree data.
+ * Initialize the registry at call time before projecting the overlay-aware
+ * in-tree matrix. The matrix preserves legacy CLI alias/prefix matching but
+ * drops provenance, so recover the selected entry's source by its canonical id.
+ * A metadata-only overlay inherits an in-tree rate in this compatibility path;
+ * without pricing on the manifest entry itself, that rate remains `'list'`.
  *
- * That fall-through is the point (#4406). Previously this read ONLY the static
- * in-tree matrix, so a model the catalogue prices perfectly well came back
- * unpriced: `calculateCost('gpt-4o', 1M, 1M)` returned `undefined` while the
- * registry held `2.5 / 10` for it the whole time. A missing price is not free —
- * cost ceilings are documented as fail-closed for unpriced candidates — so
- * reporting "unknown" when a public list price is available is the worse
- * answer.
- *
- * The sibling `computeCostDetail` (learning/usage-log.ts) already resolved
- * through the registry; this had been a second, narrower implementation of the
- * same lookup.
- *
- * IMPORTANT: a catalogue price is a PUBLIC LIST PRICE. It is the vendor's
- * advertised rate, not a rate anyone verified against the operator's account —
- * an enterprise contract, negotiated discount, flat-rate gateway or free tier
- * will all bill differently. See {@link PriceBasis}.
+ * The full-registry fallback retains normalized/identity resolution. Those
+ * matches report `source: 'derived'`; `resolvedFrom` identifies the entry whose
+ * rate was applied, including when it came from the manifest tier.
  */
-function lookupCanonicalPricing(model: string): ModelPricing | undefined {
+function lookupCanonicalPricing(model: string): {
+  readonly pricing: ModelPricing | undefined;
+  readonly source: EntrySource;
+} {
+  // Call time only: first construction touches the filesystem (#3185).
+  const registry = getDefaultRegistry();
   const models = getInTreeCapabilitiesMatrix().models;
-  for (const m of models) {
-    if (isExactMatch(m, model)) return toPricing(m.pricing);
+  const matched =
+    models.find((m) => isExactMatch(m, model)) ??
+    models.find((m) => m.pricing !== undefined && isPrefixMatch(m, model));
+  if (matched !== undefined) {
+    const entry = registry.getEntry(matched.id);
+    return {
+      pricing: toPricing(matched.pricing),
+      source: entry.pricing === undefined ? 'in-tree' : entry.source,
+    };
   }
-  for (const m of models) {
-    if (m.pricing !== undefined && isPrefixMatch(m, model)) return toPricing(m.pricing);
-  }
-  // Fall through to the full registry (in-tree + generated + models.dev +
-  // manifest overlay + derived). Read at CALL time, never module load — first
-  // construction touches the filesystem (#3185 bootstrap hazard).
-  return toPricing(getDefaultRegistry().getEntry(model).pricing);
+  const entry = registry.getEntry(model);
+  return {
+    pricing: toPricing(entry.pricing),
+    source: registry.getEntry(entry.resolvedFrom ?? entry.id).source,
+  };
 }
 
 // =============================================================================
@@ -134,7 +134,7 @@ export function calculateCost(
   inputTokens: number,
   outputTokens: number
 ): number | undefined {
-  const pricing = lookupCanonicalPricing(model);
+  const { pricing } = lookupCanonicalPricing(model);
 
   // FAIL-CLOSED policy stays here, named, rather than moving into the shared
   // core (#5122). `undefined` means "no rate known", which is NOT $0: cost

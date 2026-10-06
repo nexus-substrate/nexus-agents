@@ -35,9 +35,10 @@ import { z } from 'zod';
  * The vocabulary itself. Members:
  *
  * - `'list'` — a registry-chain rate, read as an assumed published rate;
- *   the operator overlay and fuzzy-match caveats on {@link PriceBasis} apply.
- * - `'declared'` — the operator's `NEXUS_GATEWAY_COST` statement:
- *   `priced:<in>,<out>`, `free`, or `local`, not a published rate (#6664).
+ *   the fuzzy-match caveat on {@link PriceBasis} applies.
+ * - `'declared'` — an operator-asserted manifest-overlay price (#4600) or
+ *   `NEXUS_GATEWAY_COST` statement: `priced:<in>,<out>`, `free`, or `local`
+ *   (#6664). The assertion does not verify the vendor's billing rate.
  * - `'unknown'` — no price was resolved for this model. Read it as "the chain
  *   produced nothing", not "no price exists in the world": the generated
  *   catalog loader (`config/models-generated-loader.ts`) deliberately discards
@@ -52,35 +53,28 @@ export const PriceBasisSchema = z.enum(['list', 'declared', 'unknown']);
 /**
  * Where a price came from, so a consumer can caveat it honestly (#4406).
  *
- * `'list'` is an ASSUMPTION about the pricing chain, not a verified property of
- * the number. The chain's tiers are mostly vendors' advertised public rates,
- * but two paths can put something else behind the same label:
+ * `'list'` is an ASSUMPTION about the pricing chain, not a verified property
+ * of the number. Most tiers supply vendors' advertised public rates. The
+ * normalized/fuzzy identity tier (`config/model-registry.ts`
+ * `mergeMatchedWithDerived`) can grant a decorated gateway id the pricing of
+ * a DIFFERENT canonical entry it matched, so a resolved published rate need
+ * not belong to the id being priced.
  *
- *  1. The operator manifest overlay (`config/manifest-overlay.ts`) is the
- *     HIGHEST-precedence tier and carries `pricing` in its passthrough keys —
- *     it exists specifically to override pricing. An operator's negotiated rate
- *     entered there is reported `'list'`, and {@link priceBasisCaveat} then
- *     warns the reader their contract may differ over the contract rate.
- *  2. The normalized/fuzzy identity tier (`config/model-registry.ts`
- *     `mergeMatchedWithDerived`) grants a decorated gateway id the pricing of a
- *     DIFFERENT canonical entry it matched. That rate is a real vendor rate for
- *     some other model, not necessarily for the id being priced.
+ * The manifest overlay (`config/manifest-overlay.ts`) is the highest pricing
+ * tier. A price supplied there reports `'declared'`, using the existing
+ * `source: 'manifest'` provenance, including through a fuzzy match's
+ * `resolvedFrom`. Metadata-only overlays do not declare an inherited rate.
  *
- * A gateway's explicit `NEXUS_GATEWAY_COST` rate (`priced:<in>,<out>`,
- * `free`, `local`) instead reports `'declared'`: the operator's statement,
- * including a measured zero, rather than a published rate. Bare `priced`
- * delegates to the registry and reports `'list'` when priced, `'unknown'`
- * otherwise. Missing or invalid declarations remain `'unknown'`.
- * `'unknown'` does not claim that no price exists; see the loader caveat above.
+ * Explicit `NEXUS_GATEWAY_COST` rates (`priced:<in>,<out>`, `free`, `local`)
+ * also report `'declared'`, including measured zero. Bare `priced` delegates
+ * to the registry and inherits its basis. Missing or invalid declarations
+ * remain `'unknown'`. `'unknown'` does not claim that no price exists; see
+ * the loader caveat above.
  *
- * There is deliberately no `'contract'` member. The gap is NOT that an operator
- * has no way to state a negotiated rate — the manifest overlay above is exactly
- * that mechanism — it is that the mechanism carries no LABEL distinguishing a
- * negotiated rate from a published one, so nothing downstream could populate
- * `'contract'` truthfully. Adding the label, and the member, is tracked
- * separately; until then `'list'` over-claims in the conservative direction
- * (it warns about an estimate over a number that may be exact) and every basis
- * a consumer sees should be read as "the best rate the chain knew about".
+ * There is deliberately no `'contract'` member: manifest-overlay prices use
+ * the existing `'declared'` label for operator assertions, whether negotiated
+ * or otherwise. Neither declaration path verifies an account's contract.
+ * Reusing this vocabulary preserves older JSONL readers and MCP output schemas.
  */
 export type PriceBasis = z.infer<typeof PriceBasisSchema>;
 
@@ -95,7 +89,7 @@ export function priceBasisCaveat(basis: PriceBasis): string | undefined {
     case 'list':
       return 'Estimated from public list prices — your contract, gateway or free-tier rate may differ.';
     case 'declared':
-      return 'Based on the operator’s NEXUS_GATEWAY_COST declaration, not a published rate.';
+      return 'Based on an operator-declared rate, not a verified published price.';
     case 'unknown':
       return undefined;
     default: {
