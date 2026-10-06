@@ -18,8 +18,6 @@ import { formatMcpClientLine } from './doctor-mcp-client.js';
 import type {
   CliCheckResult,
   NodeVersionCheck,
-  ApiKeyCheck,
-  ConfigFileCheck,
   RegistryAdvisory,
   LearningPersistenceCheck,
   SqliteCheck,
@@ -176,7 +174,7 @@ function printNodeVersionCheck(check: NodeVersionCheck): void {
 /**
  * Prints API key configuration check results.
  */
-function printApiKeysCheck(keys: ApiKeyCheck[]): void {
+function printApiKeysCheck(keys: DoctorResult['apiKeys']): void {
   const configuredNames = keys.filter((k) => k.configured).map((k) => k.name);
   const hasAny = configuredNames.length > 0;
 
@@ -195,8 +193,10 @@ function printApiKeysCheck(keys: ApiKeyCheck[]): void {
 /**
  * Prints configuration file check result.
  */
-function printConfigFileCheck(check: ConfigFileCheck): void {
-  if (check.found && check.path !== null) {
+function printConfigFileCheck(check: DoctorResult['configFile']): void {
+  if (check.error !== undefined) {
+    writeLine(`${formatStatus(false)} Configuration failed: ${check.error}`);
+  } else if (check.found && check.path !== null) {
     writeLine(`${formatStatus(true)} Configuration loaded: ${check.path}`);
   } else {
     writeLine(`${formatStatus(false, true)} Configuration file: Not found`);

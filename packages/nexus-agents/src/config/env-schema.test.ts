@@ -1209,7 +1209,7 @@ describe('NEXUS_OPENAI_COMPAT_ENDPOINT is registered as an endpoint id (#4392 in
     const result = validateNexusEnv();
     const invalid = result.invalidVars.find((v) => v.name === 'NEXUS_OPENAI_COMPAT_ENDPOINT');
     expect(invalid).toBeDefined();
-    expect(invalid?.error).toContain('reserved for the single-model NEXUS_CUSTOM_API_* path');
+    expect(invalid?.error).toContain('reserved for the custom-openai compatibility arm');
     expect(invalid?.value).toBe('<redacted>');
   });
 });

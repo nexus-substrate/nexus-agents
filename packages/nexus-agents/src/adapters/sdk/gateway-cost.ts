@@ -171,7 +171,7 @@ const VENDOR_ENDPOINT_SEGMENTS: readonly string[] = ApiArmIdSchema.options
  * is one (#6409, #6437). The single rule behind `NEXUS_OPENAI_COMPAT_ENDPOINT`'s env
  * schema and its runtime reader, so the two cannot disagree. Three refusals:
  * the endpoint-id shape (a URL, or a credential inside one, must never become
- * an arm id), `custom-openai` (reserved for the single-model NEXUS_CUSTOM_API_* path),
+ * an arm id), `custom-openai` (reserved for the custom-openai compatibility arm),
  * and a built-in vendor segment — `api:openai` is a VENDOR arm,
  * where a gateway's `NEXUS_GATEWAY_COST` declaration is unreachable and the
  * cost ceiling prices it as the vendor. Neither message echoes the value.
@@ -182,7 +182,7 @@ export function gatewayEndpointRejection(endpoint: string): string | undefined {
     return 'must be an endpoint id: lowercase alphanumerics plus . _ -, 1-64 chars';
   }
   if (endpoint === 'custom-openai') {
-    return 'must not be custom-openai: reserved for the single-model NEXUS_CUSTOM_API_* path';
+    return 'must not be custom-openai: reserved for the custom-openai compatibility arm';
   }
   if (isGatewayArmId(arm)) return undefined;
   return `must not be a built-in vendor segment (${VENDOR_ENDPOINT_SEGMENTS.join(', ')}): api:<value> would collide with that vendor's arm id`;

@@ -44,6 +44,7 @@ export function failingVerdictTerms(
   const terms: string[] = gatewayTerms(result.gateway, gateway);
   if (!result.nodeVersion.supported) terms.push('node version');
   if (!result.mcpServerReady) terms.push('MCP server');
+  if (result.configFile.error !== undefined) terms.push('configuration');
   if (installFreshness.installFreshnessFailsVerdict(result.installFreshness)) {
     terms.push('install freshness');
   }

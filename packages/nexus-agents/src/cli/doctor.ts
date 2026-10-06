@@ -24,6 +24,7 @@ import {
   nexusDataPath,
 } from '../config/nexus-data-dir.js';
 import { detectSandbox } from '../config/sandbox-detection.js';
+import { loadConfig } from '../config/config-loader.js';
 import {
   checkScratchFilesystems,
   worstSeverity,
@@ -98,18 +99,6 @@ import { gatewayCoveredClis } from './doctor-gateway-slots.js';
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
 
 /**
- * Configuration file paths to check (in order of priority). Per epic #2872
- * the dotdir-scoped variants are preferred over the legacy root-level
- * locations — must match the order in `config-loader.ts:CONFIG_LOOKUP_PATHS`.
- */
-const CONFIG_FILE_PATHS = [
-  './.nexus-agents/nexus-agents.yaml',
-  './.nexus-agents/nexus-agents.yml',
-  './nexus-agents.yaml',
-  './nexus-agents.yml',
-] as const;
-
-/**
  * Check result for a single CLI.
  */
 export interface CliCheckResult {
@@ -169,7 +158,10 @@ export interface ApiKeyCheck {
  */
 export interface ConfigFileCheck {
   readonly found: boolean;
+  /** Resolved file path when loading succeeds; null if missing or loading fails. */
   readonly path: string | null;
+  /** Loader error, including YAML parsing or schema validation failures. */
+  readonly error?: string;
 }
 
 /**
@@ -627,15 +619,14 @@ export function checkApiKeys(): ApiKeyCheck[] {
 }
 
 /**
- * Checks for the existence of a configuration file.
+ * Loads configuration through the server's discovery, parsing and validation path.
  */
 function checkConfigFile(): ConfigFileCheck {
-  for (const configPath of CONFIG_FILE_PATHS) {
-    if (existsSync(configPath)) {
-      return { found: true, path: configPath };
-    }
+  const result = loadConfig();
+  if (!result.ok) {
+    return { found: true, path: null, error: result.error.message };
   }
-  return { found: false, path: null };
+  return { found: !result.value.usingDefaults, path: result.value.configPath ?? null };
 }
 
 /**
@@ -967,7 +958,7 @@ export function checkSandbox(): SandboxCheck {
  * test, which the producer/consumer ratchet correctly rejects.
  */
 function checkInstallFreshness(): InstallFreshness {
-  const { version, reason } = readGlobalVersion((cmd, args) => {
+  const { version, reason, prefix } = readGlobalVersion((cmd, args) => {
     try {
       return execFileSync(cmd, [...args], {
         encoding: 'utf8',
@@ -977,7 +968,7 @@ function checkInstallFreshness(): InstallFreshness {
       return null;
     }
   });
-  return assessInstallFreshness(version, VERSION, reason);
+  return { ...assessInstallFreshness(version, VERSION, reason), prefix };
 }
 
 /** The environment sub-checks, grouped so `runDoctor` stays under its line cap. */
@@ -1021,6 +1012,7 @@ export interface HealthVerdictInput {
   readonly nodeSupported: boolean;
   readonly hasAuthMethod: boolean;
   readonly mcpServerReady: boolean;
+  readonly configFile: ConfigFileCheck;
   readonly installFreshness: InstallFreshness;
   readonly scratchSpace: readonly ScratchSpaceCheck[];
   readonly clis: readonly CliCheckResult[];
@@ -1056,6 +1048,7 @@ export function isAllHealthy(input: HealthVerdictInput): boolean {
     input.nodeSupported &&
     input.hasAuthMethod &&
     input.mcpServerReady &&
+    input.configFile.error === undefined &&
     !installFreshnessFailsVerdict(input.installFreshness) &&
     scratchSeverityIsAcceptable(worstSeverity(input.scratchSpace)) &&
     // whenEmpty: zero detected CLIs is not a healthy install (#4581) — unless
@@ -1174,6 +1167,7 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
     nodeSupported: nodeVersion.supported,
     hasAuthMethod: hasAnyAuthMethod(apiKeys, clis, gatewayVerdict(gateway)),
     mcpServerReady,
+    configFile,
     installFreshness: env.installFreshness,
     scratchSpace: env.scratchSpace,
     clis,

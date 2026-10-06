@@ -34,7 +34,8 @@ vi.mock('openai', async () => {
   }
   return { default: MockOpenAI, APIError: actual.APIError };
 });
-vi.mock('./sdk/custom-api-validation.js', () => ({
+vi.mock('./sdk/custom-api-validation.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sdk/custom-api-validation.js')>()),
   assertCustomApiHostResolvesPublic: vi.fn().mockResolvedValue({ ok: true }),
 }));
 vi.mock('../config/opencode-bridge.js', () => ({ readOpencodeGateway: vi.fn(() => null) }));

@@ -10,6 +10,7 @@
  * - `POST /v1/chat/completions` — whatever the {@link ChatScripter} returns for
  *   the request's model id and body: text, tool calls, a `content_filter`
  *   finish, an empty `choices` array or a 429 with `Retry-After`.
+ * - `POST /v1/responses` — the same scripts, including SSE text/tool events.
  *
  * Every request is recorded (method, path, headers with credentials removed,
  * parsed body) for assertions. The real code refuses a loopback gateway unless
@@ -22,6 +23,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 
 import { THREE_FAMILY_CATALOG, type CatalogEntry } from './three-family-catalog.js';
+import { respondToResponses } from './fake-gateway-responses.js';
 
 /** Header names that carry a credential; never recorded. */
 const CREDENTIAL_HEADERS: ReadonlySet<string> = new Set([
@@ -169,11 +171,25 @@ async function handle(
     sendJson(res, 200, { object: 'list', data: state.catalog });
     return;
   }
-  if (req.method === 'POST' && path === '/v1/chat/completions') {
-    respondToChat(state, body, res);
-    return;
-  }
+  if (req.method === 'POST' && respondToPost(state, path, body, res)) return;
   sendJson(res, 404, openAiError(`no route ${req.method ?? ''} ${path}`, 'invalid_request_error'));
+}
+
+function respondToPost(
+  state: GatewayState,
+  path: string,
+  body: unknown,
+  res: ServerResponse
+): boolean {
+  if (path === '/v1/chat/completions') {
+    respondToChat(state, body, res);
+    return true;
+  }
+  if (path === '/v1/responses') {
+    respondToResponses(state, body, res);
+    return true;
+  }
+  return false;
 }
 
 function respondToChat(state: GatewayState, body: unknown, res: ServerResponse): void {

@@ -1,5 +1,41 @@
 # nexus-agents
 
+## 10.2.0
+
+### Minor Changes
+
+- [#7173](https://github.com/nexus-substrate/nexus-agents/pull/7173) [`ec6027e`](https://github.com/nexus-substrate/nexus-agents/commit/ec6027e7781739868b56dd35f23b013d530c9a71) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make `custom-openai` a thin alias over the shared OpenAI-compatible gateway adapter, retaining `api:custom-openai` attribution, one usage record per eligible `complete()` call and all public `custom-openai` union values. Use the resolved catalogue model when available; otherwise keep the configured/default model and failed-discovery unverified state. Successful completions without token usage remain unrecorded; streaming keeps its existing behavior without usage-log instrumentation.
+
+  Keep `NEXUS_CUSTOM_API_SURFACE=responses` scoped to the `custom-openai` alias, including streaming and tool calls. Discovered `api:<endpoint>` arms keep chat completions and their existing model-aware token defaults. The alias omits token-cap fields unless the caller supplies `maxTokens`; its configured URL, model, auth/extra headers, proxy selection and recorded arm remain unchanged. SDK provider initialization refuses `custom-openai`, so a gateway credential cannot reach the direct OpenAI provider.
+
+  Remaining intended transport and error differences from the former AI-SDK path:
+
+  - The OpenAI client adds `accept: application/json` and `x-stainless-arch`, `x-stainless-lang`, `x-stainless-os`, `x-stainless-package-version`, `x-stainless-retry-count`, `x-stainless-runtime`, and `x-stainless-runtime-version`. The user-agent changes from `ai/<version> ai-sdk/provider-utils/<version> runtime/node.js/<major>` to `OpenAI/JS <version>`.
+  - Model errors use the `openai/<model>:` prefix rather than `sdk-custom-openai`.
+  - A caller's `maxTokens` and `tools` are honoured instead of silently dropped: chat sends `max_completion_tokens` and function tools; Responses sends `max_output_tokens` and Responses function tools. Without `maxTokens`, neither alias surface sends a cap.
+  - The shared DNS/private-host guard bounds each DNS lookup at 5 seconds and refuses that attempt on timeout before sending HTTP; the former alias lookup had no timeout.
+  - Responses streaming throws on a mid-stream refusal instead of completing over partial output.
+
+  The shared client also retains its model-aware temperature omission and non-answer validation. Unsupported Responses stop sequences produce an explicit completion warning. Response parsing now preserves tool-call blocks and available cached-input usage. Update custom-endpoint configuration guides and comments for the URL/key aliases removed in 10.0 ([#7144](https://github.com/nexus-substrate/nexus-agents/issues/7144)).
+
+## 10.1.1
+
+### Patch Changes
+
+- [#7167](https://github.com/nexus-substrate/nexus-agents/pull/7167) [`6453e52`](https://github.com/nexus-substrate/nexus-agents/commit/6453e52e1f63b967381d3fe35c8e72c6eadc84d2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix doctor's install-freshness check to query the running Node interpreter's global prefix instead of whichever npm is on PATH, and report the prefix checked.
+
+- [#7168](https://github.com/nexus-substrate/nexus-agents/pull/7168) [`0e4d719`](https://github.com/nexus-substrate/nexus-agents/commit/0e4d719a636cde7f8d81e1e7d395ebc886d2983e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Label successful learning-metrics reconstruction with its empirical outcome count, while preserving unmeasured labels for no empirical replay and failed reconstruction ([#7160](https://github.com/nexus-substrate/nexus-agents/issues/7160)).
+
+## 10.1.0
+
+### Minor Changes
+
+- [#7162](https://github.com/nexus-substrate/nexus-agents/pull/7162) [`b0807c3`](https://github.com/nexus-substrate/nexus-agents/commit/b0807c33c01b55e9835f3eaed260e0db616ed416) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Verify audit hash chains past legacy breaks, reporting bounded restart/fork/mismatch diagnostics, per-segment integrity, full counts, and truncation flags. Preserve the first failure and overall failure verdict while detecting tampering in later segments ([#7157](https://github.com/nexus-substrate/nexus-agents/issues/7157)).
+
+### Patch Changes
+
+- [#7161](https://github.com/nexus-substrate/nexus-agents/pull/7161) [`cf31787`](https://github.com/nexus-substrate/nexus-agents/commit/cf317876fc9283815248550a77541cafcd9d1efc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Validate doctor configuration through the server's config loader, report parsing and schema errors, and fail the doctor exit status for invalid configuration. Correct config help to show the intended ./.nexus-agents/nexus-agents.yaml output default.
+
 ## 10.0.0
 
 ### Major Changes

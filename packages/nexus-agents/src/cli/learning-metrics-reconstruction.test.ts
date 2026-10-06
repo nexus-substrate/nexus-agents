@@ -38,25 +38,40 @@ describe('learning metrics reconstruction (#5275)', () => {
     rmSync(fixtureRoot, { recursive: true, force: true });
   });
 
-  it('replays real recent outcomes into the command bandit', () => {
-    getOutcomeStore().append({
-      id: 'measured-routing',
-      cli: 'claude',
-      model: 'claude-default',
-      category: 'code_generation',
-      success: true,
-      durationMs: 100,
-      timestamp: NOW,
-      source: 'delegate',
-    });
+  it.each([1, 248])('labels reconstruction from %i empirical outcomes', (count) => {
+    for (let index = 0; index < count; index++) {
+      getOutcomeStore().append({
+        id: `measured-routing-${String(index)}`,
+        cli: 'claude',
+        model: 'claude-default',
+        category: 'code_generation',
+        success: true,
+        durationMs: 100,
+        timestamp: NOW,
+        source: 'delegate',
+      });
+    }
     const result = runLearningMetrics();
     expect(result).toHaveProperty('banditReconstruction.reconstructedAt', NOW);
-    expect(result).toHaveProperty('banditReconstruction.outcomesReplayed', 1);
+    expect(result).toHaveProperty('banditReconstruction.outcomesReplayed', count);
+    expect(result).toHaveProperty('banditReconstruction.empiricalOutcomesReplayed', count);
     expect(result.models.find((model) => model.name === 'claude')?.pullCount).toBeGreaterThan(0);
-    // Replayed outcomes and priors are not selection decisions: no exploration verdict.
-    expect(result.summary.learningStatus).toBe('unmeasured');
+    // Empirical replay measures reconstructed learning, not live exploration (#7160).
+    expect(result.summary.learningStatus).toBe('reconstructed');
     expect(learningMetricsCommand(OPTIONS)).toBe(0);
-    expect(stdout).toContain('1 outcomes replayed');
+    expect(stdout).toContain(`${String(count)} outcomes replayed`);
+    expect(stdout).toContain(
+      `Learning Status: reconstructed (${String(count)} empirical outcomes)`
+    );
+    expect(stdout).not.toContain('unmeasured (no empirical replay)');
+    expect(stdout).toMatch(/Exploration Ratio:.*\(unmeasured\)/);
+    expect(stdout).not.toMatch(/\((healthy|adjust)\)/);
+    const statusLine = stdout.split('\n').find((line) => line.includes('Learning Status:'));
+    expect(visibleWidth(statusLine ?? '')).toBeLessThanOrEqual(BOX_WIDTH);
+    stdout = '';
+    expect(learningMetricsCommand({ ...OPTIONS, format: 'json' })).toBe(0);
+    const parsed = JSON.parse(stdout) as { summary: { learningStatus: string } };
+    expect(parsed.summary.learningStatus).toBe('reconstructed');
   });
 
   it('labels ASCII with the reconstruction time, replay count and live-state limitation', () => {
@@ -65,7 +80,7 @@ describe('learning metrics reconstruction (#5275)', () => {
     expect(stdout).toContain('0 outcomes replayed');
     expect(stdout).toContain('window 30d');
     expect(stdout).toContain("not the live router's in-memory state; see #7057");
-    expect(stdout).toContain('unmeasured');
+    expect(stdout).toContain('unmeasured (no empirical replay)');
     expect(stdout).not.toContain('(healthy)');
   });
 
@@ -118,6 +133,8 @@ describe('learning metrics reconstruction (#5275)', () => {
     expect(result.banditProgress.totalPulls).toBeGreaterThan(0);
     expect(result.summary.learningStatus).toBe('unmeasured');
     expect(result.banditProgress.topFeatures).toEqual([]);
+    expect(learningMetricsCommand(OPTIONS)).toBe(0);
+    expect(stdout).toContain('unmeasured (no empirical replay)');
   });
 
   it('marks a failed reconstruction unmeasured even after replaying empirical outcomes', () => {

@@ -11,8 +11,8 @@
  * Supported AI SDK provider identifiers.
  *
  * `custom-openai` is for OpenAI-compatible gateways (multi-vendor proxies,
- * self-hosted LLM servers, corporate model gateways) — uses the same
- * @ai-sdk/openai package but with a configurable `baseURL`.
+ * self-hosted LLM servers, corporate model gateways). Its compatibility
+ * implementation delegates to the gateway HTTP adapter (#7150).
  */
 export type SdkProviderId = 'anthropic' | 'openai' | 'google' | 'custom-openai';
 
@@ -48,7 +48,7 @@ export const PROVIDER_ENV_KEYS: Record<SdkProviderId, string> = {
 
 /**
  * The OpenAI-compatible gateway base URL, read by both the single-model
- * `custom-openai` SDK path and the discovery/voter/`api:<endpoint>` path.
+ * `custom-openai` compatibility alias and discovery/voter/`api:<endpoint>` arms.
  */
 export const OPENAI_COMPAT_URL_ENV = 'NEXUS_OPENAI_COMPAT_URL';
 

@@ -41,6 +41,7 @@ const base = {
   nodeSupported: true,
   hasAuthMethod: true,
   mcpServerReady: true,
+  configFile: { found: false, path: null },
   installFreshness: { state: 'aligned' as const, version: '1.0.0' },
   scratchSpace: [scratch('ok')],
   clis: [healthyCli],
@@ -49,6 +50,11 @@ const base = {
 };
 
 describe('isAllHealthy', () => {
+  it('fails on invalid configuration even when all other checks pass', () => {
+    const configFile = { found: true, path: null, error: 'Config validation failed' };
+    expect(isAllHealthy({ ...base, configFile })).toBe(false);
+  });
+
   it('is healthy when every input is fine', () => {
     expect(isAllHealthy(base)).toBe(true);
   });

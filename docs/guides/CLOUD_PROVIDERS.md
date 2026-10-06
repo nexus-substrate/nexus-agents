@@ -71,9 +71,9 @@ See OpenRouter's [model catalog](https://openrouter.ai/models) for the full list
 
 ---
 
-## Path B — LiteLLM proxy + custom-openai shim
+## Path B — LiteLLM proxy + custom-openai alias
 
-[LiteLLM](https://github.com/BerriAI/litellm) is a self-hosted OpenAI-compatible proxy that speaks to 100+ provider APIs natively (Bedrock IAM, Vertex service-accounts, Azure managed identity, etc.). Run it in a container, point nexus-agents at it via the existing `NEXUS_CUSTOM_*` env vars.
+[LiteLLM](https://github.com/BerriAI/litellm) is a self-hosted OpenAI-compatible proxy that speaks to 100+ provider APIs natively (Bedrock IAM, Vertex service-accounts, Azure managed identity, etc.). Run it in a container, point nexus-agents at it with `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`. The `custom-openai` auto-adapter aliases the shared gateway adapter (#7150).
 
 ### Setup
 
@@ -114,7 +114,8 @@ model_list:
 # 2. Point nexus-agents at the proxy
 export NEXUS_OPENAI_COMPAT_URL="http://localhost:4000/v1"
 export NEXUS_OPENAI_COMPAT_KEY="anything"   # LiteLLM master key (or 'sk-1234' if no auth)
-export NEXUS_CUSTOM_MODEL="claude-bedrock"   # or gemini-vertex, gpt4-azure
+export NEXUS_CUSTOM_MODEL="claude-bedrock"   # optional catalogue pin
+export NEXUS_CUSTOM_API_ALLOW_PRIVATE=1       # trusted localhost proxy
 
 # 3. Run a task — flows through LiteLLM → Bedrock/Vertex/Azure
 nexus-agents orchestrate "Explain the architecture of this codebase"
@@ -150,7 +151,9 @@ export NEXUS_OPENAI_COMPAT_KEY="your-gateway-key"
 export NEXUS_CUSTOM_MODEL="claude-sonnet-4-5"   # whatever model id your gateway exposes
 ```
 
-`NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` were removed in 10.0 (#6291). They are ignored and reported as unknown variables; rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`. The canonical pair configures both the single-model path and the gateway path (model discovery, in-process voters, the `api:<endpoint>` arm). See [CONFIGURATION.md](../getting-started/CONFIGURATION.md#removed-in-100-6291-b1).
+`NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` were removed in 10.0 (#7144). They are ignored and reported as unknown variables; rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`. The canonical pair configures the shared gateway path (model discovery, in-process voters, the `api:<endpoint>` arm). The `custom-openai` alias uses its resolved catalogue model with an alias-specific client, retaining `api:custom-openai` usage attribution. Without a catalogue it sends `NEXUS_CUSTOM_MODEL` or `gpt-5.5`, marked unverified after failed discovery. See [CONFIGURATION.md](../getting-started/CONFIGURATION.md#removed-in-100-6291-b1).
+
+Gateway calls default to chat completions. Set `NEXUS_CUSTOM_API_SURFACE=responses` when your gateway serves the Responses API; this applies to the `custom-openai` alias, including streaming and tool calls. Discovered per-model clients keep chat completions. Corporate auth headers, proxy settings and bounded host guards are shared; see [CORPORATE_GATEWAY.md](./CORPORATE_GATEWAY.md).
 
 ### Pros / cons
 

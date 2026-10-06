@@ -120,6 +120,9 @@ import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.
 import { probeClaudePinnedModel } from './doctor-claude-model.js';
 import { createServer } from '../mcp/server.js';
 import { existsSync } from 'node:fs';
+import * as fs from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { execFileSync } from 'node:child_process';
 
 /**
@@ -520,7 +523,11 @@ describe('Doctor Command', () => {
 
       const result = await runDoctor();
 
-      expect(result.installFreshness).toEqual({ state: 'aligned', version: TEST_VERSION });
+      const prefix =
+        process.platform === 'win32'
+          ? dirname(process.execPath)
+          : dirname(dirname(process.execPath));
+      expect(result.installFreshness).toEqual({ state: 'aligned', version: TEST_VERSION, prefix });
       expect(result.allHealthy).toBe(true);
       expect(result.mcpServerReady).toBe(true);
       expect(result.mcpClientReady).toBe(true);
@@ -690,15 +697,69 @@ describe('Doctor Command', () => {
 
     it('should detect configuration file when present', async () => {
       vi.mocked(existsSync).mockImplementation((path) => {
-        return path === './nexus-agents.yaml';
+        return path === './nexus-agents.yaml' || path === resolve('nexus-agents.yaml');
       });
+      vi.spyOn(fs, 'readFileSync').mockReturnValue('security:\n  auth:\n    method: token\n');
       const mockAdapters = new Map();
       vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
 
       const result = await runDoctor();
 
       expect(result.configFile.found).toBe(true);
-      expect(result.configFile.path).toBe('./nexus-agents.yaml');
+      expect(result.configFile.path).toBe(resolve('nexus-agents.yaml'));
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      printDoctorResults(result);
+      expect(stripVTControlCharacters(writeSpy.mock.calls.map((c) => c[0]).join(''))).toContain(
+        '✓ Configuration loaded'
+      );
+    });
+
+    it.each([
+      [
+        'oauth2 migration',
+        'security:\n  auth:\n    method: oauth2\n',
+        "Set security.auth.method to 'token'",
+      ],
+      ['malformed YAML', 'security: [\n', 'YAML parse error'],
+    ])('fails doctor with the loader message for %s', async (_name, content, message) => {
+      vi.mocked(existsSync).mockImplementation(
+        (path) =>
+          path === './.nexus-agents/nexus-agents.yaml' ||
+          path === resolve('.nexus-agents/nexus-agents.yaml')
+      );
+      const readSpy = vi.spyOn(fs, 'readFileSync').mockReturnValue('{}');
+      const clis = ['claude', 'gemini', 'codex', 'opencode'] as const;
+      vi.mocked(createAllAdapters).mockReturnValue(
+        new Map(
+          clis.map((name) => [
+            name,
+            {
+              name,
+              healthCheck: vi.fn().mockResolvedValue({
+                healthy: true,
+                version: '1.0.0',
+                versionStatus: 'supported',
+                lastChecked: new Date(),
+              }),
+              getCapacity: vi.fn().mockResolvedValue(undefined),
+            },
+          ])
+        ) as never
+      );
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      // Establish that configuration is the only failing check.
+      expect(await doctorCommand()).toBe(0);
+      writeSpy.mockClear();
+      readSpy.mockReturnValue(content);
+
+      const exitCode = await doctorCommand();
+
+      const output = stripVTControlCharacters(writeSpy.mock.calls.map((c) => c[0]).join(''));
+      expect(output).toContain('✗ Configuration');
+      expect(output).toContain(message);
+      expect(output).not.toContain('✓ Configuration loaded');
+      expect(exitCode).toBe(1);
     });
 
     it('should report config not found when missing', async () => {
@@ -710,6 +771,14 @@ describe('Doctor Command', () => {
 
       expect(result.configFile.found).toBe(false);
       expect(result.configFile.path).toBeNull();
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      printDoctorResults(result);
+      expect(writeSpy.mock.calls.map((c) => c[0]).join('')).toContain(
+        'Configuration file: Not found'
+      );
+      expect(writeSpy.mock.calls.map((c) => c[0]).join('')).toContain(
+        'Run: nexus-agents config init'
+      );
     });
 
     it('should validate MCP server can be created', async () => {
@@ -1265,6 +1334,19 @@ describe('Doctor Command', () => {
   });
 
   describe('printDoctorResults()', () => {
+    it('counts invalid configuration in the summary (#7158)', () => {
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      printDoctorResults(
+        createMockDoctorResult({
+          configFile: { found: true, path: null, error: 'Config validation failed' },
+          allHealthy: false,
+        })
+      );
+
+      const output = stripVTControlCharacters(writeSpy.mock.calls.map((c) => c[0]).join(''));
+      expect(output).toContain('Summary: 1 issue(s) found (configuration)');
+    });
+
     it('should write output to stdout', () => {
       const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 

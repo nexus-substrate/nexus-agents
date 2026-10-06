@@ -42,6 +42,7 @@ import { resolveDefaultModelAdapter, wireGateway } from '../../cli-server-gatewa
 import { setGatewayRediscovery } from '../../adapters/gateway-rediscovery.js';
 import { _resetGatewayDiscovery } from '../../adapters/gateway-discovery.js';
 import { createAutoAdapter } from '../../adapters/auto-adapter.js';
+import { tryCustomOpenAiAdapter } from '../../adapters/auto-adapter-gateway.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../../config/defaults.js';
 import {
   ErrorCode,
@@ -703,6 +704,7 @@ describe('doctor --gateway on a gateway-only host (#6609)', () => {
     nodeSupported: true,
     hasAuthMethod: true,
     mcpServerReady: true,
+    configFile: { found: false, path: null },
     installFreshness: { state: 'aligned' as const, version: '1.0.0' },
     scratchSpace: [],
     clis: (['claude', 'gemini', 'codex', 'opencode'] as const).map(noCli),
@@ -803,10 +805,41 @@ describe('the single-model custom-openai adapter over HTTP (#6645)', () => {
 
     const result = await adapter.complete(ask);
 
-    // This fake gateway serves chat completions only, so the opted-in surface 404s.
     expect(routes()).toEqual(['POST /v1/responses']);
-    expect(result.ok ? 'ok' : result.error.message).toContain('/v1/responses');
+    expect(result).toMatchObject({
+      ok: true,
+      value: { model: id, content: [{ type: 'text', text: `reply from ${id}` }] },
+    });
   });
+
+  it.each(['chat', 'responses'] as const)(
+    'uses %s for the catalogue alias while its shared discovered arm stays on chat',
+    async (surface) => {
+      vi.stubEnv('NEXUS_CUSTOM_MODEL', id);
+      vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', surface);
+      try {
+        const discovered = adapterFor(await wireFromEnv(), id);
+        gateway.clearRequests();
+        expect((await discovered.complete(ask)).ok).toBe(true);
+
+        const alias = tryCustomOpenAiAdapter(silentLogger());
+        expect(alias?.modelVerified).toBe(true);
+        expect(await alias?.adapter.complete(ask)).toMatchObject({
+          ok: true,
+          value: { model: id, content: [{ type: 'text', text: `reply from ${id}` }] },
+        });
+        expect((await discovered.complete(ask)).ok).toBe(true);
+        expect(routes()).toEqual([
+          'POST /v1/chat/completions',
+          `POST /v1/${surface === 'responses' ? 'responses' : 'chat/completions'}`,
+          'POST /v1/chat/completions',
+        ]);
+      } finally {
+        vi.stubEnv('NEXUS_CUSTOM_MODEL', undefined);
+        _resetGatewaySlotCatalog();
+      }
+    }
+  );
 });
 
 // ============================================================================
