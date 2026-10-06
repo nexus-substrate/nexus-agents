@@ -20,7 +20,7 @@ For the single-model SDK path and the OpenCode subprocess transport, see [CUSTOM
 
 Both must be non-empty after trimming, or the gateway is off. The URL is handed to the `openai` SDK as its base URL, and the SDK appends `/models` and `/chat/completions`. nexus-agents does not add `/v1` for you: a URL without it probes the wrong path, and one with `/v1/v1` in a hand-built `curl` does the same.
 
-The deprecated `NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY` pair does **not** turn on the gateway path. Use the two names above.
+`NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` were removed in 10.0 (#6291). They are ignored and reported as unknown variables. Rename them to the two canonical names above.
 
 ## Harness MCP `env` blocks
 

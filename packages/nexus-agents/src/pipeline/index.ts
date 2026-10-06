@@ -127,19 +127,6 @@ export {
 export type { CorePluginRegistrationResult } from './core-plugins.js';
 
 export {
-  /**
-   * @deprecated No replacement factory exists; subscribe via IEventBus.subscribe
-   * to the pipeline EventBus directly (#5120); removed in 10.0, #6291.
-   */
-
-  createEventBusBridge,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- retain the public export until 10.0 (#6291)
-  type EventBusBridgeOptions,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- retain the public export until 10.0 (#6291)
-  type PipelineBridgeResult,
-} from './event-bus-bridge.js';
-
-export {
   evaluatePipelinePolicy,
   getPolicyMode,
   enforceGatePolicy,

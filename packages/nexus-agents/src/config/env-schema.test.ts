@@ -1215,61 +1215,66 @@ describe('NEXUS_OPENAI_COMPAT_ENDPOINT is registered as an endpoint id (#4392 in
 });
 
 // =============================================================================
-// Deprecated gateway env aliases (#4392 increment 3)
+// Removed gateway env aliases (#6291 B1)
 // =============================================================================
 
-describe('deprecated gateway env aliases (#4392 inc 3)', () => {
+describe('removed gateway env aliases (#6291 B1)', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
-    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', undefined);
-    vi.stubEnv('NEXUS_CUSTOM_API_KEY', undefined);
-    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', undefined);
-    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', undefined);
+    for (const name of [
+      'NEXUS_CUSTOM_API_BASE_URL',
+      'NEXUS_CUSTOM_API_KEY',
+      'NEXUS_OPENAI_COMPAT_URL',
+      'NEXUS_OPENAI_COMPAT_KEY',
+      'NEXUS_ACCESS_POLICY_MODE',
+    ])
+      vi.stubEnv(name, undefined);
   });
 
-  it('still accepts both legacy names as known — an alias is not a typo', () => {
-    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
-    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-TESTFAKE-NOT-REAL-0000');
-    const result = validateNexusEnv();
-    expect(result.unknownVars).toHaveLength(0);
-    expect(result.invalidVars).toHaveLength(0);
-  });
+  it.each([false, true])(
+    'reports removed aliases as unknown with canonical names set: %s',
+    (canonicalSet) => {
+      const oldUrl = 'https://gateway.example/v1';
+      const oldKey = 'sk-TESTFAKE-NOT-REAL-0000';
+      vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', oldUrl);
+      vi.stubEnv('NEXUS_CUSTOM_API_KEY', oldKey);
+      if (canonicalSet) {
+        vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://canonical.example/v1');
+        vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-TESTFAKE-canonical-NOT-REAL-0000');
+      }
+      const warnings: string[] = [];
+      const logger = {
+        warn: (msg: string) => warnings.push(msg),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+      } as unknown as import('../core/index.js').ILogger;
 
-  it('reports each set legacy name with its replacement and whether the new name shadows it', () => {
-    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
-    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-TESTFAKE-NOT-REAL-0000');
-    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-TESTFAKE-new-NOT-REAL-0000');
-    const result = validateNexusEnv();
-    expect(result.deprecatedVars).toEqual([
-      {
-        name: 'NEXUS_CUSTOM_API_BASE_URL',
-        replacement: 'NEXUS_OPENAI_COMPAT_URL',
-        shadowed: false,
-      },
-      { name: 'NEXUS_CUSTOM_API_KEY', replacement: 'NEXUS_OPENAI_COMPAT_KEY', shadowed: true },
-    ]);
-  });
+      const result = validateNexusEnv(logger);
+      expect(result.unknownVars.map((entry) => entry.name)).toEqual([
+        'NEXUS_CUSTOM_API_BASE_URL',
+        'NEXUS_CUSTOM_API_KEY',
+      ]);
+      expect(result.invalidVars).toEqual([]);
+      expect(result.deprecatedVars).toEqual([]);
+      for (const name of ['NEXUS_CUSTOM_API_BASE_URL', 'NEXUS_CUSTOM_API_KEY']) {
+        expect(getKnownNexusVarNames().includes(name)).toBe(false);
+        expect(
+          warnings.some((warning) => warning.includes(`Unknown environment variable: ${name}`))
+        ).toBe(true);
+      }
+      expect(warnings.join('\n')).not.toContain(oldUrl);
+      expect(warnings.join('\n')).not.toContain(oldKey);
+    }
+  );
 
-  it('reports an empty list when no legacy name is set', () => {
+  it('accepts canonical names without reporting deprecated variables', () => {
     vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://gateway.example/v1');
-    expect(validateNexusEnv().deprecatedVars).toEqual([]);
-  });
-
-  it('does not log the deprecation here — the gateway-env resolver warns once', () => {
-    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
-    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-TESTFAKE-NOT-REAL-0000');
-    const warnings: string[] = [];
-    const logger = {
-      warn: (msg: string) => warnings.push(msg),
-      info: vi.fn(),
-      debug: vi.fn(),
-      error: vi.fn(),
-    } as unknown as import('../core/index.js').ILogger;
-
-    const result = validateNexusEnv(logger);
-
-    expect(result.deprecatedVars).toHaveLength(2);
-    expect(warnings.some((w) => w.includes('NEXUS_CUSTOM_API'))).toBe(false);
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-TESTFAKE-NOT-REAL-0000');
+    const result = validateNexusEnv();
+    expect(result.unknownVars).toEqual([]);
+    expect(result.invalidVars).toEqual([]);
+    expect(result.deprecatedVars).toEqual([]);
   });
 });
 

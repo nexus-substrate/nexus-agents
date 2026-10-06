@@ -16,7 +16,7 @@
  * flapping breaker from spamming signals (the TuneAdjustmentStore also caps and
  * decays the resulting effect).
  *
- * Bus direction is B→A here (the reverse of `pipeline/event-bus-bridge.ts`),
+ * Bus direction is B→A here,
  * preserving the `A = observability / B = messaging` boundary: the adapter never
  * touches bus A directly.
  *

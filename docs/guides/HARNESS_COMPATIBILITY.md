@@ -27,7 +27,7 @@ export NEXUS_OPENAI_COMPAT_URL=https://your-gateway.example.com/v1
 export NEXUS_OPENAI_COMPAT_KEY=...
 ```
 
-(`NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY` still work as deprecated aliases for the single-model path — #4392 increment 3, dropped in the next major — but only the names above also enable the gateway path.)
+`NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` were removed in 10.0 (#6291). They are ignored and reported as unknown variables. Update any harness environment blocks to the canonical names above, which configure both the single-model path and the gateway path.
 
 See [CUSTOM_ENDPOINT_SETUP.md](./CUSTOM_ENDPOINT_SETUP.md) for the custom-gateway path in depth.
 

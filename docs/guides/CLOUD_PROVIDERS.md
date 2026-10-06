@@ -150,7 +150,7 @@ export NEXUS_OPENAI_COMPAT_KEY="your-gateway-key"
 export NEXUS_CUSTOM_MODEL="claude-sonnet-4-5"   # whatever model id your gateway exposes
 ```
 
-`NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY` are deprecated aliases of the first two (#4392 increment 3): still read for the single-model path when the replacement is unset, dropped in the next major (#6291), and — unlike the names above — they do not opt into the gateway path (model discovery, in-process voters, the `api:<endpoint>` arm). See [CONFIGURATION.md](../getting-started/CONFIGURATION.md#deprecated-4392-increment-3).
+`NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` were removed in 10.0 (#6291). They are ignored and reported as unknown variables; rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`. The canonical pair configures both the single-model path and the gateway path (model discovery, in-process voters, the `api:<endpoint>` arm). See [CONFIGURATION.md](../getting-started/CONFIGURATION.md#removed-in-100-6291-b1).
 
 ### Pros / cons
 

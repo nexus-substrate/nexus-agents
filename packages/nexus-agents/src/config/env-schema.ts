@@ -15,7 +15,6 @@ import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
 import { gatewayEndpointRejection, parseGatewayCostEnv } from '../adapters/sdk/gateway-cost.js';
-import { resolveGatewayEnv, type DeprecatedGatewayEnvUse } from '../adapters/sdk/gateway-env.js';
 import { parseGatewayExtraHeaders } from '../adapters/gateway-http.js';
 import {
   describeClassGuard,
@@ -223,12 +222,6 @@ const NexusEnvSchema = z.object({
   // Paths, URLs, tokens and term lists: any non-empty string is legal, so
   // z.string() is the accurate type rather than a permissive stand-in.
   NEXUS_CODEPR_TOKEN: z.string().optional(),
-  // #4392 increment 3: deprecated aliases of NEXUS_OPENAI_COMPAT_URL / _KEY
-  // for the single-model custom-openai path, dropped in the next major
-  // (#6291). Kept registered so a correctly spelled alias is not reported as
-  // a typo; their use is reported in `deprecatedVars` instead.
-  NEXUS_CUSTOM_API_BASE_URL: z.string().optional(),
-  NEXUS_CUSTOM_API_KEY: z.string().optional(),
   // Deprecated no-op since #6321 removed the ClawGuard deriver. Keep the
   // accept-set and registration for compatibility with the AGENTS.md table
   // (#4722); report its use in deprecatedVars until removal in 10.0 (#6319).
@@ -511,12 +504,13 @@ export interface IneffectiveVar {
   readonly reason: string;
 }
 
-/**
- * A deprecated variable that is set. Gateway aliases name their replacement
- * and whether it shadows them. A retired no-op has an empty replacement,
- * shadowed=false, and a notice explaining its removal.
- */
-export type DeprecatedVar = DeprecatedGatewayEnvUse & { readonly notice?: string };
+/** A deprecated variable that is set, with its replacement or removal notice. */
+export type DeprecatedVar = {
+  readonly name: string;
+  readonly replacement: string;
+  readonly shadowed: boolean;
+  readonly notice?: string;
+};
 
 /** Result of validating NEXUS_* environment variables. */
 export interface EnvValidationResult {
@@ -524,7 +518,7 @@ export interface EnvValidationResult {
   readonly invalidVars: readonly InvalidVar[];
   readonly ineffectiveVars: readonly IneffectiveVar[];
   /**
-   * Deprecated names in use (#4392 increment 3, #6319). Optional so a caller that
+   * Deprecated names in use (#6319). Optional so a caller that
    * builds this shape by hand keeps compiling; `validateNexusEnv` always
    * fills it, empty when none is set.
    */
@@ -569,11 +563,8 @@ function classifyEnvKeys(
 /**
  * Logs validation warnings via the provided logger.
  *
- * Gateway aliases are deliberately NOT logged here: the gateway-env resolver
- * (`adapters/sdk/gateway-env.ts`) warns once per process, at the point the
- * alias is honoured or shadowed and at server startup, with the option-C
- * consequence spelled out. Retired no-ops have no reader to warn, so their
- * notices are logged here.
+ * Unknown names, invalid values, ineffective settings and deprecated-variable
+ * removal notices are reported here. Warnings never include unknown values.
  */
 function logValidationWarnings(
   logger: ILogger,
@@ -601,9 +592,9 @@ function logValidationWarnings(
   }
 }
 
-/** Reports gateway aliases and the retired access-policy mode, empty when none is set. */
+/** Reports the retired access-policy mode, empty when unset. */
 function findDeprecatedVars(): DeprecatedVar[] {
-  const deprecatedVars: DeprecatedVar[] = [...resolveGatewayEnv(process.env).deprecated];
+  const deprecatedVars: DeprecatedVar[] = [];
   if (process.env['NEXUS_ACCESS_POLICY_MODE'] !== undefined) {
     deprecatedVars.push({
       name: 'NEXUS_ACCESS_POLICY_MODE',
@@ -681,8 +672,7 @@ function ineffectiveReason(r: ClassGuardResolution): string {
  *
  * - Detects unknown vars (potential typos) with Levenshtein suggestions
  * - Detects invalid values for known vars
- * - Reports deprecated variables in use (gateway aliases are logged by their resolver — see
- *   {@link logValidationWarnings})
+ * - Reports deprecated variables in use and logs their removal notices
  * - Warn-only: never throws, never blocks startup
  *
  * @param logger - Optional logger for direct warning output

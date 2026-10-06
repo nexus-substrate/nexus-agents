@@ -13,28 +13,20 @@ import { withGatewayUsageRecording } from './gateway-usage-recording.js';
 
 /**
  * Tries the custom-openai SDK adapter if the gateway URL and key are both
- * set: `NEXUS_OPENAI_COMPAT_URL` / `NEXUS_OPENAI_COMPAT_KEY`, or their
- * deprecated aliases `NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY`
- * (#4392 increment 3; the resolver warns once when an alias is in use). The
- * adapter constructor runs the base URL through an SSRF guard (see
+ * set: `NEXUS_OPENAI_COMPAT_URL` / `NEXUS_OPENAI_COMPAT_KEY`. The adapter
+ * constructor runs the base URL through an SSRF guard (see
  * adapters/sdk/custom-api-validation.ts). Epic #2119.
  *
  * Only the hostname reaches the log and the reason string: a base URL can
  * carry userinfo.
  */
 export function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
-  const {
-    baseUrl: customBaseUrl,
-    apiKey: customKey,
-    deprecated,
-  } = readGatewayEnv(process.env, logger);
+  const { baseUrl: customBaseUrl, apiKey: customKey } = readGatewayEnv();
   if (customKey === undefined || customBaseUrl === undefined) return null;
   const choice = customModelChoice(logger);
   if (choice === null) return null;
   const { modelId: customModelId, note } = choice;
-  // Discovery does not probe the deprecated SDK transport. A catalogue read
-  // from OpenCode can belong to a different gateway entirely (#6862).
-  const modelVerified = deprecated.some((use) => !use.shadowed) ? undefined : choice.modelVerified;
+  const modelVerified = choice.modelVerified;
   const host = hostnameOf(customBaseUrl);
   logger.info('Using custom-openai SDK adapter', { model: customModelId, host });
   // The caller's logger reaches the adapter on failed calls (#4392 inc 3).
@@ -66,7 +58,7 @@ export function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null
  * gateway mode it is a matched catalogue model (`resolveGatewayDefault`);
  * after failed discovery the configured id is explicitly unverified.
  * Null when the catalogue holds no chat model. Absence of verification means
- * no discovery measured this choice (including deprecated configuration).
+ * no discovery measured this choice.
  */
 function customModelChoice(
   logger: ILogger

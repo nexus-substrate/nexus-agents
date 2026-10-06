@@ -13,9 +13,18 @@ mistaken for redundant implementations to be merged.
 | **B — Messaging**     | `agents/collaboration/event-bus.ts` (`getGlobalEventBus`) | Agent-to-agent pub/sub coordination      | `DomainEvent` envelope, **topic-pattern + wildcard** subscription, `emitAsync`, correlation IDs, history.                                        |
 
 `core/event-bus.ts` is a **pure re-export** of bus B under a stable import path
-— not a third bus. Two bridges (`pipeline/event-bus-bridge.ts`,
-`mcp/eventbus-bridge.ts`) translate between A and B where a cross-layer hop is
-genuinely required.
+— not a third bus. `observability/failover-signals.ts` translates only
+`adapter.failover` messages from B into typed `signal.swarm_unhealthy` events on
+A. `mcp/eventbus-bridge.ts` connects B to `SwarmObserver` for agent communication
+visibility.
+
+The deprecated pipeline-to-collaboration bridge (`createEventBusBridge`,
+`EventBusBridgeOptions`, `PipelineBridgeResult`) was removed in 10.0 (#6291, B1).
+Subscribe directly to the pipeline bus through `IEventBus.subscribe(filter,
+handler)` and call its returned unsubscribe function during cleanup. An empty
+filter (`{}`) subscribes to every pipeline event; handlers receive the typed
+`PipelineEvent`, including its `type` and `timestamp`. Pipeline events are no
+longer forwarded automatically as collaboration `pipeline.*` topics.
 
 ## Why they stay separate
 

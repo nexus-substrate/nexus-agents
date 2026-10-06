@@ -120,7 +120,9 @@ describe('checkSecurity hardcoded-credential detection', () => {
   });
 
   it('does not flag a runtime interpolation into an export line', () => {
-    expect(hits('cli/setup-custom-api.ts', 'export NEXUS_CUSTOM_API_KEY="${apiKey}"')).toEqual([]);
+    expect(hits('cli/setup-custom-api.ts', 'export NEXUS_OPENAI_COMPAT_KEY="${apiKey}"')).toEqual(
+      []
+    );
   });
 
   it('does not flag an {env:...} indirection placeholder', () => {

@@ -26,7 +26,7 @@ export NEXUS_CUSTOM_MODEL="claude-opus-4-5"   # optional; default: gpt-5.5
 
 The same URL/key pair also configures the gateway path — model discovery (`GET $NEXUS_OPENAI_COMPAT_URL/models`, so the URL must already end in `/v1`), in-process voter transport and the `api:<endpoint>` routing arm — so setting it opts you into both; `NEXUS_CUSTOM_MODEL` pins the single model this path dispatches to.
 
-> **Deprecated names (#4392 increment 3):** `NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` still work as aliases for this path only, read when the replacement is unset, and are dropped in the next major (#6291). They do **not** enable the gateway path — renaming them does. `nexus-agents doctor` and a one-time startup warning name the rename; `NEXUS_CUSTOM_MODEL` is not deprecated.
+> **Removed in 10.0 (#6291):** `NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` are ignored and reported as unknown variables by environment validation. Rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`; normal startup validation warns about the old names. The canonical pair enables both paths described above. Other `NEXUS_CUSTOM_*` settings, including `NEXUS_CUSTOM_MODEL` and `NEXUS_CUSTOM_API_ALLOW_PRIVATE`, remain supported.
 
 The adapter validates the base URL through an SSRF guard before making any request — loopback, RFC 1918 private ranges, and link-local (incl. AWS IMDS `169.254.169.254`) are rejected by default. Set `NEXUS_CUSTOM_API_ALLOW_PRIVATE=1` if your gateway runs on a trusted internal host.
 

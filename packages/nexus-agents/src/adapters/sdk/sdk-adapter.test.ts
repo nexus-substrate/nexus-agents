@@ -1024,7 +1024,7 @@ describe('SdkAdapter retry-after capture (#4606)', () => {
   });
 });
 
-describe('custom-openai env aliases (#4392 inc 3)', () => {
+describe('custom-openai canonical env (#6291 B1)', () => {
   const NAMES = [
     'NEXUS_OPENAI_COMPAT_URL',
     'NEXUS_OPENAI_COMPAT_KEY',
@@ -1050,7 +1050,7 @@ describe('custom-openai env aliases (#4392 inc 3)', () => {
     }
   });
 
-  it('hands the provider factory the key and base URL from the NEW names alone', async () => {
+  it('hands the provider factory the key and base URL from the canonical names alone', async () => {
     process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-new-NOT-REAL-0000';
     const { generateText } = await import('ai');
@@ -1073,7 +1073,7 @@ describe('custom-openai env aliases (#4392 inc 3)', () => {
     });
   });
 
-  it('prefers the NEW key over the deprecated one when both are set', async () => {
+  it('uses the canonical key when a removed alias is also set', async () => {
     process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-new-NOT-REAL-0000';
     process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-old-NOT-REAL-0000';

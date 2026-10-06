@@ -38,7 +38,6 @@ describe('buildChildEnv (#2865)', () => {
     'NEXUS_SUBPROCESS_DEPTH',
     'NEXUS_SUBPROCESS_EXTRA_ENV',
     'NEXUS_OPENAI_COMPAT_KEY',
-    'NEXUS_CUSTOM_API_KEY',
     'NEXUS_SIGNING_KEY',
     'NEXUS_VOTE_SIGNING_KEY',
     'NEXUS_GITHUB_TOKEN',
@@ -169,7 +168,6 @@ describe('buildChildEnv (#2865)', () => {
 
   it('drops NEXUS-prefixed secrets and credentials by default (keys, tokens, passwords)', () => {
     vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-compat-secret');
-    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-legacy-secret');
     vi.stubEnv('NEXUS_SIGNING_KEY', 'signing-key-secret');
     vi.stubEnv('NEXUS_VOTE_SIGNING_KEY', 'vote-key-secret');
     vi.stubEnv('NEXUS_GITHUB_TOKEN', 'ghp_secret_token');
@@ -186,7 +184,6 @@ describe('buildChildEnv (#2865)', () => {
     const env = buildChildEnv('gemini');
     expect(env['NEXUS_CONFIG_PATH']).toBe('/etc/nexus.yaml');
     expect(env['NEXUS_OPENAI_COMPAT_KEY']).toBeUndefined();
-    expect(env['NEXUS_CUSTOM_API_KEY']).toBeUndefined();
     expect(env['NEXUS_SIGNING_KEY']).toBeUndefined();
     expect(env['NEXUS_VOTE_SIGNING_KEY']).toBeUndefined();
     expect(env['NEXUS_GITHUB_TOKEN']).toBeUndefined();
