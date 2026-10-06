@@ -42,14 +42,13 @@ import {
   OpenAIAdapter,
   createOpenAIAdapter,
   OPENAI_MODELS,
-  OPENAI_MODEL_ALIASES,
   type OpenAIAdapterConfig,
 } from './openai-adapter.js';
 import { APIError } from 'openai';
 
 describe('OpenAIAdapter', () => {
   const validConfig: OpenAIAdapterConfig = {
-    modelId: 'gpt-4o',
+    modelId: 'gpt-4o-2024-11-20',
     apiKey: 'test-api-key-12345',
   };
 
@@ -65,10 +64,10 @@ describe('OpenAIAdapter', () => {
       expect(adapter.modelId).toBe(OPENAI_MODELS.GPT_4O);
     });
 
-    it('should resolve model aliases', () => {
+    it('should preserve the canonical GPT-4-turbo model ID', () => {
       const adapter = new OpenAIAdapter({
         ...validConfig,
-        modelId: 'gpt-4-turbo',
+        modelId: 'gpt-4-turbo-2024-04-09',
       });
 
       expect(adapter.modelId).toBe(OPENAI_MODELS.GPT_4_TURBO);
@@ -87,7 +86,7 @@ describe('OpenAIAdapter', () => {
     it('should throw ConfigError for missing API key', () => {
       expect(() => {
         new OpenAIAdapter({
-          modelId: 'gpt-4o',
+          modelId: 'gpt-4o-2024-11-20',
           apiKey: '',
         });
       }).toThrow(ConfigError);
@@ -96,7 +95,7 @@ describe('OpenAIAdapter', () => {
     it('should throw ConfigError for whitespace-only API key', () => {
       expect(() => {
         new OpenAIAdapter({
-          modelId: 'gpt-4o',
+          modelId: 'gpt-4o-2024-11-20',
           apiKey: '   ',
         });
       }).toThrow(ConfigError);
@@ -127,7 +126,7 @@ describe('OpenAIAdapter', () => {
     it('should have vision capability for GPT-4-turbo', () => {
       const adapter = new OpenAIAdapter({
         ...validConfig,
-        modelId: 'gpt-4-turbo',
+        modelId: 'gpt-4-turbo-2024-04-09',
       });
       expect(adapter.hasCapability(ModelCapability.VISION)).toBe(true);
     });
@@ -135,7 +134,7 @@ describe('OpenAIAdapter', () => {
     it('should not have vision capability for GPT-3.5-turbo', () => {
       const adapter = new OpenAIAdapter({
         ...validConfig,
-        modelId: 'gpt-3.5-turbo',
+        modelId: 'gpt-3.5-turbo-0125',
       });
       expect(adapter.hasCapability(ModelCapability.VISION)).toBe(false);
     });
@@ -476,7 +475,7 @@ describe('OpenAIAdapter', () => {
         // ...and the gateway's body (which carries the real reason) is surfaced.
         expect(result.error.message).toContain('max_completion_tokens');
         // The bare model id (not a transport prefix) is what the request used.
-        expect(result.error.message).toContain('openai/gpt-4o');
+        expect(result.error.message).toContain('openai/gpt-4o-2024-11-20');
         // 422 is not a special code → MODEL_ERROR (classification through the override).
         expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
       }
@@ -884,7 +883,7 @@ describe('OpenAIAdapter', () => {
 describe('createOpenAIAdapter', () => {
   it('should create adapter instance', () => {
     const adapter = createOpenAIAdapter({
-      modelId: 'gpt-4o',
+      modelId: 'gpt-4o-2024-11-20',
       apiKey: 'test-key',
     });
 
@@ -894,7 +893,7 @@ describe('createOpenAIAdapter', () => {
 
   it('should pass configuration correctly', () => {
     const adapter = createOpenAIAdapter({
-      modelId: 'gpt-4-turbo',
+      modelId: 'gpt-4-turbo-2024-04-09',
       apiKey: 'test-key',
       timeout: 60000,
     });
@@ -918,29 +917,6 @@ describe('OPENAI_MODELS', () => {
     expect(OPENAI_MODELS.GPT_4O_MINI).toBe('gpt-4o-mini-2024-07-18');
     expect(OPENAI_MODELS.GPT_4_TURBO).toBe('gpt-4-turbo-2024-04-09');
     expect(OPENAI_MODELS.GPT_35_TURBO).toBe('gpt-3.5-turbo-0125');
-  });
-});
-
-describe('OPENAI_MODEL_ALIASES', () => {
-  // After #2200 Child 3, identity-only mappings were removed
-  // (resolveModelId passes unknown ids through unchanged via `?? modelId`).
-  // Only entries that translate a shorthand to a dated version remain.
-  it('contains only shorthand → dated entries (no identity mappings)', () => {
-    expect(Object.keys(OPENAI_MODEL_ALIASES).sort()).toEqual([
-      'gpt-3.5-turbo',
-      'gpt-4-turbo',
-      'gpt-4o',
-      'gpt-4o-mini',
-      'gpt-5.2-instant',
-    ]);
-  });
-
-  it('shorthand aliases map to dated identifiers', () => {
-    expect(OPENAI_MODEL_ALIASES['gpt-5.2-instant']).toBe(OPENAI_MODELS.GPT_5_2_INSTANT);
-    expect(OPENAI_MODEL_ALIASES['gpt-4o']).toBe(OPENAI_MODELS.GPT_4O);
-    expect(OPENAI_MODEL_ALIASES['gpt-4o-mini']).toBe(OPENAI_MODELS.GPT_4O_MINI);
-    expect(OPENAI_MODEL_ALIASES['gpt-4-turbo']).toBe(OPENAI_MODELS.GPT_4_TURBO);
-    expect(OPENAI_MODEL_ALIASES['gpt-3.5-turbo']).toBe(OPENAI_MODELS.GPT_35_TURBO);
   });
 });
 

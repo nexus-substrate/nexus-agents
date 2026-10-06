@@ -11,7 +11,7 @@ interface IModelAdapter {
   /** Provider identifier (e.g., 'anthropic', 'openai') */
   readonly providerId: string;
 
-  /** Model identifier (e.g., 'claude-sonnet-4', 'gpt-4o') */
+  /** Model identifier (e.g., 'claude-sonnet-4', 'gpt-4o-2024-11-20') */
   readonly modelId: string;
 
   /** Capabilities this model supports */
@@ -90,11 +90,20 @@ const ModelCapability = {
 | Adapter       | Provider  | Models                                               |
 | ------------- | --------- | ---------------------------------------------------- |
 | ClaudeAdapter | Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
-| OpenAIAdapter | OpenAI    | gpt-4o, gpt-4o-mini, o1-pro                          |
+| OpenAIAdapter | OpenAI    | gpt-4o-2024-11-20, gpt-4o-mini-2024-07-18, o1-pro    |
 | GeminiAdapter | Google    | gemini-3-pro, gemini-3-flash, gemini-2.5-flash       |
 | OllamaAdapter | Ollama    | llama3, mistral, codellama                           |
 
 ## Usage Example
+
+Since 11.0, `OpenAIAdapter` and `createOpenAIAdapter` send `modelId` unchanged
+for both completions and streams. Use exact IDs such as `gpt-4o-2024-11-20`
+to retain the previously selected snapshot. `OPENAI_MODEL_ALIASES` and its
+rewriting are removed; `OPENAI_MODELS` remains available. Former alias names
+and unknown IDs pass through to the endpoint, which reports unsupported IDs
+through the adapter's normal error handling. The bundled registry does not map the
+former aliases to their old snapshot IDs, so no local unknown-model error is
+raised. `verbatimModelId` remains accepted as a compatibility no-op.
 
 ```typescript
 import { type IModelAdapter, type Result, isOk } from 'nexus-agents';

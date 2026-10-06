@@ -188,7 +188,7 @@ describe('Anthropic arm — horizon lives ONLY in the header (#4606)', () => {
 });
 
 describe('OpenAI arm — header beats prose, and sub-second prose now parses (#4606)', () => {
-  const config = { modelId: 'gpt-4o', apiKey: 'test-api-key-12345' };
+  const config = { modelId: 'gpt-4o-2024-11-20', apiKey: 'test-api-key-12345' };
 
   function openaiRateLimit(message: string, headers?: Record<string, string>): APIError {
     return new APIError(

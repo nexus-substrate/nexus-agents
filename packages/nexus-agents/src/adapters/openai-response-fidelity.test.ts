@@ -49,7 +49,7 @@ describe('refusals are errors, not empty answers (#6607 item 1)', () => {
   it('a content_filter finish returns an error naming the refusal', async () => {
     // Partial text before the filter fired: still not an answer.
     mockCreateOnce(textChoice('The first half of an ans', 'content_filter'));
-    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o', apiKey: API_KEY });
+    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: API_KEY });
 
     const result = await adapter.complete({ messages: [{ role: 'user', content: 'q' }] });
 
@@ -62,7 +62,7 @@ describe('refusals are errors, not empty answers (#6607 item 1)', () => {
 
   it('an empty choices array returns an error, not a normal finish with empty text', async () => {
     mockCreateOnce({ choices: [], model: 'served-model' });
-    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o', apiKey: API_KEY });
+    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: API_KEY });
 
     const result = await adapter.complete({ messages: [{ role: 'user', content: 'q' }] });
 
@@ -84,7 +84,7 @@ describe('refusals are errors, not empty answers (#6607 item 1)', () => {
       };
     }
     mocks.mockCreate.mockResolvedValueOnce(gen());
-    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o', apiKey: API_KEY });
+    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: API_KEY });
 
     await expect(
       collect(adapter.stream({ messages: [{ role: 'user', content: 'q' }] }))
@@ -95,7 +95,7 @@ describe('refusals are errors, not empty answers (#6607 item 1)', () => {
 describe('every parallel tool result is sent (#6607 item 2)', () => {
   it('sends one tool message per tool_result block, in order', async () => {
     mockCreateOnce(textChoice('done', 'stop'));
-    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o', apiKey: API_KEY });
+    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: API_KEY });
 
     await adapter.complete({
       messages: [
@@ -147,7 +147,7 @@ describe('streamed tool calls keep their arguments (#6607 item 3)', () => {
       };
     }
     mocks.mockCreate.mockResolvedValueOnce(gen());
-    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o', apiKey: API_KEY });
+    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: API_KEY });
 
     const chunks = await collect(adapter.stream({ messages: [{ role: 'user', content: 'q' }] }));
 
@@ -194,7 +194,7 @@ describe('a reasoning model that spends its budget on reasoning (#6607 item 4)',
 
   it('keeps a non-reasoning empty length finish as an ordinary truncation', async () => {
     mockCreateOnce(textChoice('', 'length'));
-    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o', apiKey: API_KEY });
+    const adapter = new OpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: API_KEY });
 
     const result = await adapter.complete({ messages: [{ role: 'user', content: 'q' }] });
 
@@ -209,7 +209,7 @@ describe('a reasoning model that spends its budget on reasoning (#6607 item 4)',
     await new OpenAIAdapter({ modelId: 'o3', apiKey: API_KEY }).complete({
       messages: [{ role: 'user', content: 'q' }],
     });
-    await new OpenAIAdapter({ modelId: 'gpt-4o', apiKey: API_KEY }).complete({
+    await new OpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: API_KEY }).complete({
       messages: [{ role: 'user', content: 'q' }],
     });
 

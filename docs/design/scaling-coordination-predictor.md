@@ -1000,12 +1000,12 @@ const MODEL_CAPABILITIES: Record<string, Partial<ModelCapability>> = {
     relativeCost: 0.9,
     avgLatencyMs: 4000,
   },
-  'gpt-4-turbo': {
+  'gpt-4-turbo-2024-04-09': {
     estimatedAccuracy: 0.8,
     relativeCost: 0.7,
     avgLatencyMs: 2500,
   },
-  'gpt-3.5-turbo': {
+  'gpt-3.5-turbo-0125': {
     estimatedAccuracy: 0.55,
     relativeCost: 0.1,
     avgLatencyMs: 800,
@@ -1278,7 +1278,7 @@ describe('ScalingPredictor', () => {
         context: {},
       };
 
-      const prediction = predictor.predict(task, ['gpt-3.5-turbo']);
+      const prediction = predictor.predict(task, ['gpt-3.5-turbo-0125']);
 
       expect(prediction.recommendedTopology).toBe('decentralized');
     });
@@ -1291,7 +1291,7 @@ describe('ScalingPredictor', () => {
         context: {},
       };
 
-      const prediction = predictor.predict(task, ['gpt-3.5-turbo']);
+      const prediction = predictor.predict(task, ['gpt-3.5-turbo-0125']);
 
       expect(['independent', 'centralized']).toContain(prediction.recommendedTopology);
     });

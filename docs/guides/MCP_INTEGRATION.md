@@ -223,10 +223,10 @@ models:
   tiers:
     fast:
       - claude-haiku-4-5
-      - gpt-4o-mini
+      - gpt-4o-mini-2024-07-18
     balanced:
       - claude-sonnet-4-6
-      - gpt-4o
+      - gpt-4o-2024-11-20
     powerful:
       - claude-opus-4-6
       - o1-pro
