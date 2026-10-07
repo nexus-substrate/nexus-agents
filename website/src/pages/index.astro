@@ -3,6 +3,11 @@
 // of identity, navigation to the four kinds of documentation, one install
 // command and one output figure. No cards, no buttons dressed as CTAs.
 //
+// Above 64rem the hero is two balanced columns: the statement on the left and
+// an ABRIDGED transcript on the right, so the proof sits above the fold
+// (#7285). The verbatim transcript it is cut from stays on this page, in the
+// "A real run, in full" section, so no verified output is lost.
+//
 // The "Four ways into the docs" lists are generated from the docs collection
 // (getSiteNav + sectionListing), the same source as the nav rail and the
 // section index pages. Capability counts come from site-data.ts, which
@@ -78,8 +83,104 @@ const threatModelHref = docsHref('security/audit-hash-chain-threat-model');
       <pre class="landing-install" data-copy><code>npm install -g nexus-agents</code></pre>
     </div>
 
+    <figure class="landing-figure landing-figure-abridged" aria-labelledby="abridged-caption">
+      <div class="landing-transcript">
+<pre><span class="t-dim">$</span> nexus-agents vote --proposal "Add a 'nexus-agents tour' interactive walkthrough command that runs after 'setup'..."
+
+<span class="t-dim">Collecting votes from 7 agents (timeout: 300s each)...</span>
+
+<span class="t-pass">✓</span> Software Architect:   APPROVE (82%)
+<span class="t-pass">✓</span> Security Engineer:    APPROVE (90%)
+<span class="t-pass">✓</span> Developer Experience: APPROVE (88%)
+<span class="t-fail">✗</span> AI/ML Engineer:       REJECT  (75%)
+<span class="t-pass">✓</span> Product Manager:      APPROVE (82%)
+<span class="t-fail">✗</span> Contrarian Analyst:   REJECT  (95%)
+<span class="t-fail">✗</span> Scope Steward:        ERROR   — MCP error -32001: Request timed out
+
+Approval: 66.7%
+Threshold: simple_majority
+<span class="t-pass">Result: APPROVED</span></pre>
+      </div>
+      <figcaption id="abridged-caption">
+        Fig. 01 — Abridged from a real seven-voter run on 2026-05-17: the banner, the vote counts
+        and the timing are cut, the rest is verbatim. One seat timed out and is reported as
+        errored, not counted as a vote. <a href="#full-run">Full transcript</a> below.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="landing-ways" aria-labelledby="ways-title">
+    <div class="landing-band">
+      <h2 id="ways-title" class="landing-h2">Four ways into the docs</h2>
+      <ul class="landing-ways-list">
+        {ways.map((way) => (
+          <li>
+            <p class="landing-kicker">{way.intro.kicker}</p>
+            <h3 class="landing-h3"><a href={way.href}>{way.label}</a></h3>
+            <p class="landing-purpose">{way.intro.summary}</p>
+            <div class="landing-way-pages">
+              {way.pages.length === 0 ? (
+                <p class="landing-note">No pages classified yet.</p>
+              ) : (
+                <ul class="landing-pages">
+                  {way.pages.map((page) => (
+                    <li><a href={page.href}>{navLabel(page)}</a></li>
+                  ))}
+                </ul>
+              )}
+              {way.provisional && (
+                <p class="landing-note">Provisional: unclassified pages, until the backfill lands.</p>
+              )}
+            </div>
+            <p class="landing-more">
+              <a href={way.href}>
+                {way.total > 0 ? `All ${String(way.total)} pages` : 'Section index'}
+                <span class="visually-hidden"> in {way.label}</span>
+              </a>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="landing-enforces landing-band" aria-labelledby="enforces-title">
+    <h2 id="enforces-title" class="landing-h2">What it enforces</h2>
+    <dl>
+      <dt>Adversarial review</dt>
+      <dd>
+        A seven-seat <code>consensus_vote</code> panel, including a contrarian seat, decides real
+        forks. Thresholds are counted over the voters who answered, and a change to the governance
+        substrate needs a whole panel. There are {CONSENSUS_ALGORITHM_COUNT} aggregation
+        strategies, and every decision is recorded with each voter's reasoning.
+      </dd>
+      <dt>Rules that cannot drift silently</dt>
+      <dd>
+        The governance blocks in the rule files every agent reads are generated from the code, and
+        CI fails when a hand edit diverges from the source.
+      </dd>
+      <dt>A tamper-evident audit chain</dt>
+      <dd>
+        Every decision is appended to a hash chain you can check with{' '}
+        <code>verify_audit_chain</code>. Tamper-evident, not tamper-proof: the{' '}
+        <a href={threatModelHref}>threat model</a> says exactly what that buys.
+      </dd>
+      <dt>Closed-loop telemetry</dt>
+      <dd>
+        Outcomes feed back into model routing, within bounds, so a {ROUTING_STAGE_COUNT}-stage
+        router learns which of the {CLI_ADAPTER_COUNT} CLI adapters handles which task.
+      </dd>
+    </dl>
+    <p class="landing-inbox">
+      In the box: {MCP_TOOL_COUNT} MCP tools, {EXPERT_TYPE_COUNT} expert roles, {SKILL_COUNT} skills, {STRATEGY_COUNT} execution strategies, {MEMORY_BACKEND_COUNT} memory backends, and a
+      research registry of {PAPER_COUNT} papers from {DISCOVERY_SOURCE_COUNT} discovery sources.
+    </p>
+  </section>
+
+  <section class="landing-full landing-band" aria-labelledby="full-run">
+    <h2 id="full-run" class="landing-h2">A real run, in full</h2>
     <figure class="landing-figure">
-      <div class="landing-transcript" role="region" tabindex="0" aria-labelledby="transcript-caption">
+      <div class="landing-transcript landing-transcript-full" role="region" tabindex="0" aria-labelledby="transcript-caption">
 <pre><span class="t-dim">$</span> nexus-agents vote --proposal "Add a 'nexus-agents tour' interactive
     walkthrough command that runs after 'setup'..."
 
@@ -114,101 +215,41 @@ Summary
 <span class="t-dim">Completed in 188487ms</span></pre>
       </div>
       <figcaption id="transcript-caption">
-        Fig. 01 — Verbatim output of a real seven-voter run on 2026-05-17, a proposal from the
+        Fig. 02 — Verbatim output of a real seven-voter run on 2026-05-17, a proposal from the
         website backlog. One seat timed out and is reported as errored, not counted as a vote.
       </figcaption>
     </figure>
   </section>
-
-  <section class="landing-ways" aria-labelledby="ways-title">
-    <div class="landing-band">
-      <h2 id="ways-title" class="landing-h2">Four ways into the docs</h2>
-      <ul class="landing-ways-list">
-        {ways.map((way) => (
-          <li>
-            <p class="landing-kicker">{way.intro.kicker}</p>
-            <h3 class="landing-h3"><a href={way.href}>{way.label}</a></h3>
-            <p class="landing-muted">{way.intro.summary}</p>
-            {way.pages.length === 0 ? (
-              <p class="landing-note">No pages classified yet.</p>
-            ) : (
-              <ul class="landing-pages">
-                {way.pages.map((page) => (
-                  <li><a href={page.href}>{navLabel(page)}</a></li>
-                ))}
-              </ul>
-            )}
-            {way.provisional && (
-              <p class="landing-note">Provisional: unclassified pages, until the backfill lands.</p>
-            )}
-            {way.total > way.pages.length && (
-              <p class="landing-more">
-                <a href={way.href}>All {way.total} pages<span class="visually-hidden"> in {way.label}</span></a>
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  </section>
-
-  <section class="landing-enforces" aria-labelledby="enforces-title">
-    <h2 id="enforces-title" class="landing-h2">What it enforces</h2>
-    <dl>
-      <dt>Adversarial review</dt>
-      <dd>
-        A seven-seat <code>consensus_vote</code> panel, including a contrarian seat, decides real
-        forks. Thresholds are counted over the voters who answered, and a change to the governance
-        substrate needs a whole panel. There are {CONSENSUS_ALGORITHM_COUNT} aggregation
-        strategies, and every decision is recorded with each voter's reasoning.
-      </dd>
-      <dt>Rules that cannot drift silently</dt>
-      <dd>
-        The governance blocks in the rule files every agent reads are generated from the code, and
-        CI fails when a hand edit diverges from the source.
-      </dd>
-      <dt>A tamper-evident audit chain</dt>
-      <dd>
-        Every decision is appended to a hash chain you can check with{' '}
-        <code>verify_audit_chain</code>. Tamper-evident, not tamper-proof: the{' '}
-        <a href={threatModelHref}>threat model</a> says exactly what that buys.
-      </dd>
-      <dt>Closed-loop telemetry</dt>
-      <dd>
-        Outcomes feed back into model routing, within bounds, so a {ROUTING_STAGE_COUNT}-stage
-        router learns which of the {CLI_ADAPTER_COUNT} CLI adapters handles which task.
-      </dd>
-    </dl>
-    <p class="landing-muted">
-      In the box: {MCP_TOOL_COUNT} MCP tools, {EXPERT_TYPE_COUNT} expert roles, {SKILL_COUNT} skills, {STRATEGY_COUNT} execution strategies, {MEMORY_BACKEND_COUNT} memory backends, and a
-      research registry of {PAPER_COUNT} papers from {DISCOVERY_SOURCE_COUNT} discovery sources.
-    </p>
-  </section>
 </BaseLayout>
 
 <style>
-  /* Landing archetype on remarque tokens. Spacing, type and color are all
-     tokens; the only literals are the breakpoint-free grid minimums. */
-  .landing-hero {
-    max-width: var(--content-standard);
+  /* Landing archetype on remarque tokens. Breakpoints are the USWDS set
+     (40 / 64rem, #7285); media queries cannot read custom properties, so
+     they are the only literals besides the 68ex measure. Gutters are
+     16px on phones and 32px from 64rem (--space-4 / --space-6). */
+  .landing-hero,
+  .landing-band {
+    max-width: var(--content-wide);
     margin-inline: auto;
-    padding: var(--space-9) var(--space-5) var(--space-8);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-8);
+    padding-inline: var(--space-4);
+  }
+  .landing-hero {
+    padding-block: var(--space-7) var(--space-8);
+    display: grid;
+    gap: var(--space-7);
   }
   .landing-intro {
     max-width: var(--content-reading);
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
+    min-width: 0;
   }
   .landing-kicker {
     margin: 0;
     font-family: var(--font-mono);
     font-size: var(--text-meta);
     line-height: var(--leading-meta);
-    font-variant-caps: all-small-caps;
     letter-spacing: var(--tracking-caps);
     color: var(--color-fg-muted);
   }
@@ -216,8 +257,8 @@ Summary
     margin: 0;
     font-family: var(--font-display);
     font-weight: var(--weight-display);
-    font-size: var(--text-display);
-    line-height: var(--leading-display);
+    font-size: var(--text-title);
+    line-height: var(--leading-title);
     letter-spacing: var(--tracking-display);
     text-wrap: balance;
   }
@@ -226,6 +267,21 @@ Summary
     font-size: var(--text-body-lg);
     color: var(--color-fg-muted);
   }
+
+  /* Off-theme links (#7285 finding 4): every link on this page takes the
+     theme link colour, set here so it holds without a global rule. */
+  a {
+    color: var(--color-link);
+    text-underline-offset: 0.2em;
+  }
+  a:hover {
+    color: var(--color-link-hover);
+  }
+  a:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
   .landing-links {
     list-style: none;
     margin: 0;
@@ -235,13 +291,12 @@ Summary
     gap: var(--space-2) var(--space-6);
     font-weight: var(--weight-medium);
   }
+  /* 48px touch targets for the standalone links. */
   .landing-links a,
   .landing-more a {
-    display: inline-block;
-    padding-block: var(--space-1);
-  }
-  .landing-pages li {
-    padding-block: var(--space-1);
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--space-7);
   }
   .landing-install {
     position: relative;
@@ -278,6 +333,15 @@ Summary
     background: var(--color-code-bg);
     color: var(--color-code-fg);
   }
+  /* The abridged transcript never scrolls: long lines wrap, so no verdict or
+     percentage can be clipped and the figure needs no focusable region. */
+  .landing-figure-abridged .landing-transcript {
+    overflow: visible;
+  }
+  .landing-figure-abridged pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
   .landing-transcript:focus-visible,
   .landing-install:focus-visible {
     outline: 2px solid var(--color-focus-ring);
@@ -293,21 +357,20 @@ Summary
     color: var(--color-error);
   }
   .landing-figure figcaption {
-    font-family: var(--font-mono);
     font-size: var(--text-meta);
     line-height: var(--leading-meta);
     color: var(--color-fg-muted);
-    max-width: var(--content-reading);
+    max-width: 68ex;
   }
 
   .landing-ways {
     border-block: var(--border-width) var(--border-style) var(--color-border);
     background: var(--color-bg-subtle);
   }
-  .landing-band {
-    max-width: var(--content-standard);
-    margin-inline: auto;
-    padding: var(--space-8) var(--space-5);
+  .landing-ways .landing-band,
+  .landing-enforces,
+  .landing-full {
+    padding-block: var(--space-8);
   }
   .landing-h2 {
     margin: 0 0 var(--space-6);
@@ -318,48 +381,69 @@ Summary
     letter-spacing: var(--tracking-title);
     text-wrap: balance;
   }
+
+  /* Four equal columns at desktop, two at tablet, one on phones. Each item
+     spans five subgrid rows (kicker, title, purpose, pages, "all pages") so
+     the parts line up across the row and no section outweighs another. */
   .landing-ways-list {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-    gap: var(--space-7);
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: var(--space-6);
+    row-gap: var(--space-7);
   }
   .landing-ways-list > li {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+    display: grid;
+    grid-row: span 5;
+    grid-template-rows: subgrid;
+    row-gap: var(--space-2);
+    align-content: start;
+    padding-top: var(--space-4);
+    border-top: var(--border-width) var(--border-style) var(--color-border-bold);
   }
   .landing-h3 {
     margin: 0;
-    font-size: var(--text-body-lg);
-    font-weight: var(--weight-semibold);
+    font-family: var(--font-display);
+    font-weight: var(--weight-display);
+    font-size: var(--text-section);
+    line-height: var(--leading-section);
   }
   .landing-h3 a {
     color: var(--color-fg);
+    text-decoration: none;
   }
-  .landing-muted {
+  .landing-h3 a:hover {
+    color: var(--color-link-hover);
+    text-decoration: underline;
+  }
+  .landing-purpose {
     margin: 0;
     color: var(--color-fg-muted);
   }
   .landing-pages {
-    margin: var(--space-2) 0 0;
+    margin: 0;
     padding-inline-start: var(--space-5);
+  }
+  .landing-pages li {
+    padding-block: var(--space-1);
   }
   .landing-note,
   .landing-more {
     margin: 0;
-    font-family: var(--font-mono);
     font-size: var(--text-meta);
     line-height: var(--leading-meta);
     color: var(--color-fg-muted);
   }
+  .landing-more a {
+    font-weight: var(--weight-medium);
+  }
 
-  .landing-enforces {
-    max-width: var(--content-reading);
-    margin-inline: auto;
-    padding: var(--space-9) var(--space-5);
+  /* "What it enforces": a definition list at the 68ex reading measure. */
+  .landing-enforces dl,
+  .landing-inbox {
+    max-width: 68ex;
   }
   .landing-enforces dl {
     margin: 0 0 var(--space-6);
@@ -375,6 +459,10 @@ Summary
     margin: var(--space-1) 0 0;
     color: var(--color-fg-muted);
   }
+  .landing-inbox {
+    margin: 0;
+    color: var(--color-fg-muted);
+  }
   .landing-enforces code {
     font-family: var(--font-mono);
     font-size: 0.9em;
@@ -382,5 +470,36 @@ Summary
     background: var(--color-code-bg);
     color: var(--color-code-fg);
     border-radius: var(--radius-sm);
+  }
+  .landing-full {
+    border-top: var(--border-width) var(--border-style) var(--color-border);
+  }
+
+  /* Phones: smaller transcript type so each verdict line fits unwrapped. */
+  @media (max-width: 39.99rem) {
+    .landing-figure-abridged pre {
+      padding: var(--space-3);
+      font-size: var(--text-micro);
+    }
+  }
+  @media (min-width: 40rem) {
+    .landing-ways-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 64rem) {
+    .landing-hero,
+    .landing-band {
+      padding-inline: var(--space-6);
+    }
+    .landing-hero {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: center;
+      gap: var(--space-8);
+      padding-block: var(--space-7);
+    }
+    .landing-ways-list {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
   }
 </style>
