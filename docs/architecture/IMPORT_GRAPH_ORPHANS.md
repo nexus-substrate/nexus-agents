@@ -1,6 +1,8 @@
 ---
 title: Import-Graph Orphan Detection Design
 description: Surface src/ subtrees with no outside callers so dead code is caught at week 1, not week 6
+diataxis: explanation
+audience: project
 tier: 2
 keywords: [governance, fitness, dead-code, orphans, observability]
 ---

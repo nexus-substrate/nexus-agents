@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: run_workflow'
 description: 'Run a linear workflow template (use `run_graph_workflow` for DAGs)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, run_workflow]
 ---

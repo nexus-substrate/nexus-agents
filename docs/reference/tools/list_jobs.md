@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: list_jobs'
 description: 'List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, list_jobs]
 ---

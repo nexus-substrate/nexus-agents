@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: user
+---
+
 # ICTM Pattern — Dynamic Sub-Agent Creation
 
 **Version:** 1.0.0

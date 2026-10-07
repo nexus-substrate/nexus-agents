@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: list_workflows'
 description: 'Inventory of multi-step TEMPLATES for `run_workflow`'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, list_workflows]
 ---

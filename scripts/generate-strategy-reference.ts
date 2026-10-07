@@ -84,6 +84,8 @@ function renderHeader(count: number): string[] {
     `description: ${yamlQuote(
       `Manifest-generated reference for all ${String(count)} routable execution strategies: entrypoint tool, when to force, maturity/authority tier, executor availability.`
     )}`,
+    'diataxis: reference',
+    'audience: user',
     'tier: 1',
     'keywords: [mcp, strategies, force-strategy, run, orchestration, reference]',
     '---',

@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: orchestrate'
 description: 'Task orchestration with Orchestrator coordination'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, orchestrate]
 ---

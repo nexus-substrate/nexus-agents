@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # Software Factory Hardening Report
 
 **Epic:** #952

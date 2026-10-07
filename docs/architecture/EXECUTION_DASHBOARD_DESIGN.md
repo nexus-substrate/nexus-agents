@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # Execution Dashboard Architecture Design
 
 **Author:** System Architecture Designer

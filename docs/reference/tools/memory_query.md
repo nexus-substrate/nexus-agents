@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: memory_query'
 description: 'Query across all memory backends'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, memory_query]
 ---

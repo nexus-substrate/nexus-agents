@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # Dataflow Traces
 
 _Actual code paths through the system. Every reference points to real source code._

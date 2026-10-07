@@ -48,6 +48,14 @@ describe('generate-strategy-reference', () => {
     expect(out).toContain('force-strategy escape hatches');
   });
 
+  it('declares diataxis reference and user audience in its frontmatter (#7198)', () => {
+    const match = /^---\n([\s\S]*?)\n---\n/.exec(renderReferencePage(sortedManifests()));
+    expect(match).not.toBeNull();
+    const front = match?.[1] ?? '';
+    expect(front).toMatch(/^diataxis: reference$/m);
+    expect(front).toMatch(/^audience: user$/m);
+  });
+
   it('committed doc is in sync with the registry (drift gate)', () => {
     expect(existsSync(DOC_PATH)).toBe(true);
     const committed = readFileSync(DOC_PATH, 'utf-8');

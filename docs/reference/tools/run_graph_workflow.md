@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: run_graph_workflow'
 description: 'Run a DAG workflow with per-node checkpoints + audit trail (linear → `run_workflow`)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, run_graph_workflow]
 ---

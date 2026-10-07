@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: cancel_job'
 description: 'Cancel an async-mode job; aborts in-flight voters and workers — idempotent (#3042)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, cancel_job]
 ---

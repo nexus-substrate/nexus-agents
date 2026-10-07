@@ -1,6 +1,8 @@
 ---
 title: 'Context Load Balancing Strategy'
 description: 'Strategy for distributing work across Claude, Codex, and Gemini CLIs'
+diataxis: explanation
+audience: user
 tier: 2
 keywords:
   - routing

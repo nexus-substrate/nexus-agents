@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: list_available_models'
 description: 'Probe all model-discovery transports (OpenRouter API + opencode/claude/codex/gemini CLIs) and report per-transport health — validates the CLIs/APIs are reachable (#3406)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, list_available_models]
 ---

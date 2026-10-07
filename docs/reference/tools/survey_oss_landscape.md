@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: survey_oss_landscape'
 description: 'Transient OSS project search (license, stars, last-commit) via GitHub'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, survey_oss_landscape]
 ---

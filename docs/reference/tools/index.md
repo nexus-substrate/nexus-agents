@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool Reference'
 description: 'Per-tool reference for all 47 registered nexus-agents MCP tools, generated from the tool manifest and input schemas.'
+diataxis: reference
+audience: user
 tier: 1
 keywords: [mcp, tools, reference, api]
 ---

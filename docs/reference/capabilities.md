@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: user
+---
+
 # Repository Capabilities Index
 
 **Package Version:** 11.1.6

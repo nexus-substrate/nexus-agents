@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: memory_write'
 description: 'Write to typed memory backends'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, memory_write]
 ---

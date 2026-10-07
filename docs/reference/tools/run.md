@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: run'
 description: 'Default entry point — give a goal, MetaOrchestrator picks the strategy; returns the routing decision (execute:false, read-only) or runs it inline (execute:true; dev-pipeline+pipeline+research+consensus wired) (#3548)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, run]
 ---

@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: vendor_publishing_audit'
 description: 'Look up a vendor''s signing infrastructure (GPG keys, URL patterns, signature shape)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, vendor_publishing_audit]
 ---

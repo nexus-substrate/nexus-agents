@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: run_dev_pipeline'
 description: 'Full dev pipeline: research, plan, vote, implement, QA'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, run_dev_pipeline]
 ---

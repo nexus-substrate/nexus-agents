@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: research_add_source'
 description: 'Add a NON-PAPER source (repo/tool/blog) — for arXiv papers use `research_add`'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, research_add_source]
 ---

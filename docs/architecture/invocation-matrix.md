@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Invocation Matrix
 
 Component call patterns for nexus-agents. Cross-reference with [wiring-graph.json](./wiring-graph.json).

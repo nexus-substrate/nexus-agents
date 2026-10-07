@@ -371,11 +371,15 @@ function escapeCell(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
+/** Diataxis type + audience every generated tool page declares (#7198). */
+const DIATAXIS_FRONTMATTER = ['diataxis: reference', 'audience: user'] as const;
+
 export function renderToolPage(doc: ToolDoc): string {
   const lines: string[] = [];
   lines.push('---');
   lines.push(`title: ${yamlQuote(`MCP Tool: ${doc.name}`)}`);
   lines.push(`description: ${yamlQuote(doc.short)}`);
+  lines.push(...DIATAXIS_FRONTMATTER);
   lines.push('tier: 2');
   lines.push('keywords: [mcp, tool, reference, ' + doc.name + ']');
   lines.push('---');
@@ -413,6 +417,7 @@ function renderIndexPage(docs: ToolDoc[]): string {
   lines.push(
     `description: 'Per-tool reference for all ${String(docs.length)} registered nexus-agents MCP tools, generated from the tool manifest and input schemas.'`
   );
+  lines.push(...DIATAXIS_FRONTMATTER);
   lines.push('tier: 1');
   lines.push('keywords: [mcp, tools, reference, api]');
   lines.push('---');

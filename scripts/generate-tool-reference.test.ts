@@ -16,6 +16,13 @@ import { TOOL_MANIFEST } from '../packages/nexus-agents/src/mcp/tools/tool-manif
 const ROOT = join(import.meta.dirname, '..');
 const TOOLS_DOC_DIR = join(ROOT, 'docs', 'reference', 'tools');
 
+/** The YAML frontmatter block at the top of a generated page (#7198). */
+function frontmatterOf(md: string): string {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(md);
+  if (match === null) throw new Error('page has no frontmatter block');
+  return match[1] ?? '';
+}
+
 describe('generate-tool-reference', () => {
   it('#6225 documents dispatch without advertising the removed mode alias', async () => {
     const docs = await collectToolDocs();
@@ -90,6 +97,22 @@ describe('generate-tool-reference', () => {
     expect(md).toContain('| Parameter | Type | Required | Constraints | Description |');
     // The escaped enum separator must appear in the rendered cell.
     expect(md).toContain('simple_majority \\| supermajority');
+  });
+
+  it('declares diataxis reference and user audience on every tool page (#7198)', async () => {
+    const docs = await collectToolDocs();
+    expect(docs.length).toBeGreaterThan(0);
+    for (const doc of docs) {
+      const front = frontmatterOf(renderToolPage(doc));
+      expect(front).toMatch(/^diataxis: reference$/m);
+      expect(front).toMatch(/^audience: user$/m);
+    }
+  });
+
+  it('declares diataxis reference and user audience on the committed index (#7198)', () => {
+    const front = frontmatterOf(readFileSync(join(TOOLS_DOC_DIR, 'index.md'), 'utf-8'));
+    expect(front).toMatch(/^diataxis: reference$/m);
+    expect(front).toMatch(/^audience: user$/m);
   });
 
   it('keeps the committed pages in sync with a fresh generation (drift gate)', async () => {

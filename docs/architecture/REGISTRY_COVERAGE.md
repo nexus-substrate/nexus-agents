@@ -1,6 +1,8 @@
 ---
 title: Registry-Coverage CI Gate Design
 description: Catch wiring-completeness regressions where registry entries get added but peer files miss the update
+diataxis: explanation
+audience: project
 tier: 2
 keywords: [governance, ci, registry, wiring, coverage, gate]
 ---

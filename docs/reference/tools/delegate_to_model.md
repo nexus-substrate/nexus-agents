@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: delegate_to_model'
 description: 'Pick the best-fit existing model for a task (no registry change)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, delegate_to_model]
 ---

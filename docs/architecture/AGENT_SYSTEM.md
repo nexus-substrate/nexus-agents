@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: user
+---
+
 # Agent System Architecture
 
 **Tier 3** | Deep technical documentation for agent development

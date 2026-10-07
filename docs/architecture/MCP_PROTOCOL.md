@@ -1,6 +1,8 @@
 ---
 title: 'MCP Protocol Architecture'
 description: 'MCP 2025-11-25 server implementation for Claude Desktop integration'
+diataxis: explanation
+audience: user
 tier: 2
 keywords:
   - mcp

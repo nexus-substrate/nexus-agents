@@ -1,6 +1,8 @@
 ---
 title: 'Consensus Protocols Architecture'
 description: Multi-agent voting algorithms, catfish contrarian role, and structured rejection workflow
+diataxis: explanation
+audience: user
 tier: 2
 keywords: [consensus, voting, multi-agent, catfish, rejection, protocols, architecture]
 ---

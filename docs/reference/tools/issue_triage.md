@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: issue_triage'
 description: 'Triage GitHub issues with trust classification'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, issue_triage]
 ---

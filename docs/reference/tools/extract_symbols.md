@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: extract_symbols'
 description: 'TypeScript-compiler-API AST symbols from a SINGLE file (functions/classes/types)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, extract_symbols]
 ---
