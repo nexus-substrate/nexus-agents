@@ -96,6 +96,88 @@ describe('runGraphPipeline', () => {
     expect(result.error).toContain('nonexistent');
   });
 
+  it.each(['approved', 'rejected', 'no_quorum'] as const)(
+    'preserves a %s vote and its record id in a dry run (#7240)',
+    async (kind) => {
+      const stages = createMockStages();
+      const vote: VoteResult = {
+        kind,
+        approvalPercentage: kind === 'approved' ? 83 : 0,
+        voteRecordId: `vr-${kind}`,
+        feedback: 'Revise the plan',
+        reason: 'Missing voter',
+      };
+      vi.mocked(stages.vote).mockResolvedValue(vote);
+
+      const result = await runGraphPipeline(
+        'Build feature',
+        DEV_PIPELINE_TEMPLATE,
+        createDevStageRegistry(stages),
+        { dryRun: true }
+      );
+
+      expect(result.success).toBe(kind === 'approved');
+      const evidence = kind === 'approved' ? result.finalState : result.errorDetail;
+      expect(evidence?.[K.VOTE_RESULT]).toMatchObject({ vote });
+      if (kind !== 'approved') expect(result.finalState[K.VOTE_RESULT]).toBeNull();
+      expect(stages.decompose).not.toHaveBeenCalled();
+      expect(stages.implement).not.toHaveBeenCalled();
+    }
+  );
+
+  it('still blocks implementation after a rejected vote in a full run (#7240)', async () => {
+    const stages = createMockStages();
+    vi.mocked(stages.vote).mockResolvedValue({
+      kind: 'rejected',
+      approvalPercentage: 0,
+      feedback: 'Revise',
+      voteRecordId: 'vr-rejected',
+    });
+
+    const result = await runGraphPipeline(
+      'Build feature',
+      DEV_PIPELINE_TEMPLATE,
+      createDevStageRegistry(stages)
+    );
+
+    expect(result.success).toBe(false);
+    expect(stages.implement).not.toHaveBeenCalled();
+  });
+
+  it('fails a dry run when the voter errors without producing a verdict (#7240)', async () => {
+    const stages = createMockStages();
+    vi.mocked(stages.vote).mockRejectedValue(new Error('Voter unavailable'));
+
+    const result = await runGraphPipeline(
+      'Build feature',
+      DEV_PIPELINE_TEMPLATE,
+      createDevStageRegistry(stages),
+      { dryRun: true }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.finalState[K.VOTE_RESULT]).toBeNull();
+    expect(stages.implement).not.toHaveBeenCalled();
+  });
+
+  it('keeps a terminal vote rejection failed when dryRun is false (#7240)', async () => {
+    const stages = createMockStages();
+    vi.mocked(stages.vote).mockResolvedValue({
+      kind: 'rejected',
+      approvalPercentage: 0,
+      feedback: 'Revise',
+    });
+
+    const result = await runGraphPipeline(
+      'Build feature',
+      { ...DEV_PIPELINE_TEMPLATE, stages: ['research', 'plan', 'vote'] },
+      createDevStageRegistry(stages),
+      { dryRun: false }
+    );
+
+    expect(result.success).toBe(false);
+  });
+
   it('handles empty template gracefully', async () => {
     const template: PipelineTemplate = { id: 'empty', name: 'Empty', stages: [] };
     const registry = new Map();

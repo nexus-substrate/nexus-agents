@@ -60,6 +60,8 @@ export interface GraphPipelineResult {
   readonly durationMs: number;
   readonly finalState: Readonly<Record<string, unknown>>;
   readonly error?: string | undefined;
+  /** Failed stages’ output for error reporting; never committed to finalState. */
+  readonly errorDetail?: Readonly<Record<string, unknown>>;
   /**
    * Set when the run was a dry run. Mirrors `DevPipelineResult.dryRun`: a
    * consumer reading `success` alone reported a truncated dry run as a full
@@ -215,6 +217,7 @@ async function executeAndReport(args: ExecuteAndReportArgs): Promise<GraphPipeli
       // see how far the run got before it failed.
       finalState: result.value.finalState,
       error: failures,
+      ...failedNodeDetails(result.value.nodeResults),
       ...stamp(coverage, options),
     };
   }
@@ -244,6 +247,17 @@ function stamp(
   options: GraphPipelineOptions | undefined
 ): StageCoverage & { dryRun?: true } {
   return { ...coverage, ...(options?.dryRun === true ? { dryRun: true as const } : {}) };
+}
+
+/** Preserve failed outputs for callers without applying them to graph state. */
+function failedNodeDetails(nodeResults: readonly NodeResult[]): {
+  errorDetail?: Readonly<Record<string, unknown>>;
+} {
+  const details = nodeResults
+    .filter((node) => node.status === 'failed' && node.errorDetail !== undefined)
+    .map((node) => node.errorDetail);
+  if (details.length === 0) return {};
+  return { errorDetail: Object.assign({}, ...details) as Record<string, unknown> };
 }
 
 /**

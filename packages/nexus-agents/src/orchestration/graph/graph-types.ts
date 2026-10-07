@@ -282,6 +282,8 @@ export interface NodeResult {
   readonly durationMs: number;
   readonly status: 'success' | 'failed' | 'skipped' | 'interrupted';
   readonly error?: string;
+  /** Output retained from a failed handler for reporting, never merged into state. */
+  readonly errorDetail?: Readonly<Record<string, unknown>>;
   /**
    * Coarse failure category for a `failed` result (#3534, selective-retry).
    * Classifies the failure so retry logic can gate on it; only set on failure.

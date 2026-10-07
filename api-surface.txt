@@ -4413,6 +4413,7 @@ InterfaceDeclaration GraphPipelineResult
   readonly dryRun?: true | undefined
   readonly durationMs: number
   readonly error?: string | undefined
+  readonly errorDetail?: Readonly<Record<string, unknown>> | undefined
   readonly finalState: Readonly<Record<string, unknown>>
   readonly stagesPlanned: number
   readonly stagesRun: number
@@ -6018,6 +6019,7 @@ InterfaceDeclaration NodeResult
   readonly durationMs: number
   readonly error?: string | undefined
   readonly errorCategory?: "business" | "internal" | "permission" | "transient" | "validation" | undefined
+  readonly errorDetail?: Readonly<Record<string, unknown>> | undefined
   readonly gotoTarget?: string | undefined
   readonly interrupt?: Interrupt | undefined
   readonly isRetryable?: boolean | undefined
