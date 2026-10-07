@@ -19,6 +19,15 @@ const siteCss = readFileSync(new URL('../styles/tokens.css', import.meta.url), '
 /** The effective palette: remarque's defaults, then this site's overrides. */
 const palette: Palette = new Map([...parsePalette(remarqueCss), ...parsePalette(siteCss)]);
 
+/**
+ * remarque declares --color-link as an alias (`var(--color-accent)`), which
+ * parsePalette does not read. Resolve it here so link pairs are measured;
+ * if the alias changes shape, `pair()` finds no value and the test fails.
+ */
+const LINK_TARGET = /--color-link:\s*var\((--color-[a-z-]+)\)/.exec(remarqueCss)?.[1];
+const linkValue = LINK_TARGET === undefined ? undefined : palette.get(LINK_TARGET);
+if (linkValue !== undefined) palette.set('--color-link', linkValue);
+
 describe('oklchLuminance / luminanceGrade', () => {
   it('maps white to grade 0 and black to grade 100', () => {
     expect(oklchLuminance([1, 0, 0])).toBeCloseTo(1, 3);
@@ -62,6 +71,11 @@ describe('parsePalette', () => {
     expect(parsePalette('').size).toBe(0);
   });
 
+  it('resolved the --color-link alias to a palette slot', () => {
+    expect(LINK_TARGET).toBe('--color-accent');
+    expect(palette.get('--color-link')).toBeDefined();
+  });
+
   it('found the remarque palette (a vacuous parse would pass every pair)', () => {
     expect(palette.size).toBeGreaterThanOrEqual(20);
   });
@@ -91,6 +105,11 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['--color-error', '--color-bg'],
   ['--color-success', '--color-bg'],
   ['--color-warning', '--color-bg'],
+  // Links inside callouts sit on the callout's tinted background.
+  ['--color-link', '--color-accent-subtle'],
+  ['--color-link', '--color-success-subtle'],
+  ['--color-link', '--color-warning-subtle'],
+  ['--color-link', '--color-error-subtle'],
   ...[
     'keyword',
     'string',
