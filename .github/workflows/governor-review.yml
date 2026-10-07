@@ -322,12 +322,15 @@ jobs:
           # empty APPROVALS/LABELS the gate reads as "nobody approved" (#5685).
           # LABEL_ACTOR keeps its tolerant `|| echo ''` — empty is its documented
           # indeterminate, and the trailing `||` still catches a failure there.
-          # LABELS joins inside `--jq` so it has no pipe to mask (#5731);
-          # APPROVALS keeps the streaming filter + shell join because gh applies
-          # `--jq` PER PAGE under `--paginate`, and `--slurp` is unverified here.
+          # Capture gh on its own so its failure stops the step (#5731).
+          # --jq runs PER PAGE, and gh rejects --slurp with --jq. A separate
+          # jq pass dedupes/sorts all pages and preserves the trailing space;
+          # no approvals stays empty. LABELS joins in its non-paginated --jq.
           set -o pipefail
           APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
-            --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
+            --paginate --jq '.[] | select(.state == "APPROVED") | .user.login')
+          APPROVALS=$(jq -Rrs 'split("\n") | map(select(length > 0)) | unique |
+            if length == 0 then "" else join(" ") + " " end' <<< "$APPROVALS")
           LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
             --jq '[.labels[].name] | join(",")')
           # #4690: WHO applied the ratification label, not merely that it is
@@ -578,8 +581,11 @@ jobs:
             PR_HEAD_COMMIT_FILES=""
             PR_PRIOR_HEADS=""
           else
+            # Same pipe-free capture/global join as the pre-merge job (#5731).
             APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
-              --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
+              --paginate --jq '.[] | select(.state == "APPROVED") | .user.login')
+            APPROVALS=$(jq -Rrs 'split("\n") | map(select(length > 0)) | unique |
+              if length == 0 then "" else join(" ") + " " end' <<< "$APPROVALS")
             LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
               --jq '[.labels[].name] | join(",")')
             # Must mirror the pre-merge job: the gate step below consumes
