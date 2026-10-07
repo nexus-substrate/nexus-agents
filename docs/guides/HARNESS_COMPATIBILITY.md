@@ -3,6 +3,9 @@ title: Harness Compatibility Guide
 description: Wire nexus-agents as an MCP peer from OpenCode, Codex CLI, Cursor, Aider, and Cline
 diataxis: how-to
 audience: user
+prerequisites:
+  - 'nexus-agents installed globally (`npm install -g nexus-agents`) and verified with `nexus-agents doctor`.'
+  - 'Without a Claude CLI: at least one model API key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_AI_API_KEY`), or a custom gateway (`NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`).'
 tier: 2
 keywords: [harness, mcp, opencode, codex, cursor, aider, cline, integration]
 related_files: [AGENTS.md, CLAUDE.md, docs/guides/CUSTOM_ENDPOINT_SETUP.md, docs/ENTRYPOINTS.md]
@@ -12,7 +15,7 @@ related_files: [AGENTS.md, CLAUDE.md, docs/guides/CUSTOM_ENDPOINT_SETUP.md, docs
 
 nexus-agents runs as a stdio MCP server — every harness below consumes it through the same `nexus-agents --mode=server` command. What changes per harness is **where you register the server** and **how the harness discovers `.rules/` + `AGENTS.md`**. This guide gives a tested snippet for each.
 
-## Prerequisites (all harnesses)
+## Install and environment (all harnesses)
 
 ```bash
 npm install -g nexus-agents

@@ -3,6 +3,10 @@ title: Local pr_review (subscription auth)
 description: Run multi-voter PR review on your local machine using your Claude/Codex/Gemini CLI subscription auth — instead of CI with API keys
 diataxis: how-to
 audience: project
+prerequisites:
+  - 'Claude CLI installed and authenticated (or Codex / Gemini / OpenCode CLI).'
+  - '`gh` CLI authenticated against the repo.'
+  - 'Node 24.x.'
 tier: 2
 keywords: [pr-review, local, subscription, auth, claude-pro]
 ---
@@ -12,12 +16,6 @@ keywords: [pr-review, local, subscription, auth, claude-pro]
 For nexus-agents users on Anthropic's subscription plan (Claude Pro/Max), the GitHub Actions workflow at `.github/workflows/pr-review.yml` is **dormant by default**. Running multi-voter review in CI requires a metered API key (`ANTHROPIC_API_KEY`), and using a subscription account's credentials in automated CI violates the subscription ToS.
 
 The validated path for subscription users is `scripts/pr-review-local.ts` — runs on your machine, voters route through your local Claude CLI (which uses your subscription auth interactively), and posts the comment back via `gh`.
-
-## Prerequisites
-
-- Claude CLI installed and authenticated (or Codex / Gemini / OpenCode CLI)
-- `gh` CLI authenticated against the repo
-- Node 24.x
 
 ## One-shot
 

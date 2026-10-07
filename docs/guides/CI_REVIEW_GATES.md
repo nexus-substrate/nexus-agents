@@ -4,6 +4,9 @@ description: 'Fail a GitHub Actions job when a nexus-agents voter panel does not
 diataxis: how-to
 audience: user
 order: 20
+prerequisites:
+  - 'A provider API key stored as a repository secret, for example `ANTHROPIC_API_KEY`. A CI runner usually has no signed-in coding CLI, so the vote runs every seat through the key.'
+  - 'A diff of at most 256 KiB. `--artifact-file` refuses larger files.'
 tier: 2
 keywords: [ci, github-actions, review, gate, vote, pull-request]
 related_files:
@@ -34,14 +37,6 @@ Two other surfaces look like gates but are not suitable on their own:
 - The `pr_review` and `run_quality_gate` MCP tools need an MCP client. There is
   no CLI command that wraps them. Use them from an agent session; see
   [Local pr_review](./PR_REVIEW_LOCAL.md).
-
-## Prerequisites
-
-- A provider API key stored as a repository secret, for example
-  `ANTHROPIC_API_KEY`. A CI runner usually has no signed-in coding CLI, so the
-  vote runs every seat through the key. See
-  [Which CLIs and keys do I need?](../reference/cli-and-key-requirements.md).
-- A diff of at most 256 KiB. `--artifact-file` refuses larger files.
 
 ## Add the workflow
 
@@ -132,5 +127,6 @@ rejected or errored otherwise.
 ## Related
 
 - [What a vote result means](../architecture/VOTE_RESULTS.md)
+- [Which CLIs and keys do I need?](../reference/cli-and-key-requirements.md) — why a CI runner needs a provider key
 - [CLI reference](../reference/cli.md)
 - [Local pr_review](./PR_REVIEW_LOCAL.md)

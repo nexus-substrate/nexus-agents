@@ -11,6 +11,7 @@ import hastAlerts from './src/plugins/hast-alerts.ts';
 import hastStripRepoBreadcrumb from './src/plugins/hast-strip-repo-breadcrumb.ts';
 import hastSummaryBox from './src/plugins/hast-summary-box.ts';
 import hastProcessList from './src/plugins/hast-process-list.ts';
+import patternCoverage from './src/integrations/pattern-coverage.ts';
 
 // Code colors come from remarque's --color-syntax-* palette tokens, so they
 // follow the light/dark toggle. Pass the theme OBJECT, not the
@@ -29,7 +30,9 @@ export default defineConfig({
   base: '/nexus-agents',
   // pagefind indexes dist/ in astro:build:done; only pages carrying
   // data-pagefind-body (the docs and API pages) are indexed.
-  integrations: [svelte(), sitemap(), pagefind()],
+  // patternCoverage fails the build when no page renders the how-to summary
+  // box, which renders only from optional frontmatter (#7288).
+  integrations: [svelte(), sitemap(), pagefind(), patternCoverage()],
   prefetch: true,
   markdown: {
     // Astro 7 replaced the remark/unified pipeline with Sätteri as the default

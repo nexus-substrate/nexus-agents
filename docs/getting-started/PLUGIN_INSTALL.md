@@ -3,6 +3,9 @@ title: 'Claude Code Plugin Install'
 description: Install nexus-agents as a Claude Code plugin — exposes 47 MCP tools, 33 skills, 12 agent mirrors, and governance hooks
 diataxis: how-to
 audience: user
+prerequisites:
+  - 'Node.js 24.x LTS, required for the MCP server.'
+  - 'Claude Code, or another agent that reads `.claude-plugin/` directly.'
 tier: 2
 keywords: [plugin, claude-code, installation, marketplace, mcp, getting-started]
 ---
@@ -18,11 +21,6 @@ Nexus-agents ships as a Claude Code plugin. Installing it exposes:
 - 34 skills (research-and-vote, implement-feature, bug-fix, …)
 - 12 agent mirrors (security, architecture, code, research, testing experts)
 - 2 governance hooks (fitness-gate, secret-scan)
-
-## Prerequisites
-
-- **Node.js 24.x LTS** — required for the MCP server
-- **Claude Code** (or another agent that reads `.claude-plugin/` directly)
 
 ## Install
 
