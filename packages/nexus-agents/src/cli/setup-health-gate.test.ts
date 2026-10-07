@@ -92,7 +92,6 @@ describe('setup health gate (#2137)', () => {
         skipHooks: true,
         skipConfig: true,
         skipOpencode: true,
-        skipGemini: true,
         skipCodex: true,
       });
     });
@@ -114,7 +113,6 @@ describe('setup health gate (#2137)', () => {
         skipHooks: true,
         skipConfig: true,
         skipOpencode: true,
-        skipGemini: true,
         skipCodex: true,
       });
     });
@@ -148,7 +146,6 @@ describe('setup health gate (#2137)', () => {
         skipHooks: true,
         skipConfig: true,
         skipOpencode: true,
-        skipGemini: true,
         skipCodex: true,
       });
     });
@@ -183,7 +180,6 @@ describe('setup health gate (#2137)', () => {
         skipHooks: true,
         skipConfig: true,
         skipOpencode: true,
-        skipGemini: true,
         skipCodex: true,
       });
     });
@@ -217,7 +213,6 @@ describe('setup health gate (#2137)', () => {
       skipHooks: true,
       skipConfig: true,
       skipOpencode: true,
-      skipGemini: true,
       skipCodex: true,
     });
 
@@ -237,7 +232,6 @@ describe('setup health gate (#2137)', () => {
         skipHooks: true,
         skipConfig: true,
         skipOpencode: true,
-        skipGemini: true,
         skipCodex: true,
       });
     });
@@ -261,7 +255,6 @@ describe('setup health gate (#2137)', () => {
         skipHooks: true,
         skipConfig: true,
         skipOpencode: true,
-        skipGemini: true,
         skipCodex: true,
       });
     });
@@ -291,7 +284,6 @@ describe('setup health gate (#2137)', () => {
       skipHooks: true,
       skipConfig: true,
       skipOpencode: true,
-      skipGemini: true,
       skipCodex: true,
     });
 

@@ -153,7 +153,7 @@ it works in both.
 | `review`        | `<url>`                                                             | orchestrator | Adversarial review of a GitHub PR                        |
 | `workflow`      | `list` / `run <name>`                                               | orchestrator | `list` works in any mode                                 |
 | `research`      | `add` / `discover` / `review` / `prioritize` / `status` / `overlap` | any          | Registry management plus technique-implementation status |
-| `setup`         | `[--skip-mcp\|rules\|hooks\|opencode\|gemini\|codex\|config]`       | any          | MCP server + hooks + per-CLI configs in one shot         |
+| `setup`         | `[--skip-mcp\|rules\|hooks\|opencode\|codex\|config]`               | any          | MCP server + hooks + per-CLI configs in one shot         |
 | `config`        | `init` / `get` / `set` / `list` / `export` / `import`               | any          | `init` generates a starter `nexus-agents.yaml`           |
 | `expert`        | `list` / `create` / `execute`                                       | any          | Built-in + custom experts                                |
 | `init`          | `--portable [--mcp-config] [--install] [--uninstall]`               | any          | Bootstraps a workspace-local `.nexus-agents/` install    |

@@ -28,8 +28,6 @@ export const SetupOptionsSchema = z.object({
   skipConfig: z.boolean().default(false),
   /** Skip OpenCode MCP configuration (#1253) */
   skipOpencode: z.boolean().default(false),
-  /** Skip Gemini CLI MCP configuration (#1259) */
-  skipGemini: z.boolean().default(false),
   /** Skip Codex CLI MCP configuration (#1263) */
   skipCodex: z.boolean().default(false),
   /** Show what would be done without making changes */
@@ -82,13 +80,7 @@ export interface McpJsonConfig {
  * Project type detection.
  */
 export type ProjectType =
-  | 'typescript'
-  | 'javascript'
-  | 'python'
-  | 'rust'
-  | 'go'
-  | 'java'
-  | 'unknown';
+  'typescript' | 'javascript' | 'python' | 'rust' | 'go' | 'java' | 'unknown';
 
 /**
  * Project information.

@@ -1,7 +1,7 @@
 /**
  * nexus-agents/cli - CLI detection error classification (#2152)
  *
- * Small helper shared by `setup-codex.ts`, `setup-gemini.ts`, `setup-opencode.ts`
+ * Small helper shared by `setup-codex.ts` and `setup-opencode.ts`
  * (and later `setup-cli-detection.ts` once #2155 consolidates them) so that a
  * `which`/`where` or `<cli> --version` failure is classified instead of
  * silently collapsed into `installed: false`.
@@ -73,7 +73,7 @@ export const DETECTION_ERROR_SOLUTIONS: Record<DetectionError, (cliBinary: strin
 
 /**
  * One-line actionable recovery hint for a detection error, with a docs pointer.
- * `cliBinary` is the runnable binary name (e.g. `gemini`); defaults the class to
+ * `cliBinary` is the runnable binary name (e.g. `codex`); defaults the class to
  * `not-found` when unclassified.
  */
 export function detectionRecoveryHint(cliBinary: string, detectionError?: DetectionError): string {

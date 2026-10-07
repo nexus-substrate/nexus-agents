@@ -432,6 +432,17 @@ describe('Setup Command', () => {
       }
     });
 
+    // #4389: the step wrote an MCP entry into ~/.gemini/settings.json for the
+    // retired `gemini` binary. `agy`, which now serves the Gemini arm, does not
+    // read that file (`agy mcp list` reports no servers while it holds one).
+    it('runs no Gemini MCP step, because agy does not read its config file (#4389)', () => {
+      const result = runSetup({ dryRun: true });
+
+      const names = result.steps.map((s) => s.name);
+      expect(names).toContain('Validation');
+      expect(names).not.toContain('Gemini MCP');
+    });
+
     it('should include MCP snippet in result', () => {
       const result = runSetup({ dryRun: true });
 
