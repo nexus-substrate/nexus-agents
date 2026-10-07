@@ -26,6 +26,10 @@ import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import { AuditLogger, verifyChain } from '../audit/audit-logger.js';
 import { InMemoryAuditStorage } from '../audit/audit-storage.js';
 import type { AuditLogConfig } from '../audit/audit-types.js';
+import { createVoteStage } from './agent-executor-vote.js';
+import { createBudgetGuard } from './budget-guard.js';
+import { buildStructuredOutput } from '../mcp/tools/dev-pipeline-output.js';
+import * as consensusVote from '../mcp/tools/consensus-vote.js';
 
 // #3472: the dev-pipeline now recalls prior research from the registry on every
 // run. Mock it to empty by default so existing assertions (which count `- `
@@ -437,6 +441,7 @@ describe('runDevPipeline', () => {
       kind: 'no_quorum',
       reason: 'catfish voter errored',
       approvalPercentage: 86,
+      voteRecordId: 'vr-no-quorum',
     } satisfies VoteResult);
     const stages = createMockStages({ vote });
 
@@ -632,6 +637,79 @@ describe('runDevPipeline', () => {
     expect(result.planStatus).toBe('unapproved');
     expect(result.planVoteDecision).toBe('rejected');
     expect(result.planVoteRecordId).toBe('vr-r');
+  });
+
+  it.each([true, false])(
+    '#7250: omits unmeasured approval when the real vote stage crashes (dryRun=%s)',
+    async (dryRun) => {
+      const executeVoting = vi
+        .spyOn(consensusVote, 'executeVoting')
+        .mockRejectedValue(new Error('Adapters down'));
+      const stages = createMockStages({
+        vote: createVoteStage({ config: {}, guard: createBudgetGuard(), startStage: vi.fn() }),
+      });
+
+      const result = await runDevPipeline('Build feature X', stages, { dryRun });
+      const output = buildStructuredOutput(result, false);
+
+      expect(executeVoting).toHaveBeenCalledTimes(3);
+      expect(result).toMatchObject({
+        completed: false,
+        planStatus: 'no_quorum',
+        planVoteDecision: 'no_quorum',
+        planVoteReason: expect.stringContaining('Adapters down'),
+      });
+      expect(result).not.toHaveProperty('planVoteApprovalPercentage');
+      expect(result).not.toHaveProperty('planVoteRecordId');
+      expect(output).not.toHaveProperty('planVoteApprovalPercentage');
+      expect(output['planVoteReason']).toContain('Adapters down');
+      expect(stages.implement).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([true, false])('#7250: omits approval when no vote ran (dryRun=%s)', async (dryRun) => {
+    const stages = createMockStages();
+
+    const result = await runDevPipeline('Build feature X', stages, {
+      dryRun,
+      maxVoteIterations: 0,
+    });
+
+    expect(result).toMatchObject({
+      completed: false,
+      planStatus: 'unapproved',
+      planVoteFeedback: 'No plan vote was run',
+    });
+    expect(result).not.toHaveProperty('planVoteApprovalPercentage');
+    expect(result).not.toHaveProperty('planVoteDecision');
+    expect(buildStructuredOutput(result, false)).not.toHaveProperty('planVoteApprovalPercentage');
+    expect(stages.vote).not.toHaveBeenCalled();
+    expect(stages.implement).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 67])('#7250: keeps measured %s%% approval for a recorded no_quorum', async (pct) => {
+    const stages = createMockStages({
+      vote: vi.fn().mockResolvedValue({
+        kind: 'no_quorum',
+        reason: 'Missing voter',
+        approvalPercentage: pct,
+        voteRecordId: 'vr-measured',
+      } satisfies VoteResult),
+    });
+
+    const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
+    const evidence = {
+      completed: false,
+      planStatus: 'no_quorum',
+      planVoteDecision: 'no_quorum',
+      planVoteReason: 'Missing voter',
+      planVoteApprovalPercentage: pct,
+      planVoteRecordId: 'vr-measured',
+    };
+
+    expect(result).toMatchObject(evidence);
+    expect(buildStructuredOutput(result, false)).toMatchObject(evidence);
+    expect(stages.implement).not.toHaveBeenCalled();
   });
 
   it('leaves a full run result without the dry-run vote fields', async () => {
