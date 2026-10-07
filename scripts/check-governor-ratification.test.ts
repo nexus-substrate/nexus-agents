@@ -102,6 +102,26 @@ describe('evaluateRatification', () => {
     if (verdict.kind === 'ratified') expect(verdict.via).toBe('owner-approval');
   });
 
+  it.each([
+    ['Alice', 'bob'],
+    ['bob', 'Alice'],
+  ])('approval ordering only chooses the diagnostic owner (#5731): %s, %s', (first, second) => {
+    // jq unique uses codepoint order; sort -u used the runner's locale.
+    // Even with multiple owners this cannot change the ratification decision.
+    const verdict = evaluateRatification({
+      touchedGovernorFiles: ['CODEOWNERS'],
+      approvals: [first, second],
+      labels: [],
+      owners: ['alice', 'bob'],
+      governorPatternCount: GOVERNOR_PATTERNS.length,
+    });
+    expect(verdict).toEqual({
+      kind: 'ratified',
+      via: 'owner-approval',
+      detail: `approved by @${first}`,
+    });
+  });
+
   it('ratifies on the explicit ratification label, applied by an owner', () => {
     // #4690 added `labelAppliedBy`. Before that this case passed with no
     // applier at all, which is the gap that change closes — see the

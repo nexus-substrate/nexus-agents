@@ -1497,9 +1497,6 @@ describe('the LABELS evidence expression has no shell pipe to mask (#5731)', () 
   // of yielding an empty LABELS the gate reads as "not ratified". This is the
   // structural half: with the join done inside `--jq` there is no pipe, so the
   // next pipeline someone adds to these blocks cannot reintroduce the class.
-  // APPROVALS keeps its streaming filter + shell join deliberately: under
-  // `--paginate` gh applies `--jq` per page, so an array-wrapping filter would
-  // emit one joined string PER PAGE, and `--slurp` is unverified on the runner.
   const WORKFLOW = readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8');
   const JQ = `--jq '[.labels[].name] | join(",")'`;
 
@@ -1515,6 +1512,148 @@ describe('the LABELS evidence expression has no shell pipe to mask (#5731)', () 
     expect(assignments).toHaveLength(2);
     expect(WORKFLOW).not.toMatch(/--jq '\.labels\[\]\.name' \| tr/);
   });
+});
+
+describe('ratification evidence captures all pages without shell pipes (#5731)', () => {
+  const workflow = parseYaml(
+    readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8')
+  ) as { jobs: Record<string, { steps: Array<{ id?: string; run?: string }> }> };
+  const jobs = ['governor-ratification', 'governor-ratification-backstop'];
+  interface Review {
+    state: string;
+    user: { login: string };
+  }
+  const approved = (login: string): Review => ({ state: 'APPROVED', user: { login } });
+
+  function evidenceBody(job: string): string {
+    const run = workflow.jobs[job]?.steps.find((step) => step.id === 'evidence')?.run ?? '';
+    // Include formatting between the first approval fetch and the label fetch.
+    // Execute these actual assignments, rather than a copy of the intended fix.
+    const body = run.match(
+      /^\s*APPROVALS=\$\(gh api[^\n]*\n[\s\S]*?^\s*LABELS=\$\(gh api[^\n]*\n[^\n]*\)/m
+    )?.[0];
+    expect(body, job).toBeDefined();
+    return body ?? 'exit 99';
+  }
+
+  function executeEvidence(
+    job: string,
+    pages: Review[][],
+    failure = ''
+  ): { status: number | null; stdout: string; stderr: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'governor-evidence-'));
+    try {
+      pages.forEach((page, i) => {
+        writeFileSync(join(dir, `page-${String(i)}.json`), JSON.stringify(page));
+      });
+      writeFileSync(
+        join(dir, 'pull.json'),
+        JSON.stringify({ labels: [{ name: 'bug' }, { name: 'owner-ratified' }] })
+      );
+      // Emulate gh's --jq PER PAGE using real jq; a later failure can follow
+      // successful page output. Never hide the producer's status in the stub.
+      const gh = `gh() {
+        local endpoint="$2" filter page
+        shift 2
+        if [[ "$endpoint" == */reviews ]]; then
+          [[ "$1" == --paginate && "$2" == --jq ]] || return 99
+          filter="$3"
+          for page in page-*.json; do
+            command jq -r "$filter" "$page" || return $?
+            if [[ "$FAILURE" == reviews ]]; then
+              echo 'fixture gh failure' >&2
+              return 23
+            fi
+          done
+        else
+          [[ "$1" == --jq ]] || return 99
+          if [[ "$FAILURE" == labels ]]; then
+            echo 'fixture gh failure' >&2
+            return 23
+          fi
+          command jq -r "$2" pull.json
+        fi
+      }`;
+      return spawnSync(
+        'bash',
+        [
+          '-euo',
+          'pipefail',
+          '-c',
+          `${gh}\n${evidenceBody(job)}\nprintf 'approvals=%s\\nlabels=%s\\n' "$APPROVALS" "$LABELS"`,
+        ],
+        {
+          cwd: dir,
+          encoding: 'utf-8',
+          env: {
+            ...process.env,
+            GITHUB_REPOSITORY: 'fixture/repo',
+            PR_NUMBER: '5731',
+            FAILURE: failure,
+          },
+        }
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  for (const job of jobs) {
+    it(`${job} has no shell pipeline in either evidence assignment`, () => {
+      // jq's own pipes are safe: only shell operators outside quotes count.
+      expect(evidenceBody(job).replace(/'[^']*'/g, "''")).not.toContain('|');
+    });
+
+    it.each([
+      {
+        name: 'single page',
+        pages: [[approved('zeta'), approved('alice')]],
+        output: 'alice zeta ',
+      },
+      {
+        name: 'multiple pages with duplicate approvers',
+        pages: [
+          [approved('zeta'), approved('alice')],
+          [approved('alice'), approved('bob')],
+        ],
+        output: 'alice bob zeta ',
+      },
+      {
+        name: 'mixed states and login ordering',
+        pages: [
+          [approved('a-b'), { state: 'COMMENTED', user: { login: 'ignored' } }],
+          [approved('a0'), approved('Zeta'), approved('Alice'), approved('alice')],
+        ],
+        output: 'Alice Zeta a-b a0 alice ',
+      },
+      {
+        name: 'zero approvals',
+        pages: [[{ state: 'CHANGES_REQUESTED', user: { login: 'alice' } }], []],
+        output: '',
+      },
+      { name: 'empty review page', pages: [[]], output: '' },
+      {
+        name: 'empty page followed by approval',
+        pages: [[], [approved('alice')]],
+        output: 'alice ',
+      },
+    ])(`${job}: $name preserves exact evidence bytes`, ({ pages, output }) => {
+      const result = executeEvidence(job, pages);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toBe(`approvals=${output}\nlabels=bug,owner-ratified\n`);
+      expect(result.stderr).toBe('');
+    });
+
+    it.each(['reviews', 'labels'])(
+      `${job}: gh %s failure stops before publishing evidence`,
+      (failure) => {
+        const result = executeEvidence(job, [[approved('alice')], [approved('bob')]], failure);
+        expect(result.status).toBe(23);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toBe('fixture gh failure\n');
+      }
+    );
+  }
 });
 
 describe('a governor pattern that matches nothing is not a governed path (#6034)', () => {
