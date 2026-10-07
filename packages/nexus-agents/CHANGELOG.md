@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.2.0
+
+### Minor Changes
+
+- [#7246](https://github.com/nexus-substrate/nexus-agents/pull/7246) [`9d05feb`](https://github.com/nexus-substrate/nexus-agents/commit/9d05feb60a1c85865ef2ec95b0e4a640bebfb818) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose plan-vote evidence in `run_pipeline` dry runs using the same field names as `run_dev_pipeline`: decision, measured approval percentage, persisted vote-record id, and available reason or feedback. Approved votes return this evidence in the success response; rejected and no-quorum votes retain `isError: true` and include their evidence in the structured error envelope's detail. Infrastructure failures surface their reason without reporting the fail-closed sentinel 0% as a measured approval percentage. Pipeline success/failure and graph state semantics are unchanged.
+
 ## 11.1.9
 
 ### Patch Changes
