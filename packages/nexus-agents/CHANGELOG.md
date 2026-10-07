@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 11.1.0
+
+### Minor Changes
+
+- [#7189](https://github.com/nexus-substrate/nexus-agents/pull/7189) [`229f857`](https://github.com/nexus-substrate/nexus-agents/commit/229f8578e1cd9ae12b8f8cfa3a7286e5bee8943c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run_dev_pipeline` dry runs now report the plan vote's outcome. The response and `DevPipelineResult` carry `planVoteDecision` (`approved` / `rejected` / `no_quorum`), `planVoteApprovalPercentage`, and `planVoteRecordId` when the vote wrote a ledger record. Before this, the verdict was only in the vote ledger and the logs. A terminal plan-gate stop carries the same fields. A full run's result is unchanged.
+
+  The `run_dev_pipeline` response also gains `security: { status: 'passed' | 'failed' | 'unmeasured' }`. A scan that did not run, or a result that does not say whether it ran, reports `unmeasured`, so it can no longer be mistaken for a failed check. `securityPassed` is still returned as a boolean for compatibility, but on its own it is not a verdict: read it only when `securityRan` is `true`, or read `security.status` instead. The `VoteResult` type gains an optional `voteRecordId`.
+
+### Patch Changes
+
+- [#7188](https://github.com/nexus-substrate/nexus-agents/pull/7188) [`d05d3b8`](https://github.com/nexus-substrate/nexus-agents/commit/d05d3b86f1ee4a39ea08690dec65bd2e683a64e5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents learning-metrics` no longer reports an absent measurement as a zero. With zero routings, `Success Rate` and `Avg Reward` print `unmeasured (0 routings)` instead of `0.0%` / `0.000`, and `Correlation Rate` prints `unmeasured (0 decisions)` when no decisions were recorded.
+
+  Each per-model line now names its sources. The reward comes from the LinUCB arm (`bandit`) or, for a model the bandit has no arm for, from the routing collector (`routing`). Success rate and selection share always come from the routing collector. A side with no samples prints as unmeasured. The old `reward: 0.70 | success: 0%` now reads `reward: 0.70 (bandit, 12 pulls) | success: unmeasured (0 routings)`. `ModelLearningStats` gains `rewardSource` and `routingSelectionCount`, so `--json` consumers can tell the two cases apart.
+
+  `learning-metrics --help` now prints the command's own help instead of the top-level help. `--json` now selects JSON output; before, the CLI ignored it and printed ASCII. `--export <path>` now always writes JSON, as its documentation states.
+
 ## 11.0.2
 
 ### Patch Changes
