@@ -32,8 +32,9 @@ pnpm exec tsx scripts/check-docs-indexed.ts
 
 1. Create file in appropriate `docs/` directory
 2. **REQUIRED:** Add YAML frontmatter (`title`, `description`, `tier`, `keywords`, `related_files`)
-3. **REQUIRED:** Add entry to `docs/README.md`
-4. Commit and push
+3. **Declare the Diátaxis type and audience** in the same frontmatter: `diataxis: tutorial | how-to | reference | explanation | none` and `audience: user | project`. Classify the page with `skills/diataxis` if you are unsure. `none` is only for the page kinds in `docs/ops/diataxis-none-kinds.json`. Declare both keys on any existing page you edit, too. The `Diátaxis Frontmatter` job fails when the count of undeclared pages grows (#7196)
+4. **REQUIRED:** Add entry to `docs/README.md`
+5. Commit and push
 
 ### Change Doc Pipeline
 
@@ -126,7 +127,7 @@ pnpm exec tsx scripts/inject-governance.ts check   # CI validation
      `.github/workflows/docs-check.yml` — grep for `^  [a-z-]+:` under
      `jobs:` for the current list. -->
 
-The pipeline runs a family of jobs covering: TypeDoc freshness, `capabilities.md` regeneration, link validation, docs coverage, secrets scanning, DocOps skill sync, canonical-index enforcement, markdown lint, spell check, skills/index.yaml freshness, agents/index.yaml + gap-coverage check, and governance drift. Blocking-vs-warning status is declared per job in the workflow file.
+The pipeline runs a family of jobs covering: TypeDoc freshness, `capabilities.md` regeneration, link validation, docs coverage, secrets scanning, DocOps skill sync, canonical-index enforcement, markdown lint, spell check, Diátaxis frontmatter (`scripts/check-diataxis-frontmatter.ts`, a ratchet on undeclared pages), skills/index.yaml freshness, agents/index.yaml + gap-coverage check, and governance drift. Blocking-vs-warning status is declared per job in the workflow file.
 
 ---
 

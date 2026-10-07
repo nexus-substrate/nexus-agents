@@ -111,6 +111,25 @@ skills:
       - multi-agent pipeline
       - run pipeline
       - the user asks to "build a feature"
+  - name: diataxis
+    description: |-
+      Classify, audit, restructure or generate a docs page by Diátaxis type
+      (tutorial, how-to, reference, explanation). Every verdict carries a type,
+      a confidence and quoted evidence. Owns the `diataxis:` / `audience:`
+      frontmatter contract that scripts/check-diataxis-frontmatter.ts enforces.
+      Restructure moves content and never deletes it. Use when the user says
+      "diataxis", "classify this doc", "what kind of doc is this", "doc type",
+      "split this doc", "restructure docs", "is this a tutorial".
+    path: skills/diataxis/SKILL.md
+    triggers:
+      - diataxis
+      - classify this doc
+      - what kind of doc is this
+      - doc type
+      - split this doc
+      - restructure docs
+      - is this a tutorial
+      - the user says "diataxis"
   - name: docs-chart
     description: |-
       Generate dark-mode-compatible inline SVG charts (bar, donut, line,

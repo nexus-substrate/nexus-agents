@@ -166,7 +166,7 @@ _Auto-generated from `.rules/*.md` frontmatter by `scripts/inject-governance.ts`
 
 Workflow playbooks live at `skills/<name>/SKILL.md` (canonical per the Anthropic Agent Skills spec, which OpenCode and others are adopting).
 
-- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 33 skills.
+- **Discovery for all harnesses:** read [`skills/index.yaml`](./skills/index.yaml) — `{name, description, triggers, path}` for all 34 skills.
 - When a user request matches a skill's triggers, read the full `SKILL.md` at the listed path and follow its workflow.
 - `skills/index.yaml` is regenerated via `scripts/generate-skills-index.ts` and gated in CI. Never edit it by hand.
 - **Codex Skills (#2660):** Codex's Skills primitive uses the same `SKILL.md` filename + the same required frontmatter (`name`, `description`) as the Anthropic spec — these skills are already cross-vendor compatible, no translation layer needed. Codex discovers skills under `.agents/skills/` or via `[[skills.config]]` path entries in the agent config; point either at this repo's `skills/` directory. The `name`/`description` validation in `generate-skills-index.ts` is the enforced cross-vendor contract.
@@ -586,11 +586,11 @@ If any check raises "wait, actually..." — drop the finding. Max 5 auto-filed i
 
 ## Workflows (via Skills)
 
-**33 skills registered.** Each skill's detailed steps and trigger keywords live in `skills/<name>/SKILL.md` (Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).
+**34 skills registered.** Each skill's detailed steps and trigger keywords live in `skills/<name>/SKILL.md` (Anthropic Agent Skills spec, #1828). Non-Claude agents discover via [`skills/index.yaml`](./skills/index.yaml) referenced from [AGENTS.md](./AGENTS.md).
 
-`api-and-interface-design`, `browser-testing-with-devtools`, `bug-fix`, `code-simplification`, `codex-delegator`, `context-engineering`, `deprecation-and-migration`, `dev-pipeline`, `docs-chart`, `docs-image`, `docs-mermaid`, `docs-review`, `docs-rewrite`, `documentation-management`, `dogfooding-issues`, `e2e-validation`, `gemini-delegator`, `hotfix`, `implement-feature`, `infrastructure-management`, `performance-optimization`, `pre-push-parity`, `release`, `requirements-gathering`, `research-and-vote`, `reviewing-code`, `security-advisory-response`, `security-scanning`, `self-critique`, `system-review`, `test-driven-development`, `ui-ux-design`, `version-check`
+`api-and-interface-design`, `browser-testing-with-devtools`, `bug-fix`, `code-simplification`, `codex-delegator`, `context-engineering`, `deprecation-and-migration`, `dev-pipeline`, `diataxis`, `docs-chart`, `docs-image`, `docs-mermaid`, `docs-review`, `docs-rewrite`, `documentation-management`, `dogfooding-issues`, `e2e-validation`, `gemini-delegator`, `hotfix`, `implement-feature`, `infrastructure-management`, `performance-optimization`, `pre-push-parity`, `release`, `requirements-gathering`, `research-and-vote`, `reviewing-code`, `security-advisory-response`, `security-scanning`, `self-critique`, `system-review`, `test-driven-development`, `ui-ux-design`, `version-check`
 
-_Auto-generated from `skills/index.yaml`. 33 skills._
+_Auto-generated from `skills/index.yaml`. 34 skills._
 
 <!-- GOVERNANCE:WORKFLOW_INDEX:END -->
 
@@ -641,7 +641,7 @@ _Auto-generated from source. 47 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: ac949c3ff921_
+_Governance Version: a51195131a27_
 
 <!-- GOVERNANCE:VERSION:END -->
 

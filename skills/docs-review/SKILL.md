@@ -114,6 +114,12 @@ frontmatter on tier-1/2 docs (per CLAUDE.md `FRONTMATTER_REQUIRED_FILES`
 gate), spec/RFC alignment, file-size + sprawl. Cross-doc consistency
 defers to `blog-overlap`.
 
+**Diátaxis audit (no extra points):** run `skills/diataxis` in audit mode.
+Report each mixed-mode passage, and any mismatch between the declared
+`diataxis:` type and the inferred one, as a Structure finding with its
+quoted evidence. Missing or invalid `diataxis:` / `audience:` frontmatter is a
+Structure finding too.
+
 **Audience Fit (10 pts) — fully scored here:** persona-appropriate
 readability band (advisory), reader's prior knowledge stated, length
 matches purpose, examples for the audience.
@@ -174,5 +180,6 @@ For each issue, output:
 - `skills/docs-rewrite` — the active rewrite counterpart (uses the
   same rubric for audit + validate)
 - `skills/documentation-management` — operating manual for doc work
+- `skills/diataxis` — document-type audit and the frontmatter contract
 - User-level `blog-pre-publish` — orchestrator for the prose-quality
   lenses
