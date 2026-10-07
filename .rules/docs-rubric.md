@@ -111,6 +111,12 @@ offending passage. A page that loses the full 4 is a split candidate. The
 deduction only lowers scores, so a page with no mixed passages scores exactly
 what it scored before this rule existed.
 
+Report the deduction on its own line, separate from the 100-point subtotal. Any
+no-regression rule applied to rubric scores, including `docs-rewrite`'s, checks
+the two independently: the subtotal must not decrease and the deduction must not
+increase. Removing a mixed passage therefore never offsets a regression
+elsewhere.
+
 ### 5. Audience Fit — 10 pts
 
 | Dim                             | Pts | Tag   | How to score                                                                                                                                                           |
