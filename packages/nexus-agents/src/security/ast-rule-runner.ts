@@ -222,7 +222,19 @@ function resolveWithinCwd(target: string): { resolved: string } | { error: strin
 // TS/JS-only findSourceFiles)
 // ============================================================================
 
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
+/** Directory names the walk never descends into, in addition to every dot-directory. */
+const EXCLUDED_DIR_NAMES: ReadonlySet<string> = new Set(['node_modules', 'dist']);
+
+/**
+ * Whether the walk descends into a directory entry. Dot-directories are skipped
+ * as a class (#7184), the same rule `findSourceFiles` and `governance/source-scan.ts`
+ * apply: `.git` and the gitignored `.nexus-agents/worktrees` copies are never the
+ * caller's source, and scanning the worktrees duplicated every finding. The rule
+ * applies to entries only, so a caller may still root the scan at a dot-dir.
+ */
+function isWalkedDir(name: string): boolean {
+  return !name.startsWith('.') && !EXCLUDED_DIR_NAMES.has(name);
+}
 
 /** file-extension -> ast-rule language, for the two languages this runner scans. */
 const POLYGLOT_EXT_TO_LANG: Readonly<Record<string, AstRuleLanguage>> = {
@@ -236,7 +248,8 @@ function inferRuleLang(file: string): AstRuleLanguage | null {
 }
 
 /**
- * Recursively collect `.py`/`.go` files under `dir`, bounded by `maxDepth`.
+ * Recursively collect `.py`/`.go` files under `dir`, bounded by `maxDepth`,
+ * skipping dot-directories and `node_modules`/`dist`.
  * A subdirectory whose `readdir` fails mid-walk (e.g. a `chmod 000` dir) is
  * WARNED about per-dir and skipped rather than silently swallowed — the scan
  * continues, but the partiality is surfaced in the log. The SCAN ROOT's own
@@ -244,25 +257,35 @@ function inferRuleLang(file: string): AstRuleLanguage | null {
  * loud), so this soft-skip only ever applies to descendant dirs.
  */
 async function findPolyglotFiles(dir: string, maxDepth: number): Promise<string[]> {
-  if (maxDepth <= 0) return [];
   const out: string[] = [];
+  await collectPolyglotFiles(dir, maxDepth, out);
+  return out;
+}
+
+/**
+ * Walk into a shared accumulator. Appending per file, rather than
+ * `out.push(...sub)`, keeps the walk safe on large trees: a spread passes every
+ * element as a call argument and throws "Maximum call stack size exceeded"
+ * past roughly 120k entries (#7184, the #7178 class).
+ */
+async function collectPolyglotFiles(dir: string, maxDepth: number, out: string[]): Promise<void> {
+  if (maxDepth <= 0) return;
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch (caught: unknown) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
     logger.warn(`ast-rule-runner: skipped unreadable directory ${dir}: ${e.message}`);
-    return out;
+    return;
   }
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
-    if (entry.isDirectory() && !SKIP_DIRS.has(entry.name)) {
-      out.push(...(await findPolyglotFiles(fullPath, maxDepth - 1)));
+    if (entry.isDirectory() && isWalkedDir(entry.name)) {
+      await collectPolyglotFiles(fullPath, maxDepth - 1, out);
     } else if (entry.isFile() && inferRuleLang(entry.name) !== null) {
       out.push(fullPath);
     }
   }
-  return out;
 }
 
 /** Map a rule's declared language to the `parse()` first argument, registering
