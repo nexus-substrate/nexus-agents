@@ -14,8 +14,9 @@
  * scan root fails LOUD rather than returning an empty "clean" result.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +31,32 @@ import {
   MAX_FILES_SCANNED,
   type AstRuleFinding,
 } from './ast-rule-runner.js';
+
+/**
+ * Per-test `readdir` override (#7184). `null` delegates to the real
+ * implementation, so every other test in this file walks the real disk.
+ */
+const readdirOverride = vi.hoisted(() => ({
+  fn: null as ((dir: string) => Dirent[] | undefined) | null,
+}));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  const readdir = (async (...args: Parameters<typeof actual.readdir>) => {
+    const fake = readdirOverride.fn?.(String(args[0]));
+    return fake ?? actual.readdir(...args);
+  }) as typeof actual.readdir;
+  return { ...actual, readdir };
+});
+
+/** A minimal Dirent stand-in for a mocked directory listing. */
+function fakeDirent(name: string, kind: 'file' | 'dir'): Dirent {
+  return {
+    name,
+    isDirectory: () => kind === 'dir',
+    isFile: () => kind === 'file',
+  } as unknown as Dirent;
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RULES_DIR = join(HERE, 'ast-rules');
@@ -335,6 +362,90 @@ describe('ast-rule-runner (#4249 child C)', () => {
       // The hidden eval was NOT scanned, but the partiality was surfaced above.
       expect(result.findings).toEqual([]);
       rmSync(scratchDir, { recursive: true, force: true });
+    });
+  });
+
+  describe('file walk (#7184)', () => {
+    let scratchDir: string | undefined;
+
+    afterEach(() => {
+      readdirOverride.fn = null;
+      if (scratchDir !== undefined) rmSync(scratchDir, { recursive: true, force: true });
+      scratchDir = undefined;
+    });
+
+    it('collects a nested directory past the spread-argument limit without overflowing', async () => {
+      // A spread of the subtree into push() throws RangeError past ~120k
+      // entries; 200k files under one subdirectory crosses that with margin.
+      const fileCount = 200_000;
+      scratchDir = mkdtempSync(join(process.cwd(), '.ast-qa-walk-large-'));
+      const rulesDir = join(scratchDir, 'rules');
+      mkdirSync(rulesDir);
+      // A go-only rule: the fake .py files are discovered but never read.
+      writeFileSync(
+        join(rulesDir, 'go.yml'),
+        'id: go-only\nlanguage: go\nseverity: error\nmessage: m\nrule:\n  pattern: x\n'
+      );
+      const root = scratchDir;
+      const bigDir = join(root, 'big');
+      const bigEntries = Array.from({ length: fileCount }, (_, i) =>
+        fakeDirent(`f${String(i)}.py`, 'file')
+      );
+      readdirOverride.fn = (dir) => {
+        if (dir === root) return [fakeDirent('big', 'dir')];
+        if (dir === bigDir) return bigEntries;
+        return undefined;
+      };
+
+      const spy = captureStderr();
+      let result;
+      try {
+        result = await collectAstQaFindings({ rulesDir, targetDir: root });
+      } finally {
+        spy.restore();
+      }
+
+      expect(result.filesScanned).toBe(MAX_FILES_SCANNED);
+      expect(result.filesSkipped).toBe(fileCount - MAX_FILES_SCANNED);
+      expect(result.filesTruncated).toBe(true);
+    });
+
+    it('skips .nexus-agents, .git and every other dot-directory, plus node_modules/dist', async () => {
+      scratchDir = mkdtempSync(join(process.cwd(), '.ast-qa-walk-dotdirs-'));
+      const plant = (rel: string): void => {
+        const full = join(scratchDir as string, rel);
+        mkdirSync(dirname(full), { recursive: true });
+        writeFileSync(full, 'eval(user_input)\n');
+      };
+      plant('top.py');
+      plant('pkg/sub/inner.py');
+      plant('.nexus-agents/worktrees/wt-1/copy.py');
+      plant('.git/hooks/hook.py');
+      plant('.venv/lib/dep.py');
+      plant('node_modules/dep/dep.py');
+      plant('dist/built.py');
+
+      const result = await collectAstQaFindings({ rulesDir: RULES_DIR, targetDir: scratchDir });
+      const files = findingsFor('dangerous-eval-python', result.findings)
+        .map((f) => f.file.split('\\').join('/'))
+        .sort();
+
+      expect(files).toEqual(['pkg/sub/inner.py', 'top.py']);
+      expect(result.filesScanned).toBe(2);
+    });
+
+    it('still scans a scan root that is itself a dot-directory', async () => {
+      // The dot-dir rule applies to entries only: a caller may root the scan at one.
+      scratchDir = mkdtempSync(join(process.cwd(), '.ast-qa-walk-root-'));
+      const dotRoot = join(scratchDir, '.hidden-root');
+      mkdirSync(join(dotRoot, 'nested'), { recursive: true });
+      writeFileSync(join(dotRoot, 'nested', 'x.py'), 'eval(user_input)\n');
+
+      const result = await collectAstQaFindings({ rulesDir: RULES_DIR, targetDir: dotRoot });
+
+      expect(findingsFor('dangerous-eval-python', result.findings).map((f) => f.file)).toEqual([
+        join('nested', 'x.py'),
+      ]);
     });
   });
 });
