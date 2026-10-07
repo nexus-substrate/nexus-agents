@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.1.4
+
+### Patch Changes
+
+- [#7215](https://github.com/nexus-substrate/nexus-agents/pull/7215) [`8f30ad1`](https://github.com/nexus-substrate/nexus-agents/commit/8f30ad17145ef48fe4634e1648b45a41d84c345b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Importing `cli-adapters/cli-error-envelope` directly, without going through the package index, no longer crashes with `ReferenceError: Cannot access 'GEMINI_CLI_COMMAND' before initialization`. The rate-limit detector now imports its error and time helpers from their own modules instead of the `core` barrel, which had pulled the router and `cli-binary-on-path` into an import cycle with the envelope. Loading through the published package entry point was never affected.
+
 ## 11.1.3
 
 ### Patch Changes
