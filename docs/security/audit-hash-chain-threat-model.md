@@ -1,6 +1,8 @@
 ---
 title: 'Threat Model: Audit Hash Chain'
 description: Adversarial analysis of the audit-logger hash chain and what verify_audit_chain does and does not detect
+diataxis: explanation
+audience: user
 tier: 1
 keywords: [security, audit, hash-chain, threat-model, tamper-evidence, integrity, immutable-audit]
 ---

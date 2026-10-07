@@ -1,6 +1,8 @@
 ---
 title: Repository Secrets Configuration
 description: Required secrets and GitHub Apps for nexus-agents CI/CD workflows
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [secrets, github, ci, api-key, configuration, security]
 ---

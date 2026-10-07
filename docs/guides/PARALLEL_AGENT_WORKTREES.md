@@ -1,6 +1,8 @@
 ---
 title: 'Parallel-Agent Git-Worktree Isolation'
 description: Run multiple Claude Code general-purpose Agent invocations in parallel against one checkout without git/build/test contention, using isolation "worktree" plus custom WorktreeCreate/WorktreeRemove hooks.
+diataxis: how-to
+audience: project
 tier: 2
 keywords:
   [

@@ -1,6 +1,8 @@
 ---
 title: 'Nexus Agents Documentation Index'
 description: Canonical documentation index — single source of truth for all nexus-agents documentation, organized around the control-plane model
+diataxis: none
+audience: user
 tier: 1
 keywords: [documentation, index, reference, navigation, docs, control-plane, mape-k]
 ---

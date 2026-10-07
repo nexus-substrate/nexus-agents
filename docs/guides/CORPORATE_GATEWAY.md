@@ -1,6 +1,8 @@
 ---
 title: Corporate OpenAI-Spec Gateway
 description: Run nexus-agents as an MCP server behind one OpenAI-compatible gateway that serves Anthropic, OpenAI and Google models, with no local CLIs
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [gateway, openai-compatible, corporate, proxy, mcp, env, family-slot, voter, doctor]
 ---

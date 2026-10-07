@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: user
+---
+
 # Interface Documentation
 
 This directory contains detailed documentation for all Nexus Agents interfaces.

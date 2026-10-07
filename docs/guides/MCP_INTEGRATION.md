@@ -1,6 +1,8 @@
 ---
 title: MCP & Claude Desktop Integration
 description: MCP tools for orchestration, experts, workflows, consensus, research, memory, and tracing
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [mcp, tool, server, claude-desktop, stdio, integration]
 related_files: [docs/ENTRYPOINTS.md, docs/reference/capabilities.md]

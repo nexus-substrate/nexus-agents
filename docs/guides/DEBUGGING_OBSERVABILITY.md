@@ -1,6 +1,8 @@
 ---
 title: 'Debugging with Observability'
 description: 'Debug multi-agent workflows using EventBus, correlation IDs, and OrchestrationObserver (formerly SwarmObserver)'
+diataxis: how-to
+audience: user
 tier: 2
 keywords:
   - debugging

@@ -1,6 +1,8 @@
 ---
 title: Skills Index
 description: Quick navigation for common tasks and key file paths
+diataxis: reference
+audience: project
 tier: 1
 keywords: [navigation, tasks, skills, entry-points, quick-start]
 related_files: [docs/README.md, docs/reference/capabilities.md]

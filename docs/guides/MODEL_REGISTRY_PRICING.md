@@ -1,6 +1,8 @@
 ---
 title: Decorated Gateway Model Names & Pricing
 description: How the model registry resolves decorated model names from OpenAI-compatible gateways to canonical pricing, when a manifest alias is still required, and how unpriced calls surface as UNMEASURED in cost output
+diataxis: explanation
+audience: user
 tier: 2
 keywords: [pricing, registry, gateway, manifest, overlay, cost, billing, unmeasured, fuzzy]
 ---

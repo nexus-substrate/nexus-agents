@@ -1,6 +1,8 @@
 ---
 title: 'Your First Task'
 description: 'Install, verify, see a real consensus vote, then plug into your editor. ~5 minutes.'
+diataxis: tutorial
+audience: user
 tier: 1
 keywords: [getting-started, first-task, smoke-test, tutorial, onboarding]
 related_files: [./INSTALLATION.md, ./CONFIGURATION.md, ./PLUGIN_INSTALL.md]

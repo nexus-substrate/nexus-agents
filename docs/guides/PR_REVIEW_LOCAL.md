@@ -1,6 +1,8 @@
 ---
 title: Local pr_review (subscription auth)
 description: Run multi-voter PR review on your local machine using your Claude/Codex/Gemini CLI subscription auth — instead of CI with API keys
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [pr-review, local, subscription, auth, claude-pro]
 ---

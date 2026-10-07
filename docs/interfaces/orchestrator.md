@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: user
+---
+
 # IOrchestrator Interface
 
 ## Purpose

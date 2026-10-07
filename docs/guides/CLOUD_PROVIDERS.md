@@ -1,6 +1,8 @@
 ---
 title: Cloud Provider Setup (Bedrock, Vertex, Azure)
 description: Three paths to route nexus-agents through Bedrock, Vertex AI, Azure OpenAI, and any other cloud-hosted model — without nexus-agents shipping provider-specific code
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [bedrock, vertex, azure, openrouter, litellm, cloud, providers, gateway]
 ---

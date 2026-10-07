@@ -1,6 +1,8 @@
 ---
 title: 'Workflow Templates'
 description: 'Create and customize YAML workflow templates for multi-agent task execution'
+diataxis: how-to
+audience: user
 tier: 2
 keywords:
   - workflows
@@ -262,16 +264,16 @@ task: 'Based on ${{ steps.previous_step.output }}'
 
 ```yaml
 # Uppercase
-task: "Process ${{ name | upper }}"
+task: 'Process ${{ name | upper }}'
 
 # JSON encode
-task: "Config: ${{ options | json }}"
+task: 'Config: ${{ options | json }}'
 
 # Default value
 task: "Target: ${{ target | default('main') }}"
 
 # Truncate
-task: "Summary: ${{ long_text | truncate(100) }}"
+task: 'Summary: ${{ long_text | truncate(100) }}'
 ```
 
 ## Output Mapping
