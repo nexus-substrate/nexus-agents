@@ -238,7 +238,7 @@ export interface DevPipelineResult {
    * scan's status is unknown — treat an absent value as unmeasured, not `false`.
    */
   readonly securityRan?: boolean;
-  /** Security-stage feedback explaining why a skipped scan did not run. */
+  /** Security-stage feedback explaining a failed or skipped scan, or partial dependency coverage on a pass. */
   readonly securityNote?: string;
   /** Baseline counts and blocking findings, including explicit incomplete coverage. */
   readonly securityComparison?: SecurityBaselineComparison;
@@ -396,6 +396,8 @@ export interface DevPipelineStages {
     readonly passed: boolean;
     readonly verdict?: 'pass' | 'fail' | 'skip';
     readonly feedback: string;
+    /** Dependency coverage the verdict did not reach; reported even on a pass. */
+    readonly coverageNote?: string;
   }>;
 }
 
@@ -1015,9 +1017,17 @@ async function runImplSecurityPhase(
     securityRan: security.verdict !== 'skip',
     ...(security.comparison !== undefined ? { securityComparison: security.comparison } : {}),
     taskStatus,
-    ...(security.verdict === 'skip' ? { securityNote: security.feedback } : {}),
+    ...securityNoteField(security),
     ...warnings,
   };
+}
+
+/** A failed or skipped scan explains itself; a pass still discloses partial dependency coverage. */
+function securityNoteField(security: Awaited<ReturnType<DevPipelineStages['securityScan']>>): {
+  securityNote?: string;
+} {
+  if (security.verdict !== 'pass') return { securityNote: security.feedback };
+  return security.coverageNote !== undefined ? { securityNote: security.coverageNote } : {};
 }
 
 /** A stopped gate has no security verdict because no scan ran. */
