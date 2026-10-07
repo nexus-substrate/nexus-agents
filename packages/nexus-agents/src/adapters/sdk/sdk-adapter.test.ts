@@ -196,7 +196,7 @@ describe('SdkAdapter', () => {
   });
 
   describe('complete', () => {
-    it('calls generateText and maps response', async () => {
+    it('calls generateText with maxOutputTokens and maps response', async () => {
       const { generateText } = await import('ai');
       const mockGenerate = vi.mocked(generateText);
       mockGenerate.mockResolvedValueOnce({
@@ -213,6 +213,8 @@ describe('SdkAdapter', () => {
       });
 
       const result = await adapter.complete(TEST_REQUEST);
+      expect(mockGenerate.mock.calls[0]?.[0]).toHaveProperty('maxOutputTokens', 100);
+      expect(mockGenerate.mock.calls[0]?.[0]).not.toHaveProperty('maxTokens');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.content[0]).toEqual({ type: 'text', text: 'Hello back!' });
@@ -391,7 +393,7 @@ describe('SdkAdapter', () => {
       }
     });
 
-    it('routes json_schema to generateObject and returns stringified object (#3433)', async () => {
+    it('routes json_schema to generateObject with maxOutputTokens and returns stringified object (#3433)', async () => {
       const { generateObject, jsonSchema, generateText } = await import('ai');
       const mockObject = vi.mocked(generateObject);
       const mockJsonSchema = vi.mocked(jsonSchema);
@@ -416,6 +418,8 @@ describe('SdkAdapter', () => {
       });
 
       expect(mockObject).toHaveBeenCalledTimes(1);
+      expect(mockObject.mock.calls[0]?.[0]).toHaveProperty('maxOutputTokens', 100);
+      expect(mockObject.mock.calls[0]?.[0]).not.toHaveProperty('maxTokens');
       expect(mockText).not.toHaveBeenCalled();
       expect(mockJsonSchema).toHaveBeenCalledWith(schema);
       expect(result.ok).toBe(true);
@@ -526,7 +530,7 @@ describe('SdkAdapter', () => {
   });
 
   describe('stream', () => {
-    it('yields stream chunks from textStream', async () => {
+    it('passes maxOutputTokens to streamText and yields stream chunks', async () => {
       const { streamText } = await import('ai');
       const mockStream = vi.mocked(streamText);
 
@@ -569,6 +573,8 @@ describe('SdkAdapter', () => {
         chunks.push(chunk);
       }
 
+      expect(mockStream.mock.calls[0]?.[0]).toHaveProperty('maxOutputTokens', 100);
+      expect(mockStream.mock.calls[0]?.[0]).not.toHaveProperty('maxTokens');
       // Expected: message_start, content_block_start, 3 deltas, content_block_stop, message_delta, message_stop
       expect(chunks).toHaveLength(8);
       expect(chunks[0]).toEqual({
