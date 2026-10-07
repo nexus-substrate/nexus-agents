@@ -1347,7 +1347,10 @@ function buildNoQuorumPlanResult(
     planStatus: 'no_quorum',
     planVoteDecision: 'no_quorum',
     planVoteReason: vote.reason,
-    planVoteApprovalPercentage: vote.approvalPercentage,
+    // A fail-closed crash has no record; its sentinel zero is unmeasured (#7250).
+    ...(vote.voteRecordId !== undefined
+      ? { planVoteApprovalPercentage: vote.approvalPercentage }
+      : {}),
     ...recordIdOf(vote),
   };
 }
@@ -1359,7 +1362,7 @@ function buildUnapprovedPlanResult(
   sessionId: string | undefined
 ): PlanVoteResult {
   const feedback = vote?.feedback ?? 'No plan vote was run';
-  const approvalPercentage = vote?.approvalPercentage ?? 0;
+  const approvalPercentage = vote?.approvalPercentage;
   logger.warn('Max vote iterations reached without plan approval — stopping', {
     sessionId,
     iterations,
@@ -1372,7 +1375,7 @@ function buildUnapprovedPlanResult(
     planStatus: 'unapproved',
     // No vote ran at all only when the iteration limit is zero; don't claim one.
     ...(vote !== undefined ? { planVoteDecision: 'rejected' as const } : {}),
-    planVoteApprovalPercentage: approvalPercentage,
+    ...(approvalPercentage !== undefined ? { planVoteApprovalPercentage: approvalPercentage } : {}),
     planVoteFeedback: feedback,
     ...recordIdOf(vote),
   };
