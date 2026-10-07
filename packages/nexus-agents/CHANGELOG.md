@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.4.1
+
+### Patch Changes
+
+- [#7268](https://github.com/nexus-substrate/nexus-agents/pull/7268) [`1d19e21`](https://github.com/nexus-substrate/nexus-agents/commit/1d19e2106351439f1656b07792aad0b6d9a287e1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix ignored output-token limits in AI SDK adapters. Requests with `maxTokens` now pass the limit as `maxOutputTokens` to the SDK for text completions, structured completions, and streaming.
+
 ## 11.4.0
 
 ### Minor Changes
