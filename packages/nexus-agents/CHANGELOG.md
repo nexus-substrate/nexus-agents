@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.1.5
+
+### Patch Changes
+
+- [#7216](https://github.com/nexus-substrate/nexus-agents/pull/7216) [`2f64057`](https://github.com/nexus-substrate/nexus-agents/commit/2f64057fb408f27fba366d1068a988dcf2ce96a5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix a crash when a script imports one of 16 internal adapter modules directly from source instead of through the package entry point. Examples are `cli-adapters/types.ts`, `cli-adapters/factory.ts` and `cli-adapters/cli-timeout-profiles.ts`. The crash was `ReferenceError: Cannot access 'FALLBACK_CONTEXT_WINDOW' before initialization` or `ReferenceError: Cannot access 'TRACE_ID_MAX_LENGTH' before initialization`. Four low-level modules loaded their logger through the `core` index, and that index pulls in the router, which forms an import cycle. They now import the logger module directly. The published package entry point was never affected.
+
 ## 11.1.4
 
 ### Patch Changes
