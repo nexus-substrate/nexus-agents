@@ -4595,8 +4595,8 @@ InterfaceDeclaration ICheckpointStore
   save(checkpoint: Checkpoint) => void
   size() => number
 InterfaceDeclaration ICircuitBreaker
-  canExecute() => import("../core/index.js").Result<true, CircuitError>
-  execute<T>(fn: () => Promise<T>) => Promise<import("../core/index.js").Result<T, CircuitError>>
+  canExecute() => Result<true, CircuitError>
+  execute<T>(fn: () => Promise<T>) => Promise<Result<T, CircuitError>>
   getSnapshot() => CircuitBreakerSnapshot
   getState() => CircuitState
   recordFailure(category: FailureCategory) => void
@@ -5182,9 +5182,9 @@ InterfaceDeclaration ISkillDependencyGraph
   validateGraph() => Result<void, DependencyError>
 InterfaceDeclaration ISkillLoader
   getAvailableSkills(role: AgentRole) => readonly Skill[]
-  loadForAgent(agentId: string, role: AgentRole) => import("../../core/result.js").Result<LoadedSkillSet, SkillLoaderError>
-  loadForTask(agentId: string, role: AgentRole, taskDescription: string) => import("../../core/result.js").Result<LoadedSkillSet, SkillLoaderError>
-  validateLoadedSet(set: LoadedSkillSet) => import("../../core/result.js").Result<void, SkillLoaderError>
+  loadForAgent(agentId: string, role: AgentRole) => Result<LoadedSkillSet, SkillLoaderError>
+  loadForTask(agentId: string, role: AgentRole, taskDescription: string) => Result<LoadedSkillSet, SkillLoaderError>
+  validateLoadedSet(set: LoadedSkillSet) => Result<void, SkillLoaderError>
 FunctionDeclaration isMutatingAction
   : (actionType: "ClassifyIssue" | "DraftReply" | "GeneratePatchPlan" | "HandoffMessage" | "IdentifyDuplicates" | "ProposeLabels" | "RefuseAction" | "RequestHumanApproval" | "SummarizeIssue") => boolean
 FunctionDeclaration isOk
@@ -10301,7 +10301,7 @@ InterfaceDeclaration WaveSchedulerConfig
   readonly maxConcurrency: number
   readonly maxOutputChars: number
   readonly maxTotalTokens: number
-  readonly onWaveComplete?: ((waveIndex: number, results: readonly import("./wave-scheduler-types.js").WaveTaskResult[], cumulativeTokens: number) => Promise<void>) | undefined
+  readonly onWaveComplete?: ((waveIndex: number, results: readonly WaveTaskResult[], cumulativeTokens: number) => Promise<void>) | undefined
   readonly taskTimeoutMs: number
 InterfaceDeclaration WaveStartedEvent
   extends BaseEvent

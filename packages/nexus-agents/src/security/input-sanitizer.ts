@@ -48,7 +48,7 @@ const XML_INJECTION_PATTERN =
 // HTML Comments with Instructions
 // ============================================================================
 
-const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
+const HTML_COMMENT_PATTERN = /\x3c!--[\s\S]*?-->/g;
 
 // ============================================================================
 // Injection Pattern Detectors
@@ -326,7 +326,7 @@ function stripHtmlComments(content: string): {
 }
 
 /** Non-global twin of HTML_COMMENT_PATTERN — `.test` must not carry lastIndex state. */
-const HTML_COMMENT_DETECT = /<!--[\s\S]*?-->/;
+const HTML_COMMENT_DETECT = /\x3c!--[\s\S]*?-->/;
 
 /**
  * Detects injection patterns in content without modifying it. `hidden_content`

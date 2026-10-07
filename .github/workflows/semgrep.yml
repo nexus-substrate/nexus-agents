@@ -24,6 +24,27 @@ jobs:
       - name: Run Semgrep
         run: semgrep scan --config p/typescript --config p/nodejs --sarif > semgrep.sarif
 
+      # A partially parsed file is an unscanned file, and semgrep exits 0 on
+      # parse errors. Fail on any scanner error in non-test sources (#7278).
+      # Test files stay out until semgrep parses importOriginal<typeof import()>.
+      - name: Fail on unparsed sources
+        run: |
+          semgrep scan --config p/typescript --config p/nodejs \
+            --exclude '*.test.ts' --exclude '*.test.tsx' --exclude '*.spec.ts' \
+            --json --metrics=off --quiet > semgrep-parse.json
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open('semgrep-parse.json'))
+          scanned = d.get('paths', {}).get('scanned', [])
+          errors = d.get('errors', [])
+          if not scanned:
+              sys.exit('semgrep scanned no files; refusing an empty pass')
+          for e in errors:
+              print('::error::%s %s' % (e.get('type'), e.get('path') or e.get('message', '')[:200]))
+          print('scanned=%d errors=%d' % (len(scanned), len(errors)))
+          sys.exit(1 if errors else 0)
+          PY
+
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@bb471cdcf4dda2c934c5b656f554d43c1434ed13 # v4
         with:

@@ -10,6 +10,7 @@
  * @see Epic #261 (Automated Documentation System)
  */
 
+import type { Result } from '../core/result.js';
 import type {
   ResearchStatusOptions,
   ResearchOverlapOptions,
@@ -28,6 +29,7 @@ import {
   discoverMicrosoftResearch,
   discoverDeepMind,
   type DiscoveredSource,
+  type DiscoverError,
 } from './research-helpers-sources.js';
 import {
   discoverSemanticScholar,
@@ -225,15 +227,7 @@ type DiscoverSource =
 const SOURCE_PROVIDERS: ReadonlyArray<{
   key: string;
   label: string;
-  fn: (
-    topic: string,
-    max: number
-  ) => Promise<
-    import('../core/result.js').Result<
-      DiscoveredSource[],
-      import('./research-helpers-sources.js').DiscoverError
-    >
-  >;
+  fn: (topic: string, max: number) => Promise<Result<DiscoveredSource[], DiscoverError>>;
 }> = [
   { key: 'github', label: 'GitHub', fn: discoverGitHubRepos },
   { key: 'google_ai', label: 'Google AI', fn: discoverGoogleAI },

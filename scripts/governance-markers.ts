@@ -59,7 +59,7 @@ export const MARKERS = {
 export const GOVERNANCE_SPAN_NAMES: readonly string[] = [
   ...new Set(
     Object.values(MARKERS)
-      .map((marker) => /<!-- GOVERNANCE:([A-Z_]+):(?:START|END) -->/.exec(marker)?.[1])
+      .map((marker) => /\x3c!-- GOVERNANCE:([A-Z_]+):(?:START|END) -->/.exec(marker)?.[1])
       .filter((name): name is string => name !== undefined)
   ),
 ];

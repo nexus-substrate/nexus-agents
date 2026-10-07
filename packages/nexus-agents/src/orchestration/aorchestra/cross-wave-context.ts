@@ -52,7 +52,7 @@ const PRIOR_WAVE_HEADER =
 const INJECTION_PATTERNS: RegExp[] = [
   /<\/?(?:system|human|assistant|instructions)(?:\s[^>]*)?>[\s\S]*?(?:<\/(?:system|human|assistant|instructions)>|$)/gi,
   /<img\b[^>]*>/gi,
-  /<!--[\s\S]*?-->/g,
+  /\x3c!--[\s\S]*?-->/g,
 ];
 
 /**

@@ -40,6 +40,7 @@ import {
   emitExecutionComplete,
   emitContextUnavailable,
 } from './graph-events.js';
+import type { PreconditionOutcome } from './graph-hooks.js';
 import { runPreconditions, runVerification } from './graph-hooks.js';
 import { categorizeOutcomeError } from '../outcomes/outcome-types.js';
 import { coarsenFailureCategory, defaultRetryable } from '../../mcp/error-envelope.js';
@@ -733,7 +734,7 @@ async function executeNodes(
 /** Returns a skipped NodeResult for a failed precondition. */
 function preconditionFailedResult(
   nodeId: string,
-  results: readonly import('./graph-hooks.js').PreconditionOutcome[],
+  results: readonly PreconditionOutcome[],
   startTime: number
 ): NodeResult {
   const failed = results.find((r) => !r.passed);

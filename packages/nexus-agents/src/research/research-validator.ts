@@ -9,7 +9,7 @@
  */
 
 import type { Result } from '../core/result.js';
-import type { ValidationResult } from './research-schemas.js';
+import type { ValidationResult, ValidationIssue, ValidationSeverity } from './research-schemas.js';
 
 // ============================================================================
 // Re-exports for backward compatibility
@@ -74,8 +74,8 @@ export function validateRegistry(
 function collectValidationIssues(
   registry: ParsedRegistry,
   opts: ValidatorOptions
-): readonly import('./research-schemas.js').ValidationIssue[] {
-  const issues: import('./research-schemas.js').ValidationIssue[] = [];
+): readonly ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
 
   // Build ID sets
   const paperIds = new Set(Object.keys(registry.papers.papers));
@@ -129,10 +129,7 @@ export function formatValidationResult(result: ValidationResult): string {
 /**
  * Format the issues list into output lines.
  */
-function formatIssuesList(
-  issues: readonly import('./research-schemas.js').ValidationIssue[],
-  lines: string[]
-): void {
+function formatIssuesList(issues: readonly ValidationIssue[], lines: string[]): void {
   for (const issue of issues) {
     const prefix = getSeverityPrefix(issue.severity);
     const pathStr = issue.path !== undefined ? ` (${issue.path})` : '';
@@ -146,7 +143,7 @@ function formatIssuesList(
 /**
  * Get the single-character prefix for a severity level.
  */
-function getSeverityPrefix(severity: import('./research-schemas.js').ValidationSeverity): string {
+function getSeverityPrefix(severity: ValidationSeverity): string {
   switch (severity) {
     case 'error':
       return 'E';
