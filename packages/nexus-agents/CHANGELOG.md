@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.4.5
+
+### Patch Changes
+
+- [#7283](https://github.com/nexus-substrate/nexus-agents/pull/7283) [`9d1bdf5`](https://github.com/nexus-substrate/nexus-agents/commit/9d1bdf5b1821465827dd1851823fc296c1672e58) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents setup --scope project` now configures OpenCode in the project directory and visibly warns that Codex setup uses user scope. Manual Claude MCP fallback commands now pass the bare server entry required by `claude mcp add-json`.
+
 ## 11.4.4
 
 ### Patch Changes
