@@ -86,8 +86,26 @@ describe('runTour', () => {
     const io = makeFakeIO();
     await runTour({ nonInteractive: true }, io);
     const out = io.output();
-    expect(out).toContain('~/.nexus-agents/audit/chain.jsonl');
+    expect(out).toContain('<repo>/.nexus-agents/audit/audit-*.jsonl');
     expect(out).toContain('~/.nexus-agents/learning/outcomes.db');
+  });
+
+  it('contains no internal issue references or immutable guarantees', async () => {
+    const io = makeFakeIO();
+    await runTour({ nonInteractive: true }, io);
+    const out = io.output();
+    expect(out).not.toMatch(/#\d+/);
+    expect(out).not.toMatch(/immutable/i);
+  });
+
+  it('describes plain-tally verdicts, the vote ledger, and tamper-evident audit logs', async () => {
+    const io = makeFakeIO();
+    await runTour({ nonInteractive: true }, io);
+    const out = io.output();
+    expect(out).toContain('plain tally');
+    expect(out).not.toContain('Bayesian aggregation');
+    expect(out).toContain('vote ledger');
+    expect(out).toContain('tamper-evident');
   });
 });
 

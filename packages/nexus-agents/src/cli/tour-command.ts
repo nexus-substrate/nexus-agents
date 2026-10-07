@@ -48,7 +48,7 @@ export interface TourStep {
   readonly demo: string;
   /** One-line takeaway shown after the demo. */
   readonly takeaway: string;
-  /** Local `~/.nexus-agents/` paths to surface for this step. */
+  /** Local repository or user data paths to surface for this step. */
   readonly paths?: readonly string[];
 }
 
@@ -68,7 +68,7 @@ const STEP_WELCOME: TourStep = {
     'nexus-agents is a governance substrate for AI coding agents — Claude,',
     'Codex, Gemini, OpenCode. The agents do the engineering; this project',
     'routes tasks, runs adversarial review, takes consensus votes, and keeps',
-    'an immutable audit trail of everything those agents touch.',
+    'a tamper-evident audit trail of recorded agent activity.',
     '',
     'This tour walks four headline tools using cached fixtures, so it costs',
     'nothing to run and needs no API keys configured.',
@@ -103,8 +103,8 @@ const STEP_VOTE: TourStep = {
     '`nexus-agents vote --quick` runs a 3-voter panel (architect / security /',
     'scope_steward) on a proposal and aggregates their decisions. Each voter is',
     'a real LLM call, runs in parallel, and returns a structured rationale.',
-    '`--quick` is for fast tie-breaks; the full 7-voter panel uses higher-order',
-    'Bayesian aggregation.',
+    '`--quick` is for fast tie-breaks; verdicts use a plain tally of votes',
+    'against the selected threshold, including with the full 7-voter panel.',
   ].join('\n'),
   demo: [
     'Proposal: "Adopt Bun as the dev-time test runner alongside Vitest"',
@@ -113,7 +113,7 @@ const STEP_VOTE: TourStep = {
     '  Scope Steward        REJECT   (conf 0.71)  Two runners = sprawl; pick one',
     '  Result: 1/3 approve (33%)  ->  REJECTED  (simple_majority, threshold 50%)',
   ].join('\n'),
-  takeaway: 'Decisions get recorded — same proposal voted twice gets the same panel rationale.',
+  takeaway: 'Votes and rationales are recorded in the vote ledger for later review.',
 };
 
 const STEP_RESEARCH: TourStep = {
@@ -133,7 +133,6 @@ const STEP_RESEARCH: TourStep = {
     '',
     '  memory architectures   3 sources   evidence-tier: emerging',
     '    Gap:                 cross-process episodic store',
-    '    Tracked at:          open issue #2921',
   ].join('\n'),
   takeaway: 'Maps "what the literature says" onto "what we built" — drift surfaces as gaps.',
 };
@@ -141,22 +140,22 @@ const STEP_RESEARCH: TourStep = {
 const STEP_AUDIT: TourStep = {
   title: 'verify_audit_chain — tamper-evident history',
   intro: [
-    'Every governance-relevant action — routing decisions, votes, expert',
-    'invocations, policy denials — is appended to a Merkle-linked audit log.',
-    '`verify_audit_chain` re-walks the chain and confirms every entry hashes',
-    'back to its predecessor. If any entry was tampered with, the verification',
-    'fails at the first broken link.',
+    'Audit events are appended to a SHA-256 hash-linked log. Votes are',
+    'persisted separately in the vote ledger.',
+    '`verify_audit_chain` re-walks the chain and checks the stored hashes',
+    'and predecessor links. Changes to hash-covered fields or broken links',
+    'fail verification. The log is tamper-evident, not tamper-proof.',
   ].join('\n'),
   demo: [
-    'Audit chain: ~/.nexus-agents/audit/chain.jsonl',
+    'Audit files: <repo>/.nexus-agents/audit/audit-*.jsonl',
     '  Entries:    4,217',
     '  Span:       2026-04-18T09:14Z  ->  2026-05-22T03:51Z',
-    '  Merkle:     OK   (every entry hashes back to its predecessor)',
+    '  Hash links: OK   (every entry hashes back to its predecessor)',
     '  Result:     VERIFIED  - chain is intact',
   ].join('\n'),
-  takeaway: 'The chain is append-only and hash-linked — any historical edit breaks verification.',
+  takeaway: 'The chain is append-only and hash-linked — verification checks hash-covered fields.',
   paths: [
-    '~/.nexus-agents/audit/chain.jsonl     (immutable audit log)',
+    '<repo>/.nexus-agents/audit/audit-*.jsonl  (tamper-evident audit logs)',
     '~/.nexus-agents/learning/outcomes.db  (routing outcome history)',
   ],
 };

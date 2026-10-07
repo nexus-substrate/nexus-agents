@@ -92,8 +92,19 @@ describe('formatCommandHelp', () => {
   });
 
   it('shows API key requirements', () => {
+    const help = formatCommandHelp('orchestrate')!;
+    expect(help).toContain(
+      'REQUIRES: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY (at least one)'
+    );
+  });
+
+  it('lists vote authentication alternatives without requiring an API key', () => {
     const help = formatCommandHelp('vote')!;
-    expect(help).toContain('ANTHROPIC_API_KEY');
+    expect(help).toContain(
+      'REQUIRES: an authenticated Claude Code or Codex CLI, a gateway, or an API key'
+    );
+    expect(help).not.toContain('ANTHROPIC_API_KEY');
+    expect(help).not.toContain('(at least one)');
   });
 
   it('omits REQUIRES section when no API keys needed', () => {
