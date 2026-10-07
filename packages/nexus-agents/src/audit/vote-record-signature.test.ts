@@ -754,3 +754,19 @@ describe('redaction signatures (#6372)', () => {
     ).toBe(false);
   });
 });
+
+describe('runSshKeygen — a refusal that beats the stdin write is still a refusal (#7274)', () => {
+  it('reports ran/non-zero, not unavailable, when ssh-keygen exits before reading a large message', () => {
+    // A message larger than the pipe buffer guarantees the write races the
+    // exit: ssh-keygen refuses the missing key and exits before reading stdin,
+    // and spawnSync reports EPIPE alongside the real exit status and stderr.
+    const outcome = runSshKeygen({
+      op: 'sign',
+      keyPath: join(dir, 'no-such-key'),
+      namespace: VOTE_RECORD_SIGNATURE_NAMESPACE,
+      message: 'a'.repeat(1_000_000),
+    });
+    expect(outcome.kind).toBe('ran');
+    if (outcome.kind === 'ran') expect(outcome.status).not.toBe(0);
+  });
+});
