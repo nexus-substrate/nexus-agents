@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.5.1
+
+### Patch Changes
+
+- [#7289](https://github.com/nexus-substrate/nexus-agents/pull/7289) [`86db9ad`](https://github.com/nexus-substrate/nexus-agents/commit/86db9adc83739bc396b6f77b82801145a2056c19) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote-record signing and verification now report an `ssh-keygen` refusal as a refusal even when `ssh-keygen` exits before reading its input. Previously the stdin write could lose that race and fail with `EPIPE`, which turned a "key unusable" refusal (exit 255 with ssh-keygen's stderr) into "ssh-keygen unavailable". An `EPIPE` with exit status 0, a missing binary, or a signal still reports `unavailable`.
+
 ## 11.5.0
 
 ### Minor Changes
