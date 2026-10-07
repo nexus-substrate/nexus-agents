@@ -57,6 +57,15 @@ function isPolicyBlockedError(error: unknown): boolean {
   return error instanceof Error && error.name === 'PolicyBlockedError';
 }
 
+/** Read stage failure evidence structurally to avoid importing pipeline errors. */
+function stageFailureDetails(error: unknown): Pick<NodeResult, 'errorDetail'> {
+  if (!(error instanceof Error) || error.name !== 'StageFailureError') return {};
+  if (!('errorDetail' in error)) return {};
+  const detail = error.errorDetail;
+  if (detail === null || typeof detail !== 'object' || Array.isArray(detail)) return {};
+  return { errorDetail: detail as Readonly<Record<string, unknown>> };
+}
+
 /** Build the retryability fields for a failed NodeResult (#3534). */
 function failureClassification(category: ErrorCategory): {
   errorCategory: ErrorCategory;
@@ -839,6 +848,7 @@ function failedNodeResult(nodeId: string, error: unknown, startTime: number): No
     status: 'failed',
     error: message,
     ...failureClassification(category),
+    ...stageFailureDetails(error),
   };
 }
 

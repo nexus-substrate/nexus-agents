@@ -55,7 +55,8 @@ export interface PipelineGraphCompileOptions {
 export class StageFailureError extends Error {
   constructor(
     readonly stageId: string,
-    stageError: string | undefined
+    stageError: string | undefined,
+    readonly errorDetail?: Readonly<Record<string, unknown>>
   ) {
     // Carries only what the stage already reported — stage errors can embed
     // command output, so this must not widen the message beyond `output.error`.
@@ -188,9 +189,9 @@ function createNodeHandler(
     // stage that failed cleanly (returned rather than threw) was indistinguishable
     // from one that succeeded — and every caller up the chain reported success.
     // Throwing hands the failure to the executor's own channel; it records this
-    // node `status: 'failed'` with the message below and drops its stateUpdates.
+    // node `status: 'failed'`. Its output is error evidence, never a state update.
     if (!output.success) {
-      throw new StageFailureError(stage.id, output.error);
+      throw new StageFailureError(stage.id, output.error, { [output.stateKey]: output.value });
     }
     return { [output.stateKey]: output.value };
   };

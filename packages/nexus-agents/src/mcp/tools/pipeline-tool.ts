@@ -20,6 +20,9 @@ import { checkSimulationAllowed, simulationDeniedResult } from './simulation-gua
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
+import { planVoteVerdictFields } from './dev-pipeline-output.js';
+import type { VoteResult } from '../../pipeline/dev-pipeline.js';
+import { PIPELINE_STATE_KEYS } from '../../pipeline/stage-types.js';
 import { createAgentStages, type AgentExecutorConfig } from '../../pipeline/agent-executor.js';
 import type { AgentBudgetConfig } from '../../pipeline/budget-guard.js';
 import { isBudgetEnforcementEnabled, resolveEnforcedRunBudget } from '../../pipeline/run-budget.js';
@@ -139,6 +142,8 @@ function buildOutput(
     // `dryRunStopAfter`, so `success: true` with `templateId: 'dev'` used to be
     // byte-identical whether qa and security ran or were sliced away. Say which.
     ...(result.dryRun === true ? { dryRun: true } : {}),
+    // #7240: the terminal vote is the dry run's result, not just ledger output.
+    ...dryRunVoteFields(result),
     stagesPlanned: result.stagesPlanned,
     stagesRun: result.stagesRun,
     // #4170: stamped only on an explicit NEXUS_ALLOW_SIMULATE=1 opt-in run so
@@ -150,6 +155,52 @@ function buildOutput(
         ? 'Consider using quickMode or increasing delay between pipeline runs'
         : undefined,
   };
+}
+
+/** Vote evidence crosses the graph's untyped state boundary. */
+const VoteEvidenceSchema = z.object({
+  approvalPercentage: z.number(),
+  voteRecordId: z.string().optional(),
+});
+const VoteResultSchema = z.discriminatedUnion('kind', [
+  VoteEvidenceSchema.extend({ kind: z.literal('approved') }),
+  VoteEvidenceSchema.extend({ kind: z.literal('rejected'), feedback: z.string() }),
+  VoteEvidenceSchema.extend({ kind: z.literal('no_quorum'), reason: z.string() }),
+]);
+
+/** Narrow successful and failed vote evidence using the same contract. */
+function isVoteResult(value: unknown): value is VoteResult {
+  return VoteResultSchema.safeParse(value).success;
+}
+
+/** Read the nested vote from either successful state or failed-stage evidence. */
+function voteFromState(state: Readonly<Record<string, unknown>> | undefined): unknown {
+  const output = state?.[PIPELINE_STATE_KEYS.VOTE_RESULT];
+  return output !== null && typeof output === 'object' && 'vote' in output
+    ? output.vote
+    : undefined;
+}
+
+/** Project successful or failed votes using the sibling tool's evidence formatter. */
+function dryRunVoteFields(result: AdaptiveOrchestratorResult): Record<string, unknown> {
+  if (result.dryRun !== true) return {};
+  const failedVote = voteFromState(result.errorDetail);
+  const stateVote = voteFromState(result.finalState);
+  const vote = isVoteResult(failedVote)
+    ? failedVote
+    : isVoteResult(stateVote)
+      ? stateVote
+      : undefined;
+  if (vote === undefined) return {};
+  // A fail-closed infrastructure crash has no record: its sentinel 0 is unmeasured.
+  const measured = vote.kind !== 'no_quorum' || vote.voteRecordId !== undefined;
+  return planVoteVerdictFields({
+    planVoteDecision: vote.kind,
+    ...(measured ? { planVoteApprovalPercentage: vote.approvalPercentage } : {}),
+    ...(vote.voteRecordId !== undefined ? { planVoteRecordId: vote.voteRecordId } : {}),
+    ...(vote.kind === 'no_quorum' ? { planVoteReason: vote.reason } : {}),
+    ...(vote.kind === 'rejected' ? { planVoteFeedback: vote.feedback } : {}),
+  });
 }
 
 // ============================================================================

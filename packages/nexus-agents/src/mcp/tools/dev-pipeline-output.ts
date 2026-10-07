@@ -30,11 +30,6 @@ export function buildStructuredOutput(
     ...(result.harnessMode !== undefined ? { harnessMode: result.harnessMode } : {}),
     ...(result.securityRan !== undefined ? { securityRan: result.securityRan } : {}),
     ...(result.planStatus !== undefined ? { planStatus: result.planStatus } : {}),
-    ...(result.planVoteReason !== undefined ? { planVoteReason: result.planVoteReason } : {}),
-    ...(result.planVoteApprovalPercentage !== undefined
-      ? { planVoteApprovalPercentage: result.planVoteApprovalPercentage }
-      : {}),
-    ...(result.planVoteFeedback !== undefined ? { planVoteFeedback: result.planVoteFeedback } : {}),
     // #7181: the dry run's verdict, which otherwise reached only the ledger.
     ...planVoteVerdictFields(result),
     // #4993 added `dryRun` to DevPipelineResult for exactly the reason above —
@@ -87,12 +82,25 @@ function securityStatus(result: Pick<DevPipelineResult, 'securityPassed' | 'secu
   return { status: result.securityPassed ? 'passed' : 'failed' };
 }
 
-/** The plan vote's decision and record id, each present only when produced (#7181). */
-function planVoteVerdictFields(
-  result: Pick<DevPipelineResult, 'planVoteDecision' | 'planVoteRecordId'>
-): Pick<DevPipelineResult, 'planVoteDecision' | 'planVoteRecordId'> {
+/** Shared plan vote evidence, each field present only when produced (#7181, #7240). */
+type PlanVoteEvidence = Pick<
+  DevPipelineResult,
+  | 'planVoteDecision'
+  | 'planVoteApprovalPercentage'
+  | 'planVoteRecordId'
+  | 'planVoteReason'
+  | 'planVoteFeedback'
+>;
+
+/** Format the evidence identically for both pipeline tools. */
+export function planVoteVerdictFields(result: PlanVoteEvidence): PlanVoteEvidence {
   return {
     ...(result.planVoteDecision !== undefined ? { planVoteDecision: result.planVoteDecision } : {}),
+    ...(result.planVoteApprovalPercentage !== undefined
+      ? { planVoteApprovalPercentage: result.planVoteApprovalPercentage }
+      : {}),
     ...(result.planVoteRecordId !== undefined ? { planVoteRecordId: result.planVoteRecordId } : {}),
+    ...(result.planVoteReason !== undefined ? { planVoteReason: result.planVoteReason } : {}),
+    ...(result.planVoteFeedback !== undefined ? { planVoteFeedback: result.planVoteFeedback } : {}),
   };
 }

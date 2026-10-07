@@ -28,7 +28,10 @@ interface StubOrchestratorResult {
   stepsExecuted: number;
   durationMs: number;
   /** Present only on the #4363 failure fixtures. */
-  error?: string;
+  error?: string | undefined;
+  dryRun?: boolean;
+  finalState: Readonly<Record<string, unknown>>;
+  errorDetail?: Readonly<Record<string, unknown>>;
 }
 const ORCHESTRATOR_RESULT: StubOrchestratorResult = {
   success: true,
@@ -37,6 +40,7 @@ const ORCHESTRATOR_RESULT: StubOrchestratorResult = {
   taskClassification: { pipelineType: 'general' },
   stepsExecuted: 1,
   durationMs: 1,
+  finalState: {},
 };
 const runAdaptiveOrchestratorMock = vi.fn(() => Promise.resolve(ORCHESTRATOR_RESULT));
 vi.mock('../../pipeline/adaptive-orchestrator.js', async (importOriginal) => {
@@ -57,6 +61,14 @@ import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { runGraphPipeline } from '../../pipeline/graph-pipeline-runner.js';
+import { DEV_PIPELINE_TEMPLATE } from '../../pipeline/templates.js';
+import { createDevStageRegistry } from '../../pipeline/stage-wrappers.js';
+import { createVoteStage } from '../../pipeline/agent-executor-vote.js';
+import { createBudgetGuard } from '../../pipeline/budget-guard.js';
+import { researchContextFromText } from '../../pipeline/research-context.js';
+import type { DevPipelineStages } from '../../pipeline/dev-pipeline.js';
+import * as consensusVote from './consensus-vote.js';
 
 describe('PipelineInputSchema', () => {
   it('rejects proof_of_learning with retirement and migration guidance (#5234)', () => {
@@ -110,7 +122,157 @@ describe('PipelineInputSchema', () => {
 interface CapturedToolResult {
   isError?: boolean;
   content: Array<{ type: string; text: string }>;
+  _meta?: Record<string, unknown>;
 }
+
+describe('run_pipeline dry-run vote evidence (#7240)', () => {
+  it.each([
+    { kind: 'approved', approvalPercentage: 83, voteRecordId: 'vr-approved' },
+    { kind: 'rejected', approvalPercentage: 17, voteRecordId: 'vr-rejected', feedback: 'Revise' },
+    {
+      kind: 'no_quorum',
+      approvalPercentage: 0,
+      voteRecordId: 'vr-quorum',
+      reason: 'Missing voter',
+    },
+  ])('surfaces the $kind plan vote', async (vote) => {
+    runAdaptiveOrchestratorMock.mockResolvedValueOnce({
+      ...ORCHESTRATOR_RESULT,
+      success: vote.kind === 'approved',
+      dryRun: true,
+      finalState: vote.kind === 'approved' ? { voteResult: { vote } } : {},
+      ...(vote.kind !== 'approved' ? { errorDetail: { voteResult: { vote } } } : {}),
+    });
+
+    const result = await captureHandler()({ task: 'Build feature X', dryRun: true });
+    expect(result.isError === true).toBe(vote.kind !== 'approved');
+    const output =
+      vote.kind === 'approved'
+        ? (JSON.parse(result.content[0]!.text) as Record<string, unknown>)
+        : errorDetail(result);
+
+    expect(output).toMatchObject({
+      dryRun: true,
+      planVoteDecision: vote.kind,
+      planVoteApprovalPercentage: vote.approvalPercentage,
+      planVoteRecordId: vote.voteRecordId,
+    });
+  });
+
+  it('omits a record id when the vote did not persist one', async () => {
+    runAdaptiveOrchestratorMock.mockResolvedValueOnce({
+      ...ORCHESTRATOR_RESULT,
+      dryRun: true,
+      finalState: { voteResult: { vote: { kind: 'approved', approvalPercentage: 100 } } },
+    });
+    const result = await captureHandler()({ task: 'Build feature X', dryRun: true });
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    expect(output['planVoteDecision']).toBe('approved');
+    expect(output).not.toHaveProperty('planVoteRecordId');
+  });
+
+  it.each([
+    {},
+    { voteResult: null },
+    { voteResult: { vote: undefined } },
+    { voteResult: { vote: { kind: 'unknown', approvalPercentage: 100 } } },
+    { voteResult: { vote: { kind: 'rejected', approvalPercentage: 17 } } },
+  ])('omits evidence when no vote was produced: %j', async (finalState) => {
+    runAdaptiveOrchestratorMock.mockResolvedValueOnce({
+      ...ORCHESTRATOR_RESULT,
+      dryRun: true,
+      finalState,
+    });
+    const result = await captureHandler()({ task: 'Build feature X', dryRun: true });
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    expect(output).not.toHaveProperty('planVoteDecision');
+    expect(output).not.toHaveProperty('planVoteApprovalPercentage');
+    expect(output).not.toHaveProperty('planVoteRecordId');
+  });
+});
+
+/** Read vote evidence from the existing structured error envelope. */
+function errorDetail(result: CapturedToolResult): Record<string, unknown> {
+  const envelope = result._meta?.[ERROR_ENVELOPE_META_KEY] as {
+    detail: Record<string, unknown>;
+  };
+  return envelope.detail;
+}
+
+/** Exercise the real graph and stage wrappers through the registered tool. */
+function graphStages(): DevPipelineStages {
+  return {
+    research: vi.fn().mockResolvedValue(researchContextFromText('Research')),
+    plan: vi.fn().mockResolvedValue('Plan'),
+    vote: vi.fn().mockResolvedValue({ kind: 'approved', approvalPercentage: 100 }),
+    decompose: vi.fn().mockResolvedValue([]),
+    implement: vi.fn().mockResolvedValue('Code'),
+    qaReview: vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', issues: [] }),
+    securityScan: vi.fn().mockResolvedValue({ passed: true }),
+  };
+}
+
+function useRealGraph(stages: DevPipelineStages): void {
+  runAdaptiveOrchestratorMock.mockImplementationOnce(async () => ({
+    ...ORCHESTRATOR_RESULT,
+    ...(await runGraphPipeline(
+      'Build feature X',
+      DEV_PIPELINE_TEMPLATE,
+      createDevStageRegistry(stages),
+      { dryRun: true }
+    )),
+  }));
+}
+
+describe('run_pipeline real graph vote evidence (#7240)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(['rejected', 'no_quorum'] as const)(
+    'keeps a completed %s vote failed and carries its evidence',
+    async (kind) => {
+      const stages = graphStages();
+      vi.mocked(stages.vote).mockResolvedValue({
+        kind,
+        approvalPercentage: 17,
+        voteRecordId: 'vr-failed',
+        feedback: 'Revise the plan',
+        reason: 'Missing voter',
+      });
+      useRealGraph(stages);
+      const result = await captureHandler()({ task: 'Build feature X', dryRun: true });
+
+      expect(result.isError).toBe(true);
+      expect(errorDetail(result)).toMatchObject({
+        planVoteDecision: kind,
+        planVoteApprovalPercentage: 17,
+        planVoteRecordId: 'vr-failed',
+        ...(kind === 'rejected'
+          ? { planVoteFeedback: 'Revise the plan' }
+          : { planVoteReason: 'Missing voter' }),
+      });
+      expect(stages.implement).not.toHaveBeenCalled();
+    }
+  );
+
+  it('omits the approval percentage and surfaces the reason when the real vote stage crashes', async () => {
+    vi.spyOn(consensusVote, 'executeVoting').mockRejectedValue(new Error('Adapters down'));
+    const stages = graphStages();
+    stages.vote = createVoteStage({ config: {}, guard: createBudgetGuard(), startStage: vi.fn() });
+    useRealGraph(stages);
+    const result = await captureHandler()({ task: 'Build feature X', dryRun: true });
+
+    expect(result.isError).toBe(true);
+    expect(errorDetail(result)).toMatchObject({
+      planVoteDecision: 'no_quorum',
+      planVoteReason: expect.stringContaining('Adapters down'),
+    });
+    expect(errorDetail(result)).not.toHaveProperty('planVoteApprovalPercentage');
+    expect(errorDetail(result)).not.toHaveProperty('planVoteRecordId');
+    expect(stages.implement).not.toHaveBeenCalled();
+  });
+});
 
 /** Registers the tool against a mock server and returns the captured callback. */
 function captureHandler(): (args: unknown, ctx?: HandlerContext) => Promise<CapturedToolResult> {
