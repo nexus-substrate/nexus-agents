@@ -38,6 +38,18 @@ describe('agy model slugs', () => {
     expect(toAgyModelSlug('gemini-3-pro')).toBe('gemini-3.1-pro-high');
   });
 
+  it('lists no gemini-3.5 slug, which agy 1.3.1 rejects (#7217)', () => {
+    // agy 1.3.1 answers a 3.5 slug with status:ERROR "invalid model selection"
+    // and exit 0. Keeping it listed makes isAgyModelSlug accept it, so the
+    // DEFAULT_AGY_MODEL fallback never applies.
+    expect(AGY_MODEL_SLUGS.filter((s) => s.startsWith('gemini-3.5'))).toEqual([]);
+  });
+
+  it('maps the 3.x flash entries to 3.7 Flash, keeping their effort tier (#7217)', () => {
+    expect(toAgyModelSlug('gemini-3.5-flash')).toBe('gemini-3.7-flash-medium');
+    expect(toAgyModelSlug('gemini-3-flash')).toBe('gemini-3.7-flash-low');
+  });
+
   it('maps a 2.5-generation entry agy does not serve to a surviving tier', () => {
     // agy serves no 2.5 models at all. Dropping these would break routing that
     // already selects them.

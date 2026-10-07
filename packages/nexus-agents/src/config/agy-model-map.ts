@@ -22,6 +22,11 @@
  * was an upstream defect and it is fixed. `scripts/check-agy-model-drift.ts`
  * now compares this list against the live CLI so it cannot silently rot again.
  *
+ * Re-checked on v1.3.1 (2026-10-07): agy no longer serves any `gemini-3.5-*`
+ * slug and rejects one with status ERROR at exit 0, so those were removed
+ * (#7217). It now also lists 3.8 Flash; adopting that is a new-model decision
+ * (#6625) and is deliberately not made here.
+ *
  * @module config/agy-model-map
  */
 
@@ -49,9 +54,6 @@ export const AGY_MODEL_SLUGS = [
   'gemini-3.6-flash-high',
   'gemini-3.6-flash-medium',
   'gemini-3.6-flash-low',
-  'gemini-3.5-flash-high',
-  'gemini-3.5-flash-medium',
-  'gemini-3.5-flash-low',
   'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',
 ] as const;
@@ -76,10 +78,11 @@ const CANONICAL_TO_AGY: Readonly<Record<string, AgyModelSlug>> = {
   'gemini-3-pro': 'gemini-3.1-pro-high',
   // reasoning 9, 2.5-generation — nearest surviving pro tier
   'gemini-pro': 'gemini-3.1-pro-low',
-  // speed 10 / quality 8
-  'gemini-3.5-flash': 'gemini-3.5-flash-medium',
-  // speed 10 / quality 8, cheaper than the above
-  'gemini-3-flash': 'gemini-3.5-flash-low',
+  // speed 10 / quality 8. agy 1.3.1 dropped every 3.5 slug (#7217); the
+  // newest Flash already listed takes over at the same effort tier.
+  'gemini-3.5-flash': 'gemini-3.7-flash-medium',
+  // speed 10 / quality 8, cheaper than the above — same effort tier as before
+  'gemini-3-flash': 'gemini-3.7-flash-low',
   // cheapest entry, quality 7, 2.5-generation
   'gemini-flash': 'gemini-3.6-flash-low',
 };
