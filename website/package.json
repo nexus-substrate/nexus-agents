@@ -9,7 +9,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "test": "vitest run"
+    "test": "vitest run && node --test scripts/a11y-check.test.mjs",
+    "a11y": "node scripts/a11y-check.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
@@ -26,6 +27,9 @@
     "typescript": "^6.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "axe-core": "4.14.0",
+    "playwright": "1.63.0",
     "vitest": "^4.1.11"
   }
 }

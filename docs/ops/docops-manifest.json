@@ -8,6 +8,7 @@
     "scripts/check-docops-skill.ts",
     "scripts/check-docs-indexed.ts",
     ".github/workflows/docs-check.yml",
+    ".github/workflows/deploy-website.yml",
     ".github/workflows/link-check.yml",
     "docs/ops/docops-spec.md",
     "scripts/generate-tool-reference.ts"
