@@ -88,15 +88,17 @@ docs/
 
 These documents define the system and must be kept up-to-date:
 
-| Document                  | Location                                           | Description                              |
-| ------------------------- | -------------------------------------------------- | ---------------------------------------- |
-| **Project Instructions**  | [CLAUDE.md](../CLAUDE.md)                          | Agent behavior, protocols, governance    |
-| **Your First Task**       | [FIRST_TASK.md](./getting-started/FIRST_TASK.md)   | 5-minute first task (canonical entry)    |
-| **README**                | [README.md](../README.md)                          | Project overview (control-plane framing) |
-| **Architecture Overview** | [architecture/README.md](./architecture/README.md) | System design hub                        |
-| **Development Guide**     | [development/README.md](./development/README.md)   | Contributor hub                          |
-| **API Reference**         | [ENTRYPOINTS.md](./ENTRYPOINTS.md)                 | CLI, MCP, REST, API docs                 |
-| **Troubleshooting**       | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)         | Common issues, FAQ                       |
+| Document                                                 | Location                                                                                | Description                              |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------- |
+| **Project Instructions**                                 | [CLAUDE.md](../CLAUDE.md)                                                               | Agent behavior, protocols, governance    |
+| **Your First Task**                                      | [FIRST_TASK.md](./getting-started/FIRST_TASK.md)                                        | 5-minute first task (canonical entry)    |
+| [TOUR.md](./getting-started/TOUR.md)                     | Tutorial: walk the built-in `nexus-agents tour` (no API keys, no model calls)           | Canonical                                |
+| [YOUR_FIRST_RUN.md](./getting-started/YOUR_FIRST_RUN.md) | Tutorial: connect your agent, call `run` (decide, then execute), verify the audit chain | Canonical                                |
+| **README**                                               | [README.md](../README.md)                                                               | Project overview (control-plane framing) |
+| **Architecture Overview**                                | [architecture/README.md](./architecture/README.md)                                      | System design hub                        |
+| **Development Guide**                                    | [development/README.md](./development/README.md)                                        | Contributor hub                          |
+| **API Reference**                                        | [ENTRYPOINTS.md](./ENTRYPOINTS.md)                                                      | CLI, MCP, REST, API docs                 |
+| **Troubleshooting**                                      | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)                                              | Common issues, FAQ                       |
 
 ---
 
@@ -144,15 +146,17 @@ The scheduler is `run` / MetaOrchestrator: one entry point picks (and optionally
 
 Nothing ships without passing a gate. Adversarial PR review, multi-voter consensus, and quality gates decide what is allowed through. These are the loops that sit at `advisory`/`enforce` on the [authority ladder](./adr/0017-authority-ladder.md).
 
-| Document                                                        | Description            | Status    |
-| --------------------------------------------------------------- | ---------------------- | --------- |
-| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md) | 5 consensus algorithms | Canonical |
+| Document                                                        | Description                                                                                      | Status    |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------- |
+| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md) | 5 consensus algorithms                                                                           | Canonical |
+| [VOTE_RESULTS.md](./architecture/VOTE_RESULTS.md)               | Explanation: what approved / rejected / no_quorum mean; strategies, denominators, error policies | Canonical |
 
 **How-to (running gates):**
 
-| Document                                          | Description                                               |
-| ------------------------------------------------- | --------------------------------------------------------- |
-| [PR_REVIEW_LOCAL.md](./guides/PR_REVIEW_LOCAL.md) | Run pr_review on your machine using subscription CLI auth |
+| Document                                          | Description                                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------- |
+| [PR_REVIEW_LOCAL.md](./guides/PR_REVIEW_LOCAL.md) | Run pr_review on your machine using subscription CLI auth           |
+| [CI_REVIEW_GATES.md](./guides/CI_REVIEW_GATES.md) | Fail a GitHub Actions job unless a voter panel approves the PR diff |
 
 **Evidence (gate evaluations):**
 
@@ -208,6 +212,7 @@ The data plane is the engineering CLIs (Claude Code, Codex, Gemini, OpenCode) th
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                   | MCP server configuration                                                                                     |
 | [HARNESS_COMPATIBILITY.md](./guides/HARNESS_COMPATIBILITY.md)       | Wire nexus-agents from OpenCode/Codex/Cursor/Aider/Cline                                                     |
+| [REGISTER_MCP_SERVER.md](./guides/REGISTER_MCP_SERVER.md)           | Register the MCP server by hand: Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI, OpenCode            |
 | [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)       | Custom OpenAI-compatible gateway (direct SDK + OpenCode paths)                                               |
 | [CORPORATE_GATEWAY.md](./guides/CORPORATE_GATEWAY.md)               | Gateway-only MCP setup: harness `env` blocks, family slots, voter seats, proxy/CA, troubleshooting           |
 | [CLOUD_PROVIDERS.md](./guides/CLOUD_PROVIDERS.md)                   | Bedrock/Vertex/Azure via OpenRouter / LiteLLM / custom-gateway                                               |
@@ -321,17 +326,18 @@ Interface specs, generated references, the research loop's catalog, ADRs, and hi
 
 > Owned by the docs-site single-sourcing epics (#3532/#3688/#3763): these pages are emitted by their generators and live where the generators write them. This IA pass indexes them but does not own their bodies.
 
-| Document                                                  | Description                                                                      | Status    |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------- | --------- |
-| [capabilities.md](./reference/capabilities.md)            | CLI/MCP/Workflow capability index                                                | Generated |
-| [MCP tool reference](./reference/tools/index.md)          | Per-tool MCP reference (name, description, input schema)                         | Generated |
-| [Environment reference](./reference/environment.md)       | Registered environment variables, accepted values, schema defaults, descriptions | Generated |
-| [CLI reference](./reference/cli.md)                       | Complete CLI command catalog with audience and description                       | Generated |
-| [Strategy reference](./reference/strategies/index.md)     | Force-strategy escape hatches: entrypoint tool, when-to-force, tiers, executor   | Generated |
-| [Price basis](./reference/price-basis.md)                 | `PriceBasis` members (`list`/`declared`/`unknown`) and persisted-reader compat   | Canonical |
-| [skills-index.md](./skills-index.md)                      | LLM context loading index                                                        | Canonical |
-| [dependency-graph.md](./architecture/dependency-graph.md) | Module dependency diagram                                                        | Generated |
-| [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)   | Machine-readable component map                                                   | Generated |
+| Document                                                                  | Description                                                                      | Status    |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------- |
+| [capabilities.md](./reference/capabilities.md)                            | CLI/MCP/Workflow capability index                                                | Generated |
+| [MCP tool reference](./reference/tools/index.md)                          | Per-tool MCP reference (name, description, input schema)                         | Generated |
+| [Environment reference](./reference/environment.md)                       | Registered environment variables, accepted values, schema defaults, descriptions | Generated |
+| [CLI reference](./reference/cli.md)                                       | Complete CLI command catalog with audience and description                       | Generated |
+| [Strategy reference](./reference/strategies/index.md)                     | Force-strategy escape hatches: entrypoint tool, when-to-force, tiers, executor   | Generated |
+| [Price basis](./reference/price-basis.md)                                 | `PriceBasis` members (`list`/`declared`/`unknown`) and persisted-reader compat   | Canonical |
+| [Which CLIs and keys do I need?](./reference/cli-and-key-requirements.md) | Feature × route (CLI / gateway / API key) matrix, voter seats, doctor statuses   | Canonical |
+| [skills-index.md](./skills-index.md)                                      | LLM context loading index                                                        | Canonical |
+| [dependency-graph.md](./architecture/dependency-graph.md)                 | Module dependency diagram                                                        | Generated |
+| [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)                   | Machine-readable component map                                                   | Generated |
 
 ### System maps & design
 

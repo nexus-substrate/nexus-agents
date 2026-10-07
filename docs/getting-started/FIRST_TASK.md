@@ -6,7 +6,7 @@ audience: user
 tier: 1
 keywords: [getting-started, first-task, smoke-test, tutorial, onboarding]
 related_files: [./INSTALLATION.md, ./CONFIGURATION.md, ./PLUGIN_INSTALL.md]
-order: 1
+order: 3
 ---
 
 # Your first task
@@ -67,7 +67,7 @@ Read-only; safe to run any time. To try a walkthrough before configuring CLI aut
 nexus-agents tour
 ```
 
-The tour shows illustrative cached fixtures and makes no live model calls. It requires no API keys or authenticated CLI. Add `--non-interactive` to skip the prompts between steps.
+The tour shows illustrative cached fixtures and makes no live model calls. It requires no API keys or authenticated CLI. Add `--non-interactive` to skip the prompts between steps. [Try nexus-agents with the tour](./TOUR.md) walks through it step by step.
 
 For the live vote below, you need **at least one** authenticated Claude Code or Codex CLI. Gemini and OpenCode do not serve voter seats. No separate API keys are required.
 
@@ -85,7 +85,7 @@ Three voter roles (`architect`, `security`, `scope_steward`) deliberate through 
 Nexus Agents Consensus Vote
 ============================
 
-Collecting votes from 3 agents (timeout: 60s each)...
+Collecting votes from 3 agents (timeout: 300s each)...
 
 Proposal: Use SQLite over JSON files for the outcome store
 
@@ -125,6 +125,8 @@ Auto-configures nexus-agents as an MCP server in Claude Code, Cursor, OpenCode, 
 ---
 
 ## 5. Try a real task
+
+[Your first run](./YOUR_FIRST_RUN.md) covers this step in full: it shows the routing decision `run` returns, the live vote, and how to verify the audit chain afterwards.
 
 After `setup`, ask your MCP-aware agent:
 
