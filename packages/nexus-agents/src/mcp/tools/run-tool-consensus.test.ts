@@ -35,6 +35,7 @@ import { resetGlobalPolicyFirewall } from '../middleware/policy-registry.js';
 import { parseToolErrorEnvelope } from '../error-envelope.js';
 import { resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 import { DecisionCostStore } from '../../observability/decision-cost-store.js';
+import { getMetaOutcomesFile } from '../../config/learning-persistence.js';
 
 type Verdict = 'approved' | 'rejected' | 'no_quorum';
 type Mode = 'off' | 'audit' | 'enforce';
@@ -384,6 +385,71 @@ describe('registered run consensus enforcement (#4464)', () => {
       expect(voteMock).toHaveBeenCalledTimes(1);
     }
   );
+
+  describe('dispatch-outcome telemetry reads the panel, not the gate (#7127)', () => {
+    /** The default sink's outcome lines and the shadow-train file, for one run. */
+    async function runAndCollect(
+      mode: Mode,
+      fixture: ExtendedVotingResult
+    ): Promise<{
+      result: ToolResult;
+      sink: Record<string, unknown>[];
+      trained: Array<{ strategy: string; success: boolean }>;
+    }> {
+      vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', mode);
+      vi.stubEnv('NEXUS_META_SHADOW_TRAIN', '1');
+      voteMock.mockResolvedValue(fixture);
+      const logger = createLogger({ test: 'outcome-telemetry' });
+      const info = vi.spyOn(logger, 'info');
+      const result = await captureHandler(logger)(runArgs);
+      const sink = info.mock.calls
+        .filter(([message]) => message === 'MetaDispatcher execution outcome')
+        .map(([, context]) => context as Record<string, unknown>);
+      const file = getMetaOutcomesFile();
+      const trained = existsSync(file)
+        ? readFileSync(file, 'utf8')
+            .trim()
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line) as { strategy: string; success: boolean })
+        : [];
+      return { result, sink, trained };
+    }
+
+    it('enforce + rejected panel: business error, strategy success with a refusal marker', async () => {
+      const { result, sink, trained } = await runAndCollect('enforce', panel('rejected'));
+      expect(result.isError).toBe(true);
+      expect(parseToolErrorEnvelope(result._meta)?.errorCategory).toBe('business');
+      expect(sink).toHaveLength(1);
+      expect(sink[0]).toMatchObject({ strategy: 'consensus', success: true });
+      expect(sink[0]?.['gateRefusal']).toMatch(/rejected/);
+      expect(sink[0]).not.toHaveProperty('failureReason');
+      expect(trained).toEqual([expect.objectContaining({ strategy: 'consensus', success: true })]);
+    });
+
+    it('enforce + all voters failed: strategy failure, no refusal marker', async () => {
+      const { result, sink, trained } = await runAndCollect('enforce', panel('no_quorum', 0, 0, 7));
+      expect(result.isError).toBe(true);
+      expect(sink).toHaveLength(1);
+      expect(sink[0]).toMatchObject({ strategy: 'consensus', success: false });
+      expect(sink[0]).not.toHaveProperty('gateRefusal');
+      expect(trained).toEqual([expect.objectContaining({ strategy: 'consensus', success: false })]);
+    });
+
+    it.each(['audit', 'off'] as const)(
+      '%s + rejected panel: unchanged success, no refusal marker',
+      async (mode) => {
+        const { result, sink, trained } = await runAndCollect(mode, panel('rejected'));
+        expect(result.isError).toBeFalsy();
+        expect(sink).toHaveLength(1);
+        expect(sink[0]).toMatchObject({ strategy: 'consensus', success: true });
+        expect(sink[0]).not.toHaveProperty('gateRefusal');
+        expect(trained).toEqual([
+          expect.objectContaining({ strategy: 'consensus', success: true }),
+        ]);
+      }
+    );
+  });
 
   it('ends an async rejected consensus job as failed', async () => {
     vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', 'enforce');

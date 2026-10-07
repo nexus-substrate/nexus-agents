@@ -50,12 +50,23 @@ export interface MetaOutcomeRecord {
   readonly timestamp: string;
   /** The strategy that was executed. */
   readonly strategy: ExecutionStrategy;
-  /** Whether execution succeeded. */
+  /**
+   * Whether the STRATEGY executed and produced its result. A policy gate
+   * refusing that result does not make this false — see {@link gateRefusal}
+   * (#7127).
+   */
   readonly success: boolean;
   /** Wall-clock execution duration in milliseconds. */
   readonly durationMs: number;
   /** Failure reason when {@link success} is false. */
   readonly failureReason?: string;
+  /**
+   * Set when the strategy succeeded but a policy gate refused the run on the
+   * strategy's own result — e.g. an enforced consensus panel that delivered a
+   * "rejected" verdict (#7127). The run returns a business error; the strategy
+   * is still credited with `success: true`.
+   */
+  readonly gateRefusal?: string;
 }
 
 /** A sink that receives every execution outcome. */
@@ -164,8 +175,15 @@ export type MetaOutcomeObserver = (record: MetaOutcomeRecord, decision: MetaDeci
  * Result classification verdict.
  */
 interface MetaResultClassification {
+  /** The RUN verdict: false makes the `run` tool return a business error. */
   readonly success: boolean;
   readonly failureReason?: string | undefined;
+  /**
+   * Set (with `success: false`) when the failure is a policy gate refusing a
+   * result the strategy did produce, rather than the strategy failing to
+   * execute. Outcome telemetry records such a run as a strategy success (#7127).
+   */
+  readonly gateRefusal?: string | undefined;
 }
 
 /**
@@ -201,13 +219,17 @@ function classifyConsensusResult(
     (enforcement as Record<string, unknown>)['wouldBlock'] === true;
   if (mode === 'enforce' && (BLOCKING_CONSENSUS_DECISIONS.has(record['decision']) || wouldBlock)) {
     const reason = consensusReason(record);
-    return {
-      success: false,
-      failureReason:
-        reason === record['decision']
-          ? `Consensus ${reason}`
-          : `Consensus ${String(record['decision'])}: ${reason}`,
-    };
+    const failureReason =
+      reason === record['decision']
+        ? `Consensus ${reason}`
+        : `Consensus ${String(record['decision'])}: ${reason}`;
+    // #7127: a "rejected" verdict is the panel doing its job — the gate refused,
+    // the strategy did not fail. no_quorum and a non-outage-invariant approval
+    // (which the run layer treats as no_quorum) produced no usable verdict.
+    if (record['decision'] === 'rejected' && reason === 'rejected') {
+      return { success: false, failureReason, gateRefusal: failureReason };
+    }
+    return { success: false, failureReason };
   }
   return { success: true };
 }
@@ -257,16 +279,21 @@ function recordOutcome(
   deps: DispatchDeps,
   decision: MetaDecision,
   start: number,
-  success: boolean,
-  failureReason?: string
+  verdict: MetaResultClassification
 ): void {
+  // #7127: telemetry credits the strategy, not the gate. A gate refusal of a
+  // result the strategy produced is a strategy success with the refusal beside it.
+  const refused = verdict.gateRefusal !== undefined;
   const record: MetaOutcomeRecord = {
     decisionId: decision.decisionId,
     timestamp: new Date(getTimeProvider().now()).toISOString(),
     strategy: decision.strategy,
-    success,
+    success: verdict.success || refused,
     durationMs: Math.max(0, getTimeProvider().now() - start),
-    ...(failureReason !== undefined ? { failureReason } : {}),
+    ...(!refused && verdict.failureReason !== undefined
+      ? { failureReason: verdict.failureReason }
+      : {}),
+    ...(refused ? { gateRefusal: verdict.gateRefusal } : {}),
   };
   deps.outcomeSink.recordOutcome(record);
   if (deps.onOutcome !== undefined) {
@@ -293,7 +320,7 @@ async function dispatchDecision(
   const executor = deps.executors[strategy];
   if (executor === undefined) {
     const reason = `No executor registered for strategy "${strategy}"`;
-    recordOutcome(deps, decision, start, false, reason);
+    recordOutcome(deps, decision, start, { success: false, failureReason: reason });
     deps.logger.error('MetaDispatcher dispatch failed', undefined, {
       decisionId,
       strategy,
@@ -305,7 +332,7 @@ async function dispatchDecision(
   try {
     const result = await executor(decision, input);
     const classification = deps.classifyResult(result);
-    recordOutcome(deps, decision, start, classification.success, classification.failureReason);
+    recordOutcome(deps, decision, start, classification);
     return {
       decisionId,
       strategy,
@@ -314,7 +341,7 @@ async function dispatchDecision(
     };
   } catch (err) {
     const reason = errorMessage(err);
-    recordOutcome(deps, decision, start, false, reason);
+    recordOutcome(deps, decision, start, { success: false, failureReason: reason });
     deps.logger.error(
       'MetaDispatcher strategy executor threw',
       err instanceof Error ? err : undefined,
