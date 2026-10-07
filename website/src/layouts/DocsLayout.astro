@@ -2,10 +2,9 @@
 // Docs pages: remarque's Reference/Docs archetype (#7199) — nav rail,
 // breadcrumb kicker, 46rem reading column, "on this page" rail, prev/next.
 //
-// Its own document rather than a BaseLayout child: BaseLayout carries the
-// landing page's editorial stylesheet (global.css), whose unlayered element
-// rules would fight remarque's. Shared <head> metadata and page scripts are
-// components both layouts use.
+// Its own document rather than a BaseLayout child, because the rail and the
+// aside change the page grid. Header, footer, <head> metadata, theme handling
+// and page scripts are components both layouts use.
 //
 // The nav is generated from the docs collection (src/lib/docs-nav.ts), so a
 // published page cannot be missing from it: pages without a `diataxis`
@@ -14,25 +13,26 @@ import type { MarkdownHeading } from 'astro';
 import SiteHead from '../components/SiteHead.astro';
 import PageScripts from '../components/PageScripts.astro';
 import ThemeInit from '../components/ThemeInit.astro';
-import ThemeToggle from '../components/ThemeToggle.astro';
-import SearchBox from '../components/SearchBox.svelte';
-import { NEXUS_AGENTS_VERSION } from '../data/site-data';
+import SiteMasthead from '../components/SiteMasthead.astro';
+import SiteFooter from '../components/SiteFooter.astro';
 import {
   API_INDEX_HREF,
   BASE,
   docsHref,
-  getPublishedDocs,
-  toNavPage,
+  getSiteNav,
 } from '../lib/docs-collection.ts';
 import {
-  buildNav,
   findNeighbors,
   findSection,
   navLabel,
   pageTypeLabel,
+  PRIMARY_SECTIONS,
   samePage,
+  sectionIndexHref,
+  sectionLabel,
   type Diataxis,
   type PageSource,
+  type PrimarySectionKey,
 } from '../lib/docs-nav.ts';
 import '../styles/docs.css';
 
@@ -45,13 +45,22 @@ interface Props {
   source?: PageSource | undefined;
   /** `api` for the generated TypeDoc pages, which sit under one nav entry. */
   section?: 'docs' | 'api';
+  /** Set on a generated section index page (src/pages/docs/[section].astro). */
+  sectionIndex?: PrimarySectionKey | undefined;
 }
 
-const { title, description, headings = [], diataxis, source, section = 'docs' } = Astro.props;
+const {
+  title,
+  description,
+  headings = [],
+  diataxis,
+  source,
+  section = 'docs',
+  sectionIndex,
+} = Astro.props;
 const pathname = Astro.url.pathname;
 
-const apiIndex = { id: 'api', href: API_INDEX_HREF, title: 'API reference', order: 0 };
-const nav = buildNav((await getPublishedDocs()).map(toNavPage), { reference: [apiIndex] });
+const nav = await getSiteNav();
 
 // An API sub-page is not itself in the nav; it lives under the API index.
 const navHref = section === 'api' ? API_INDEX_HREF : pathname;
@@ -62,8 +71,14 @@ const isApiSubpage = section === 'api' && !samePage(pathname, API_INDEX_HREF);
 const currentToken = isApiSubpage ? 'true' : 'page';
 const { prev, next } = isApiSubpage ? { prev: undefined, next: undefined } : findNeighbors(nav, pathname);
 
-// The header links to the first page of each reader-facing section.
-const primarySections = nav.filter((s) => ['start', 'how-to', 'reference', 'concepts'].includes(s.key));
+function asPrimary(key: string | undefined): PrimarySectionKey | undefined {
+  return PRIMARY_SECTIONS.find((k) => k === key);
+}
+// The section the reader is in, for the header and the breadcrumb. A primary
+// section's crumb links to its generated index page.
+const primaryKey = sectionIndex ?? asPrimary(currentSection?.key);
+const crumbLabel = sectionIndex ? sectionLabel(sectionIndex) : currentSection?.label;
+const crumbHref = !sectionIndex && primaryKey ? sectionIndexHref(BASE, primaryKey) : undefined;
 
 const docsHome = docsHref('readme');
 const tocHeadings = headings.filter((h) => h.depth === 2 || h.depth === 3);
@@ -84,27 +99,7 @@ const railSections = nav.map((s) => ({
   <body>
     <a class="docs-skip-link" href="#main">Skip to content</a>
 
-    <header class="docs-masthead">
-      <div class="docs-masthead-inner">
-        <a class="docs-wordmark" href={`${BASE}/`}>nexus-agents</a>
-        <nav class="docs-primary-nav" aria-label="Primary">
-          <ul>
-            {primarySections.map((s) => (
-              <li>
-                <a href={s.pages[0]?.href} aria-current={s === currentSection ? 'true' : undefined}>
-                  {s.label}
-                </a>
-              </li>
-            ))}
-            <li>
-              <a href="https://github.com/nexus-substrate/nexus-agents">GitHub</a>
-            </li>
-          </ul>
-        </nav>
-        <SearchBox base={BASE} client:load />
-        <ThemeToggle />
-      </div>
-    </header>
+    <SiteMasthead current={primaryKey} currentIsPage={sectionIndex !== undefined} />
 
     <div class="docs-page">
       <nav class="docs-rail" aria-label="Documentation">
@@ -160,7 +155,9 @@ const railSections = nav.map((s) => ({
         <nav class="docs-breadcrumb" aria-label="Breadcrumb" data-pagefind-ignore>
           <ol>
             <li><a href={docsHome}>Docs</a></li>
-            {currentSection && <li>{currentSection.label}</li>}
+            {crumbLabel && !sectionIndex && (
+              <li>{crumbHref ? <a href={crumbHref}>{crumbLabel}</a> : crumbLabel}</li>
+            )}
             {isApiSubpage && (
               <li>
                 <a href={API_INDEX_HREF}>API reference</a>
@@ -231,12 +228,7 @@ const railSections = nav.map((s) => ({
       </main>
     </div>
 
-    <footer class="docs-footer">
-      <p>
-        nexus-agents {NEXUS_AGENTS_VERSION} · MIT licensed ·
-        <a href="https://github.com/nexus-substrate/nexus-agents">Source</a>
-      </p>
-    </footer>
+    <SiteFooter />
 
     <PageScripts />
     <script>

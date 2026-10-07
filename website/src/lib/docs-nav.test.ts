@@ -5,7 +5,13 @@ import {
   findNeighbors,
   findSection,
   pageTypeLabel,
+  PRIMARY_SECTIONS,
   sectionFor,
+  sectionIndexHref,
+  sectionIntro,
+  sectionLabel,
+  sectionListing,
+  sectionRouteCollisions,
   type NavPage,
 } from './docs-nav.ts';
 
@@ -139,6 +145,8 @@ describe('pageSource', () => {
     ['../docs/reference/tools/consensus_vote.md', 'scripts/generate-tool-reference.ts'],
     ['../docs/reference/strategies/index.md', 'scripts/generate-strategy-reference.ts'],
     ['../docs/reference/capabilities.md', 'scripts/generate-repo-index.ts'],
+    ['../docs/reference/environment.md', 'scripts/generate-env-reference.ts'],
+    ['../docs/reference/cli.md', 'scripts/generate-cli-reference.ts'],
     ['../docs/research/RESEARCH_INDEX.md', 'scripts/update-research-index.ts'],
   ])('names the generator instead of an edit link for %s', (path, source) => {
     expect(pageSource(path)).toEqual({ kind: 'generated', source, partial: false });
@@ -159,5 +167,94 @@ describe('pageSource', () => {
 
   it('matches a directory entry by prefix only, not a sibling with the same stem', () => {
     expect(pageSource('../docs/reference/tools-guide.md')?.kind).toBe('edit');
+  });
+});
+
+describe('section index routes', () => {
+  it('gives each primary section a stable slug under /docs/', () => {
+    expect(PRIMARY_SECTIONS.map((key) => sectionIndexHref('/base', key))).toEqual([
+      '/base/docs/start-here/',
+      '/base/docs/how-to/',
+      '/base/docs/reference/',
+      '/base/docs/concepts/',
+    ]);
+  });
+
+  it('reports a doc id that would shadow a section index route', () => {
+    expect(sectionRouteCollisions(['reference/cli', 'guides/x'])).toEqual([]);
+    expect(sectionRouteCollisions(['how-to', 'concepts/a', 'start-here'])).toEqual([
+      'start-here',
+      'how-to',
+    ]);
+  });
+
+  it('reports no collisions for no docs', () => {
+    expect(sectionRouteCollisions([])).toEqual([]);
+  });
+});
+
+describe('sectionListing', () => {
+  it('lists the classified pages of a section in nav order, not provisional', () => {
+    const nav = buildNav([
+      page({ id: 'getting-started/b', diataxis: 'tutorial', order: 2 }),
+      page({ id: 'getting-started/a', diataxis: 'tutorial', order: 1 }),
+      page({ id: 'getting-started/unclassified' }),
+    ]);
+    const listing = sectionListing(nav, 'start');
+    expect(listing.provisional).toBe(false);
+    expect(listing.pages.map((p) => p.id)).toEqual(['getting-started/a', 'getting-started/b']);
+  });
+
+  it('falls back to unclassified pages from the section directory, marked provisional', () => {
+    const nav = buildNav([
+      page({ id: 'guides/zeta', title: 'Zeta' }),
+      page({ id: 'guides/alpha', title: 'Alpha' }),
+      page({ id: 'architecture/routing' }),
+      // Classified elsewhere or project-facing: never borrowed by the fallback.
+      page({ id: 'guides/explained', diataxis: 'explanation' }),
+      page({ id: 'guides/internal', audience: 'project' }),
+    ]);
+    const listing = sectionListing(nav, 'how-to');
+    expect(listing.provisional).toBe(true);
+    expect(listing.pages.map((p) => p.id)).toEqual(['guides/alpha', 'guides/zeta']);
+  });
+
+  it('stops falling back once one page in the section is classified', () => {
+    const nav = buildNav([page({ id: 'guides/a' }), page({ id: 'guides/b', diataxis: 'how-to' })]);
+    expect(sectionListing(nav, 'how-to')).toEqual({
+      pages: [expect.objectContaining({ id: 'guides/b' })],
+      provisional: false,
+    });
+  });
+
+  it('is empty and not provisional when nothing is classified or guessable', () => {
+    expect(sectionListing([], 'concepts')).toEqual({ pages: [], provisional: false });
+    expect(sectionListing(buildNav([page({ id: 'ops/x' })]), 'concepts')).toEqual({
+      pages: [],
+      provisional: false,
+    });
+  });
+
+  it('counts nav extras (the API index) as classified pages of their section', () => {
+    const apiIndex = page({ id: 'api', title: 'API reference', order: 0 });
+    const nav = buildNav([page({ id: 'reference/x' })], { reference: [apiIndex] });
+    expect(sectionListing(nav, 'reference')).toEqual({ pages: [apiIndex], provisional: false });
+  });
+});
+
+describe('sectionIntro / sectionLabel', () => {
+  it('describes every primary section with a kicker and a one-line summary', () => {
+    for (const key of PRIMARY_SECTIONS) {
+      const intro = sectionIntro(key);
+      expect(intro.kicker.length).toBeGreaterThan(0);
+      expect(intro.summary.length).toBeGreaterThan(0);
+    }
+    expect(sectionIntro('start').kicker).toBe('Learning');
+  });
+
+  it('labels sections from the one SECTIONS table and rejects unknown keys', () => {
+    expect(sectionLabel('start')).toBe('Start here');
+    expect(sectionLabel('concepts')).toBe('Concepts');
+    expect(() => sectionLabel('nope' as never)).toThrow(/unknown docs section/);
   });
 });

@@ -1,8 +1,6 @@
 ---
 // Shared <head> metadata for BaseLayout (landing, 404) and DocsLayout
-// (#7199). Font and stylesheet links stay with each layout: the landing page
-// still uses its own editorial fonts until its redesign, the docs use
-// remarque's self-hosted set.
+// (#7199). Fonts are remarque's self-hosted set, loaded by src/styles/docs.css.
 interface Props {
   title: string;
   description?: string | undefined;
@@ -11,12 +9,12 @@ interface Props {
 
 const {
   title,
-  description = 'Autonomic control plane for AI coding agents — one entry point, adversarial review, tamper-evident hash-chained audit, bounded self-tuning.',
+  description = 'Governance substrate for AI coding agents: adversarial consensus review, drift-checked rules and a tamper-evident audit chain.',
   noindex = false,
 } = Astro.props;
 const siteTitle =
   title === 'Home'
-    ? 'Nexus Agents — Autonomic control plane for AI coding agents'
+    ? 'Nexus Agents — Governance substrate for AI coding agents'
     : `${title} — Nexus Agents`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -51,7 +49,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Nexus Agents",
-  "description": "Autonomic control plane for AI coding agents — one entry point, adversarial review across Claude/Codex/Gemini/OpenCode, tamper-evident hash-chained audit, bounded self-tuning. The agents are the data plane; nexus-agents admits, reviews, audits, and routes their work.",
+  "description": "Governance substrate for AI coding agents. The agents (Claude Code, Codex, Gemini CLI, OpenCode) do the engineering; nexus-agents reviews their work with adversarial consensus panels, keeps the rules they follow drift-checked, and records what they touch in a tamper-evident audit chain.",
   "url": Astro.site?.toString(),
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Cross-platform",
