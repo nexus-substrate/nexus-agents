@@ -3056,6 +3056,7 @@ InterfaceDeclaration DevPipelineWorkspaceBinding
   readonly baseline?: SecurityBaseline | undefined
   readonly dependencies: DevPipelineDependencies
   readonly directory: string
+  readonly root?: string | undefined
   readonly wrapper?: import("../cli-adapters/exec-file-tree.js").CommandWrapper | undefined
 TypeAliasDeclaration DifficultyDimension
   = z.infer<typeof DifficultyDimensionSchema>

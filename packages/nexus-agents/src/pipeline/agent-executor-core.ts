@@ -397,6 +397,8 @@ function maybeEmitModelCalled(executionId: string | undefined, result: ExpertBri
 
 /** What every stage closure needs from the executor. */
 export interface StageDeps {
+  /** Authoritative scratch root for security coverage of the captured patch. */
+  readonly workspaceRoot?: string | undefined;
   readonly wrapper?: import('../cli-adapters/exec-file-tree.js').CommandWrapper | undefined;
   readonly workspaceDependencies?: import('./dev-pipeline.js').DevPipelineDependencies | undefined;
   readonly config: AgentExecutorConfig;

@@ -140,6 +140,8 @@ const COMPLETE_SCAN_FLAGS = [
   // Avoid mutable ignore files and hidden-ancestor skips in scratch worktrees.
   // Unsupported scanner versions fail closed on this explicitly pinned flag.
   '--x-ignore-semgrepignore-files',
+  // Must exclude nothing the dev pipeline captures (PATCH_PATHS in
+  // pipeline/dev-pipeline-workspace.ts), or a captured file ships unscanned.
   '--exclude=node_modules',
   '--exclude=.git',
 ] as const;

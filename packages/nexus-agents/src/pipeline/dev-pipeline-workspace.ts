@@ -25,6 +25,8 @@ const GIT_TIMEOUT_MS = 30_000;
 const DIFF_MAX_BYTES = 16 * 1024 * 1024;
 const logger = createLogger({ component: 'dev-pipeline-workspace' });
 // Installed dependencies are runtime inputs, excluded even when not ignored.
+// The security gate scans this same root; its excludes (COMPLETE_SCAN_FLAGS in
+// mcp/tools/security-scan.ts) must stay a subset of these, or captured files go unscanned.
 const PATCH_PATHS = ['.', ':(exclude,glob)**/node_modules', ':(exclude,glob)**/node_modules/**'];
 
 function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
@@ -348,6 +350,7 @@ export async function withDevPipelineWorkspace(
     // Preserve a workingDir that points at a package below the repository root.
     const bound = stages.withWorkspace({
       directory: join(scratch.path, relative(repoRoot, directory)),
+      root: scratch.path,
       baseline: { sha: baseSha, directory: repoRoot },
       dependencies,
       wrapper: sandbox.wrapper,

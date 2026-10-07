@@ -171,6 +171,8 @@ export interface QaReviewResult {
 /** Where execution stages run, and how that checkout's dependencies were provisioned. */
 export interface DevPipelineWorkspaceBinding {
   readonly directory: string;
+  /** Scratch root shared by patch capture and security scanning. Defaults to directory. */
+  readonly root?: string | undefined;
   readonly dependencies: DevPipelineDependencies;
   /** The commit actually used to create the implementation workspace. */
   readonly baseline?: SecurityBaseline | undefined;
