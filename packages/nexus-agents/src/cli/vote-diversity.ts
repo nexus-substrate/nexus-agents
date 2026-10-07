@@ -116,7 +116,7 @@ function servedElsewhere(v: AgentVoteResult): boolean {
 }
 
 /** A seat served off-request with no recorded fallback: requested and served model. */
-export interface ServedSubstitution {
+interface ServedSubstitution {
   readonly role: AgentVoteResult['role'];
   readonly requested: string;
   readonly served: string;
