@@ -1,0 +1,84 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * Site token layer (#7285): USWDS-derived layout tokens on remarque's names.
+ *
+ * Patterns adapted from the U.S. Web Design System (USWDS, CC0): its 8px
+ * unit, reading measures, breakpoints, gutters, side/in-page nav widths and
+ * touch target. Values only — no USWDS CSS, JavaScript or fonts are loaded.
+ *
+ * ONE scale. remarque's --space-* steps stay the spacing scale; each is a
+ * whole or half multiple of --unit (4px = ½u, 8px = 1u … 192px = 24u). Nothing
+ * here overrides a remarque core-tier token; the palette overrides at the
+ * bottom are palette tier, which remarque sanctions (tokens-palette.css).
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* USWDS base unit. remarque's --space-2 is the same 8px. */
+  --unit: 0.5rem;
+
+  /* Reading measures, in ex so they track the body face's x-height.
+     --measure caps prose (USWDS "measure-4", ~70 characters of Inter). */
+  --measure-narrow: 44ex;
+  --measure: 68ex;
+  --measure-wide: 88ex;
+
+  /* Line height for UI text (nav, labels, controls), USWDS's 1.62 "ui". */
+  --leading-ui: 1.62;
+
+  /* Breakpoint REFERENCE values. Media queries cannot read custom
+     properties, so docs.css repeats these as literals; keep them in step.
+       --bp-mobile-lg  40rem  — header becomes one row below this
+       --bp-desktop    64rem  — side nav gets its own column
+       --bp-desktop-lg 75rem  — in-page nav gets its own column
+       --bp-widescreen 87.5rem */
+  --bp-mobile-lg: 40rem;
+  --bp-desktop: 64rem;
+  --bp-desktop-lg: 75rem;
+  --bp-widescreen: 87.5rem;
+
+  /* Page gutters: 16px on phones, 32px from --bp-desktop. */
+  --gutter-sm: 1rem;
+  --gutter-lg: 2rem;
+  --gutter: var(--gutter-sm);
+
+  /* Column widths of the docs shell. */
+  --sidenav-width: 16rem;
+  --toc-width: 15rem;
+
+  /* Minimum touch target (USWDS 44px floor, 48px preferred). */
+  --touch-target: 3rem;
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --gutter: var(--gutter-lg);
+  }
+}
+
+/* ─── Palette overrides: the contrast-grade contract ─────────────────────
+ * src/lib/palette-grade.test.ts holds every text pair to a USWDS grade
+ * difference of 50 and every UI boundary to 40, in both themes. remarque's
+ * defaults clear WCAG 4.5:1 / 3:1 but several sit just under those grades
+ * (muted 47–49.9, border-bold 37.9–39.2 dark/surface, seven syntax slots
+ * 45.9–49.8). Each override keeps remarque's chroma and hue and moves only
+ * lightness, by the smallest step that clears the contract with a 0.5 margin.
+ */
+:root {
+  --color-muted: light-dark(oklch(0.51 0.01 80), oklch(0.63 0.01 80));
+  --color-border-bold: light-dark(oklch(0.595 0.01 80), oklch(0.545 0.01 80));
+
+  --color-syntax-keyword: light-dark(oklch(0.5 0.12 250), oklch(0.64 0.11 250));
+  --color-syntax-string: light-dark(oklch(0.49 0.12 145), oklch(0.63 0.11 145));
+  --color-syntax-constant: light-dark(oklch(0.505 0.105 85), oklch(0.645 0.11 84));
+  --color-syntax-comment: light-dark(oklch(0.5 0.01 80), oklch(0.64 0.005 80));
+  --color-syntax-function: light-dark(oklch(0.515 0.12 310), oklch(0.655 0.11 310));
+  --color-syntax-type: light-dark(oklch(0.49 0.085 196), oklch(0.63 0.1 195));
+  --color-syntax-punctuation: light-dark(oklch(0.5 0.01 80), oklch(0.64 0.005 80));
+}
+
+/* remarque's prefers-contrast: more step for border-bold is stronger than the
+   override above, and is declared earlier, so it is restated here to win. */
+@media (prefers-contrast: more) {
+  :root {
+    --color-border-bold: light-dark(oklch(0.55 0.01 80), oklch(0.58 0.01 80));
+  }
+}

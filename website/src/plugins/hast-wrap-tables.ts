@@ -11,10 +11,107 @@
  * landmark-unique); src/lib/scroll-regions.ts promotes only the wrappers that
  * actually overflow, with a unique name each.
  *
+ * It also prepares the table for the stacked phone layout (#7285, finding 5):
+ * header cells get `scope="col"`, and each body cell carries its column's
+ * header text as `data-label`, which styles/components.css prints beside the
+ * value once the columns stack below 30rem.
+ *
+ * Long identifiers in cells (`NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS`) had no
+ * break opportunity and pushed the env reference table past its wrapper on a
+ * desktop. Inline code in a body cell gets a `<wbr>` after each inner
+ * underscore, so a name breaks only at a word boundary of its own. Copying
+ * the name still yields the plain text.
+ *
  * @module website/src/plugins/hast-wrap-tables
  */
 
 import { defineHastPlugin, type HastPluginDefinition } from 'satteri';
+import { el, isElement, text, textOf, type HastChild, type HastElement } from './hast-tree.ts';
+
+function cellsOf(row: HastElement, tagName: 'th' | 'td'): HastElement[] {
+  return row.children.filter((c): c is HastElement => isElement(c, tagName));
+}
+
+function rowsOf(section: HastElement | undefined): HastElement[] {
+  return section === undefined
+    ? []
+    : section.children.filter((c): c is HastElement => isElement(c, 'tr'));
+}
+
+/** Column header labels from the table's first header row; '' where empty. */
+export function headerLabels(table: HastElement): string[] {
+  const thead = table.children.find((c): c is HastElement => isElement(c, 'thead'));
+  const firstRow = rowsOf(thead).at(0);
+  if (firstRow === undefined) return [];
+  return cellsOf(firstRow, 'th').map((th) => textOf(th).replace(/\s+/g, ' ').trim());
+}
+
+function withScope(row: HastElement): HastElement {
+  return el(
+    'tr',
+    row.properties,
+    row.children.map((c) =>
+      isElement(c, 'th') ? el('th', { ...c.properties, scope: 'col' }, c.children) : c
+    )
+  );
+}
+
+/** Text split after each underscore that is followed by more text, joined by <wbr>. */
+export function breakAfterUnderscores(value: string): HastChild[] {
+  const parts = value.split(/(?<=_)(?=[^_])/);
+  return parts.flatMap((part, i) => (i === 0 ? [text(part)] : [el('wbr', {}), text(part)]));
+}
+
+function isTextNode(node: HastChild): node is HastChild & { type: 'text'; value: string } {
+  const n = node as { type: string; value?: unknown };
+  return n.type === 'text' && typeof n.value === 'string';
+}
+
+/** A cell child with underscore breaks added inside its inline code. */
+function withCodeBreaks(node: HastChild): HastChild {
+  if (!isElement(node)) return node;
+  const children =
+    node.tagName === 'code'
+      ? node.children.flatMap((c) => (isTextNode(c) ? breakAfterUnderscores(c.value) : [c]))
+      : node.children.map(withCodeBreaks);
+  return el(node.tagName, node.properties, children);
+}
+
+function withLabels(row: HastElement, labels: readonly string[]): HastElement {
+  let column = 0;
+  const children = row.children.map((c): HastChild => {
+    if (!isElement(c, 'td')) return c;
+    const label = labels.at(column++);
+    const cellChildren = c.children.map(withCodeBreaks);
+    if (label === undefined || label === '') return el('td', c.properties, cellChildren);
+    return el('td', { ...c.properties, dataLabel: label }, cellChildren);
+  });
+  return el('tr', row.properties, children);
+}
+
+/** The table with header scopes and per-cell labels applied. */
+export function labelTable(table: HastElement): HastElement {
+  const labels = headerLabels(table);
+  const children = table.children.map((section): HastChild => {
+    if (!isElement(section)) return section;
+    if (section.tagName === 'thead') {
+      return el(
+        'thead',
+        section.properties,
+        section.children.map((r) => (isElement(r, 'tr') ? withScope(r) : r))
+      );
+    }
+    if (section.tagName === 'tbody') {
+      return el(
+        'tbody',
+        section.properties,
+        section.children.map((r) => (isElement(r, 'tr') ? withLabels(r, labels) : r))
+      );
+    }
+    return section;
+  });
+  return el('table', table.properties, children);
+}
 
 export default function hastWrapTables(): HastPluginDefinition {
   return defineHastPlugin({
@@ -22,12 +119,7 @@ export default function hastWrapTables(): HastPluginDefinition {
     element: {
       filter: ['table'],
       visit(node, ctx) {
-        ctx.wrapNode(node, {
-          type: 'element',
-          tagName: 'div',
-          properties: { className: ['scroll-wrap'] },
-          children: [],
-        });
+        ctx.replaceNode(node, el('div', { className: ['scroll-wrap'] }, [labelTable(node)]));
       },
     },
   });

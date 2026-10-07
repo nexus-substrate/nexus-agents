@@ -37,10 +37,20 @@ export interface NavPage {
 export type SectionKey =
   'start' | 'how-to' | 'reference' | 'concepts' | 'project' | 'other' | 'unsorted';
 
+/** A labelled run of pages inside a section (Reference only, today). */
+export interface NavGroup {
+  key: string;
+  label: string;
+  pages: NavPage[];
+}
+
 export interface NavSection {
   key: SectionKey;
   label: string;
+  /** Every page of the section, in reading order (the groups' order when grouped). */
   pages: NavPage[];
+  /** Sub-groups, when the section is long enough to need them. */
+  groups?: NavGroup[];
 }
 
 /** Render order of the sections, and their labels. */
@@ -71,8 +81,85 @@ export function sectionFor(page: NavPage): SectionKey {
   return SECTION_BY_TYPE[page.diataxis];
 }
 
+/**
+ * Words a sentence-case pass must not lowercase: product and vendor names,
+ * months. Words with internal capitals (OpenAI, GitHub), all-caps acronyms
+ * (MCP, CLI) and code names (consensus_vote) are kept by shape, not listed.
+ */
+const PROPER_WORDS: ReadonlySet<string> = new Set([
+  'Azure',
+  'Bedrock',
+  'Claude',
+  'Codex',
+  'Docker',
+  'Gemini',
+  'Linux',
+  'Node',
+  'Vertex',
+  'Windows',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]);
+
+/** Multi-word names whose later words are capitalized too. */
+const PROPER_PHRASES: ReadonlyArray<readonly [string, string]> = [
+  ['Claude', 'Code'],
+  ['Claude', 'Desktop'],
+  ['Nexus', 'Agents'],
+];
+
+/** A plain capitalized word: one capital, then lowercase letters only. */
+const CAPITALIZED = /^[A-Z][a-z]+$/;
+
+function lowerPart(part: string): string {
+  return CAPITALIZED.test(part) && !PROPER_WORDS.has(part) ? part.toLowerCase() : part;
+}
+
+/**
+ * Title Case to sentence case for nav labels (#7285). Keeps the first word
+ * and the first word after a colon, acronyms, mixed-case names, code names
+ * and the proper nouns above; lowercases every other plain capitalized word,
+ * hyphenated parts included.
+ */
+export function sentenceCase(title: string): string {
+  const tokens = title.split(/(\s+)/);
+  const words = tokens.map((t) => /^[^A-Za-z]*([A-Za-z][A-Za-z-]*)/.exec(t)?.[1] ?? '');
+  let startOfPhrase = true;
+  return tokens
+    .map((token, i) => {
+      if (/^\s+$/.test(token) || token === '') return token;
+      const core = words[i] ?? '';
+      const keepFirst = startOfPhrase;
+      startOfPhrase = token.endsWith(':');
+      if (core === '') return token;
+      const prev = words[i - 2] ?? '';
+      const next = words[i + 2] ?? '';
+      const inPhrase = PROPER_PHRASES.some(
+        ([a, b]) => (core === a && next === b) || (prev === a && core === b)
+      );
+      if (inPhrase) return token;
+      const parts = core.split('-');
+      const cased = parts
+        .map((part, j) => (keepFirst && j === 0 ? part : lowerPart(part)))
+        .join('-');
+      return token.replace(core, cased);
+    })
+    .join('');
+}
+
+/** The rail label: an authored `nav_title` verbatim, else the title in sentence case. */
 export function navLabel(page: NavPage): string {
-  return page.navTitle ?? page.title;
+  return page.navTitle ?? sentenceCase(page.title);
 }
 
 function comparePages(a: NavPage, b: NavPage): number {
@@ -109,9 +196,91 @@ export function buildNav(
   for (const { key, label } of SECTIONS) {
     const bucket = buckets.get(key);
     if (bucket === undefined || bucket.length === 0) continue;
-    sections.push({ key, label, pages: [...bucket].sort(comparePages) });
+    const sorted = [...bucket].sort(comparePages);
+    if (key === 'reference') {
+      const groups = groupReference(sorted);
+      sections.push({ key, label, pages: groups.flatMap((g) => g.pages), groups });
+    } else {
+      sections.push({ key, label, pages: sorted });
+    }
   }
   return sections;
+}
+
+/**
+ * Reference sub-groups (#7285), in render order. A page joins the first group
+ * whose test matches its collection id; the last group takes the rest, so no
+ * page can fall out of the nav.
+ */
+/** The directory itself (an index.md's id) or anything under it. */
+function inDir(id: string, dir: string): boolean {
+  return id === dir || id.startsWith(`${dir}/`);
+}
+
+const REFERENCE_GROUPS: ReadonlyArray<{
+  key: string;
+  label: string;
+  test: (id: string) => boolean;
+}> = [
+  {
+    key: 'cli-config',
+    label: 'CLI and configuration',
+    test: (id) =>
+      id === 'entrypoints' ||
+      id === 'getting-started/configuration' ||
+      id === 'reference/environment' ||
+      id === 'reference/cli' ||
+      id.startsWith('reference/cli-'),
+  },
+  { key: 'mcp-tools', label: 'MCP tools', test: (id) => inDir(id, 'reference/tools') },
+  { key: 'strategies', label: 'Strategies', test: (id) => inDir(id, 'reference/strategies') },
+  {
+    key: 'api',
+    label: 'API and interfaces',
+    test: (id) => id === 'api' || inDir(id, 'interfaces'),
+  },
+  { key: 'more', label: 'More reference', test: () => true },
+];
+
+function groupReference(pages: readonly NavPage[]): NavGroup[] {
+  const byKey = new Map<string, NavPage[]>();
+  for (const page of pages) {
+    // The last group's test accepts every id, so find() cannot miss.
+    const group = REFERENCE_GROUPS.find((g) => g.test(page.id));
+    if (group === undefined) throw new Error(`no reference group for ${page.id}`);
+    byKey.set(group.key, [...(byKey.get(group.key) ?? []), page]);
+  }
+  return REFERENCE_GROUPS.flatMap(({ key, label }) => {
+    const grouped = byKey.get(key);
+    return grouped === undefined ? [] : [{ key, label, pages: grouped }];
+  });
+}
+
+export interface TocHeading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+/** Past this many entries the in-page nav lists H2s only (USWDS in-page nav). */
+export const TOC_MAX_ENTRIES = 20;
+
+/** The in-page nav entries: H2 and H3, or H2 only when that would exceed the cap. */
+export function tocEntries(headings: readonly TocHeading[]): TocHeading[] {
+  const both = headings.filter((h) => h.depth === 2 || h.depth === 3);
+  return both.length > TOC_MAX_ENTRIES ? both.filter((h) => h.depth === 2) : both;
+}
+
+/**
+ * Split rendered page HTML right after its first `</h1>`, so the layout can
+ * place the in-page nav after the title in the DOM, not only visually.
+ * Undefined when there is no h1 (escaped text such as `&lt;/h1&gt;` is not one).
+ */
+export function splitAfterFirstH1(html: string): [string, string] | undefined {
+  const end = html.indexOf('</h1>');
+  if (end === -1) return undefined;
+  const cut = end + '</h1>'.length;
+  return [html.slice(0, cut), html.slice(cut)];
 }
 
 function withSlash(href: string): string {
@@ -237,17 +406,21 @@ export function sectionListing(nav: readonly NavSection[], key: PrimarySectionKe
   return { pages: guessed, provisional: guessed.length > 0 };
 }
 
-const TYPE_LABELS: Record<Diataxis, string> = {
+const TYPE_LABELS: Record<Exclude<Diataxis, 'none'>, string> = {
   tutorial: 'Tutorial',
   'how-to': 'How-to guide',
   reference: 'Reference',
   explanation: 'Explanation',
-  none: 'Not a Diátaxis type',
 };
 
-/** The "Page type" line in the side rail. Absence is named, not hidden. */
-export function pageTypeLabel(type: Diataxis | undefined): string {
-  return type === undefined ? 'Unclassified' : TYPE_LABELS[type];
+/**
+ * The "Page type" line in the page meta. Absence is named ("Unclassified"),
+ * not hidden; `none` (index pages, section indexes) is a deliberate
+ * non-type, so there is no line to show and the result is undefined.
+ */
+export function pageTypeLabel(type: Diataxis | undefined): string | undefined {
+  if (type === undefined) return 'Unclassified';
+  return type === 'none' ? undefined : TYPE_LABELS[type];
 }
 
 const EDIT_BASE = 'https://github.com/nexus-substrate/nexus-agents/edit/main/';

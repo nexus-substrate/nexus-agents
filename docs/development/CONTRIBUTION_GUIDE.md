@@ -3,6 +3,11 @@ title: 'Contribution Guide'
 description: 'Detailed contribution workflows, standards, and development setup'
 diataxis: how-to
 audience: project
+prerequisites:
+  - 'Node.js 24.x LTS, the runtime environment.'
+  - 'pnpm 9.x, the package manager.'
+  - 'Git (latest), for version control.'
+  - 'GitHub CLI `gh` (latest), for issue and PR management.'
 tier: 2
 keywords:
   - contributing
@@ -28,15 +33,6 @@ This guide provides detailed contribution workflows for nexus-agents. For quick 
 ---
 
 ## Development Setup
-
-### Prerequisites
-
-| Tool            | Version  | Purpose                 |
-| --------------- | -------- | ----------------------- |
-| Node.js         | 24.x LTS | Runtime environment     |
-| pnpm            | 9.x      | Package manager         |
-| Git             | Latest   | Version control         |
-| GitHub CLI (gh) | Latest   | Issue and PR management |
 
 ### Installation
 

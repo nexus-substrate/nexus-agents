@@ -1,6 +1,11 @@
 ---
-// Docs pages: remarque's Reference/Docs archetype (#7199) — nav rail,
-// breadcrumb kicker, 46rem reading column, "on this page" rail, prev/next.
+// Docs pages: remarque's Reference/Docs archetype (#7199) with the USWDS
+// documentation shell (#7285). At 75rem and wider: side nav | content |
+// in-page nav. From 64rem: side nav | content, with "On this page" as a
+// disclosure right after the H1. Below 64rem: one column — breadcrumb, then
+// the "Section navigation" disclosure, then the page, whose "On this page"
+// disclosure again follows the H1. The in-page nav is spliced in after the
+// H1 on the server, so DOM order is reading order at every width.
 //
 // Its own document rather than a BaseLayout child, because the rail and the
 // aside change the page grid. Header, footer, <head> metadata, theme handling
@@ -30,6 +35,8 @@ import {
   samePage,
   sectionIndexHref,
   sectionLabel,
+  splitAfterFirstH1,
+  tocEntries,
   type Diataxis,
   type PageSource,
   type PrimarySectionKey,
@@ -81,13 +88,25 @@ const crumbLabel = sectionIndex ? sectionLabel(sectionIndex) : currentSection?.l
 const crumbHref = !sectionIndex && primaryKey ? sectionIndexHref(BASE, primaryKey) : undefined;
 
 const docsHome = docsHref('readme');
-const tocHeadings = headings.filter((h) => h.depth === 2 || h.depth === 3);
+// No "Page type" row on a page that is deliberately no type (indexes).
+const typeLabel = pageTypeLabel(diataxis);
+const toc = tocEntries(headings);
+const tocLimited = toc.length > 0 && toc.length < headings.filter((h) => h.depth === 2 || h.depth === 3).length;
+
+// Every section is a disclosure; only the one holding this page starts open.
+// Reference is split into sub-groups (docs-nav.ts), each its own disclosure.
+const holds = (pages: ReadonlyArray<{ href: string }>): boolean =>
+  pages.some((p) => samePage(p.href, navHref));
 const railSections = nav.map((s) => ({
   ...s,
-  // Long buckets of backfill debt start collapsed unless they hold this page.
-  collapsible: s.key === 'unsorted' || s.key === 'other',
   open: s === currentSection,
+  groups: s.groups?.map((g) => ({ ...g, open: holds(g.pages) })),
 }));
+
+// The page body, split after its H1 so the in-page nav can follow the title.
+const bodyHtml = await Astro.slots.render('default');
+const split = splitAfterFirstH1(bodyHtml);
+const [beforeToc, afterToc] = split ?? ['', bodyHtml];
 ---
 
 <!doctype html>
@@ -102,94 +121,140 @@ const railSections = nav.map((s) => ({
     <SiteMasthead current={primaryKey} currentIsPage={sectionIndex !== undefined} />
 
     <div class="docs-page">
-      <nav class="docs-rail" aria-label="Documentation">
-        <details open data-collapse-below="64rem">
-          <summary>Documentation index</summary>
-          <div class="docs-rail-sections">
-            {railSections.map((s) =>
-              s.collapsible ? (
-                <details class="docs-rail-group" open={s.open}>
-                  <summary>
-                    {s.label} ({s.pages.length})
-                  </summary>
-                  <ul>
-                    {s.pages.map((p) => (
-                      <li>
-                        <a href={p.href} aria-current={samePage(p.href, navHref) ? currentToken : undefined}>
-                          {navLabel(p)}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : (
-                <div>
-                  <h2>{s.label}</h2>
-                  <ul>
-                    {s.pages.map((p) => (
-                      <li>
-                        <a href={p.href} aria-current={samePage(p.href, navHref) ? currentToken : undefined}>
-                          {navLabel(p)}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ),
-            )}
-          </div>
-        </details>
-        <script is:inline>
-          // Below the breakpoint where it gets its own column, a disclosure
-          // starts collapsed, so the first screen shows the page rather than
-          // 100+ links. Runs synchronously right after the element; without
-          // JS it stays open.
-          (function () {
-            var el = document.currentScript && document.currentScript.previousElementSibling;
-            if (el && !window.matchMedia('(min-width: ' + el.dataset.collapseBelow + ')').matches) el.open = false;
-          })();
-        </script>
+      <nav class="docs-breadcrumb" aria-label="Breadcrumb" data-pagefind-ignore>
+        <ol>
+          <li><a href={docsHome}>Docs</a></li>
+          {crumbLabel && !sectionIndex && (
+            <li>{crumbHref ? <a href={crumbHref}>{crumbLabel}</a> : crumbLabel}</li>
+          )}
+          {isApiSubpage && (
+            <li>
+              <a href={API_INDEX_HREF}>API reference</a>
+            </li>
+          )}
+          <li aria-current="page">{title}</li>
+        </ol>
       </nav>
 
+      <nav class="docs-rail" aria-label="Section navigation">
+        {/* Closed in the markup, so without JS a phone's first screen is the
+            page, not the nav; the script below opens it from 64rem. */}
+        <details data-collapse-below="64rem">
+          <summary>Section navigation</summary>
+          <div class="docs-rail-sections">
+            {railSections.map((s) => (
+              <details class="docs-rail-group" open={s.open}>
+                <summary>{s.label}</summary>
+                {s.groups ? (
+                  <ul>
+                    {s.groups.map((g) => (
+                      <li>
+                        <details class="docs-rail-subgroup" open={g.open}>
+                          <summary>
+                            {g.label} <span class="docs-rail-count">({g.pages.length})</span>
+                          </summary>
+                          <ul>
+                            {g.pages.map((p) => (
+                              <li>
+                                <a href={p.href} aria-current={samePage(p.href, navHref) ? currentToken : undefined}>
+                                  {navLabel(p)}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul>
+                    {s.pages.map((p) => (
+                      <li>
+                        <a href={p.href} aria-current={samePage(p.href, navHref) ? currentToken : undefined}>
+                          {navLabel(p)}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </details>
+            ))}
+          </div>
+        </details>
+      </nav>
+      <script is:inline>
+        // Runs right after the side nav, before first paint. Below 64rem the
+        // nav is a disclosure that starts closed, so the first screen shows
+        // the page; from 64rem it is a column, forced open, and its current
+        // link is scrolled into view inside the column (an instant scroll of
+        // the column only: no page movement, no animation). Crossing the
+        // breakpoint re-syncs. Without JS the disclosure stays closed at
+        // every width; from 64rem its summary then stays visible (docs.css)
+        // so the nav can still be opened.
+        (function () {
+          var nav = document.currentScript && document.currentScript.previousElementSibling;
+          var el = nav && nav.querySelector('details[data-collapse-below]');
+          if (!el) return;
+          var mq = window.matchMedia('(min-width: ' + el.dataset.collapseBelow + ')');
+          el.open = mq.matches;
+          mq.addEventListener('change', function () { el.open = mq.matches; });
+          var current = mq.matches && nav.querySelector('a[aria-current]');
+          if (current && nav.scrollHeight > nav.clientHeight) {
+            nav.scrollTop = Math.max(0, current.offsetTop - nav.clientHeight / 3);
+          }
+        })();
+      </script>
+
       <main id="main" class="docs-main" data-pagefind-body>
-        <nav class="docs-breadcrumb" aria-label="Breadcrumb" data-pagefind-ignore>
-          <ol>
-            <li><a href={docsHome}>Docs</a></li>
-            {crumbLabel && !sectionIndex && (
-              <li>{crumbHref ? <a href={crumbHref}>{crumbLabel}</a> : crumbLabel}</li>
-            )}
-            {isApiSubpage && (
-              <li>
-                <a href={API_INDEX_HREF}>API reference</a>
-              </li>
-            )}
-            <li aria-current="page">{title}</li>
-          </ol>
-        </nav>
-
-
         <article class="docs-body remarque-prose">
-          <slot />
-        </article>
-
-        <aside class="docs-aside" aria-label="About this page" data-pagefind-ignore>
-          {tocHeadings.length > 0 && (
-            <nav class="remarque-toc-rail" aria-label="On this page">
-              <details open>
+          <Fragment set:html={beforeToc} />
+          {toc.length > 0 && (
+            <nav class="docs-toc remarque-toc-rail" aria-label="On this page" data-toc-spy data-pagefind-ignore>
+              <details open data-collapse-below="75rem">
                 <summary>On this page</summary>
+                {/* The column's label from 75rem, where the summary is hidden:
+                    a summary there was still focusable, so a keyboard could
+                    collapse the column. The nav's aria-label names it for
+                    assistive tech, so this copy is hidden from it. */}
+                <p class="docs-toc-title" aria-hidden="true">On this page</p>
                 <ul>
-                  {tocHeadings.map((h) => (
+                  {toc.map((h) => (
                     <li class={`depth-${h.depth}`}>
                       <a href={`#${h.slug}`}>{h.text}</a>
                     </li>
                   ))}
                 </ul>
+                {tocLimited && <p class="docs-toc-note">Major sections only.</p>}
               </details>
             </nav>
           )}
+          {toc.length > 0 && (
+            <script is:inline>
+              // Same pre-paint sync as the side nav: below 75rem "On this
+              // page" is a closed disclosure after the title; from 75rem it
+              // is the right-hand column, forced open.
+              (function () {
+                var nav = document.currentScript && document.currentScript.previousElementSibling;
+                var el = nav && nav.querySelector('details[data-collapse-below]');
+                if (!el) return;
+                var mq = window.matchMedia('(min-width: ' + el.dataset.collapseBelow + ')');
+                el.open = mq.matches;
+                mq.addEventListener('change', function () { el.open = mq.matches; });
+              })();
+            </script>
+          )}
+          <Fragment set:html={afterToc} />
+        </article>
+
+        {(typeLabel !== undefined || source) && (
+        <aside class="docs-aside" aria-label="About this page" data-pagefind-ignore>
           <dl class="docs-page-meta">
-            <dt>Page type</dt>
-            <dd>{pageTypeLabel(diataxis)}</dd>
+            {typeLabel !== undefined && (
+              <>
+                <dt>Page type</dt>
+                <dd>{typeLabel}</dd>
+              </>
+            )}
             {source && (
               <>
                 <dt>Source</dt>
@@ -202,6 +267,7 @@ const railSections = nav.map((s) => ({
             )}
           </dl>
         </aside>
+        )}
 
         {(prev || next) && (
           <nav class="docs-pager" aria-label="Previous and next" data-pagefind-ignore>
@@ -236,6 +302,9 @@ const railSections = nav.map((s) => ({
       // named regions (src/lib/scroll-regions.ts). Re-run on resize and once
       // the web fonts settle, since both change which tables overflow.
       import { syncScrollRegions } from '../lib/scroll-regions.ts';
+      import { initTocSpy } from '../lib/toc-spy.ts';
+
+      initTocSpy();
 
       let frame = 0;
       function schedule(): void {

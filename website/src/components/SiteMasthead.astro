@@ -3,6 +3,10 @@
 // theme toggle. The four section links go to the generated section index
 // pages (src/pages/docs/[section].astro).
 //
+// Layout (#7285): one row from 64rem. Below that the Primary nav drops to a
+// horizontally scrolling strip under the row; below 40rem search collapses
+// to an icon button, so the row is wordmark, search and theme only.
+//
 // `current` marks the section the reader is in. On that section's own index
 // page the link IS the page, so it gets aria-current="page"; on a page inside
 // the section it gets aria-current="true".
@@ -47,7 +51,9 @@ const links = PRIMARY_SECTIONS.map((key) => ({
         </li>
       </ul>
     </nav>
-    <SearchBox base={BASE} client:load />
-    <ThemeToggle />
+    <div class="docs-masthead-tools">
+      <SearchBox base={BASE} client:load />
+      <ThemeToggle />
+    </div>
   </div>
 </header>

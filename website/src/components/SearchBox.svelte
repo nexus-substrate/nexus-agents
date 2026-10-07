@@ -4,6 +4,13 @@
   // pages that are never searched never fetch it. In `astro dev` there is no
   // index until a build has run; the status line says so instead of failing
   // silently.
+  //
+  // Below 40rem (#7285) the field collapses to an icon button so the header
+  // fits one row; the button reveals the same form over the header row and
+  // focuses it. Escape or leaving the form collapses it again and returns
+  // focus to the button. From 40rem the button is not rendered visible and
+  // the field is always shown.
+  import { tick } from 'svelte';
 
   interface PagefindResultData {
     url: string;
@@ -33,11 +40,15 @@
   const MAX_RESULTS = 8;
   const inputId = 'docs-search-input';
   const resultsId = 'docs-search-results';
+  const formId = 'docs-search-form';
 
   let query = $state('');
   let results = $state<PagefindResultData[]>([]);
   let status = $state('');
   let open = $state(false);
+  // Narrow screens only: whether the icon button has revealed the form.
+  let expanded = $state(false);
+  let toggle: HTMLButtonElement | undefined;
   // Search needs the Pagefind script, so the form is rendered hidden and only
   // revealed once this component is running: with JS off there is no input
   // that silently does nothing.
@@ -101,24 +112,56 @@
   // Escape from anywhere in the form (input or a result link) closes the
   // panel and returns focus to the input.
   function onKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !open) return;
-    event.preventDefault();
-    open = false;
+    if (event.key !== 'Escape') return;
+    if (open) {
+      event.preventDefault();
+      open = false;
+      input?.focus();
+    } else if (expanded) {
+      event.preventDefault();
+      collapse(true);
+    }
+  }
+
+  async function expand(): Promise<void> {
+    expanded = true;
+    await tick();
     input?.focus();
+  }
+
+  function collapse(returnFocus: boolean): void {
+    expanded = false;
+    if (returnFocus) toggle?.focus();
   }
 
   // Close when focus leaves the form entirely (Tab past the last result,
   // click elsewhere). relatedTarget is null when focus goes to the page body.
   function onFocusout(event: FocusEvent): void {
     const next = event.relatedTarget;
-    if (!(next instanceof Node) || !form?.contains(next)) open = false;
+    if (!(next instanceof Node) || !form?.contains(next)) {
+      open = false;
+      if (next !== toggle) collapse(false);
+    }
   }
 </script>
 
+<div class="docs-search-wrap" class:is-expanded={expanded} hidden={!mounted}>
+<button
+  bind:this={toggle}
+  type="button"
+  class="docs-control docs-icon-button docs-search-toggle"
+  aria-label="Search the docs"
+  title="Search the docs"
+  aria-expanded={expanded}
+  aria-controls={formId}
+  onclick={() => (expanded ? collapse(true) : void expand())}
+>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+</button>
 <form
+  id={formId}
   role="search"
   class="docs-search"
-  hidden={!mounted}
   bind:this={form}
   onsubmit={(e) => e.preventDefault()}
   onkeydown={onKeydown}
@@ -154,16 +197,51 @@
     {/if}
   </div>
 </form>
+</div>
 
 <style>
+  .docs-search-wrap[hidden] {
+    display: none;
+  }
   .docs-search {
     position: relative;
   }
-  .docs-search[hidden] {
+  .docs-search-toggle {
     display: none;
   }
   .docs-search-input {
     width: min(16rem, 100%);
+  }
+  @media (max-width: 74.99rem) {
+    .docs-search-input {
+      width: 12rem;
+    }
+  }
+  /* Below 40rem: icon button; the form opens over the header row. */
+  @media (max-width: 39.99rem) {
+    .docs-search-toggle {
+      display: inline-flex;
+    }
+    .docs-search {
+      display: none;
+    }
+    .is-expanded .docs-search {
+      display: block;
+      position: absolute;
+      inset-inline: var(--gutter);
+      /* The header row's top padding (docs.css .docs-masthead-inner). */
+      top: var(--space-2);
+      z-index: var(--z-dropdown);
+    }
+    .is-expanded .docs-search-input {
+      width: 100%;
+      min-height: var(--touch-target);
+      background: var(--color-bg);
+    }
+    .is-expanded .docs-search-panel {
+      inset-inline: 0;
+      width: auto;
+    }
   }
   .docs-search-panel {
     position: absolute;

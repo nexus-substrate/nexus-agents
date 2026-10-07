@@ -1,8 +1,17 @@
 ---
 // 404 page (#7199), on the same remarque shell as the rest of the site.
+// Lists the four primary sections with their one-line purpose, the same
+// source as the landing page (sectionIntro), plus a pointer to search (#7285).
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { BASE, docsHref } from '../lib/docs-collection.ts';
-import { PRIMARY_SECTIONS, sectionIndexHref, sectionLabel } from '../lib/docs-nav.ts';
+import { PRIMARY_SECTIONS, sectionIndexHref, sectionIntro, sectionLabel } from '../lib/docs-nav.ts';
+
+const sections = PRIMARY_SECTIONS.map((key) => ({
+  key,
+  label: sectionLabel(key),
+  href: sectionIndexHref(BASE, key),
+  summary: sectionIntro(key).summary,
+}));
 ---
 
 <BaseLayout title="Page not found" description="The page you requested could not be found." noindex>
@@ -10,30 +19,39 @@ import { PRIMARY_SECTIONS, sectionIndexHref, sectionLabel } from '../lib/docs-na
     <p class="notfound-kicker">Error 404</p>
     <h1 class="notfound-title">Page not found</h1>
     <p class="notfound-lead">
-      The link, the slug, or the page itself is gone. Search the docs from the header, or start
-      from one of these:
+      The link, the slug, or the page itself is gone. Use <strong>Search docs</strong> in the
+      header to look it up by name, or start from one of the four sections:
     </p>
-    <ul>
-      <li><a href={`${BASE}/`}>Home</a></li>
-      <li><a href={docsHref('readme')}>Documentation index</a></li>
-      {PRIMARY_SECTIONS.map((key) => (
-        <li><a href={sectionIndexHref(BASE, key)}>{sectionLabel(key)}</a></li>
+    <ul class="notfound-sections">
+      {sections.map((section) => (
+        <li>
+          <a href={section.href}>{section.label}</a>
+          <span class="notfound-summary">{section.summary}</span>
+        </li>
       ))}
     </ul>
+    <p class="notfound-other">
+      Or go to the <a href={`${BASE}/`}>home page</a> or the{' '}
+      <a href={docsHref('readme')}>documentation index</a>.
+    </p>
   </div>
 </BaseLayout>
 
 <style>
   .notfound {
-    max-width: var(--content-reading);
+    max-width: var(--measure);
     margin-inline: auto;
-    padding: var(--space-9) var(--space-5);
+    padding: var(--space-8) var(--gutter);
+  }
+  /* Link colour comes from the global rule in styles/docs.css. */
+  a:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
   }
   .notfound-kicker {
     margin: 0 0 var(--space-3);
     font-family: var(--font-mono);
     font-size: var(--text-meta);
-    font-variant-caps: all-small-caps;
     letter-spacing: var(--tracking-caps);
     color: var(--color-fg-muted);
   }
@@ -46,10 +64,31 @@ import { PRIMARY_SECTIONS, sectionIndexHref, sectionLabel } from '../lib/docs-na
     letter-spacing: var(--tracking-title);
   }
   .notfound-lead {
+    margin: 0 0 var(--space-5);
     font-size: var(--text-body-lg);
     color: var(--color-fg-muted);
   }
-  .notfound li {
-    padding-block: var(--space-1);
+  .notfound-sections {
+    list-style: none;
+    margin: 0 0 var(--space-6);
+    padding: 0;
+    border-top: var(--border-width) var(--border-style) var(--color-border);
+  }
+  .notfound-sections li {
+    display: flex;
+    flex-direction: column;
+    padding-block: var(--space-3);
+    border-bottom: var(--border-width) var(--border-style) var(--color-border);
+  }
+  .notfound-sections a {
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-body-lg);
+  }
+  .notfound-summary {
+    color: var(--color-fg-muted);
+  }
+  .notfound-other {
+    margin: 0;
+    color: var(--color-fg-muted);
   }
 </style>

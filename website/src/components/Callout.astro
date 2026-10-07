@@ -1,13 +1,15 @@
 ---
-// Callout / status banner (#7199). remarque ships no callout, but sanctions
-// its state colors for exactly this: "-subtle" companions are banner
-// backgrounds, and every one holds --color-fg at >= 4.5:1 (REMARQUE.md
-// "State Colors"). `note` uses --color-accent-subtle, as in the approved
-// docs mockup. Body text stays --color-fg; the state color only tints the
-// background and marks the title, never decorates.
+// Callout / status banner (#7199, #7285). Same markup and styles as the
+// Markdown alerts (src/plugins/hast-alerts.ts), so a callout written in a
+// page template and one written as `> [!NOTE]` read alike. Styles live in
+// src/styles/components.css, keyed on data-kind; the vocabulary, labels and
+// icons in src/plugins/callout-kinds.ts.
 //
-// An <aside> is a complementary landmark, so it is named by its visible
-// title (aria-labelledby) rather than left as an anonymous region.
+// The title is visible text, so the kind is never carried by colour alone;
+// the icon is decorative. role="note" keeps callouts out of the landmark
+// list, and the title names the note.
+import { calloutIconSvg } from '../plugins/callout-kinds.ts';
+
 interface Props {
   title: string;
   tone?: 'note' | 'success' | 'warning' | 'error';
@@ -17,55 +19,7 @@ const { title, tone = 'note' } = Astro.props;
 const titleId = `callout-${Math.random().toString(36).slice(2, 10)}`;
 ---
 
-<aside class:list={['callout', `callout--${tone}`]} aria-labelledby={titleId}>
-  <p class="callout-title" id={titleId}>{title}</p>
+<aside class="callout" data-kind={tone} role="note" aria-labelledby={titleId}>
+  <p class="callout-title" id={titleId}><Fragment set:html={calloutIconSvg(tone)} />{title}</p>
   <div class="callout-body"><slot /></div>
 </aside>
-
-<style>
-  .callout {
-    --callout-bg: var(--color-accent-subtle);
-    --callout-mark: var(--color-accent);
-    margin-block: var(--space-5);
-    padding: var(--space-4) var(--space-5);
-    background: var(--callout-bg);
-    color: var(--color-fg);
-    border: var(--border-width) var(--border-style) var(--color-border);
-    border-radius: var(--radius-md);
-  }
-  .callout--success {
-    --callout-bg: var(--color-success-subtle);
-    --callout-mark: var(--color-success);
-  }
-  .callout--warning {
-    --callout-bg: var(--color-warning-subtle);
-    --callout-mark: var(--color-warning);
-  }
-  .callout--error {
-    --callout-bg: var(--color-error-subtle);
-    --callout-mark: var(--color-error);
-  }
-  .callout-title {
-    margin: 0 0 var(--space-1);
-    font-weight: var(--weight-semibold);
-    color: var(--color-fg);
-  }
-  .callout-title::before {
-    content: '';
-    display: inline-block;
-    width: 0.5em;
-    height: 0.5em;
-    margin-inline-end: var(--space-2);
-    border-radius: 50%;
-    background: var(--callout-mark);
-    vertical-align: 0.1em;
-  }
-  .callout-body :global(p) {
-    margin: 0;
-  }
-  @media (forced-colors: active) {
-    .callout {
-      border-color: CanvasText;
-    }
-  }
-</style>

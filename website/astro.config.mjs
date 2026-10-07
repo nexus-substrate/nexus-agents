@@ -7,6 +7,11 @@ import { createCssVariablesTheme } from 'shiki';
 import mdastRewriteLinks from './src/plugins/mdast-rewrite-links.ts';
 import hastWrapTables from './src/plugins/hast-wrap-tables.ts';
 import hastTaskListStatus from './src/plugins/hast-task-list-status.ts';
+import hastAlerts from './src/plugins/hast-alerts.ts';
+import hastStripRepoBreadcrumb from './src/plugins/hast-strip-repo-breadcrumb.ts';
+import hastSummaryBox from './src/plugins/hast-summary-box.ts';
+import hastProcessList from './src/plugins/hast-process-list.ts';
+import patternCoverage from './src/integrations/pattern-coverage.ts';
 
 // Code colors come from remarque's --color-syntax-* palette tokens, so they
 // follow the light/dark toggle. Pass the theme OBJECT, not the
@@ -25,7 +30,9 @@ export default defineConfig({
   base: '/nexus-agents',
   // pagefind indexes dist/ in astro:build:done; only pages carrying
   // data-pagefind-body (the docs and API pages) are indexed.
-  integrations: [svelte(), sitemap(), pagefind()],
+  // patternCoverage fails the build when no page renders the how-to summary
+  // box, which renders only from optional frontmatter (#7288).
+  integrations: [svelte(), sitemap(), pagefind(), patternCoverage()],
   prefetch: true,
   markdown: {
     // Astro 7 replaced the remark/unified pipeline with Sätteri as the default
@@ -34,7 +41,17 @@ export default defineConfig({
     // rewriter was ported to a native mdast plugin instead.
     processor: satteri({
       mdastPlugins: [mdastRewriteLinks()],
-      hastPlugins: [hastTaskListStatus(), hastWrapTables()],
+      // Page patterns (#7285): alert callouts, labelled stacking tables, the
+      // repo-breadcrumb strip, the how-to summary box and the tutorial
+      // process list. The last two read the page's frontmatter.
+      hastPlugins: [
+        hastTaskListStatus(),
+        hastWrapTables(),
+        hastAlerts(),
+        hastStripRepoBreadcrumb(),
+        hastSummaryBox(),
+        hastProcessList(),
+      ],
     }),
     shikiConfig: { theme: remarqueShikiTheme },
   },

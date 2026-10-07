@@ -3,6 +3,11 @@ title: Custom OpenAI-Compatible Endpoint Setup
 description: Configure nexus-agents to use an OpenAI-compatible gateway directly or through OpenCode
 diataxis: how-to
 audience: user
+prerequisites:
+  - 'Path A: a gateway URL and API key; no CLI subprocess or OpenCode is required.'
+  - 'Path B: the OpenCode CLI installed and on PATH.'
+  - 'Path B: a custom gateway that speaks the OpenAI-compatible chat completions API.'
+  - 'Path B: an API key for the gateway, stored in `opencode.json` or an environment variable.'
 tier: 2
 keywords: [custom, openai-compatible, gateway, opencode, endpoint, proxy]
 ---
@@ -44,12 +49,6 @@ nexus-agents → OpenCode CLI → Custom Gateway → Model Provider
 ```
 
 nexus-agents invokes `opencode run --model custom/<model-name> <prompt>` as a subprocess. OpenCode handles the HTTP transport to the custom gateway. No API keys or credentials are managed by nexus-agents — handy when the user's gateway credentials are already in `opencode.json` and you don't want a second copy.
-
-## Prerequisites
-
-1. **OpenCode CLI** installed and on PATH
-2. **Custom gateway** that speaks the OpenAI-compatible chat completions API
-3. **API key** for the gateway (stored in `opencode.json` or environment variable)
 
 ## Step 1: Configure OpenCode
 
