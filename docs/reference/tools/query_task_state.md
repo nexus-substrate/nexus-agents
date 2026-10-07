@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: query_task_state'
 description: 'Query the structured task-state log for a task ID'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, query_task_state]
 ---

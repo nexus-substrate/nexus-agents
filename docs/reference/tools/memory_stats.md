@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: memory_stats'
 description: 'Memory system statistics dashboard'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, memory_stats]
 ---

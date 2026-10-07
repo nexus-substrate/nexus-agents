@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: research_analyze'
 description: 'Analyze registry for gaps, trends, coverage'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, research_analyze]
 ---

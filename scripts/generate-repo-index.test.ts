@@ -35,6 +35,15 @@ describe('repo index has no wall-clock stamp (#5461)', () => {
     expect(md).not.toMatch(/\*\*Generated:\*\*/);
     expect(md).toMatch(/\*\*Package Version:\*\*/);
   });
+
+  it('docs/reference/capabilities.md declares diataxis reference and user audience (#7198)', () => {
+    const md = readFileSync(join(ROOT, 'docs/reference/capabilities.md'), 'utf-8');
+    const match = /^---\n([\s\S]*?)\n---\n/.exec(md);
+    expect(match).not.toBeNull();
+    const front = match?.[1] ?? '';
+    expect(front).toMatch(/^diataxis: reference$/m);
+    expect(front).toMatch(/^audience: user$/m);
+  });
 });
 
 /**

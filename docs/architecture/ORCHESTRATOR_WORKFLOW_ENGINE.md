@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: user
+---
+
 # Orchestrator vs WorkflowEngine Architecture
 
 **Version:** 2.1.0

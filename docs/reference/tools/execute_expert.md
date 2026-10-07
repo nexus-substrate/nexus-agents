@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: execute_expert'
 description: 'Run a task through a previously-created expert (by expertId)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, execute_expert]
 ---

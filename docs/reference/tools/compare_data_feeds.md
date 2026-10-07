@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: compare_data_feeds'
 description: 'Diff two YAML/JSON feeds: coverage + per-field axes'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, compare_data_feeds]
 ---

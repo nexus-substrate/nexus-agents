@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: get_job_result'
 description: 'Read result of an async-mode dispatch by jobId (#3042 / #2631)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, get_job_result]
 ---

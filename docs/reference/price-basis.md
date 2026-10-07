@@ -1,6 +1,8 @@
 ---
 title: 'Price basis in recorded costs'
 description: 'Meaning and persisted-reader compatibility of the published PriceBasis vocabulary'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [pricing, telemetry, gateway, compatibility]
 ---

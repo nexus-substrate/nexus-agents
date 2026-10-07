@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # Design Document: Scaling Agent Systems Coordination Predictor
 
 **Issue:** #337

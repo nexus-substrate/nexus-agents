@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: ci_health_check'
 description: 'CI infrastructure health — composes GitHub status + recent-runs activity (#3076)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, ci_health_check]
 ---

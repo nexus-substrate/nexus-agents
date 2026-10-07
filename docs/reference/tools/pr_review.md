@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: pr_review'
 description: 'Multi-voter PR review with verification gate (experimental)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, pr_review]
 ---

@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Module Dependency Graph
 
 > Generated: 2026-08-25T00:04:57-04:00

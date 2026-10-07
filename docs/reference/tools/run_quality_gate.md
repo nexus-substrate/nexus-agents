@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: run_quality_gate'
 description: 'Run the QA quality gate (typecheck/lint/tests/build/security) over a project dir; returns structured pass/fail verdict + feedback'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, run_quality_gate]
 ---

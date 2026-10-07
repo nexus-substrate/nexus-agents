@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # System Redundancy Analysis
 
 > Generated: 2026-01-29

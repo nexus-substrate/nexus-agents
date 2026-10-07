@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Component Inventory
 
 _Evidence-backed inventory of all nexus-agents components. Every claim cites a source file._

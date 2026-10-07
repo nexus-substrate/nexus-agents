@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: search_usages'
 description: 'Structural usage/call-site search for a symbol via ast-grep (calls, member calls, new, imports, references) — the "where is X used" gap `search_codebase` cannot fill'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, search_usages]
 ---

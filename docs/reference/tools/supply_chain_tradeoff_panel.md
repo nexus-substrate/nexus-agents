@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: supply_chain_tradeoff_panel'
 description: 'Per-axis tradeoff vote for build-vs-buy / supply-chain decisions'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, supply_chain_tradeoff_panel]
 ---

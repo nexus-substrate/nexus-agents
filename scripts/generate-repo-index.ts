@@ -303,7 +303,14 @@ function generateMarkdown(index: RepoIndex): string {
   const toolCount = String(index.mcp.tools.length);
   const wfCount = String(index.workflows.templates.length);
 
-  let md = `# Repository Capabilities Index
+  // Diataxis type + audience (#7198): a lookup table of CLI commands, MCP tools
+  // and workflows for someone using nexus-agents.
+  let md = `---
+diataxis: reference
+audience: user
+---
+
+# Repository Capabilities Index
 
 **Package Version:** ${index.packageVersion}
 **Generator:** \`${index.generator}\`

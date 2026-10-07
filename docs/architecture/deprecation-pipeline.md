@@ -1,3 +1,8 @@
+---
+diataxis: how-to
+audience: user
+---
+
 # Deprecation Pipeline
 
 > Updated: 2026-02-04

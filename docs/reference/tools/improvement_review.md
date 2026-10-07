@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: improvement_review'
 description: 'Threshold-gated observability loop — surfaces routing/tech-debt/bug/security signals from outcome+fitness data; files candidate issues'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, improvement_review]
 ---

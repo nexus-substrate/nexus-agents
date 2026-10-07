@@ -1,6 +1,8 @@
 ---
 title: 'Agent Harness Compatibility Matrix'
 description: 'Survey of agent-config standards across the agentic-coding harness ecosystem. AGENTS.md is the canonical surface for this repo; everything else is a thin redirect.'
+diataxis: explanation
+audience: user
 tier: 2
 keywords:
   - agents-md

@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: consensus_vote'
 description: 'Multi-model consensus voting on proposals'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, consensus_vote]
 ---

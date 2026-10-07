@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: user
+---
+
 # Nexus-Agents System Map
 
 > Machine-readable companion: [`wiring-graph.json`](./wiring-graph.json)

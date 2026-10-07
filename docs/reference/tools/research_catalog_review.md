@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: research_catalog_review'
 description: 'Review auto-cataloged research references'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, research_catalog_review]
 ---

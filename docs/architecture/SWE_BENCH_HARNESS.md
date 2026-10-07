@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # SWE-Bench Evaluation Harness
 
 > **EXTRACTED** ([#2515](https://github.com/nexus-substrate/nexus-agents/issues/2515)). The SWE-bench harness moved out of nexus-agents into [`nexus-eval-swebench`](https://github.com/nexus-substrate/nexus-eval-swebench) per the harness-extraction policy ([epic #2514](https://github.com/nexus-substrate/nexus-agents/issues/2514), originally [#1960](https://github.com/nexus-substrate/nexus-agents/issues/1960)).

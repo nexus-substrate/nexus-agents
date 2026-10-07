@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: repo_security_plan'
 description: 'Generate security scanning pipeline for a repo'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, repo_security_plan]
 ---

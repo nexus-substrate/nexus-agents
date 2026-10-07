@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: registry_import'
 description: 'Draft YAML for a NEW model entry (for picking existing models use `delegate_to_model`)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, registry_import]
 ---

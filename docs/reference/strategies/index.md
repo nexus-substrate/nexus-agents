@@ -1,6 +1,8 @@
 ---
 title: 'Strategy Reference (force-strategy escape hatches)'
 description: 'Manifest-generated reference for all 8 routable execution strategies: entrypoint tool, when to force, maturity/authority tier, executor availability.'
+diataxis: reference
+audience: user
 tier: 1
 keywords: [mcp, strategies, force-strategy, run, orchestration, reference]
 ---

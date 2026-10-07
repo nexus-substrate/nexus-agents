@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: run_pipeline'
 description: 'Execute a pipeline plugin by name with typed input'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, run_pipeline]
 ---

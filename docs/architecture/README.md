@@ -1,6 +1,8 @@
 ---
 title: Architecture Overview
 description: System design, component relationships, pipeline, adapters, and orchestration
+diataxis: explanation
+audience: user
 tier: 2
 keywords: [agents, memory, routing, consensus, security, mcp, pipeline, design]
 related_files:

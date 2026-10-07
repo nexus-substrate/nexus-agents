@@ -1,6 +1,8 @@
 ---
 title: 'Untrusted Input Hardening Architecture'
 description: 'Defense-in-depth architecture for prompt injection and hostile input protection'
+diataxis: explanation
+audience: user
 tier: 2
 keywords:
   - security

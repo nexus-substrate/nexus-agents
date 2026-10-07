@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: query_trace'
 description: 'Query execution traces for observability'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, query_trace]
 ---

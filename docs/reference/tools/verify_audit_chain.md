@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: verify_audit_chain'
 description: 'Verify hash chain of a FileAuditStorage audit log directory'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, verify_audit_chain]
 ---

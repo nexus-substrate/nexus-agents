@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: repo_analyze'
 description: 'Analyze GitHub repository structure'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, repo_analyze]
 ---

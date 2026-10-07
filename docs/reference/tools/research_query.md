@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: research_query'
 description: 'Query research registry (status, overlap, stats, search)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, research_query]
 ---

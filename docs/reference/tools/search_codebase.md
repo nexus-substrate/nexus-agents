@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: search_codebase'
 description: 'Cross-file search over declared symbol NAMES (declarations only, not usages)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, search_codebase]
 ---

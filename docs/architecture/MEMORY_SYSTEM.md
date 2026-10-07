@@ -1,6 +1,8 @@
 ---
 title: 'Memory System Architecture'
 description: Seven-backend memory system with session, belief, agentic, adaptive, typed, MobiMem, and decay management
+diataxis: explanation
+audience: user
 tier: 2
 keywords: [memory, belief, agentic, adaptive, typed, mobimem, decay, architecture]
 ---

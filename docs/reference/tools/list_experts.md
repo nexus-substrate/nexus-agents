@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: list_experts'
 description: 'Inventory of expert ROLES for `create_expert`'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, list_experts]
 ---

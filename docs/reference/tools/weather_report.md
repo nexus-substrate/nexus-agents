@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: weather_report'
 description: 'Multi-CLI performance weather report'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, weather_report]
 ---

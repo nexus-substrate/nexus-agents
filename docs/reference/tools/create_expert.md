@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: create_expert'
 description: 'Create a specialized expert agent'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, create_expert]
 ---

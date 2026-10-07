@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: research_add'
 description: 'Add an arXiv PAPER to the registry (for non-paper sources use `research_add_source`)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, research_add]
 ---

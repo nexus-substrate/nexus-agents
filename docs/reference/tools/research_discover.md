@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: research_discover'
 description: 'Discover papers/repos from external sources'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, research_discover]
 ---

@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: execute_spec'
 description: 'Execute AI software factory spec pipeline'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, execute_spec]
 ---

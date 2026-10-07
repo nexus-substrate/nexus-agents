@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: suggest_research_tasks'
 description: 'SUGGEST-ONLY: candidate pipeline tasks from research_discover findings for review — files/executes nothing (#1715)'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, suggest_research_tasks]
 ---

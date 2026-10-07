@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # OrchestrationObserver Architecture Design
 
 > **Note:** This component was renamed from `SwarmObserver` to `OrchestrationObserver` in v2.24 (Issue #251). The design and API remain the same; only the names changed.

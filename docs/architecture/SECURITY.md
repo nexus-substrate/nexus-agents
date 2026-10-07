@@ -1,6 +1,8 @@
 ---
 title: Security Architecture
 description: Security pipeline, threat model, sandboxing, trust classification, and input hardening
+diataxis: explanation
+audience: user
 tier: 2
 keywords: [security, trust, sanitize, policy, injection, byzantine, reputation]
 related_files:

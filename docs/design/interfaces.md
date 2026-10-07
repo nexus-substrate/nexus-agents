@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Key Interfaces & Contracts
 
 _Canonical interfaces between nexus-agents modules. Each interface cited with source location._

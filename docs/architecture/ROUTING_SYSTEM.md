@@ -1,6 +1,8 @@
 ---
 title: 'Routing System Architecture'
 description: 'Multi-stage pipeline for intelligent model selection and task routing'
+diataxis: explanation
+audience: user
 tier: 2
 keywords:
   - routing

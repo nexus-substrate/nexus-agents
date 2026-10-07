@@ -1,6 +1,8 @@
 ---
 title: 'MCP Tool: research_synthesize'
 description: 'Synthesize registry into topic clusters with themes'
+diataxis: reference
+audience: user
 tier: 2
 keywords: [mcp, tool, reference, research_synthesize]
 ---

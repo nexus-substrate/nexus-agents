@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # Event Bus Boundaries
 
 Nexus-agents has **two** event bus implementations, kept deliberately separate.

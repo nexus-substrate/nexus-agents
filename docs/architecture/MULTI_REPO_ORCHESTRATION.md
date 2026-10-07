@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # Multi-Repo Orchestration Architecture
 
 **Status:** Research (Phase 1)
