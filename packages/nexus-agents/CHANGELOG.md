@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.3.0
+
+### Minor Changes
+
+- [#7256](https://github.com/nexus-substrate/nexus-agents/pull/7256) [`bd4fb50`](https://github.com/nexus-substrate/nexus-agents/commit/bd4fb5032ead5ab808bc85e52353421b383fcb19) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `orchestrate` reporting success for simple tasks that were never executed. The simple-task shortcut now returns `executed: false` and records no orchestration or router outcome, preventing analysis-only responses from inflating routing success metrics. Task selection and normal execution behavior are unchanged.
+
 ## 11.2.2
 
 ### Patch Changes
