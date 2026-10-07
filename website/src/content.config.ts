@@ -1,6 +1,7 @@
 import { defineCollection } from 'astro:content';
 import { z } from 'astro/zod';
 import { glob } from 'astro/loaders';
+import { AUDIENCES, DIATAXIS_TYPES } from './lib/docs-nav.ts';
 
 // Shared frontmatter schema. The generated TypeDoc markdown (docs/api) carries the
 // same title/description/tier frontmatter as the hand-written docs (injected by
@@ -12,6 +13,12 @@ const docSchema = z.looseObject({
   tier: z.number().optional(),
   keywords: z.array(z.string()).optional(),
   related_files: z.array(z.string()).optional(),
+  // Navigation fields (#7199). Optional until the backfill check (#7196)
+  // lands: a page without `diataxis` is listed under "Unsorted", not dropped.
+  diataxis: z.enum(DIATAXIS_TYPES).optional(),
+  audience: z.enum(AUDIENCES).optional(),
+  order: z.number().optional(),
+  nav_title: z.string().optional(),
 });
 
 const docs = defineCollection({

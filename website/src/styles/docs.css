@@ -1,0 +1,426 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * Docs site — remarque Reference/Docs archetype (#7199).
+ *
+ * remarque-tokens is pinned exact (pre-1.0). Import order is its contract
+ * (AGENT_RULES.md "Build Order"): fonts, then tokens (core + palette +
+ * prose), then the optional essay module (TOC rail) and print sheet.
+ * String-form @import only — url() imports of local files are dropped
+ * silently by some bundlers (AGENT_RULES.md Pitfall #6).
+ *
+ * The fonts are self-hosted: fonts.css references ./fonts/*.woff2 relative
+ * to itself, and Vite copies those files into dist/_astro with hashed names.
+ *
+ * Nothing here overrides a core-tier token. The palette is remarque's
+ * default, which is bound to the upstream remarque-light / remarque-dark
+ * themes (REMARQUE.md "Color Providers"), so no generated palette file is
+ * needed. Light/dark: `color-scheme: light dark` follows the OS; the
+ * toggle sets [data-theme] on <html>, which remarque keys on.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+@import 'remarque-tokens/fonts.css';
+@import 'remarque-tokens/tokens.css';
+@import 'remarque-tokens/essay.css';
+@import 'remarque-tokens/print.css';
+
+/* ─── Shiki css-variables bridge (REMARQUE.md "Astro / Shiki wiring") ──── */
+.astro-code {
+  --color-syntax-foreground: var(--color-code-fg);
+  --color-syntax-background: var(--color-code-bg);
+  --color-syntax-token-keyword: var(--color-syntax-keyword);
+  --color-syntax-token-string: var(--color-syntax-string);
+  --color-syntax-token-string-expression: var(--color-syntax-string);
+  --color-syntax-token-constant: var(--color-syntax-constant);
+  --color-syntax-token-comment: var(--color-syntax-comment);
+  --color-syntax-token-function: var(--color-syntax-function);
+  --color-syntax-token-parameter: var(--color-syntax-variable);
+  --color-syntax-token-punctuation: var(--color-syntax-punctuation);
+  --color-syntax-token-link: var(--color-syntax-link);
+  /* token-inserted/-deleted/-changed intentionally left undefined (diff
+     markers are out of remarque's scope; they inherit the foreground). */
+}
+
+/* ─── Copy button (added to code blocks by PageScripts.astro) ───────────── */
+.docs-body pre {
+  position: relative;
+}
+.copy-btn {
+  position: absolute;
+  top: var(--space-2);
+  inset-inline-end: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  line-height: var(--leading-meta);
+  color: var(--color-fg-muted);
+  background: var(--color-code-bg);
+  border: var(--border-width) var(--border-style) var(--color-border-bold);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-easing);
+}
+pre:hover .copy-btn,
+.copy-btn:focus-visible,
+.copy-btn.copied {
+  opacity: 1;
+}
+.copy-btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Wide-table scroll container (src/plugins/hast-wrap-tables.ts). */
+.remarque-prose .scroll-wrap:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ─── Skip link ─────────────────────────────────────────────────────────── */
+.docs-skip-link {
+  position: absolute;
+  inset-inline-start: var(--space-4);
+  top: var(--space-2);
+  z-index: var(--z-skip-link);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg);
+  border: var(--border-width) var(--border-style) var(--color-border-bold);
+  border-radius: var(--radius-sm);
+  transform: translateY(-200%);
+}
+.docs-skip-link:focus {
+  transform: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ─── Masthead ──────────────────────────────────────────────────────────── */
+.docs-masthead {
+  border-bottom: var(--border-width) var(--border-style) var(--color-border);
+}
+.docs-masthead-inner {
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-5);
+}
+.docs-wordmark {
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  line-height: var(--leading-section);
+  color: var(--color-fg);
+  text-decoration: none;
+}
+.docs-primary-nav {
+  flex: 1 1 auto;
+}
+.docs-primary-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+}
+.docs-primary-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--text-meta);
+  color: var(--color-fg);
+  text-decoration: none;
+  transition: color var(--motion-fast) var(--motion-easing);
+}
+.docs-primary-nav a:hover,
+.docs-primary-nav a[aria-current] {
+  color: var(--color-accent);
+}
+.docs-primary-nav a[aria-current] {
+  font-weight: var(--weight-medium);
+}
+
+/* Quiet bordered control, shared by the theme toggle and the search input. */
+.docs-control {
+  font: inherit;
+  font-size: var(--text-meta);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: var(--border-width) var(--border-style) var(--color-border-bold);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg);
+}
+.docs-control:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ─── Page shell: nav rail | main ───────────────────────────────────────── */
+.docs-page {
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding: 0 var(--space-5) var(--space-8);
+}
+
+.docs-rail summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-caps: all-small-caps;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-fg-muted);
+  border-bottom: var(--border-width) var(--border-style) var(--color-border);
+}
+.docs-rail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-block: var(--space-4);
+}
+.docs-rail h2,
+.docs-rail-group > summary {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  font-variant-caps: all-small-caps;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-fg-muted);
+  margin: 0 0 var(--space-1);
+  padding-inline-start: var(--space-2);
+}
+.docs-rail-group > summary {
+  border-bottom: none;
+}
+.docs-rail ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.docs-rail a {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-meta);
+  line-height: var(--leading-meta);
+  color: var(--color-fg);
+  text-decoration: none;
+  transition:
+    color var(--motion-fast) var(--motion-easing),
+    background-color var(--motion-fast) var(--motion-easing);
+}
+.docs-rail a:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-accent);
+}
+.docs-rail a[aria-current] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  font-weight: var(--weight-medium);
+}
+
+/* ─── Main: header + body, with the "on this page" aside ───────────────── */
+.docs-main {
+  min-width: 0;
+  /* remarque: at least --space-9 before the main heading. */
+  padding-top: var(--space-9);
+}
+.docs-main > * {
+  max-width: var(--content-reading);
+}
+
+.docs-breadcrumb ol {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-caps: all-small-caps;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-fg-muted);
+}
+.docs-breadcrumb li + li::before {
+  content: '/';
+  margin-inline-end: var(--space-2);
+  color: var(--color-muted);
+}
+.docs-breadcrumb a {
+  color: var(--color-fg-muted);
+  text-decoration: none;
+}
+.docs-breadcrumb a:hover {
+  color: var(--color-accent);
+}
+
+/* The page title is the document's own leading H1 (137 of 138 published
+   docs open with one), which remarque's prose sheet leaves unstyled. */
+.docs-body h1 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  font-size: var(--text-title);
+  line-height: var(--leading-title);
+  letter-spacing: var(--tracking-title);
+  text-wrap: balance;
+  margin: 0 0 var(--space-5);
+}
+
+.docs-aside {
+  margin-block: var(--space-6);
+}
+.docs-aside .remarque-toc-rail {
+  margin-block: 0;
+}
+.docs-aside .remarque-toc-rail li.depth-3 {
+  padding-inline-start: var(--space-3);
+}
+.docs-page-meta {
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-3);
+  border-top: var(--border-width) var(--border-style) var(--color-border);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  line-height: var(--leading-meta);
+  color: var(--color-fg-muted);
+}
+.docs-page-meta dt {
+  font-variant-caps: all-small-caps;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-muted);
+}
+.docs-page-meta dd {
+  margin: 0 0 var(--space-2);
+}
+
+.docs-body {
+  margin-top: var(--space-5);
+  /* Long identifiers and paths (API names, `docs/api/exports/{…}`) have no
+     break opportunity and pushed phones into horizontal scroll. */
+  overflow-wrap: break-word;
+}
+/* Hyphenation: a gap remarque leaves to the consumer (#7199). Long
+   identifiers in technical prose otherwise leave ragged lines at 46rem. */
+.docs-body :where(p, li) {
+  hyphens: auto;
+}
+
+.docs-pager {
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: var(--border-width) var(--border-style) var(--color-border);
+}
+.docs-pager ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.docs-pager a {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+}
+.docs-pager .docs-pager-next {
+  margin-inline-start: auto;
+  text-align: end;
+}
+.docs-pager-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-caps: all-small-caps;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-fg-muted);
+}
+
+/* ─── Footer ────────────────────────────────────────────────────────────── */
+.docs-footer {
+  border-top: var(--border-width) var(--border-style) var(--color-border);
+}
+.docs-footer p {
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding: var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--color-fg-muted);
+}
+
+/* ─── Breakpoints ───────────────────────────────────────────────────────────
+ * < 64rem: one column; the rail is a closed <details> above the content and
+ * the "on this page" aside sits inline after the title (remarque's narrow
+ * TOC presentation). >= 64rem: rail beside main. >= 88rem (--content-wide):
+ * the aside moves to a sticky right rail outside the reading column.
+ * Media queries cannot read custom properties, so the rem values are literal.
+ */
+@media (min-width: 64rem) {
+  .docs-page {
+    display: grid;
+    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+    column-gap: var(--space-7);
+    align-items: start;
+  }
+  .docs-rail {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    max-height: 100vh;
+    overflow-y: auto;
+    padding-top: var(--space-6);
+  }
+  .docs-rail > details > summary {
+    display: none;
+  }
+}
+
+@media (min-width: 88rem) {
+  .docs-main {
+    display: grid;
+    grid-template-columns: minmax(0, var(--content-reading)) minmax(11rem, 14rem);
+    column-gap: var(--space-7);
+  }
+  .docs-main > :not(.docs-aside) {
+    grid-column: 1;
+  }
+  .docs-aside {
+    grid-column: 2;
+    /* `span 999`, not `1 / -1`: with no explicit rows, -1 is row 1 and the
+       aside would inflate it (remarque essay.css, "grid-inflation lesson"). */
+    grid-row: 1 / span 999;
+    align-self: start;
+    position: sticky;
+    top: var(--space-6);
+    z-index: var(--z-sticky);
+    max-height: calc(100vh - var(--space-8));
+    overflow-y: auto;
+    margin-block: 0;
+  }
+}
+
+@media print {
+  .docs-masthead,
+  .docs-rail,
+  .docs-aside,
+  .docs-pager,
+  .docs-footer {
+    display: none;
+  }
+  .docs-main {
+    padding-top: 0;
+  }
+}

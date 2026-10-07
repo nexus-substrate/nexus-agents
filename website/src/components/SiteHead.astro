@@ -1,0 +1,69 @@
+---
+// Shared <head> metadata for BaseLayout (landing, 404) and DocsLayout
+// (#7199). Font and stylesheet links stay with each layout: the landing page
+// still uses its own editorial fonts until its redesign, the docs use
+// remarque's self-hosted set.
+interface Props {
+  title: string;
+  description?: string | undefined;
+  noindex?: boolean | undefined;
+}
+
+const {
+  title,
+  description = 'Autonomic control plane for AI coding agents — one entry point, adversarial review, tamper-evident hash-chained audit, bounded self-tuning.',
+  noindex = false,
+} = Astro.props;
+const siteTitle =
+  title === 'Home'
+    ? 'Nexus Agents — Autonomic control plane for AI coding agents'
+    : `${title} — Nexus Agents`;
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content={description} />
+<title>{siteTitle}</title>
+
+<link rel="canonical" href={canonicalURL} />
+
+<link rel="icon" type="image/svg+xml" sizes="16x16" href={`${base}/favicon-16.svg`} />
+<link rel="icon" type="image/svg+xml" sizes="any" href={`${base}/favicon.svg`} />
+
+<meta http-equiv="X-Content-Type-Options" content="nosniff" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+
+{noindex && <meta name="robots" content="noindex, nofollow" />}
+
+<meta property="og:title" content={siteTitle} />
+<meta property="og:description" content={description} />
+<meta property="og:type" content="website" />
+<meta property="og:url" content={canonicalURL} />
+<meta property="og:site_name" content="Nexus Agents" />
+
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content={siteTitle} />
+<meta name="twitter:description" content={description} />
+
+<script type="application/ld+json" set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Nexus Agents",
+  "description": "Autonomic control plane for AI coding agents — one entry point, adversarial review across Claude/Codex/Gemini/OpenCode, tamper-evident hash-chained audit, bounded self-tuning. The agents are the data plane; nexus-agents admits, reviews, audits, and routes their work.",
+  "url": Astro.site?.toString(),
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Cross-platform",
+  "license": "https://opensource.org/licenses/MIT",
+  "author": {
+    "@type": "Organization",
+    "name": "Nexus Substrate",
+    "url": "https://github.com/nexus-substrate"
+  },
+  "creator": {
+    "@type": "Person",
+    "name": "William Zujkowski",
+    "url": "https://github.com/williamzujkowski"
+  }
+})} />
