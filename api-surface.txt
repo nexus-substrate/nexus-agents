@@ -448,6 +448,7 @@ InterfaceDeclaration AiSdkFunctions
   generateObject: (options: Record<string, unknown>) => Promise<GenerateObjectResult>
   generateText: (options: Record<string, unknown>) => Promise<GenerateTextResult>
   jsonSchema: (schema: Record<string, unknown>) => AiSdkSchema
+  objectOutput: (options: { schema: AiSdkSchema; }) => unknown
   streamText: (options: Record<string, unknown>) => StreamTextResult
 InterfaceDeclaration AiSdkModel
   readonly modelId: string

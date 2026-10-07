@@ -1,9 +1,13 @@
 /** Exercise optional SDK dependencies over local HTTP without paid API calls. */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as ai from 'ai';
 import { SdkAdapter } from './sdk-adapter.js';
 import { startFakeGateway, type FakeGateway } from '../../testing/gateway/fake-gateway.js';
 import { FAKE_OPENAI_KEY } from '../../testing/test-secrets.js';
 import type { CompletionRequest } from '../../core/index.js';
+
+// Observe the entry point while executing the installed SDK over local HTTP.
+vi.mock('ai', { spy: true });
 
 const MODEL = 'gpt-4o';
 const REQUEST: CompletionRequest = {
@@ -28,6 +32,7 @@ describe('SdkAdapter with real AI SDK dependencies (#7223)', () => {
   });
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.clearAllMocks();
   });
   afterAll(async () => {
     await gateway.close();
@@ -36,6 +41,7 @@ describe('SdkAdapter with real AI SDK dependencies (#7223)', () => {
   it.each(['text', 'json_schema', 'json_object'] as const)(
     'preserves system-role messages for %s completions',
     async (format) => {
+      const generateText = vi.mocked(ai.generateText);
       const reply = format === 'text' ? 'Hello back' : '{"reply":"Hello back"}';
       gateway.setScript(() => ({ kind: 'text', content: reply }));
       const adapter = new SdkAdapter({
@@ -58,9 +64,17 @@ describe('SdkAdapter with real AI SDK dependencies (#7223)', () => {
               }
             : { type: format },
       });
+      expect(generateText).toHaveBeenCalledTimes(1);
+      if (format !== 'text') {
+        expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+          output: { name: 'object' },
+        });
+      }
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.content).toEqual([{ type: 'text', text: reply }]);
+        expect(result.value.stopReason).toBe('end_turn');
+        expect(result.value.model).toBe(MODEL);
         expect(result.value.usage).toEqual({ inputTokens: 42, outputTokens: 17, totalTokens: 59 });
       }
       expect(gateway.chatRequests()).toHaveLength(1);
