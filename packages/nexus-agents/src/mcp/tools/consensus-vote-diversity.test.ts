@@ -227,6 +227,52 @@ describe('consensus_vote response: panel families (#6606)', () => {
     ]);
   });
 
+  it('reports the served model while preserving the requested assignment (#7239)', () => {
+    const response = buildResponse(
+      INPUT,
+      extended([
+        seat('architect', {
+          cli: 'cli-claude',
+          model: 'claude-fable-5',
+          pinnedModel: 'claude-fable-5',
+          servedModel: 'claude-opus',
+        }),
+      ])
+    );
+    expect(response.votes[0]).toMatchObject({
+      modelUsed: 'claude-opus',
+      assignedModel: 'claude-fable-5',
+    });
+  });
+
+  it('qualifies a bare served alias against the CLI that answered', () => {
+    const summary = toAgentVoteSummary(
+      seat('architect', { cli: 'cli-claude', model: 'claude-fable-5', servedModel: 'opus' })
+    );
+    expect(summary.modelUsed).toBe('claude-opus');
+  });
+
+  it.each([undefined, '', 'pending-detection'])(
+    'falls back to the requested model when servedModel is %s',
+    (servedModel) => {
+      const summary = toAgentVoteSummary(seat('pm', { model: 'gpt-5.2', servedModel }));
+      expect(summary.modelUsed).toBe('gpt-5.2');
+    }
+  );
+
+  it('reports a known served model even when the requested model is unresolved', () => {
+    const summary = toAgentVoteSummary(
+      seat('pm', { model: 'pending-detection', servedModel: 'gpt-5.2' })
+    );
+    expect(summary.modelUsed).toBe('gpt-5.2');
+  });
+
+  it('clips the served model to the advertised output bound', () => {
+    const servedModel = `custom-${'x'.repeat(100)}`;
+    const summary = toAgentVoteSummary(seat('pm', { servedModel }));
+    expect(summary.modelUsed).toBe(`${servedModel.slice(0, 99)}…`);
+  });
+
   it('a seat with no resolved model carries no modelUsed', () => {
     expect('modelUsed' in toAgentVoteSummary(seat('pm', { model: undefined }))).toBe(false);
     expect('modelUsed' in toAgentVoteSummary(seat('pm', { model: 'pending-detection' }))).toBe(

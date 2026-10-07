@@ -26,6 +26,7 @@ import {
   assignedPanelDiversityOf,
   crossFamilyFallbackWarning,
   panelDiversityOf,
+  resolvedModel,
   singleFamilyPanelWarning,
   singleModelPanelWarning,
   type PanelDiversity,
@@ -352,10 +353,10 @@ export interface AgentVoteSummary {
   /** True when this vote was generated from an error (Issue #815). */
   error: boolean;
   /**
-   * Model this seat ran on (Issue #817). Populated since #6606 from the seat's
-   * resolved model; absent when the seat resolved none (an errored seat that
-   * never reached a model, or the lazy-detection placeholder). Clipped to
-   * {@link MODEL_USED_MAX_CHARS} to fit the advertised output schema.
+   * Model this seat ran on (Issue #817): the served model, qualified against
+   * the answering CLI when needed, falling back to the requested model only
+   * when no served model is known (#7239). Absent when neither resolves to a
+   * model. Clipped to {@link MODEL_USED_MAX_CHARS} to fit the output schema.
    */
   modelUsed?: string;
   /** Model assigned before execution, including seats that errored or abstained. */
@@ -734,8 +735,8 @@ const MODEL_USED_MAX_CHARS = 100;
 
 /** `{ modelUsed }` for a seat that resolved a model; the placeholder is not one. */
 function modelUsedOf(result: AgentVoteResult): { modelUsed?: string } {
-  const model = result.model;
-  if (model === undefined || model === '' || model === UNRESOLVED_MODEL_ID) return {};
+  const model = resolvedModel(result);
+  if (model === undefined) return {};
   return {
     modelUsed:
       model.length <= MODEL_USED_MAX_CHARS ? model : `${model.slice(0, MODEL_USED_MAX_CHARS - 1)}…`,
