@@ -110,6 +110,21 @@ function classifyVoteStageResult(votingResult: {
 }
 
 /**
+ * #7181: carry the persisted record's id so the pipeline result can name it.
+ * A vote that persisted nothing carries no id rather than a guess.
+ */
+function withRecordId(
+  classified: { vote: VoteResult; label: string },
+  recorded: Awaited<ReturnType<typeof recordCompletedVote>>
+): { vote: VoteResult; label: string } {
+  if (!recorded.voteRecord.persisted) return classified;
+  return {
+    vote: { ...classified.vote, voteRecordId: recorded.voteRecord.record.id },
+    label: classified.label,
+  };
+}
+
+/**
  * #4143: a vote-stage infra error (all voters errored / adapter down /
  * timeout) FAILS CLOSED to `no_quorum` — a recoverable "the vote couldn't
  * complete, re-run/escalate" state (#4135) — NOT auto-approved. Granting
@@ -170,12 +185,15 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
         // stage deadline or a job cancel.
         signal !== undefined ? { signal } : undefined
       );
-      await recordCompletedVote(proposal, votingResult, logger, { ...PIPELINE_VOTE, signal });
+      const recorded = await recordCompletedVote(proposal, votingResult, logger, {
+        ...PIPELINE_VOTE,
+        signal,
+      });
       // #4135: read the response-layer decision (honors a `no_quorum` void under
       // the opt-in absolute_quorum policy / an error-policy short-circuit) instead
       // of the 2-valued engine outcome. `classifyVoteStageResult` maps it to the
       // stage VoteResult (incl. the distinct no_quorum terminal signal).
-      const { vote, label } = classifyVoteStageResult(votingResult);
+      const { vote, label } = withRecordId(classifyVoteStageResult(votingResult), recorded);
       const ms = getTimeProvider().now() - start;
       emitStageEvent('vote', 'completed', { durationMs: ms });
       // The shared recorder above writes the consensus decision's per-seat

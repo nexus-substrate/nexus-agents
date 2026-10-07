@@ -106,8 +106,11 @@ vi.mock('../mcp/tools/consensus-vote.js', () => ({
 
 // Classification fixtures omit the complete voting result. Durable recording
 // is exercised with real results in agent-executor-vote-recording.test.ts (#6872).
+// The stub keeps the real return shape: the stage reads `voteRecord` (#7181).
 vi.mock('../mcp/tools/consensus-vote-completed-recording.js', () => ({
-  recordCompletedVote: vi.fn(),
+  recordCompletedVote: vi.fn().mockResolvedValue({
+    voteRecord: { persisted: false, reason: 'all-simulated', detail: 'stubbed recorder' },
+  }),
 }));
 
 import { createAgentStages, buildVoteProposal } from './agent-executor.js';

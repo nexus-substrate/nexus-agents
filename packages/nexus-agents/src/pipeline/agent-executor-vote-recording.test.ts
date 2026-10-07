@@ -135,6 +135,11 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     const records = readVoteRecords(ledger).records;
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({ correlationId: decisionId, decision: 'approved' });
+    // #7181: the dry-run response carries the verdict and the id of the record
+    // it persisted, so a caller need not read the ledger to learn the outcome.
+    expect(result.planVoteDecision).toBe('approved');
+    expect(result.planVoteApprovalPercentage).toBe(100);
+    expect(result.planVoteRecordId).toBe(records[0]?.id);
     const rows = new PersistentOutcomeStore().query({ source: 'consensus' });
     expect(rows).toHaveLength(3);
     expect(rows.map((row) => row.traceId)).toEqual([decisionId, decisionId, decisionId]);

@@ -3026,8 +3026,10 @@ InterfaceDeclaration DevPipelineResult
   readonly plan: string
   readonly planStatus?: "empty" | "no_quorum" | "unapproved" | undefined
   readonly planVoteApprovalPercentage?: number | undefined
+  readonly planVoteDecision?: "approved" | "no_quorum" | "rejected" | undefined
   readonly planVoteFeedback?: string | undefined
   readonly planVoteReason?: string | undefined
+  readonly planVoteRecordId?: string | undefined
   readonly qaIterations: number
   readonly securityNote?: string | undefined
   readonly securityPassed: boolean
@@ -10134,7 +10136,7 @@ InterfaceDeclaration VoteRejectedSignalEvent
   readonly rejectionRules?: readonly string[] | undefined
   readonly type: "signal.vote_rejected"
 TypeAliasDeclaration VoteResult
-  = { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; } | { readonly approvalPercentage: number; readonly kind: 'approved'; } | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; }
+  = { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; readonly voteRecordId?: string; } | { readonly approvalPercentage: number; readonly kind: 'approved'; readonly voteRecordId?: string; } | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; readonly voteRecordId?: string; }
 TypeAliasDeclaration VoterExpansionCallback
   = ( proposalId: ProposalId, currentVoterCount: number, requestedCount: number ) => Promise<readonly string[]>
 TypeAliasDeclaration VoterProjectSource

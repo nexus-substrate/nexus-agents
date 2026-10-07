@@ -18,7 +18,10 @@ export function buildStructuredOutput(
     ...(simulated ? { simulated: true } : {}),
     completed: result.completed,
     ...changesField(result),
+    // Kept for compatibility: `false` here is NOT a verdict unless `securityRan`
+    // is true. `security` below is the field that cannot misread (#7181).
     securityPassed: result.securityPassed,
+    security: securityStatus(result),
     // #4772: these two are what make `completed: false` legible. Without them a
     // caller cannot tell a failed planner from a successful dry run, or a
     // security rejection from a gate that never ran — which is the whole point
@@ -32,6 +35,8 @@ export function buildStructuredOutput(
       ? { planVoteApprovalPercentage: result.planVoteApprovalPercentage }
       : {}),
     ...(result.planVoteFeedback !== undefined ? { planVoteFeedback: result.planVoteFeedback } : {}),
+    // #7181: the dry run's verdict, which otherwise reached only the ledger.
+    ...planVoteVerdictFields(result),
     // #4993 added `dryRun` to DevPipelineResult for exactly the reason above —
     // it says `completed: false` was the request, not a fault — and then did
     // not list it here either. Same omission, same function, under the comment
@@ -66,4 +71,28 @@ function warningsField(
   result: Pick<DevPipelineResult, 'warnings'>
 ): Pick<DevPipelineResult, 'warnings'> {
   return result.warnings !== undefined ? { warnings: result.warnings } : {};
+}
+
+/**
+ * The security gate's status as a value that cannot be misread (#7181).
+ *
+ * `securityPassed: false` beside `securityRan: false` read as a failed check.
+ * Only a scan that ran yields `passed`/`failed`; a scan that did not run, and a
+ * producer that predates `securityRan` (#4782), are both `unmeasured`.
+ */
+function securityStatus(result: Pick<DevPipelineResult, 'securityPassed' | 'securityRan'>): {
+  readonly status: 'passed' | 'failed' | 'unmeasured';
+} {
+  if (result.securityRan !== true) return { status: 'unmeasured' };
+  return { status: result.securityPassed ? 'passed' : 'failed' };
+}
+
+/** The plan vote's decision and record id, each present only when produced (#7181). */
+function planVoteVerdictFields(
+  result: Pick<DevPipelineResult, 'planVoteDecision' | 'planVoteRecordId'>
+): Pick<DevPipelineResult, 'planVoteDecision' | 'planVoteRecordId'> {
+  return {
+    ...(result.planVoteDecision !== undefined ? { planVoteDecision: result.planVoteDecision } : {}),
+    ...(result.planVoteRecordId !== undefined ? { planVoteRecordId: result.planVoteRecordId } : {}),
+  };
 }

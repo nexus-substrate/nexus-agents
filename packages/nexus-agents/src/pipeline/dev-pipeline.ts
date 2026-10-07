@@ -92,10 +92,25 @@ export interface PipelineTask {
   readonly researchMaturity?: number | undefined;
 }
 
-/** Vote result from consensus. */
+/**
+ * Vote result from consensus.
+ *
+ * `voteRecordId` (#7181) is the id of the vote record the stage persisted to
+ * the ledger; absent when nothing was persisted (a simulated panel, a failed
+ * write, or a stage that does not record).
+ */
 export type VoteResult =
-  | { readonly kind: 'approved'; readonly approvalPercentage: number }
-  | { readonly kind: 'rejected'; readonly feedback: string; readonly approvalPercentage: number }
+  | {
+      readonly kind: 'approved';
+      readonly approvalPercentage: number;
+      readonly voteRecordId?: string;
+    }
+  | {
+      readonly kind: 'rejected';
+      readonly feedback: string;
+      readonly approvalPercentage: number;
+      readonly voteRecordId?: string;
+    }
   // #4135: the vote could not reach a valid quorum — a recoverable "re-run the
   // missing voice" state, DISTINCT from a rejection. Only produced when a caller
   // opts into the `absolute_quorum` error policy (or an error-policy short-circuit
@@ -103,7 +118,12 @@ export type VoteResult =
   // into plan-revision (it carries no reviewer feedback — the plan is fine, a voice
   // was missing); it terminates/escalates instead. `isApproved` and
   // `getVoteFeedback` already treat it as not-approved / no-feedback.
-  | { readonly kind: 'no_quorum'; readonly reason: string; readonly approvalPercentage: number };
+  | {
+      readonly kind: 'no_quorum';
+      readonly reason: string;
+      readonly approvalPercentage: number;
+      readonly voteRecordId?: string;
+    };
 
 /** Check if the vote result is approved. */
 export function isApproved(result: VoteResult): boolean {
@@ -230,8 +250,22 @@ export interface DevPipelineResult {
   readonly planStatus?: 'empty' | 'no_quorum' | 'unapproved';
   /** Last quorum failure reason when {@link planStatus} is `'no_quorum'`. */
   readonly planVoteReason?: string;
-  /** Last panel approval percentage for a terminal plan-vote outcome. */
+  /**
+   * Last panel approval percentage for a terminal plan-vote outcome, or for the
+   * approving vote of a dry run (#7181).
+   */
   readonly planVoteApprovalPercentage?: number;
+  /**
+   * The last plan vote's decision (#7181). Set on a dry run and on a terminal
+   * plan-gate stop; absent on a full run, on a resumed plan (no vote ran this
+   * run), and when the planner returned nothing (no vote was held).
+   */
+  readonly planVoteDecision?: 'approved' | 'rejected' | 'no_quorum';
+  /**
+   * Id of the vote record that decision persisted to the ledger (#7181). Set
+   * alongside {@link planVoteDecision} only when a record was written.
+   */
+  readonly planVoteRecordId?: string;
   /** Last rejection feedback when {@link planStatus} is `'unapproved'`. */
   readonly planVoteFeedback?: string;
   /**
@@ -735,15 +769,7 @@ function buildDryRunResult(planResult: PlanVoteResult): DevPipelineResult {
     securityPassed: false,
     securityRan: false,
     ...(planResult.planStatus !== undefined ? { planStatus: planResult.planStatus } : {}),
-    ...(planResult.planVoteReason !== undefined
-      ? { planVoteReason: planResult.planVoteReason }
-      : {}),
-    ...(planResult.planVoteApprovalPercentage !== undefined
-      ? { planVoteApprovalPercentage: planResult.planVoteApprovalPercentage }
-      : {}),
-    ...(planResult.planVoteFeedback !== undefined
-      ? { planVoteFeedback: planResult.planVoteFeedback }
-      : {}),
+    ...planVoteEvidence(planResult),
   };
 }
 
@@ -758,6 +784,19 @@ function buildPlanFailureResult(planResult: PlanVoteResult): DevPipelineResult {
     securityPassed: false,
     securityRan: false,
     planStatus: planResult.planStatus ?? 'unapproved',
+    ...planVoteEvidence(planResult),
+  };
+}
+
+/**
+ * The plan vote's evidence fields, each present only when the vote produced it
+ * (#7181): nothing here is defaulted, so an absent field means no such value.
+ */
+function planVoteEvidence(planResult: PlanVoteResult): Partial<DevPipelineResult> {
+  return {
+    ...(planResult.planVoteDecision !== undefined
+      ? { planVoteDecision: planResult.planVoteDecision }
+      : {}),
     ...(planResult.planVoteReason !== undefined
       ? { planVoteReason: planResult.planVoteReason }
       : {}),
@@ -766,6 +805,9 @@ function buildPlanFailureResult(planResult: PlanVoteResult): DevPipelineResult {
       : {}),
     ...(planResult.planVoteFeedback !== undefined
       ? { planVoteFeedback: planResult.planVoteFeedback }
+      : {}),
+    ...(planResult.planVoteRecordId !== undefined
+      ? { planVoteRecordId: planResult.planVoteRecordId }
       : {}),
   };
 }
@@ -1139,6 +1181,8 @@ interface PlanVoteResult {
   readonly planVoteReason?: string;
   readonly planVoteApprovalPercentage?: number;
   readonly planVoteFeedback?: string;
+  readonly planVoteDecision?: 'approved' | 'rejected' | 'no_quorum';
+  readonly planVoteRecordId?: string;
 }
 
 /** Run decompose or return from checkpoint. */
@@ -1244,7 +1288,18 @@ function buildApprovedPlanResult(
     approval: vote.approvalPercentage,
     sessionId,
   });
-  return { plan, iterations };
+  return {
+    plan,
+    iterations,
+    planVoteDecision: 'approved',
+    planVoteApprovalPercentage: vote.approvalPercentage,
+    ...recordIdOf(vote),
+  };
+}
+
+/** The persisted record id of a vote, as a field to spread, or `{}` when none (#7181). */
+function recordIdOf(vote: VoteResult | undefined): { planVoteRecordId?: string } {
+  return vote?.voteRecordId !== undefined ? { planVoteRecordId: vote.voteRecordId } : {};
 }
 
 /** Run one stage-aware plan vote so progress/outcome instrumentation remains intact. */
@@ -1290,8 +1345,10 @@ function buildNoQuorumPlanResult(
     plan,
     iterations,
     planStatus: 'no_quorum',
+    planVoteDecision: 'no_quorum',
     planVoteReason: vote.reason,
     planVoteApprovalPercentage: vote.approvalPercentage,
+    ...recordIdOf(vote),
   };
 }
 
@@ -1313,8 +1370,11 @@ function buildUnapprovedPlanResult(
     plan,
     iterations,
     planStatus: 'unapproved',
+    // No vote ran at all only when the iteration limit is zero; don't claim one.
+    ...(vote !== undefined ? { planVoteDecision: 'rejected' as const } : {}),
     planVoteApprovalPercentage: approvalPercentage,
     planVoteFeedback: feedback,
+    ...recordIdOf(vote),
   };
 }
 

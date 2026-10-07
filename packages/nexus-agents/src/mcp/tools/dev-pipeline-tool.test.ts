@@ -539,6 +539,71 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['completed']).toBe(false);
   });
 
+  // #7181: a dry run's response carried no verdict, and `securityPassed: false`
+  // beside `securityRan: false` read as a failed check.
+  it('surfaces the plan vote outcome and an unmeasured security status on a dry run', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      dryRun: true,
+      plan: 'a real plan',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+      planVoteDecision: 'approved',
+      planVoteApprovalPercentage: 100,
+      planVoteRecordId: 'vr-7181',
+    } as never);
+    const result = await captureHandler()({ task: 'Build feature X', dryRun: true }, STDIO_CTX);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    expect(output['planVoteDecision']).toBe('approved');
+    expect(output['planVoteApprovalPercentage']).toBe(100);
+    expect(output['planVoteRecordId']).toBe('vr-7181');
+    expect(output['security']).toEqual({ status: 'unmeasured' });
+  });
+
+  it('reports a security verdict only when the scan ran', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: true,
+      plan: 'a real plan',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 1,
+      securityPassed: true,
+      securityRan: true,
+    } as never);
+    const passed = JSON.parse(
+      (await captureHandler()({ task: 'Build feature X' }, STDIO_CTX)).content[0]!.text
+    ) as Record<string, unknown>;
+    expect(passed['security']).toEqual({ status: 'passed' });
+    expect(passed['securityPassed']).toBe(true);
+    expect(passed).not.toHaveProperty('planVoteDecision');
+  });
+
+  it('reports a ran-and-failed scan as failed', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      plan: 'a real plan',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 1,
+      securityPassed: false,
+      securityRan: true,
+    } as never);
+    const result = await captureHandler()({ task: 'Build feature X' }, STDIO_CTX);
+    expect(errorDetail(result)['security']).toEqual({ status: 'failed' });
+  });
+
+  it('reports an absent securityRan as unmeasured, not as failed', async () => {
+    // Absent means the producer predates #4772; securityPassed alone is no verdict.
+    const output = JSON.parse(
+      (await captureHandler()({ task: 'Build feature X' }, STDIO_CTX)).content[0]!.text
+    ) as Record<string, unknown>;
+    expect(output['security']).toEqual({ status: 'unmeasured' });
+  });
+
   it('surfaces taskStatus in the response envelope (#5645)', async () => {
     runDevPipelineMock.mockResolvedValueOnce({
       completed: true,

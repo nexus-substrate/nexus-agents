@@ -594,6 +594,60 @@ describe('runDevPipeline', () => {
     expect(stages.securityScan).not.toHaveBeenCalled();
   });
 
+  // #7181: a dry run's whole product is the plan and its verdict, and the
+  // verdict reached only the ledger and the logs.
+  it('carries the plan vote outcome and record id in a dry run', async () => {
+    const stages = createMockStages({
+      vote: vi
+        .fn()
+        .mockResolvedValue({ kind: 'approved', approvalPercentage: 66.7, voteRecordId: 'vr-1' }),
+    });
+    const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
+
+    expect(result.planVoteDecision).toBe('approved');
+    expect(result.planVoteApprovalPercentage).toBe(66.7);
+    expect(result.planVoteRecordId).toBe('vr-1');
+  });
+
+  it('omits the record id when the vote persisted none, rather than inventing one', async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
+
+    expect(result.planVoteDecision).toBe('approved');
+    expect(result.planVoteApprovalPercentage).toBe(83);
+    expect(result).not.toHaveProperty('planVoteRecordId');
+  });
+
+  it('carries the final rejected verdict when a dry run exhausts its revisions', async () => {
+    const stages = createMockStages({
+      vote: vi.fn().mockResolvedValue({
+        kind: 'rejected',
+        feedback: 'No',
+        approvalPercentage: 20,
+        voteRecordId: 'vr-r',
+      }),
+    });
+    const result = await runDevPipeline('Build feature X', stages, { dryRun: true });
+
+    expect(result.planStatus).toBe('unapproved');
+    expect(result.planVoteDecision).toBe('rejected');
+    expect(result.planVoteRecordId).toBe('vr-r');
+  });
+
+  it('leaves a full run result without the dry-run vote fields', async () => {
+    const stages = createMockStages({
+      vote: vi
+        .fn()
+        .mockResolvedValue({ kind: 'approved', approvalPercentage: 83, voteRecordId: 'vr-2' }),
+    });
+    const result = await runDevPipeline('Build feature X', stages);
+
+    expect(result.completed).toBe(true);
+    expect(result).not.toHaveProperty('planVoteDecision');
+    expect(result).not.toHaveProperty('planVoteRecordId');
+    expect(result).not.toHaveProperty('planVoteApprovalPercentage');
+  });
+
   it('returns tasks for external implementation in harness mode (#1704)', async () => {
     const stages = createMockStages();
     const result = await runDevPipeline('Build feature X', stages, { mode: 'harness' });
