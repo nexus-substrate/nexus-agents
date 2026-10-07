@@ -1,6 +1,8 @@
 ---
 title: 'Compose Your First Pipeline'
 description: A hands-on newcomer walkthrough chaining MCP tools — research → vote → build — toward a concrete goal
+diataxis: tutorial
+audience: user
 tier: 2
 keywords: [getting-started, tutorial, mcp, pipeline, compose, research, consensus, dev-pipeline]
 ---

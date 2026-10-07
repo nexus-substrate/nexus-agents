@@ -1,6 +1,8 @@
 ---
 title: Harness Compatibility Guide
 description: Wire nexus-agents as an MCP peer from OpenCode, Codex CLI, Cursor, Aider, and Cline
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [harness, mcp, opencode, codex, cursor, aider, cline, integration]
 related_files: [AGENTS.md, CLAUDE.md, docs/guides/CUSTOM_ENDPOINT_SETUP.md, docs/ENTRYPOINTS.md]

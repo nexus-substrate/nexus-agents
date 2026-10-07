@@ -1,6 +1,8 @@
 ---
 title: 'Sandboxed Usage'
 description: Run nexus-agents inside Docker, restricted-FS sandboxes, and team-distribution flows; OpenCode-in-Docker + OpenAI-compat gateway scenario.
+diataxis: how-to
+audience: user
 tier: 2
 keywords:
   [

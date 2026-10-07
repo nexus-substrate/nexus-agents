@@ -1,3 +1,8 @@
+---
+diataxis: how-to
+audience: user
+---
+
 # Claude Code Observability for nexus-agents
 
 This guide shows how to get real-time visibility into nexus-agents MCP tool activity

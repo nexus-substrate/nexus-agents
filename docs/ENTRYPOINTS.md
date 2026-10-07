@@ -1,6 +1,8 @@
 ---
 title: 'Nexus-Agents Entrypoints'
 description: Complete reference for all CLI commands, MCP tools, and workflow templates
+diataxis: reference
+audience: user
 tier: 1
 keywords: [entrypoints, cli, mcp, api, tools, commands, reference]
 ---

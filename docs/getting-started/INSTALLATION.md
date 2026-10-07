@@ -1,6 +1,8 @@
 ---
 title: 'Installation Guide'
 description: Detailed installation instructions for nexus-agents across all platforms, Docker, and CI/CD environments
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [installation, setup, docker, npm, pnpm, getting-started]
 ---

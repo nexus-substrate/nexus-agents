@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: user
+---
+
 # IModelAdapter Interface
 
 ## Purpose

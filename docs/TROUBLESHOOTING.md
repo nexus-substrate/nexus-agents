@@ -1,6 +1,8 @@
 ---
 title: Troubleshooting Guide
 description: Common issues, error resolution, and FAQ for nexus-agents
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [errors, debugging, faq, issues, problems, help]
 related_files: [docs/guides/DEBUGGING_OBSERVABILITY.md]

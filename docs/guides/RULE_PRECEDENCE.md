@@ -1,6 +1,8 @@
 ---
 title: Rule-Loading Precedence Across Harnesses
 description: Exactly which rule files Claude Code / Codex / Gemini CLI / OpenCode load, from where, in what order
+diataxis: reference
+audience: user
 tier: 2
 keywords: [rules, precedence, claude, codex, gemini, opencode, agents.md, autoload]
 related_files: [AGENTS.md, CLAUDE.md, docs/guides/HARNESS_COMPATIBILITY.md]

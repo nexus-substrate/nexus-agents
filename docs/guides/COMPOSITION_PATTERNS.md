@@ -1,3 +1,8 @@
+---
+diataxis: how-to
+audience: user
+---
+
 # Composition Patterns
 
 How to compose nexus-agents' orchestration primitives into pipelines beyond the

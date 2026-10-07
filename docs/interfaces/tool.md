@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: user
+---
+
 # ITool Interface
 
 ## Purpose

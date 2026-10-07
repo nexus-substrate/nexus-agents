@@ -1,6 +1,8 @@
 ---
 title: Self-Development Workflow (historical)
 description: Original engine deleted 2026-05-05; replaced by observability-driven `improvement_review` (#2402). Pointer doc only.
+diataxis: explanation
+audience: project
 tier: 3
 keywords: [self-development, history, improvement-review, deprecated]
 ---

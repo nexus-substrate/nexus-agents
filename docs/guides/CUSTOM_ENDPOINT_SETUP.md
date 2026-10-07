@@ -1,6 +1,8 @@
 ---
 title: Custom OpenAI-Compatible Endpoint Setup
 description: Configure nexus-agents to use an OpenAI-compatible gateway directly or through OpenCode
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [custom, openai-compatible, gateway, opencode, endpoint, proxy]
 ---

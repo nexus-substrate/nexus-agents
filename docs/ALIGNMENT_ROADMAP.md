@@ -1,6 +1,8 @@
 ---
 title: Alignment Roadmap
 description: Strategic alignment with the north star goal and forward-looking improvement plan
+diataxis: explanation
+audience: project
 tier: 2
 keywords: [roadmap, alignment, phases, progress, milestones, north-star]
 related_files: [CHANGELOG.md, architecture/README.md]
