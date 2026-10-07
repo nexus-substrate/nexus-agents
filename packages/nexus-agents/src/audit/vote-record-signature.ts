@@ -232,7 +232,15 @@ export function runSshKeygen(invocation: SshKeygenInvocation): SshKeygenOutcome 
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    if (result.error !== undefined) {
+    // EPIPE with a non-zero exit: ssh-keygen ran, refused (an unreadable key,
+    // say) and exited before reading stdin. The exit status and stderr ARE the
+    // measurement; whether the stdin write lost that race is scheduling (#7274).
+    // EPIPE with exit 0 stays `unavailable`: a success that never read its
+    // message is not a measurement.
+    const spawnError: NodeJS.ErrnoException | undefined = result.error;
+    const exitedBeforeReadingStdin =
+      spawnError?.code === 'EPIPE' && result.status !== null && result.status !== 0;
+    if (result.error !== undefined && !exitedBeforeReadingStdin) {
       return {
         kind: 'unavailable',
         reason: `spawn ssh-keygen ${describeSpawnError(result.error)}`,
