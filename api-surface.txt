@@ -61,7 +61,7 @@ VariableDeclaration ActivationStrategySchema
   : z.ZodEnum<{ adaptive: "adaptive"; diverse: "diverse"; greedy: "greedy"; ucb: "ucb"; }>
 InterfaceDeclaration ActivityItem
   readonly agentId: string
-  readonly eventType: import("src/observability/swarm-observer-core-types").EventType
+  readonly eventType: import("./swarm-observer-core-types.js").EventType
   readonly severity: "error" | "info" | "warning"
   readonly summary: string
   readonly timestamp: string
@@ -837,7 +837,7 @@ ClassDeclaration BaseProtocol
   cancel(reason: string) => void
   execute(config: CollaborationConfig, agents: Map<string, IAgent>) => Promise<Result<CollaborationResult, AgentError>>
   implements ICollaborationProtocol
-  readonly pattern: import("src/agents/collaboration/collaboration-types").CollaborationPattern
+  readonly pattern: import("./collaboration-types.js").CollaborationPattern
 ClassDeclaration BaseVotingStrategy
   calculateOutcome(votes: Map<string, Vote>, weights?: Map<string, number>) => VotingOutcome
   implements IVotingStrategy
@@ -1158,7 +1158,7 @@ FunctionDeclaration calculateMinSampleSize
 FunctionDeclaration calculateRegret
   : (decisions: readonly { readonly actualReward: number; readonly chosenModel: string; readonly rewards: Record<string, number>; }[]) => RegretAnalysis
 FunctionDeclaration calculateRoutingDistribution
-  : (routingHistory: readonly RoutingDecision[]) => Record<"claude" | "codex" | "gemini" | "opencode", number> & Partial<Record<import("src/cli-adapters/types-core").RoutingArmId, number>>
+  : (routingHistory: readonly RoutingDecision[]) => Record<"claude" | "codex" | "gemini" | "opencode", number> & Partial<Record<import("../../cli-adapters/types-core.js").RoutingArmId, number>>
 FunctionDeclaration calculateTokenCost
   : (tokens: SessionTokenTotals, ratePerThousand: number) => number
 FunctionDeclaration calculateTokenMetrics
@@ -1854,7 +1854,7 @@ TypeAliasDeclaration CompositeRouterConfig
 VariableDeclaration CompositeRouterConfigSchema
   : z.ZodObject<{ billingMode: z.ZodDefault<z.ZodEnum<{ api: "api"; plan: "plan"; }>>; budgetConstraints: z.ZodOptional<z.ZodObject<{ maxCostUsd: z.ZodOptional<z.ZodNumber>; maxLatencyMs: z.ZodOptional<z.ZodNumber>; maxTokens: z.ZodOptional<z.ZodNumber>; taskClassMaxCostUsd: z.ZodOptional<z.ZodRecord<z.ZodEnum<{ architecture: "architecture"; code_generation: "code_generation"; code_review: "code_review"; devops: "devops"; documentation: "documentation"; exploration: "exploration"; planning: "planning"; research: "research"; security_review: "security_review"; testing: "testing"; }> & z.core.$partial, z.ZodNumber>>; }, z.core.$strip>>; enableBudgetFilter: z.ZodDefault<z.ZodBoolean>; enableCapabilityMatch: z.ZodDefault<z.ZodBoolean>; enableCapacityBalancing: z.ZodDefault<z.ZodBoolean>; enableConfidenceCascade: z.ZodDefault<z.ZodBoolean>; enableKnnRouting: z.ZodDefault<z.ZodBoolean>; enableLatencyTracking: z.ZodDefault<z.ZodBoolean>; enableLinUCBSelection: z.ZodDefault<z.ZodBoolean>; enablePreferenceRouting: z.ZodDefault<z.ZodBoolean>; enableQualityConstraint: z.ZodDefault<z.ZodBoolean>; enableResourceStrategy: z.ZodDefault<z.ZodBoolean>; enableRoutingMemory: z.ZodDefault<z.ZodBoolean>; enableStrategyDistillation: z.ZodDefault<z.ZodBoolean>; enableTopsisRanking: z.ZodDefault<z.ZodBoolean>; enableZeroRouter: z.ZodDefault<z.ZodBoolean>; latencyScoreWeight: z.ZodDefault<z.ZodNumber>; linucbAlpha: z.ZodDefault<z.ZodNumber>; preferenceMinDataPoints: z.ZodDefault<z.ZodNumber>; }, z.core.$strip>
 InterfaceDeclaration CompositeRouterConfigWithPreference
-  availableModelsCache?: import("src/config/available-models-cache").AvailableModelsCache | undefined
+  availableModelsCache?: import("../config/available-models-cache.js").AvailableModelsCache | undefined
   capabilityMatchConfig?: Partial<CapabilityMatchConfig> | undefined
   capacityStageConfig?: Partial<CapacityStageConfig> | undefined
   confidenceCascadeConfig?: Partial<ConfidenceCascadeConfig> | undefined
@@ -2107,7 +2107,7 @@ InterfaceDeclaration ConsensusVoteDeps
 TypeAliasDeclaration ConsensusVoteInput
   = z.infer<typeof ConsensusVoteInputSchema>
 VariableDeclaration ConsensusVoteInputSchema
-  : z.ZodObject<{ artifactPath: z.ZodOptional<z.ZodString>; dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; errorPolicy: z.ZodOptional<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; count_as_abstain: "count_as_abstain"; fail_closed: "fail_closed"; reduce_denominator: "reduce_denominator"; }>>; idempotencyKey: z.ZodOptional<z.ZodString>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; options: z.ZodOptional<z.ZodArray<z.ZodString>>; project: z.ZodOptional<z.ZodString>; proposal: z.ZodString; quickMode: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; ratifies: z.ZodOptional<z.ZodString>; ratifiesPr: z.ZodOptional<z.ZodObject<{ headSha: z.ZodString; pr: z.ZodNumber; }, z.core.$strict>>; simulateVotes: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; strategy: z.ZodOptional<z.ZodEnum<{ higher_order: "higher_order"; opinion_wise: "opinion_wise"; simple_majority: "simple_majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; threshold: z.ZodOptional<z.ZodEnum<{ majority: "majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; }, z.core.$strip>
+  : z.ZodObject<{ artifactPath: z.ZodOptional<z.ZodString>; dispatch: z.ZodOptional<import("./async-dispatch-input.js").DispatchEnum>; errorPolicy: z.ZodOptional<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; count_as_abstain: "count_as_abstain"; fail_closed: "fail_closed"; reduce_denominator: "reduce_denominator"; }>>; idempotencyKey: z.ZodOptional<z.ZodString>; mode: import("./async-dispatch-input.js").RejectedModeKey; options: z.ZodOptional<z.ZodArray<z.ZodString>>; project: z.ZodOptional<z.ZodString>; proposal: z.ZodString; quickMode: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; ratifies: z.ZodOptional<z.ZodString>; ratifiesPr: z.ZodOptional<z.ZodObject<{ headSha: z.ZodString; pr: z.ZodNumber; }, z.core.$strict>>; simulateVotes: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; strategy: z.ZodOptional<z.ZodEnum<{ higher_order: "higher_order"; opinion_wise: "opinion_wise"; simple_majority: "simple_majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; threshold: z.ZodOptional<z.ZodEnum<{ majority: "majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; }, z.core.$strip>
 TypeAliasDeclaration ConsensusVoter
   = (input: ConsensusProposalInput) => Promise<ConsensusVerdict>
 InterfaceDeclaration ConsensusVoteRequestedEvent
@@ -2220,9 +2220,9 @@ ClassDeclaration ContextManager
   getTotalRemainingTokens() => number
   remove(id: string) => boolean
 InterfaceDeclaration ContextManagerConfig
-  adapter?: import("src/core/index").IModelAdapter | undefined
+  adapter?: import("../core/index.js").IModelAdapter | undefined
   budget?: ContextBudget | undefined
-  logger?: import("src/core/logger").ILogger | undefined
+  logger?: import("../core/logger.js").ILogger | undefined
   maxTokens: number
   warningThreshold?: number | undefined
 VariableDeclaration ContextManagerConfigSchema
@@ -2643,7 +2643,7 @@ FunctionDeclaration createUnifiedRegistry
 FunctionDeclaration createValidationDashboard
   : () => ValidationDashboard
 FunctionDeclaration createValidator
-  : (schema: ZodType<T, unknown, import("zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>) => (args: unknown) => Result<T, ValidationError>
+  : (schema: ZodType<T, unknown, import("zod/v4/core").$ZodTypeInternals<T, unknown>>) => (args: unknown) => Result<T, ValidationError>
 FunctionDeclaration createVotingProtocol
   : (customLogger?: ILogger | undefined) => VotingProtocol
 FunctionDeclaration createWaveScheduler
@@ -3052,7 +3052,7 @@ InterfaceDeclaration DevPipelineStages
 InterfaceDeclaration DevPipelineWorkspaceBinding
   readonly dependencies: DevPipelineDependencies
   readonly directory: string
-  readonly wrapper?: import("src/cli-adapters/exec-file-tree").CommandWrapper | undefined
+  readonly wrapper?: import("../cli-adapters/exec-file-tree.js").CommandWrapper | undefined
 TypeAliasDeclaration DifficultyDimension
   = z.infer<typeof DifficultyDimensionSchema>
 InterfaceDeclaration DifficultyEstimate
@@ -3383,7 +3383,7 @@ TypeAliasDeclaration ExecuteSpecDeps
 TypeAliasDeclaration ExecuteSpecInput
   = z.infer<typeof ExecuteSpecInputSchema>
 VariableDeclaration ExecuteSpecInputSchema
-  : z.ZodObject<{ dispatch: z.ZodDefault<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; spec: z.ZodString; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodDefault<import("./async-dispatch-input.js").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; mode: import("./async-dispatch-input.js").RejectedModeKey; spec: z.ZodString; }, z.core.$strip>
 TypeAliasDeclaration ExecutionAccessMode
   = 'default' | 'read-only-analysis' | 'workspace-edit'
 InterfaceDeclaration ExecutionContext @orchestration/graph/graph-executor
@@ -6161,7 +6161,7 @@ InterfaceDeclaration OrchestrateContractOpts
   readonly trustTier?: string | undefined
 InterfaceDeclaration OrchestrateDeps
   extends BaseMcpToolDeps
-  modelAdapter?: import("src/core/index").IModelAdapter | undefined
+  modelAdapter?: import("../../core/index.js").IModelAdapter | undefined
   notifier?: IMcpNotifier | undefined
   orchestrator?: IOrchestrator | undefined
 TypeAliasDeclaration OrchestrateInput
@@ -6171,7 +6171,7 @@ InterfaceDeclaration OrchestrateInputLike
   readonly maxIterations?: number | undefined
   readonly task: string
 VariableDeclaration OrchestrateInputSchema
-  : z.ZodObject<{ context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; idempotencyKey: z.ZodOptional<z.ZodString>; maxIterations: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; task: z.ZodString; timeout: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
+  : z.ZodObject<{ context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; dispatch: z.ZodOptional<import("./async-dispatch-input.js").DispatchEnum>; idempotencyKey: z.ZodOptional<z.ZodString>; maxIterations: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; mode: import("./async-dispatch-input.js").RejectedModeKey; task: z.ZodString; timeout: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 FunctionDeclaration orchestrateInputToTaskContract
   : (input: OrchestrateInputLike, opts?: OrchestrateContractOpts) => { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "analysis" | "code" | "plan" | "report" | "review" | "spec" | "test" | "vote"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "clarifying" | "done" | "executing" | "failed" | "intake" | "planning" | "validating"; updatedAt: number; }
 TypeAliasDeclaration OrchestrateOutput
@@ -6999,7 +6999,7 @@ InterfaceDeclaration PrReviewDeps
 TypeAliasDeclaration PrReviewInput
   = z.infer<typeof PrReviewInputSchema>
 VariableDeclaration PrReviewInputSchema
-  : z.ZodObject<{ baseRef: z.ZodOptional<z.ZodString>; baseSha: z.ZodOptional<z.ZodString>; dispatch: z.ZodDefault<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; errorPolicy: z.ZodDefault<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; standard: "standard"; }>>; headRef: z.ZodOptional<z.ZodString>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; prDescription: z.ZodOptional<z.ZodString>; prDiff: z.ZodString; prNumber: z.ZodOptional<z.ZodNumber>; project: z.ZodOptional<z.ZodString>; prTitle: z.ZodString; repoContext: z.ZodOptional<z.ZodString>; repoPath: z.ZodOptional<z.ZodString>; simulate: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>
+  : z.ZodObject<{ baseRef: z.ZodOptional<z.ZodString>; baseSha: z.ZodOptional<z.ZodString>; dispatch: z.ZodDefault<import("./async-dispatch-input.js").DispatchEnum>; errorPolicy: z.ZodDefault<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; standard: "standard"; }>>; headRef: z.ZodOptional<z.ZodString>; mode: import("./async-dispatch-input.js").RejectedModeKey; prDescription: z.ZodOptional<z.ZodString>; prDiff: z.ZodString; prNumber: z.ZodOptional<z.ZodNumber>; project: z.ZodOptional<z.ZodString>; prTitle: z.ZodString; repoContext: z.ZodOptional<z.ZodString>; repoPath: z.ZodOptional<z.ZodString>; simulate: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>
 TypeAliasDeclaration PrReviewRecordOutcome
   = { readonly baseSha: string; readonly persisted: true; readonly prNumber: number; readonly reviewedDiffHash: string; readonly sequence: number; } | { readonly detail: string; readonly persisted: false; readonly reason: 'binding-inputs-absent' | 'diff-not-unified' | 'no-live-votes' | 'raw-hash-absent' | 'simulated' | 'write-failed'; }
 InterfaceDeclaration PrReviewResponse
@@ -8055,7 +8055,7 @@ InterfaceDeclaration RunGraphWorkflowDeps
 TypeAliasDeclaration RunGraphWorkflowInput
   = z.infer<typeof RunGraphWorkflowInputSchema>
 VariableDeclaration RunGraphWorkflowInputSchema
-  : z.ZodObject<{ dispatch: z.ZodDefault<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; enableAuditTrail: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; enableCheckpointing: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; inputs: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; workflow: z.ZodString; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodDefault<import("./async-dispatch-input.js").DispatchEnum>; enableAuditTrail: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; enableCheckpointing: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; inputs: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>; mode: import("./async-dispatch-input.js").RejectedModeKey; workflow: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration RunGraphWorkflowResponse
   readonly checkpointCount: number
   readonly durationMs: number
@@ -8090,7 +8090,7 @@ InterfaceDeclaration RunWorkflowDeps
 TypeAliasDeclaration RunWorkflowInput
   = z.infer<typeof RunWorkflowInputSchema>
 VariableDeclaration RunWorkflowInputSchema
-  : z.ZodObject<{ dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; idempotencyKey: z.ZodOptional<z.ZodString>; inputs: z.ZodRecord<z.ZodString, z.ZodUnknown>; maxTokens: z.ZodOptional<z.ZodNumber>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; template: z.ZodString; timeoutMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodOptional<import("./async-dispatch-input.js").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; idempotencyKey: z.ZodOptional<z.ZodString>; inputs: z.ZodRecord<z.ZodString, z.ZodUnknown>; maxTokens: z.ZodOptional<z.ZodNumber>; mode: import("./async-dispatch-input.js").RejectedModeKey; template: z.ZodString; timeoutMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 VariableDeclaration safePathsRule
   : PolicyRule
 VariableDeclaration SAFETY_CATEGORIES
@@ -9972,7 +9972,7 @@ FunctionDeclaration validateSkillRBAC
 FunctionDeclaration validateTestCase
   : (testCase: unknown) => z.ZodSafeParseResult<{ context?: string | undefined; description: string; expectedOutcome: "caution" | "clarify" | "detect" | "escalate" | "proceed" | "refuse"; id: string; input: string; name: string; riskLevel: "critical" | "high" | "low" | "medium"; tags: readonly string[]; }>
 FunctionDeclaration validateToolInput
-  : (schema: ZodType<T, unknown, import("zod/v4/core/schemas").$ZodTypeInternals<T, unknown>>, args: unknown) => Result<T, ValidationError>
+  : (schema: ZodType<T, unknown, import("zod/v4/core").$ZodTypeInternals<T, unknown>>, args: unknown) => Result<T, ValidationError>
 FunctionDeclaration validateWorkflow
   : (workflow: WorkflowDefinition) => Result<void, ParseError>
 FunctionDeclaration validateWorkflowDependencies
@@ -10391,7 +10391,7 @@ InterfaceDeclaration WeightedVotingConfig
   readonly weightDecayFactor: number
   readonly weightRecoveryFactor: number
 InterfaceDeclaration WeightedVotingOptions
-  config?: Partial<import("src/consensus/types-weighted-voting").WeightedVotingConfig> | undefined
+  config?: Partial<import("./types-weighted-voting.js").WeightedVotingConfig> | undefined
   emitEvents?: boolean | undefined
   eventBus?: ICollaborationEventBus | undefined
 InterfaceDeclaration WinLossAnalysis
