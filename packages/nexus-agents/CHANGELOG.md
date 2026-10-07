@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.4.3
+
+### Patch Changes
+
+- [#7279](https://github.com/nexus-substrate/nexus-agents/pull/7279) [`ffff978`](https://github.com/nexus-substrate/nexus-agents/commit/ffff9785373c0dede0f0d88b9db08f501d947751) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The security gate now fully scans twelve previously unparsable TypeScript source files with Semgrep, preserving their runtime behavior.
+
 ## 11.4.2
 
 ### Patch Changes
