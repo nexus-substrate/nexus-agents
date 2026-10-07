@@ -1,6 +1,8 @@
 ---
 title: 'What Does a Governed Decision Cost?'
 description: How a governed decision (consensus_vote / pr_review) accrues cost — per-voter rollup to per-decision summary, the measured-vs-unmeasured floor, plan vs api billing, reading the weather_report cost section, and what each strategy's costProfile means. Grounded in the shipped DecisionCostStore (#3855), the weather_report cost section (#3856), and the manifest cost profiles.
+diataxis: explanation
+audience: user
 tier: 2
 keywords:
   [

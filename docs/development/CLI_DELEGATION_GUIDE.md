@@ -1,6 +1,8 @@
 ---
 title: CLI Delegation Guide
 description: Practical guide for delegating tasks to Claude, Gemini, Codex, and OpenCode CLIs
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [cli, delegation, routing, adapter, claude, gemini, codex, opencode]
 ---

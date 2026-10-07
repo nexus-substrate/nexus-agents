@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Code Generation & Self-Improvement
 
 **Last Updated:** 2026-04-03 (ET)

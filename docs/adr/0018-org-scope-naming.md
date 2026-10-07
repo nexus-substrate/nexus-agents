@@ -1,6 +1,8 @@
 ---
 title: 'ADR 0018: Org and npm-Scope Naming under the Control-Plane Positioning'
 description: Decision framework for org + npm-scope naming under the Epic H autonomic-control-plane repositioning — keep nexus-substrate org and unscoped npm names as legacy lineage, with a documented forcing-function trigger for a future scope rename. Absorbs the deferred #2834 scope-rename decision.
+diataxis: none
+audience: project
 tier: 3
 keywords:
   [

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Comparative Analysis: Skill Assignment Patterns in Agent Frameworks
 
 **Date:** 2026-01-22 (ET)
@@ -77,12 +82,13 @@
 ```
 
 **Key Differences:**
-| Feature | nexus-agents | ATLAS |
-| --------- | -------------- | ------- |
-| Initial Selection | Task analysis | Clustering |
-| Multi-step | Optional (collaboration) | Built-in (RL routing) |
-| Learning | None | Reinforcement learning |
-| Specialization | Static roles | Learned clusters |
+
+| Feature           | nexus-agents             | ATLAS                  |
+| ----------------- | ------------------------ | ---------------------- |
+| Initial Selection | Task analysis            | Clustering             |
+| Multi-step        | Optional (collaboration) | Built-in (RL routing)  |
+| Learning          | None                     | Reinforcement learning |
+| Specialization    | Static roles             | Learned clusters       |
 
 **When ATLAS Excels:**
 
@@ -129,12 +135,13 @@ For each expert combination:
 ```
 
 **Comparison:**
-| Aspect | nexus-agents | EvoRoute |
-| -------- | -------------- | ---------- |
-| Optimization | Single step | Multi-objective |
-| Budget-Aware | Via options | Dynamic cost tracking |
-| Learning | None | Adaptive weighting |
-| Efficiency | Static weights | Cost + accuracy + latency |
+
+| Aspect       | nexus-agents   | EvoRoute                  |
+| ------------ | -------------- | ------------------------- |
+| Optimization | Single step    | Multi-objective           |
+| Budget-Aware | Via options    | Dynamic cost tracking     |
+| Learning     | None           | Adaptive weighting        |
+| Efficiency   | Static weights | Cost + accuracy + latency |
 
 **When EvoRoute Excels:**
 
@@ -178,12 +185,13 @@ if (similarityScore > 0.8) {
 ```
 
 **Comparison:**
-| Feature | nexus-agents | MCP-Zero |
-| --------- | -------------- | ---------- |
+
+| Feature             | nexus-agents   | MCP-Zero              |
+| ------------------- | -------------- | --------------------- |
 | Capability Matching | Exact (binary) | Semantic (continuous) |
-| Gap Detection | No | Yes (core feature) |
-| Tool Chaining | Optional | Required |
-| Embedding Model | None | Vector similarity |
+| Gap Detection       | No             | Yes (core feature)    |
+| Tool Chaining       | Optional       | Required              |
+| Embedding Model     | None           | Vector similarity     |
 
 **When MCP-Zero Excels:**
 
@@ -221,12 +229,13 @@ def analyze_code(code: str) -> str:
 - **Execution:** Function call protocol (e.g., JSON RPC)
 
 **Comparison:**
-| Aspect | nexus-agents | AutoGen |
-| -------- | -------------- | --------- |
-| Tool Definition | YAML config | Python decorators |
-| Discovery | Task analysis | Docstring parsing |
-| Selection | Scoring algorithm | LLM decision |
-| Determinism | High (score-based) | Lower (LLM choice) |
+
+| Aspect          | nexus-agents       | AutoGen            |
+| --------------- | ------------------ | ------------------ |
+| Tool Definition | YAML config        | Python decorators  |
+| Discovery       | Task analysis      | Docstring parsing  |
+| Selection       | Scoring algorithm  | LLM decision       |
+| Determinism     | High (score-based) | Lower (LLM choice) |
 
 **When AutoGen Excels:**
 

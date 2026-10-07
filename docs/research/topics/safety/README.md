@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Safety
 
 **Last Updated:** 2026-04-19 (ET)

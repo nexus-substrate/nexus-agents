@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0006: Determinism Providers
 
 **Status:** Accepted

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Research Consensus Vote - 2026-01-17
 
 **Protocol:** Weighted Byzantine Voting (CP-WBFT)

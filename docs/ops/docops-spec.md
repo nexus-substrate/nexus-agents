@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Documentation Operations Specification
 
 **Version:** 1.1.0

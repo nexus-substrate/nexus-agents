@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # API Contracts: V2 Core Types
 
 _Complete TypeScript interfaces for the V2 Pipeline OS primitives._

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Proposal: CLI-Based PR Review Workflow
 
 **Issue:** PR reviews using Claude API are incurring costs when CLI subscriptions are already paid for

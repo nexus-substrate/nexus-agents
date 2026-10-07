@@ -1,6 +1,8 @@
 ---
 title: 'Tool Removal / Consolidation Runbook'
 description: End-to-end procedure for acting on a tool-fitness deprecation or consolidation candidate — surfaced as a suggest-tier signal, validated by a human, ratified via the authority-ladder consensus path, audited, and reversible. Removal is NEVER autonomous.
+diataxis: how-to
+audience: project
 tier: 2
 keywords:
   [

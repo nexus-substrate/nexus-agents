@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Agent Skills Research - Complete Index
 
 **Research Topic:** Agent Skill Loading and Assignment in Multi-Agent Systems

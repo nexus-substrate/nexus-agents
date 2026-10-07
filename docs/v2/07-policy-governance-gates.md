@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # 07 — Policy & Governance Gates
 
 ---

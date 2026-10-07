@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # 03 — User Story & User Journey
 
 ---

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0007: Utility Function Consolidation
 
 ## Status

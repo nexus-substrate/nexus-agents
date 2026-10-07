@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0004: Shared Task Analyzer
 
 ## Status

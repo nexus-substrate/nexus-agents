@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # CLI Tools Integration
 
 **Last Updated:** 2026-04-19 (ET)

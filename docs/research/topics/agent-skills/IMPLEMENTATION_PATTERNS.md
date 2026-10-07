@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Implementation Patterns for Skill Assignment Enhancements
 
 **Date:** 2026-01-22 (ET)

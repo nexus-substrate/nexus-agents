@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0002: Unified TaskContract + PlanContract + ArtifactStore
 
 **Status:** Accepted

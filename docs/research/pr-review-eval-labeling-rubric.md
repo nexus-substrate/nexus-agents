@@ -1,6 +1,8 @@
 ---
 title: pr_review eval labeling rubric (v1)
 description: Objective labeling rules for the pr_review evaluation dataset — severity floor, location tolerance, clean-PR and borderline criteria, adjudication procedure, and rubric versioning. Makes "did pr_review catch the bug" measurable instead of a judgment call.
+diataxis: reference
+audience: project
 tier: 2
 keywords: [pr-review, eval, rubric, labeling, methodology, autonomous-sdlc]
 ---

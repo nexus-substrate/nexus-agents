@@ -1,6 +1,8 @@
 ---
 title: Release-changeset publish race runbook
 description: Symptom, diagnostic, and fix for the version-skip publish race that bit us 2026-05-04 (jumped 2.64 → 2.67 on npm, skipping 2.65 and 2.66).
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [release, changesets, publish, race, npm, version-skew]
 ---

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Consensus Protocols
 
 **Last Updated:** 2026-04-03 (ET)

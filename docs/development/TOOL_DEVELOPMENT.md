@@ -1,6 +1,8 @@
 ---
 title: MCP Tool Development Guide
 description: Walkthrough for creating and registering new MCP tools in nexus-agents
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [mcp, tool, development, zod, schema, registration]
 ---

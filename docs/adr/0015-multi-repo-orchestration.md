@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0015: Multi-Repo Orchestration Design
 
 ## Status

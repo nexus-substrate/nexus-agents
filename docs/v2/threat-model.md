@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Threat Model: V2 Pipeline OS
 
 ---

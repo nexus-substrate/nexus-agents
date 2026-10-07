@@ -1,6 +1,8 @@
 ---
 title: Development Guide
 description: How to contribute, extend, and develop with nexus-agents
+diataxis: none
+audience: project
 tier: 2
 keywords: [contributing, development, testing, coding, standards, debugging]
 related_files:

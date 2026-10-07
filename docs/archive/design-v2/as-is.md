@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Nexus Agents: As-Is Architecture
 
 _An honest, evidence-backed assessment of the current system. No marketing. Every claim cites code._

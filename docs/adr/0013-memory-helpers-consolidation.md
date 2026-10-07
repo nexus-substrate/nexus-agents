@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0013: Memory Helpers Consolidation
 
 ## Status

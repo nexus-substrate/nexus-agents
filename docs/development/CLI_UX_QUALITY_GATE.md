@@ -1,6 +1,8 @@
 ---
 title: CLI UX Quality Gate
 description: Pre-release checklist for CLI tool quality — discovery, defaults, workflows, testing
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [cli, ux, quality, checklist, testing, defaults, help]
 ---

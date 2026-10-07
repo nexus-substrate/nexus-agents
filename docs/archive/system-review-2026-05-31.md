@@ -1,6 +1,8 @@
 ---
 title: Full System Review — 2026-05-31
 description: Complete record of the 13-domain full-codebase fan-out review (14 agents) that ratified the closed-loop direction
+diataxis: none
+audience: project
 tier: 2
 keywords: [system-review, audit, findings, closed-loop, roadmap]
 related_files: [../ALIGNMENT_ROADMAP.md]

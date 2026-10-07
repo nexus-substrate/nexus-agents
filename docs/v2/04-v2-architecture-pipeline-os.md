@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # 04 — V2 Architecture: Pipeline OS with Plugins
 
 _This is the final corrected V2 plan. Supersedes `docs/design/v2-proposal.md`._

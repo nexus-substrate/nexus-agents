@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0009: Error Class Hierarchy
 
 ## Status

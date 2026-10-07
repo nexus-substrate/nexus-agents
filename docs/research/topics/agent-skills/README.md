@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Agent Skills and Capability Management
 
 **Hub:** Research on skill loading, assignment, and dependency management in multi-agent systems.

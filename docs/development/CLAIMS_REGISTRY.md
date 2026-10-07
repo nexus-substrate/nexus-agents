@@ -1,6 +1,8 @@
 ---
 title: Claims Registry Guide
 description: How to add and verify claims so README/ARCHITECTURE assertions can't silently drift from the code
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [claims, registry, governance, drift, verification, contributing]
 related_files:

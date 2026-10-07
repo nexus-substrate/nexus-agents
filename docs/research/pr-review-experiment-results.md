@@ -1,6 +1,8 @@
 ---
 title: pr_review experiment — 10-PR seed run results (#2241)
 description: First empirical run of pr_review against historical PRs. Bug-catch rate 0%, false-positive rate 0%, avg duration 2.7min. Verified findings produced - 0 across 50 voter calls.
+diataxis: none
+audience: project
 tier: 2
 keywords: [pr-review, experiment, results, verification-gate, autonomous-sdlc]
 ---

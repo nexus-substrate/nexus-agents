@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0005: Unified Adapter Interface Boundary (Even If Transports Differ)
 
 **Status:** Accepted

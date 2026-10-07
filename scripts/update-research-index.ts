@@ -55,6 +55,8 @@ function generateYamlFrontmatter(totalPapers: number, totalTechniques: number): 
     '---',
     'title: Research Index',
     `description: ${String(totalPapers)} papers and ${String(totalTechniques)} techniques tracked across the nexus-agents research registry.`,
+    'diataxis: none',
+    'audience: project',
     '---',
     '',
   ].join('\n');

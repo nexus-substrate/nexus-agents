@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Planning
 
 **Last Updated:** 2026-04-19 (ET)

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Evolving Orchestration Design Document
 
 **Issue:** #335
@@ -253,12 +258,7 @@ export interface PuppeteerStepResult {
 }
 
 export type PuppeteerTerminationReason =
-  | 'task_complete'
-  | 'max_steps'
-  | 'timeout'
-  | 'error'
-  | 'cancelled'
-  | 'convergence';
+  'task_complete' | 'max_steps' | 'timeout' | 'error' | 'cancelled' | 'convergence';
 
 /**
  * Final result of Puppeteer orchestration.
@@ -409,10 +409,7 @@ export class PolicyError extends Error {
 }
 
 export type PolicyErrorCode =
-  | 'INVALID_STATE'
-  | 'NO_AGENTS'
-  | 'COMPUTATION_FAILED'
-  | 'UPDATE_FAILED';
+  'INVALID_STATE' | 'NO_AGENTS' | 'COMPUTATION_FAILED' | 'UPDATE_FAILED';
 ```
 
 ### StateManager Interface

@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # 01 — As-Is Architecture
 
 _What the system actually does, not what we wish it did._
