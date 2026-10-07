@@ -44,14 +44,8 @@ import {
 import { GEMINI_LEGACY_DEFAULTS, createCircuitOpenError } from './gemini-adapter-helpers.js';
 import { executeCliRetryLoop } from '../cli-retry-loop.js';
 import { GEMINI_CLI_COMMAND } from '../cli-error-envelope.js';
-import {
-  buildModelInfo,
-  getCliModelName,
-  getDefaultModelForCli,
-} from '../../config/model-config-helpers.js';
-
-/** Derive the CLI model name for the default Gemini model from the canonical registry. */
-const DEFAULT_GEMINI_CLI_MODEL: string = getCliModelName(getDefaultModelForCli('gemini'));
+import { DEFAULT_GEMINI_CLI_MODEL, agyPrintTimeoutArgs } from './agy-invocation.js';
+import { buildModelInfo } from '../../config/model-config-helpers.js';
 
 /** Configuration for Gemini adapter. Extends BaseAdapterOptions with retry/circuit breaker. */
 export interface GeminiConfig extends BaseAdapterOptions {
@@ -378,20 +372,4 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 /** Creates a Gemini CLI adapter with reliability features. */
 export function createGeminiAdapter(options?: GeminiConfig): GeminiCliAdapter {
   return new GeminiCliAdapter(options);
-}
-
-/** Headroom between agy's print-mode wait and the subprocess guard (#6277). */
-const AGY_PRINT_TIMEOUT_HEADROOM_MS = 5_000;
-/** Shortest wait handed to agy; below this a seat cannot answer at all. */
-const AGY_PRINT_TIMEOUT_FLOOR_S = 30;
-
-/**
- * agy's `--print-timeout` argv (Go duration, whole seconds) for a task
- * budget: the guard minus a fixed headroom, never below the floor. No
- * budget → no flag, so agy's own default applies.
- */
-function agyPrintTimeoutArgs(timeoutMs: number | undefined): readonly string[] {
-  if (timeoutMs === undefined) return [];
-  const seconds = Math.floor((timeoutMs - AGY_PRINT_TIMEOUT_HEADROOM_MS) / 1000);
-  return ['--print-timeout', `${String(Math.max(AGY_PRINT_TIMEOUT_FLOOR_S, seconds))}s`];
 }

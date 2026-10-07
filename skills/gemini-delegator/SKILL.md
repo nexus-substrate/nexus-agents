@@ -17,11 +17,16 @@ allowed-tools: Bash, Read, Grep, Glob
   - skills/references/orchestration-patterns.md (multi-agent coordination, retry policies, deadline propagation)
 -->
 
+> **The standalone `gemini` CLI is retired** (#4389). It exits 55 with
+> `IneligibleTierError` on every invocation. The `gemini` routing arm keeps its
+> name but spawns `agy` (Google's Antigravity CLI), which serves the Gemini
+> models. Every command below uses `agy`; do not shell out to `gemini`.
+
 **Full documentation:**
 
 - [ROUTING_SYSTEM.md](../../docs/architecture/ROUTING_SYSTEM.md)
 
-## Real-World Performance (Tested 2026-01-18)
+## Real-World Performance (Tested 2026-01-18, on the retired gemini CLI)
 
 | Metric             | Value                     | Notes                               |
 | ------------------ | ------------------------- | ----------------------------------- |
@@ -34,15 +39,13 @@ allowed-tools: Bash, Read, Grep, Glob
 
 ## When to Delegate to Gemini
 
-| Condition                 | Threshold/Criteria         | Reason                      |
-| ------------------------- | -------------------------- | --------------------------- |
-| Context size              | > 100K tokens              | Gemini: 1M context window   |
-| Large codebase analysis   | Multiple files, > 50 files | Fast bulk processing        |
-| Image/screenshot analysis | Any visual content         | Native multimodal support   |
-| Video/audio processing    | Any A/V content            | Native multimodal support   |
-| Speed-critical tasks      | Latency sensitive          | Flash models optimized      |
-| Cost-sensitive operations | Budget constraints         | Generous free tier (1K/day) |
-| Google Cloud integration  | BigQuery, Cloud Functions  | Native integration          |
+| Condition                 | Threshold/Criteria         | Reason                    |
+| ------------------------- | -------------------------- | ------------------------- |
+| Context size              | > 100K tokens              | Gemini: 1M context window |
+| Large codebase analysis   | Multiple files, > 50 files | Fast bulk processing      |
+| Speed-critical tasks      | Latency sensitive          | Flash models optimized    |
+| Cost-sensitive operations | Budget constraints         | Flash models are cheaper  |
+| Google Cloud integration  | BigQuery, Cloud Functions  | Native integration        |
 
 ## When NOT to Delegate
 
@@ -62,68 +65,56 @@ Use the nexus-agents MCP tool for intelligent routing:
 nexus-agents delegate_to_model --task "Analyze this 500K token codebase"
 ```
 
-### Method 2: Direct Gemini CLI
+### Method 2: Direct `agy`
 
 ```bash
-# Basic delegation (human-readable output)
-gemini -p "Analyze this codebase"
+# Run one prompt non-interactively (print mode); prompt as the flag value
+agy --print "Analyze this codebase"
 
-# JSON output for parsing (note: response may contain markdown fences)
-gemini -p "Analyze this codebase" --output-format json
+# Or pipe the prompt on stdin — keeps large prompts out of argv
+cat prompt.md | agy --output-format json
 
-# With auto-approve for autonomous operation
-gemini --yolo -p "Review all files in src/" --output-format json
+# JSON output for parsing
+agy --print "Analyze this codebase" --output-format json
 
-# Specify model
-gemini -m gemini-2.5-flash -p "Quick analysis task"
-gemini -m gemini-3-pro-preview -p "Complex reasoning task"
+# Specify a model — slugs come from `agy models`, not the registry ids
+agy --model gemini-3.8-flash-medium --print "Quick analysis task"
+agy --model gemini-3.1-pro-high --print "Complex reasoning task"
+
+# Name the workspace: agy defaults to its STORED project, not the cwd (#6254)
+agy --add-dir "$PWD" --print "Review all files in src/" --output-format json
 ```
 
-**JSON Output Parsing Note:** The `response` field in JSON output may contain markdown code fences. Parse accordingly:
+**JSON output:** `--output-format json` returns
+`{conversation_id, status, response, duration_seconds, num_turns, usage}`.
+**agy exits 0 even when the run failed**, so the verdict is the `status` field,
+never the exit code:
 
-````typescript
+```typescript
 const result = JSON.parse(output);
-const response = result.response.replace(/```\w*\n?/g, '').trim();
-````
-
-## Multimodal Examples
-
-### Image Analysis
-
-```bash
-# Analyze screenshot
-gemini -p "Describe this UI and identify usability issues" < screenshot.png
-
-# Analyze architecture diagram
-gemini -p "Extract components and relationships from this diagram" < diagram.png
-
-# Code screenshot OCR
-gemini -p "Extract the code from this screenshot" < code-image.png
+if (result.status !== 'SUCCESS') throw new Error(result.error ?? `agy status ${result.status}`);
+const response = result.response;
 ```
 
-### Video Analysis
+In TypeScript inside this repo, reuse `AgyResponseParser`
+(`packages/nexus-agents/src/cli-adapters/parsers/agy-parser.ts`) instead of
+re-parsing by hand.
 
-```bash
-# Analyze video content (uses File API for > 1 minute)
-gemini -p "Summarize the key points from this demo video" < demo.mp4
-```
+**Not read-only.** agy cannot enforce read-only analysis (#6962): `--mode plan`
+writes a plan and then executes it in print mode, and `--sandbox` restricts the
+terminal, not file edits. Run it in a scratch checkout when it must not write.
 
-### Batch Processing
-
-```bash
-# Process multiple images
-for img in screenshots/*.png; do
-  gemini -p "Analyze this UI screenshot" < "$img" --output-format json >> results.json
-done
-```
+**No image or file input.** agy has no flag for attaching images, audio or
+video, and the nexus-agents agy path sends text only. The multimodal examples
+that piped files into the retired `gemini` CLI no longer apply.
 
 ## Context Advantage
 
-| Model        | Context Window | Best For                  |
-| ------------ | -------------- | ------------------------- |
-| Claude       | ~200K tokens   | Quality reasoning         |
-| Gemini Pro   | 1M tokens      | Large context, multimodal |
-| Gemini Flash | 200K-1M tokens | Speed, high volume        |
+| Model        | Context Window | Best For           |
+| ------------ | -------------- | ------------------ |
+| Claude       | ~200K tokens   | Quality reasoning  |
+| Gemini Pro   | 1M tokens      | Large context      |
+| Gemini Flash | 200K-1M tokens | Speed, high volume |
 
 **The 1M token context window enables:**
 
@@ -136,67 +127,63 @@ done
 
 ```bash
 # Human readable (default)
-gemini -p "task"
+agy --print "task"
 
-# JSON for parsing
-gemini -p "task" --output-format json
+# JSON for parsing (check `status`, see above)
+agy --print "task" --output-format json
 
-# Streaming JSON for real-time
-gemini -p "task" --output-format stream-json
+# Streaming JSON
+agy --print "task" --output-format stream-json
 ```
 
 ## Process
 
 1. **Evaluate task requirements:**
    - Estimate context size
-   - Check for multimodal content
    - Assess speed/cost sensitivity
 
 2. **Choose delegation method:**
    - Use `delegate_to_model` for intelligent routing
-   - Use direct Gemini CLI for explicit control
+   - Use direct `agy` for explicit control
 
 3. **Configure execution:**
-   - Select appropriate model (Pro vs Flash)
-   - Set output format for parsing
-   - Use `--yolo` for autonomous tasks
+   - Select a model slug from `agy models` (Pro vs Flash)
+   - Set `--output-format json` for parsing
+   - Pass `--add-dir` for the tree agy should work in
 
 4. **Process results:**
-   - Parse JSON output
+   - Check `status === 'SUCCESS'` before reading `response`
    - Integrate findings into workflow
 
 ## Quick Reference
 
 ```bash
 # Large context analysis
-gemini -p "Analyze this entire codebase structure" --yolo
-
-# Screenshot analysis
-gemini -p "What does this UI show?" < screenshot.png
+agy --add-dir "$PWD" --print "Analyze this entire codebase structure"
 
 # Fast iteration
-gemini -m gemini-2.5-flash -p "Quick review" --output-format json
+agy --model gemini-3.8-flash-medium --print "Quick review" --output-format json
 
 # Cost-sensitive batch
-for f in *.ts; do gemini -p "Review: $(cat $f)" >> reviews.txt; done
+for f in *.ts; do agy --print "Review: $(cat "$f")" >> reviews.txt; done
 ```
 
 ## Anti-rationalization — Gemini delegation
 
-| Excuse                                        | Counter                                                                                                                     |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| "Gemini for everything, it has a big context" | Big context isn't free — output quality varies by task. Use Gemini for >100k context, multimodal, or research-shaped tasks. |
-| "Skip the multimodal check"                   | If the task includes images, Gemini is the canonical CLI. Other CLIs may text-summarize via OCR but lose information.       |
-| "I'll use Gemini even for short code-gen"     | Codex is faster on code. Use Gemini when context size or multimodal forces the choice.                                      |
+| Excuse                                        | Counter                                                                                                        |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| "Gemini for everything, it has a big context" | Big context isn't free — output quality varies by task. Use Gemini for >100k context or research-shaped tasks. |
+| "I'll use Gemini even for short code-gen"     | Codex is faster on code. Use Gemini when context size forces the choice.                                       |
 
 ## Red flags
 
 - Gemini used for short single-file code-gen (Codex is faster)
-- Multimodal task routed to a non-Gemini CLI without explicit reason
+- A command that shells out to the retired `gemini` binary instead of `agy`
+- Success inferred from agy's exit code instead of its `status` field
 - Context exceeded 1M without verification of token budget
 
 ## Verification checklist
 
-- [ ] Task category matches Gemini's strengths (large context, research, multimodal)
+- [ ] Task category matches Gemini's strengths (large context, research)
 - [ ] Token estimate confirmed within Gemini's context window before dispatch
 - [ ] Outcome recorded for adaptive routing

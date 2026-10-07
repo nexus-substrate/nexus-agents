@@ -43,6 +43,7 @@ export {
   // Parsers
   ClaudeResponseParser,
   type ClaudeCliResponse,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- public API; removal is breaking (#4389)
   GeminiResponseParser,
   type GeminiCliResponse,
   CodexResponseParser,

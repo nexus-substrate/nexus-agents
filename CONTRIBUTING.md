@@ -180,7 +180,7 @@ git commit -m "docs(api): update tool reference documentation"
    pnpm review <PR-number>
    ```
 
-   This uses locally authenticated CLI tools (Claude, Gemini, or Codex) at zero API cost.
+   This uses locally authenticated CLI tools (Claude, Gemini via `agy`, or Codex) at zero API cost.
    See [PR Review Workflow](#pr-review-workflow) below for details.
 
 7. **Address review feedback** and ensure CI passes
@@ -200,7 +200,7 @@ You need at least one of these CLI tools installed and authenticated:
 | CLI        | Authentication                  | Best For                      |
 | ---------- | ------------------------------- | ----------------------------- |
 | Claude CLI | OAuth (Claude Max subscription) | Security, architecture review |
-| Gemini CLI | OAuth / ADC                     | Large files (1M context)      |
+| `agy`      | agy's own sign-in               | Large files (1M context)      |
 | Codex CLI  | ChatGPT OAuth                   | Code quality, test coverage   |
 
 ```bash
