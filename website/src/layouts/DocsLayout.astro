@@ -206,6 +206,11 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
             <nav class="docs-toc remarque-toc-rail" aria-label="On this page" data-toc-spy data-pagefind-ignore>
               <details open data-collapse-below="75rem">
                 <summary>On this page</summary>
+                {/* The column's label from 75rem, where the summary is hidden:
+                    a summary there was still focusable, so a keyboard could
+                    collapse the column. The nav's aria-label names it for
+                    assistive tech, so this copy is hidden from it. */}
+                <p class="docs-toc-title" aria-hidden="true">On this page</p>
                 <ul>
                   {toc.map((h) => (
                     <li class={`depth-${h.depth}`}>

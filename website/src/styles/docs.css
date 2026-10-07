@@ -454,6 +454,15 @@ pre:hover .copy-btn,
   font-weight: var(--weight-medium);
   border-inline-start-color: var(--color-accent);
 }
+.docs-toc-title {
+  display: none;
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-meta);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-medium);
+  color: var(--color-fg);
+}
 .docs-toc-note {
   margin: 0 0 var(--space-3);
   /* Lines up with the link text (2px marker + padding). */
@@ -616,14 +625,14 @@ pre:hover .copy-btn,
     overscroll-behavior: contain;
     padding-block-end: var(--space-5);
   }
+  /* The column is always open here. Hiding the summary (as the side nav
+     does from 64rem) takes it out of the tab order, so a keyboard cannot
+     collapse the column; the plain-text title replaces it on screen. */
   .docs-toc summary {
-    pointer-events: none;
-    min-height: 0;
-    margin-bottom: var(--space-2);
-    color: var(--color-fg);
-  }
-  .docs-toc summary::before {
     display: none;
+  }
+  .docs-toc .docs-toc-title {
+    display: block;
   }
 }
 
