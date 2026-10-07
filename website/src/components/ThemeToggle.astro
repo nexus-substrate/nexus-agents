@@ -11,6 +11,11 @@
 // Rendered `hidden` and revealed by the script, so with JS off there is no
 // dead button reporting a state it cannot change.
 //
+// Icon-only (#7285): a 48px square whose icon shows the current theme (moon
+// in dark, sun in light), named "Dark theme" with aria-pressed as the state —
+// the name never changes, so it cannot contradict the state. The title gives
+// sighted pointer users the same name.
+//
 // No "follow the OS again" state: a third state does not fit aria-pressed
 // (a two-state control), and a separate reset control was not judged worth
 // its header space. Clearing site data restores OS-following.
@@ -18,13 +23,15 @@
 
 <button
   type="button"
-  class="docs-control theme-toggle"
+  class="docs-control docs-icon-button theme-toggle"
   data-theme-toggle
   aria-pressed="false"
+  aria-label="Dark theme"
+  title="Dark theme"
   hidden
 >
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
-  <span>Dark theme</span>
+  <svg class="theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+  <svg class="theme-icon-light" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
 </button>
 
 <script>
@@ -89,9 +96,6 @@
 
 <style>
   .theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
     cursor: pointer;
     transition: border-color var(--motion-fast) var(--motion-easing);
   }
@@ -100,5 +104,9 @@
   }
   .theme-toggle:hover {
     border-color: var(--color-fg-muted);
+  }
+  .theme-toggle[aria-pressed='true'] .theme-icon-light,
+  .theme-toggle[aria-pressed='false'] .theme-icon-dark {
+    display: none;
   }
 </style>

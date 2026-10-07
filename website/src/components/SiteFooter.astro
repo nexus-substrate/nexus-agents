@@ -1,14 +1,21 @@
 ---
 // Site footer shared by every page (#7199). The version is read from
-// packages/nexus-agents/package.json at build (src/data/site-data.ts).
+// packages/nexus-agents/package.json at build (src/data/site-data.ts). The
+// USWDS credit is the one place the site names it (#7285): layout tokens and
+// documentation patterns are adapted from it, nothing of it is loaded.
 import { NEXUS_AGENTS_VERSION } from '../data/site-data';
 import { docsHref } from '../lib/docs-collection.ts';
 ---
 
 <footer class="docs-footer">
+  <div class="docs-footer-inner">
   <p>
     nexus-agents {NEXUS_AGENTS_VERSION} · MIT licensed ·{' '}
     <a href="https://github.com/nexus-substrate/nexus-agents">Source</a> ·{' '}
     <a href={docsHref('development/readme')}>Project and contributor docs</a>
   </p>
+  <p class="docs-footer-credit">
+    Patterns adapted from <a href="https://github.com/uswds/uswds">USWDS</a> (CC0)
+  </p>
+  </div>
 </footer>

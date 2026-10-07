@@ -12,6 +12,11 @@ import {
   sectionLabel,
   sectionListing,
   sectionRouteCollisions,
+  navLabel,
+  sentenceCase,
+  splitAfterFirstH1,
+  tocEntries,
+  type TocHeading,
   type NavPage,
 } from './docs-nav.ts';
 
@@ -256,5 +261,146 @@ describe('sectionIntro / sectionLabel', () => {
     expect(sectionLabel('start')).toBe('Start here');
     expect(sectionLabel('concepts')).toBe('Concepts');
     expect(() => sectionLabel('nope' as never)).toThrow(/unknown docs section/);
+  });
+});
+
+describe('sentenceCase / navLabel', () => {
+  it.each([
+    ['Your First Task', 'Your first task'],
+    ['MCP Tool: consensus_vote', 'MCP tool: consensus_vote'],
+    ['Claude Code Plugin Install', 'Claude Code plugin install'],
+    ['MCP & Claude Desktop Integration', 'MCP & Claude Desktop integration'],
+    [
+      'Cloud Provider Setup (Bedrock, Vertex, Azure)',
+      'Cloud provider setup (Bedrock, Vertex, Azure)',
+    ],
+    ['Custom OpenAI-Compatible Endpoint Setup', 'Custom OpenAI-compatible endpoint setup'],
+    ['Rule-Loading Precedence Across Harnesses', 'Rule-loading precedence across harnesses'],
+    ['Threat Model: Audit Hash Chain', 'Threat model: Audit hash chain'],
+    ['E2E Validation — 2026-08-25', 'E2E validation — 2026-08-25'],
+    ['Historical System Reviews (January 2026)', 'Historical system reviews (January 2026)'],
+    [
+      'Strategy Reference (force-strategy escape hatches)',
+      'Strategy reference (force-strategy escape hatches)',
+    ],
+    ['Try nexus-agents with the tour', 'Try nexus-agents with the tour'],
+    ['Which CLIs and keys do I need?', 'Which CLIs and keys do I need?'],
+  ])('sentence-cases %s, keeping acronyms, code names and proper nouns', (title, expected) => {
+    expect(sentenceCase(title)).toBe(expected);
+  });
+
+  it('returns an empty title unchanged', () => {
+    expect(sentenceCase('')).toBe('');
+  });
+
+  it('sentence-cases a title but keeps an authored nav_title verbatim', () => {
+    expect(navLabel(page({ id: 'a', title: 'Debugging With Observability' }))).toBe(
+      'Debugging with observability'
+    );
+    expect(navLabel(page({ id: 'a', title: 'X', navTitle: 'Debugging With Care' }))).toBe(
+      'Debugging With Care'
+    );
+  });
+});
+
+describe('reference groups', () => {
+  const apiIndex = page({ id: 'api', title: 'API reference', href: '/api/', order: 0 });
+  const nav = buildNav(
+    [
+      page({ id: 'reference/tools/run', title: 'MCP Tool: run', diataxis: 'reference' }),
+      // An index.md gets its directory as its id.
+      page({ id: 'reference/tools', title: 'MCP Tool Reference', diataxis: 'reference' }),
+      page({ id: 'reference/cli', title: 'CLI Reference', diataxis: 'reference' }),
+      page({ id: 'reference/environment', title: 'Environment', diataxis: 'reference' }),
+      page({
+        id: 'getting-started/configuration',
+        title: 'Configuration Guide',
+        diataxis: 'reference',
+      }),
+      page({ id: 'reference/strategies', title: 'Strategy Reference', diataxis: 'reference' }),
+      page({
+        id: 'reference/strategies-guide',
+        title: 'Not a strategy page',
+        diataxis: 'reference',
+      }),
+      page({ id: 'interfaces/agent', title: 'Agent interface', diataxis: 'reference' }),
+      page({ id: 'security/keys', title: 'API key boundaries', diataxis: 'reference' }),
+      page({ id: 't', diataxis: 'tutorial' }),
+    ],
+    { reference: [apiIndex] }
+  );
+  const reference = nav.find((s) => s.key === 'reference');
+
+  it('splits Reference into sub-groups by path, in a fixed order, dropping empty ones', () => {
+    expect(reference?.groups?.map((g) => [g.label, g.pages.map((p) => p.id)])).toEqual([
+      [
+        'CLI and configuration',
+        ['reference/cli', 'getting-started/configuration', 'reference/environment'],
+      ],
+      ['MCP tools', ['reference/tools', 'reference/tools/run']],
+      ['Strategies', ['reference/strategies']],
+      ['API and interfaces', ['api', 'interfaces/agent']],
+      ['More reference', ['security/keys', 'reference/strategies-guide']],
+    ]);
+  });
+
+  it('keeps every Reference page, and orders section pages as the groups read', () => {
+    expect(reference?.pages.map((p) => p.id)).toEqual(
+      reference?.groups?.flatMap((g) => g.pages.map((p) => p.id))
+    );
+    expect(reference?.pages.length).toBe(10);
+  });
+
+  it('gives prev/next in the grouped reading order', () => {
+    expect(findNeighbors(nav, '/docs/reference/environment/').next?.id).toBe('reference/tools');
+  });
+
+  it('groups no other section', () => {
+    expect(nav.find((s) => s.key === 'start')?.groups).toBeUndefined();
+  });
+
+  it('groups nothing when Reference is empty', () => {
+    expect(buildNav([page({ id: 't', diataxis: 'tutorial' })]).some((s) => s.groups)).toBe(false);
+  });
+});
+
+describe('tocEntries', () => {
+  const h = (depth: number, n: number): TocHeading => ({
+    depth,
+    slug: `s${String(n)}`,
+    text: `S${String(n)}`,
+  });
+
+  it('keeps H2 and H3, dropping H1 and deeper levels', () => {
+    expect(tocEntries([h(1, 0), h(2, 1), h(3, 2), h(4, 3)]).map((e) => e.slug)).toEqual([
+      's1',
+      's2',
+    ]);
+  });
+
+  it('keeps H3s at the limit of 20 entries and drops them past it', () => {
+    const twenty = Array.from({ length: 20 }, (_, i) => h(i % 2 === 0 ? 2 : 3, i));
+    expect(tocEntries(twenty)).toHaveLength(20);
+    const twentyOne = [...twenty, h(3, 20)];
+    expect(tocEntries(twentyOne).every((e) => e.depth === 2)).toBe(true);
+    expect(tocEntries(twentyOne)).toHaveLength(10);
+  });
+
+  it('is empty for no headings', () => {
+    expect(tocEntries([])).toEqual([]);
+  });
+});
+
+describe('splitAfterFirstH1', () => {
+  it('splits the rendered HTML right after the first closing h1 tag', () => {
+    expect(splitAfterFirstH1('<h1 id="t">Title</h1><p>a</p><h1>b</h1>')).toEqual([
+      '<h1 id="t">Title</h1>',
+      '<p>a</p><h1>b</h1>',
+    ]);
+  });
+
+  it('returns undefined when there is no h1, so the caller places the TOC first', () => {
+    expect(splitAfterFirstH1('<p>&lt;/h1&gt;</p>')).toBeUndefined();
+    expect(splitAfterFirstH1('')).toBeUndefined();
   });
 });
