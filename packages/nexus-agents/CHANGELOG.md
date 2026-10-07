@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.1.9
+
+### Patch Changes
+
+- [#7245](https://github.com/nexus-substrate/nexus-agents/pull/7245) [`d3874b5`](https://github.com/nexus-substrate/nexus-agents/commit/d3874b5821a7b6ffb5eb7f526bc198b080b96233) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `consensus_vote` responses to report the model that actually served each seat in `votes[].modelUsed`, matching the panel summary. Fall back to the requested model only when the served model is unknown, and preserve the original assignment in `assignedModel`.
+
 ## 11.1.8
 
 ### Patch Changes
