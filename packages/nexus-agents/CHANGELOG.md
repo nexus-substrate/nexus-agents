@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 11.1.1
+
+### Patch Changes
+
+- [#7191](https://github.com/nexus-substrate/nexus-agents/pull/7191) [`bac9bce`](https://github.com/nexus-substrate/nexus-agents/commit/bac9bce685432725d02df7574539c3129770d882) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The polyglot AST rule scanner (`runAstQaRules` / `collectAstQaFindings`) no longer descends into dot-directories. Scanning from a repository root used to walk `.nexus-agents/worktrees` and similar copies, so every Python/Go finding was reported once per worktree; `.git` was already skipped and `node_modules`/`dist` still are. The file walk also no longer throws `RangeError: Maximum call stack size exceeded` on trees with more than about 120k Python/Go files. A scan rooted at a dot-directory still scans it.
+
+- [#7192](https://github.com/nexus-substrate/nexus-agents/pull/7192) [`4b5363c`](https://github.com/nexus-substrate/nexus-agents/commit/4b5363c1a23866705f52bc7ad8f6be5fd843f00c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run` outcome telemetry now credits the strategy, not the gate. Under `NEXUS_CONSENSUS_ENFORCE=enforce`, a consensus panel that returns a `rejected` verdict still makes `run` return a business error, but the dispatch outcome now records `success: true` with a new optional `gateRefusal` field, and the MetaOrchestrator shadow-train observer (`NEXUS_META_SHADOW_TRAIN`) learns from that positive label. Before this change the run was recorded as a strategy failure, which taught the selector that `consensus` fails whenever the gate does its job. A panel that produces no verdict (`no_quorum`, all voters failed, or an approval that is not outage-invariant) is still recorded as a failure. `audit` and `off` telemetry is unchanged. `MetaOutcomeRecord` and the `MetaResultClassifier` return type gain the optional `gateRefusal` field.
+
 ## 11.1.0
 
 ### Minor Changes
