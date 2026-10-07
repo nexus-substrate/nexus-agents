@@ -106,6 +106,8 @@ jobs:
           args: >-
             --no-progress
             --offline
+            --include-fragments
+            --index-files index.html
             --root-dir site
             --exclude-path 'site/nexus-agents/_astro'
             --exclude '\.md$'

@@ -9,9 +9,9 @@ allowed-tools: Bash, Read, WebFetch
 
 # Version Check Skill
 
-<!-- CANONICAL SOURCE: CLAUDE.md Core Operating Principles - Version Currency Enforcement -->
+<!-- CANONICAL SOURCE: this skill; registered in CLAUDE.md Workflows (via Skills) -->
 
-**Full documentation:** [CLAUDE.md](../../CLAUDE.md#2-version-currency-enforcement)
+**Workflow registration:** [CLAUDE.md](../../CLAUDE.md#workflows-via-skills)
 
 ## Quick Process
 
@@ -47,7 +47,7 @@ If deprecated or outdated:
 2. Create GitHub issue to track migration
 3. Document migration path
 
-See [CLAUDE.md](../../CLAUDE.md#2-version-currency-enforcement) for complete version verification protocol.
+See [CLAUDE.md](../../CLAUDE.md#workflows-via-skills) for the registered skill workflows; the version verification process is documented above.
 
 ## Anti-rationalization — Dependency choice
 

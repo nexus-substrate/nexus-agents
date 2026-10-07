@@ -37,6 +37,8 @@
   "hideBreadcrumbs": true,
   "hidePageHeader": true,
   "useCodeBlocks": true,
+  "useHTMLAnchors": true,
+  "anchorPrefix": "api-",
   "expandObjects": true,
   "outputFileStrategy": "modules",
   "entryFileName": "index",

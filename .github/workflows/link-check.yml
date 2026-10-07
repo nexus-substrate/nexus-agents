@@ -60,6 +60,7 @@ jobs:
             --config lychee.toml
             --cache
             --max-cache-age 1d
+            --include-fragments
             .
           fail: true
           output: ./lychee-report.md

@@ -22,7 +22,7 @@ This is the canonical new-user path. If you want platform-specific install detai
 npm install -g nexus-agents
 ```
 
-If you hit `EACCES` on Linux/macOS, configure a user-local npm prefix instead of using `sudo` ([details](./INSTALLATION.md#install-without-sudo)).
+If you hit `EACCES` on Linux/macOS, configure a user-local npm prefix instead of using `sudo` ([details](./INSTALLATION.md#permission-errors-on-linuxmacos)).
 
 For Claude Code, you can install as a plugin instead:
 
