@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { COMMAND_HELP, formatCommandHelp, formatAllCommandsHelp } from './cli-command-help.js';
 import { getCommandDescription } from './cli-command-catalog.js';
 import { VOTE_TIMEOUTS } from './config/timeouts.js';
+import { CUSTOM_API_DEFAULT_MODEL } from './config/defaults.js';
 import { PARSE_ARGS_CONFIG } from './cli-types.js';
 
 // ============================================================================
@@ -128,6 +129,12 @@ describe('formatCommandHelp', () => {
     expect(help).toContain('--skip-mcp');
     expect(help).toContain('--skip-hooks');
     expect(help).toContain('--interactive');
+  });
+
+  it('names the real --custom-model default, not a stale literal (#7169)', () => {
+    const help = formatCommandHelp('setup')!;
+    expect(help).toContain(`default: ${CUSTOM_API_DEFAULT_MODEL}`);
+    expect(help).not.toContain('gpt-4o');
   });
 });
 
