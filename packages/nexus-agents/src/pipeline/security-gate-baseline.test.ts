@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { checkSecurityScan } from './security-gate.js';
 import type { SecurityFinding, SarifParseResult } from '../security/sarif-types.js';
 
@@ -200,6 +203,119 @@ describe('pinned baseline comparison (#7238)', () => {
     const result = await gate();
     expect(result.verdict).toBe('skip');
     expect(result.comparison?.complete).toBe(false);
+  });
+
+  describe('independent dependency evidence with incomplete SAST (#7293)', () => {
+    let directory: string;
+    beforeEach(async () => {
+      directory = await mkdtemp(join(tmpdir(), 'incomplete-sast-dependencies-'));
+      await writeFile(
+        join(directory, 'package.json'),
+        JSON.stringify({ dependencies: { vulnerable: '1.0.0', unavailable: '1.0.0' } })
+      );
+      mocks.scan.mockResolvedValue(scan([], ['Internal matching error: other-rule']));
+      mocks.exec.mockImplementation((_command: string, args: string[]) =>
+        Promise.resolve({
+          stdout: args.includes('--verify')
+            ? `${sha}\n`
+            : args.includes('--name-only')
+              ? 'package.json\0'
+              : '',
+          stderr: '',
+        })
+      );
+    });
+    afterEach(async () => {
+      await rm(directory, { recursive: true, force: true });
+    });
+
+    function check(): ReturnType<ReturnType<typeof checkSecurityScan>> {
+      return checkSecurityScan(directory, ['p/default'], {
+        baseline: { sha, directory },
+        dependencyCaptureRoot: directory,
+      })();
+    }
+
+    it('blocks a critical advisory in a changed manifest and records partial coverage', async () => {
+      mocks.osv.mockResolvedValue([
+        {
+          packageName: 'vulnerable',
+          error: null,
+          vulnerabilities: [{ id: 'OSV-1', severity: 'CRITICAL' }],
+        },
+        { packageName: 'unavailable', error: 'HTTP 503', vulnerabilities: [] },
+      ]);
+      const result = await check();
+      expect(result.verdict).toBe('fail');
+      expect(result.comparison).toMatchObject({ complete: false, introducedBlockingCount: null });
+      expect(result.details).toContain('1 OSV dependency vulnerabilities');
+      expect(result.details).toContain('Security comparison incomplete');
+      expect(result.coverageNote).toContain('OSV not checked for 1 of 2 dependencies');
+      expect(mocks.osv).toHaveBeenCalledWith(
+        [
+          { name: 'vulnerable', version: '1.0.0' },
+          { name: 'unavailable', version: '1.0.0' },
+        ],
+        undefined,
+        undefined
+      );
+    });
+
+    it('blocks an invalid changed manifest and preserves its error and coverage note', async () => {
+      await writeFile(join(directory, 'package.json'), '{invalid');
+      const result = await check();
+      expect(result.verdict).toBe('fail');
+      expect(result.details).toContain('Changed manifest package.json could not be parsed');
+      expect(result.details).toContain('Security comparison incomplete');
+      expect(result.coverageNote).toContain('OSV check did not run');
+    });
+
+    it('keeps SAST unmeasured when dependencies are clean', async () => {
+      mocks.osv.mockResolvedValue([
+        { error: null, vulnerabilities: [] },
+        { error: null, vulnerabilities: [] },
+      ]);
+      const result = await check();
+      expect(result.verdict).toBe('skip');
+      expect(result.comparison?.introducedBlockingCount).toBeNull();
+      expect(mocks.osv).toHaveBeenCalledTimes(1);
+    });
+
+    it('records a lookup failure on the changed manifest while SAST is incomplete', async () => {
+      mocks.osv.mockRejectedValue(new Error('OSV unavailable'));
+      const result = await check();
+      expect(result.verdict).toBe('fail');
+      expect(result.details).toContain(
+        'Dependency lookup failed for changed manifest package.json'
+      );
+      expect(result.coverageNote).toContain('OSV check did not run');
+    });
+
+    it.each([
+      ['base', 'yaml.github-actions.security.gha-curl-pipe-shell.gha-curl-pipe-shell'],
+      ['worktree', 'yaml.github-actions.security.curl-eval.curl-eval'],
+      ['base', 'unrelated.security.rule'],
+      ['worktree', 'unrelated.security.rule'],
+    ])(
+      'keeps the comparison unmeasured with clean OSV when %s errors on %s (#7293)',
+      async (side, rule) => {
+        const error = `Internal matching error: ${rule}`;
+        mocks.scan
+          .mockResolvedValueOnce(scan([], side === 'base' ? [error] : []))
+          .mockResolvedValueOnce(scan([], side === 'worktree' ? [error] : []));
+        mocks.osv.mockResolvedValue([
+          { error: null, vulnerabilities: [] },
+          { error: null, vulnerabilities: [] },
+        ]);
+        const result = await check();
+        expect(result.verdict).toBe('skip');
+        expect(result.comparison).toMatchObject({ complete: false, introducedBlockingCount: null });
+        expect(result.comparison?.errors).toContain(`${side}: ${error}`);
+        expect(result.details).toContain('Security comparison incomplete');
+        expect(result.coverageNote).toBeUndefined();
+        expect(mocks.osv).toHaveBeenCalledTimes(1);
+      }
+    );
   });
 
   it('preserves OSV critical dependency blocking beside the SAST comparison', async () => {

@@ -23,7 +23,7 @@
 
 import type { GateCheckResult } from '../security/quality-gate-types.js';
 import { executeSecurityScan } from '../mcp/tools/security-scan.js';
-import { runOsvCheck, OSV_EMPTY, type OsvCheckResult } from './dependency-gate.js';
+import { runOsvCheck, type OsvCheckResult } from './dependency-gate.js';
 import type { SecurityFinding } from '../security/sarif-types.js';
 import { createLogger } from '../core/index.js';
 import {
@@ -137,21 +137,21 @@ async function runBaselineGate(
 ): Promise<SecurityGateResult> {
   const start = Date.now();
   const comparison = await compareSecurityBaseline(target, rulesets, config, signal);
-  const osv = comparison.complete
-    ? await runOsvCheck(config.dependencyTarget ?? target, config, signal)
-    : OSV_EMPTY;
+  const osv = await runOsvCheck(config.dependencyTarget ?? target, config, signal);
   throwIfAborted(signal, 'Security baseline scan aborted');
   const osvFailed = blocksDependencyCheck(osv);
   const details = comparison.complete
     ? `Base ${String(comparison.baseCount)}, worktree ${String(comparison.worktreeCount)} findings; ${String(comparison.introducedBlockingCount)} introduced blocking; ${buildScanSummary(comparison.worktreeCount ?? 0, comparison.introducedBlockingCount ?? 0, osv.vulnerabilities.length, osv)}`
-    : `Security comparison incomplete: ${comparison.errors.join('; ')}`;
+    : `Dependency check: ${buildScanSummary(null, 0, osv.vulnerabilities.length, osv)}; Security comparison incomplete: ${comparison.errors.join('; ')}`;
   return {
     name: 'security_scan',
-    verdict: !comparison.complete
-      ? 'skip'
-      : comparison.introducedBlockingCount === 0 && !osvFailed
-        ? 'pass'
-        : 'fail',
+    verdict: osvFailed
+      ? 'fail'
+      : !comparison.complete
+        ? 'skip'
+        : comparison.introducedBlockingCount === 0
+          ? 'pass'
+          : 'fail',
     details: (osv.manifestError === undefined ? details : `${osv.manifestError}; ${details}`).slice(
       0,
       500
@@ -294,13 +294,14 @@ function coverageNoteField(osv: OsvCheckResult): { coverageNote?: string } {
 }
 
 function buildScanSummary(
-  total: number,
+  total: number | null,
   blocking: number,
   osvCount: number,
   osv?: OsvCheckResult,
   sarifParseErrors = 0
 ): string {
-  const parts = [`${String(total)} SAST findings`];
+  // An incomplete baseline has no measured SAST total; report dependencies only.
+  const parts = total === null ? [] : [`${String(total)} SAST findings`];
   // A result the parser could not read is not a result it did not find.
   // Without this the two are indistinguishable in the gate's own summary.
   if (sarifParseErrors > 0) {
