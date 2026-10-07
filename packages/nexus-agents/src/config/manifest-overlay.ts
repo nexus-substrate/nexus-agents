@@ -40,7 +40,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
-import { createLogger } from '../core/index.js';
+import { createLogger } from '../core/logger.js';
 import type { ILogger } from '../core/index.js';
 import { nexusDataPath } from './nexus-data-dir.js';
 import type { ModelEntry, ToolDefinitionFormat, PromptCachingMode } from './model-registry.js';
