@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.1.8
+
+### Patch Changes
+
+- [#7226](https://github.com/nexus-substrate/nexus-agents/pull/7226) [`f0e1846`](https://github.com/nexus-substrate/nexus-agents/commit/f0e1846e71f0f0c4c0d2a7026f28cd82c52478f0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Upgrade the `ts-morph` runtime dependency from 27 to 28. ts-morph 28 bundles the TypeScript 6.0 compiler (27 bundled 5.9), so the codebase indexer, `extract_symbols` and `search_usages` now parse source with the same TypeScript major the package itself is built with. No nexus-agents API or output changes; consumers who install nexus-agents will pull `ts-morph@28` and `@ts-morph/common@0.29`.
+
 ## 11.1.7
 
 ### Patch Changes
