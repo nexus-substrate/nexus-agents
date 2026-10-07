@@ -1,0 +1,30 @@
+{
+  "description": "The page kinds that may declare `diataxis: none` (#7196). The ONE list read by scripts/check-diataxis-frontmatter.ts and cited by skills/diataxis/SKILL.md. A page matches a kind when its basename is in `basenames` (case-insensitive) or its repo-relative path starts with one of `pathPrefixes`. A page outside every kind must declare one of the four Diataxis types.",
+  "kinds": {
+    "index": {
+      "description": "Index and landing pages that route readers to other pages.",
+      "basenames": ["README.md", "index.md"],
+      "pathPrefixes": []
+    },
+    "adr": {
+      "description": "Architecture decision records: a dated decision, not a reader-facing document type.",
+      "basenames": [],
+      "pathPrefixes": ["docs/adr/", "docs/v2/adrs/"]
+    },
+    "changelog": {
+      "description": "Changelogs and release logs.",
+      "basenames": ["CHANGELOG.md"],
+      "pathPrefixes": []
+    },
+    "research": {
+      "description": "Research notes and syntheses, kept as evidence rather than as user documentation.",
+      "basenames": [],
+      "pathPrefixes": ["docs/research/"]
+    },
+    "archive": {
+      "description": "Archived pages kept for history and no longer maintained.",
+      "basenames": [],
+      "pathPrefixes": ["docs/archive/"]
+    }
+  }
+}

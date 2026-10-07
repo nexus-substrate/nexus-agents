@@ -51,6 +51,11 @@ Call `docs-review` against the target file. Capture:
 
 Do not edit yet. Present the audit summary to the operator.
 
+If the audit reports mixed-mode passages (see `skills/diataxis`), this
+rewrite runs in Diátaxis **restructure** mode. The plan lists every move as
+from, to and link-back. Phase 4 moves passages and never deletes them, and it
+sets `diataxis:` / `audience:` on every page it touches.
+
 ### Phase 2 — Plan-mode gate (mandatory)
 
 Before any file edits, present a section-by-section rewrite plan:
@@ -193,3 +198,4 @@ Three new top issues (post-rewrite):
 - `.rules/untrusted-input.md` — fence convention for any external
   content quoted into the doc
 - `skills/documentation-management` — operating manual for doc work
+- `skills/diataxis` — restructure mode and the frontmatter contract
