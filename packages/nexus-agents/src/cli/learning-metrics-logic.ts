@@ -93,6 +93,33 @@ type RoutingModelMetric = {
   avgLatencyMs: number;
 };
 
+/** Routing-sourced fields; `0` defaults with no routing metric for the model. */
+function routingFields(
+  routingModel: RoutingModelMetric | undefined
+): Pick<
+  ModelLearningStats,
+  'successRate' | 'avgLatencyMs' | 'avgQuality' | 'selectionPercent' | 'routingSelectionCount'
+> {
+  if (routingModel === undefined) {
+    // No routing metric for this arm: the fields are defaults, and the zero
+    // count is what lets the renderer say so (#7180).
+    return {
+      successRate: 0,
+      avgLatencyMs: 0,
+      avgQuality: 0,
+      selectionPercent: 0,
+      routingSelectionCount: 0,
+    };
+  }
+  return {
+    successRate: routingModel.successRate,
+    avgLatencyMs: routingModel.avgLatencyMs,
+    avgQuality: routingModel.avgQuality,
+    selectionPercent: routingModel.selectionPercent,
+    routingSelectionCount: routingModel.selectionCount,
+  };
+}
+
 /** Convert bandit stat to model learning stats. */
 function banditToModelStats(
   stat: BanditArmStats,
@@ -103,10 +130,8 @@ function banditToModelStats(
     pullCount: stat.pullCount,
     avgReward: stat.avgReward,
     cumulativeReward: stat.cumulativeReward,
-    successRate: routingModel?.successRate ?? 0,
-    avgLatencyMs: routingModel?.avgLatencyMs ?? 0,
-    avgQuality: routingModel?.avgQuality ?? 0,
-    selectionPercent: routingModel?.selectionPercent ?? 0,
+    rewardSource: 'bandit',
+    ...routingFields(routingModel),
   };
 }
 
@@ -121,6 +146,8 @@ function routingToModelStats(metric: RoutingModelMetric): ModelLearningStats {
     avgLatencyMs: metric.avgLatencyMs,
     avgQuality: metric.avgQuality,
     selectionPercent: metric.selectionPercent,
+    rewardSource: 'routing',
+    routingSelectionCount: metric.selectionCount,
   };
 }
 

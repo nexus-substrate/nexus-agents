@@ -37,6 +37,18 @@ export interface ModelLearningStats {
   readonly avgLatencyMs: number;
   readonly avgQuality: number;
   readonly selectionPercent: number;
+  /**
+   * Which instrument `avgReward` / `pullCount` come from (#7180): the LinUCB
+   * arm (`'bandit'`, which outcome replay populates) or the routing metrics
+   * collector (`'routing'`, for a model the bandit has no arm for).
+   */
+  readonly rewardSource: 'bandit' | 'routing';
+  /**
+   * Routing decisions the collector recorded for this model. `successRate`,
+   * `selectionPercent`, `avgLatencyMs` and `avgQuality` are routing-sourced, so
+   * at `0` they are unmeasured defaults, not a measured zero (#7180).
+   */
+  readonly routingSelectionCount: number;
 }
 
 /**

@@ -32,6 +32,9 @@ import {
 
 const ANSI = colors;
 
+/** Rendered for a routing-sourced value when no routing was recorded (#7180). */
+const UNMEASURED_NO_ROUTINGS = 'unmeasured (0 routings)';
+
 // =============================================================================
 // Header Formatting
 // =============================================================================
@@ -52,13 +55,11 @@ function formatHeader(result: LearningMetricsResult): string[] {
 // Summary Section
 // =============================================================================
 
-/**
- * Formats the summary section.
- */
-function formatSummary(result: LearningMetricsResult): string[] {
-  const lines: string[] = [];
-  lines.push(boxLine(color(' Summary:', ANSI.bold)));
-
+/** Status glyph and text for the summary's Learning Status line. */
+function formatLearningStatus(result: LearningMetricsResult): {
+  statusEmoji: string;
+  statusText: string;
+} {
   // '?' for unmeasured, never the green ✓ (#5267). The ternary chain used to
   // fall through to '◎' for anything not exploring/exploiting, so a new state
   // would have been rendered as a normal phase; unmeasured is not a phase.
@@ -80,15 +81,32 @@ function formatSummary(result: LearningMetricsResult): string[] {
             ? 'unmeasured (reconstruction failed)'
             : 'unmeasured (no empirical replay)'
         : result.summary.learningStatus;
+  return { statusEmoji, statusText };
+}
+
+/**
+ * Formats the summary section.
+ */
+function formatSummary(result: LearningMetricsResult): string[] {
+  const lines: string[] = [];
+  lines.push(boxLine(color(' Summary:', ANSI.bold)));
+
+  const { statusEmoji, statusText } = formatLearningStatus(result);
   lines.push(boxLine(`   ${statusEmoji} Learning Status: ${statusText}`));
 
   const routings = result.summary.totalRoutings.toLocaleString();
   lines.push(boxLine(`   Total Routings: ${routings}`));
 
-  const successRate = formatPercentage(result.summary.overallSuccessRate, 1);
+  // Empty case, named (#7180): with zero routings both values below are the
+  // `0` defaults of an absent source, so render them as unmeasured rather than
+  // as a measured 0.0% / 0.000.
+  const noRoutings = result.summary.totalRoutings === 0;
+  const successRate = noRoutings
+    ? UNMEASURED_NO_ROUTINGS
+    : formatPercentage(result.summary.overallSuccessRate, 1);
   lines.push(boxLine(`   Success Rate: ${successRate}`));
 
-  const avgReward = result.summary.avgReward.toFixed(3);
+  const avgReward = noRoutings ? UNMEASURED_NO_ROUTINGS : result.summary.avgReward.toFixed(3);
   lines.push(boxLine(`   Avg Reward: ${avgReward}`));
 
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
@@ -98,6 +116,37 @@ function formatSummary(result: LearningMetricsResult): string[] {
 // =============================================================================
 // Model Statistics Section
 // =============================================================================
+
+/** Sample-count label: `12 pulls` for the bandit, `50 routings` for routing. */
+function sampleLabel(source: 'bandit' | 'routing', count: number): string {
+  return `${count.toLocaleString()} ${source === 'bandit' ? 'pulls' : 'routings'}`;
+}
+
+/** Selection share; routing-sourced, so unmeasured with no routing samples. */
+function formatSelectionShare(model: ModelLearningStats): string {
+  if (model.routingSelectionCount === 0) return UNMEASURED_NO_ROUTINGS;
+  const barLength = Math.min(20, Math.max(0, Math.round(model.selectionPercent * 0.2)));
+  const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
+  return `${bar} ${model.selectionPercent.toFixed(1).padStart(5)}%`;
+}
+
+/**
+ * Mean reward, labelled with its instrument. The bandit and the routing
+ * collector are different sources, so a bandit reward beside a routing success
+ * rate must say which is which (#7180). `pullCount` counts the reward's samples.
+ */
+function formatModelReward(model: ModelLearningStats): string {
+  if (model.pullCount === 0) {
+    return model.rewardSource === 'bandit' ? 'unmeasured (0 bandit pulls)' : UNMEASURED_NO_ROUTINGS;
+  }
+  return `${model.avgReward.toFixed(2)} (${model.rewardSource}, ${sampleLabel(model.rewardSource, model.pullCount)})`;
+}
+
+/** Success rate; always routing-sourced, so unmeasured with no routing samples. */
+function formatModelSuccess(model: ModelLearningStats): string {
+  if (model.routingSelectionCount === 0) return UNMEASURED_NO_ROUTINGS;
+  return `${formatPercentage(model.successRate)} (routing, ${sampleLabel('routing', model.routingSelectionCount)})`;
+}
 
 /**
  * Formats the model statistics section.
@@ -113,14 +162,10 @@ function formatModelStats(models: readonly ModelLearningStats[]): string[] {
   }
 
   for (const model of models) {
-    const pct = model.selectionPercent.toFixed(1);
-    const barLength = Math.min(20, Math.max(0, Math.round(model.selectionPercent * 0.2)));
-    const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
-    lines.push(boxLine(`   ${model.name.padEnd(10)} ${bar} ${pct.padStart(5)}%`));
-
-    const reward = model.avgReward.toFixed(2);
-    const success = formatPercentage(model.successRate);
-    lines.push(boxLine(`     reward: ${reward.padStart(5)} | success: ${success.padStart(4)}`));
+    lines.push(boxLine(`   ${model.name.padEnd(10)} ${formatSelectionShare(model)}`));
+    lines.push(
+      boxLine(`     reward: ${formatModelReward(model)} | success: ${formatModelSuccess(model)}`)
+    );
   }
 
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
@@ -238,7 +283,11 @@ function formatFeedbackLoop(feedback: FeedbackLoopStats): string[] {
   const outcomes = feedback.totalOutcomes.toLocaleString();
   lines.push(boxLine(`   Decisions: ${decisions} | Outcomes: ${outcomes}`));
 
-  const correlation = formatPercentage(feedback.correlationRate, 1);
+  // Empty case, named (#7180): a rate over zero decisions is not 0%.
+  const correlation =
+    feedback.totalDecisions === 0
+      ? 'unmeasured (0 decisions)'
+      : formatPercentage(feedback.correlationRate, 1);
   lines.push(boxLine(`   Correlation Rate: ${correlation}`));
 
   // Outcome distribution

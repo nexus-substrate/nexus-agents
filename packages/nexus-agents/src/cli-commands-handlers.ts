@@ -512,7 +512,14 @@ export function handleValidationCommand(args: ParsedCliArgs): CliExitResult {
  * (Source: Issue #284)
  */
 export function handleLearningMetricsCommand(args: ParsedCliArgs): CliExitResult {
-  const format: 'ascii' | 'json' = args.options.format === 'json' ? 'json' : 'ascii';
+  // `--json` parses into `options.json`; reading only `--format` silently
+  // dropped it (#7180). `--export` is JSON-only per `LearningMetricsOptions`.
+  const format: 'ascii' | 'json' =
+    args.options.json === true ||
+    args.options.format === 'json' ||
+    args.options.export !== undefined
+      ? 'json'
+      : 'ascii';
   const periodNum = args.options.period !== undefined ? Number(args.options.period) : undefined;
   const period =
     periodNum !== undefined && Number.isFinite(periodNum) && periodNum > 0 ? periodNum : 24;
