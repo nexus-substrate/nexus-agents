@@ -246,9 +246,16 @@ function formatFeatureImportance(features: readonly FeatureImportance[]): string
 /**
  * Formats the reward trend section.
  */
-function formatRewardTrend(trend: RewardTrend): string[] {
+function formatRewardTrend(trend: RewardTrend, sampleCount: number): string[] {
   const lines: string[] = [];
   lines.push(boxLine(color(' Reward Trend:', ANSI.bold)));
+
+  // Empty case: no reward samples cannot establish a stable trend (#7242).
+  if (sampleCount === 0) {
+    lines.push(boxLine('   unmeasured (0 routing outcomes)'));
+    lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
+    return lines;
+  }
 
   const currentReward = trend.current.toFixed(3);
   const previousReward = trend.previous.toFixed(3);
@@ -342,7 +349,7 @@ export function formatAsciiOutput(
   }
 
   if (options.showTrends) {
-    lines.push(...formatRewardTrend(result.rewardTrend));
+    lines.push(...formatRewardTrend(result.rewardTrend, trendSampleCount(result)));
   }
 
   lines.push(...formatFeedbackLoop(result.feedbackLoop));
@@ -351,12 +358,32 @@ export function formatAsciiOutput(
 }
 
 /**
- * Formats the JSON output.
+ * Formats JSON, projecting unmeasured numeric placeholders to null (#7242).
+ * Counts and sources distinguish absent measurements from a measured zero.
  */
 export function formatJsonOutput(result: LearningMetricsResult): string {
+  const noRoutings = result.summary.totalRoutings === 0;
+  const sampleCount = trendSampleCount(result);
   return JSON.stringify(
     {
       ...result,
+      summary: {
+        ...result.summary,
+        overallSuccessRate: noRoutings ? null : result.summary.overallSuccessRate,
+        avgReward: noRoutings ? null : result.summary.avgReward,
+      },
+      models: result.models.map(jsonModelStats),
+      rewardTrend:
+        sampleCount === 0
+          ? {
+              current: null,
+              previous: null,
+              direction: 'unmeasured',
+              changePercent: null,
+              sampleCount: 0,
+              measurementStatus: 'unmeasured',
+            }
+          : { ...result.rewardTrend, sampleCount, measurementStatus: 'measured' },
       ...(result.banditReconstruction === undefined
         ? {}
         : {
@@ -368,4 +395,24 @@ export function formatJsonOutput(result: LearningMetricsResult): string {
     null,
     2
   );
+}
+
+/** Legacy caller-built results lack trend provenance; retain their routing count. */
+function trendSampleCount(result: LearningMetricsResult): number {
+  return result.rewardTrend.sampleCount ?? result.summary.totalRoutings;
+}
+
+/** Apply the same per-instrument empty cases as the text rows. */
+function jsonModelStats(model: ModelLearningStats): object {
+  const noRoutings = model.routingSelectionCount === 0;
+  const noRewardSamples = model.pullCount === 0;
+  return {
+    ...model,
+    successRate: noRoutings ? null : model.successRate,
+    selectionPercent: noRoutings ? null : model.selectionPercent,
+    avgQuality: noRoutings ? null : model.avgQuality,
+    avgLatencyMs: noRoutings ? null : model.avgLatencyMs,
+    avgReward: noRewardSamples ? null : model.avgReward,
+    cumulativeReward: noRewardSamples ? null : model.cumulativeReward,
+  };
 }

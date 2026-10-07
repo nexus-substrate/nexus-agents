@@ -80,13 +80,18 @@ export interface BanditProgress {
 }
 
 /**
- * Reward trend analysis.
+ * Reward trend analysis. Numeric fields retain legacy placeholders when
+ * unmeasured; output formatters must consult the sample provenance first.
  */
 export interface RewardTrend {
   readonly current: number;
   readonly previous: number;
   readonly direction: 'improving' | 'declining' | 'stable';
   readonly changePercent: number;
+  /** Routing outcomes in the current period, not bandit pulls or decisions. */
+  readonly sampleCount?: number;
+  /** Optional for compatibility with callers constructing legacy results. */
+  readonly measurementStatus?: 'measured' | 'unmeasured';
 }
 
 /**
