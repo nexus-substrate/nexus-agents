@@ -14,8 +14,10 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import { ok } from '../../core/result.js';
 import { OrchestratorAdapter } from '../../orchestration/orchestrator-adapters.js';
+import * as workflowRouterMod from '../../orchestration/workflow-router.js';
 import { NOOP_NOTIFIER } from '../mcp-notifier.js';
 import { RateLimiter } from '../middleware/index.js';
+import type { ToolResult } from './tool-result.js';
 
 // Pre-import heavy modules once instead of dynamic import per test (perf: saves ~2s)
 import * as orchestrateMod from './orchestrate.js';
@@ -73,26 +75,27 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     setOutcomeStore(new OutcomeStore());
     vi.unstubAllEnvs();
   });
 
-  it('attributes a production-path outcome to the executing CLI (#5513)', async () => {
-    vi.stubEnv('NEXUS_TASK_STATE_ENABLED', '0');
-    const executingAgent = {
-      execute: vi.fn().mockResolvedValue(
-        ok({
-          output: {},
-          metadata: { executedCli: 'codex', executedCliSource: 'executed' },
-        })
-      ),
-    };
-    const orchestrator = new OrchestratorAdapter();
-    orchestrator.setOrchestrator(executingAgent);
-    let handler: ((args: unknown) => Promise<unknown>) | undefined;
+  it('discloses no execution and records no outcomes for a simple-task shortcut (#7241)', async () => {
+    const store = getOutcomeStore();
+    const append = vi.spyOn(store, 'append');
+    const router = workflowRouterMod.createWorkflowRouter();
+    const recordOutcome = vi.spyOn(router, 'recordOutcome');
+    vi.spyOn(workflowRouterMod, 'createWorkflowRouter').mockReturnValue(router);
+    const orchestrator = orchestrateMod.createMockOrchestrator();
+    const execute = vi.spyOn(orchestrator, 'execute');
+    let handler: ((args: unknown) => Promise<ToolResult>) | undefined;
     const server = {
       registerTool: vi.fn(
-        (_name: string, _config: unknown, callback: (args: unknown) => Promise<unknown>): void => {
+        (
+          _name: string,
+          _config: unknown,
+          callback: (args: unknown) => Promise<ToolResult>
+        ): void => {
           handler = callback;
         }
       ),
@@ -104,11 +107,70 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
     });
     if (handler === undefined) throw new Error('orchestrate handler was not registered');
 
-    await handler({
+    const result = await handler({ task: 'simple hello world task' });
+    const text = result.content.find((item) => item.type === 'text');
+    if (text?.type !== 'text') throw new Error('orchestrate response has no text');
+    const output: unknown = JSON.parse(text.text);
+
+    expect(result.isError).not.toBe(true);
+    expect(execute).not.toHaveBeenCalled();
+    expect.soft(output).toMatchObject({ executed: false, stepsCompleted: 0 });
+    expect.soft(output).not.toHaveProperty('result');
+    expect.soft(append).not.toHaveBeenCalled();
+    expect.soft(store.query()).toEqual([]);
+    expect.soft(recordOutcome).not.toHaveBeenCalled();
+    expect.soft(router.getMetrics()).toEqual([]);
+  });
+
+  it('attributes a production-path outcome to the executing CLI (#5513)', async () => {
+    vi.stubEnv('NEXUS_TASK_STATE_ENABLED', '0');
+    const append = vi.spyOn(getOutcomeStore(), 'append');
+    const router = workflowRouterMod.createWorkflowRouter();
+    const recordOutcome = vi.spyOn(router, 'recordOutcome');
+    vi.spyOn(workflowRouterMod, 'createWorkflowRouter').mockReturnValue(router);
+    const executingAgent = {
+      execute: vi.fn().mockResolvedValue(
+        ok({
+          output: {},
+          metadata: { executedCli: 'codex', executedCliSource: 'executed' },
+        })
+      ),
+    };
+    const orchestrator = new OrchestratorAdapter();
+    orchestrator.setOrchestrator(executingAgent);
+    let handler: ((args: unknown) => Promise<ToolResult>) | undefined;
+    const server = {
+      registerTool: vi.fn(
+        (
+          _name: string,
+          _config: unknown,
+          callback: (args: unknown) => Promise<ToolResult>
+        ): void => {
+          handler = callback;
+        }
+      ),
+    };
+    orchestrateMod.registerOrchestrateTool(server as never, {
+      orchestrator,
+      notifier: NOOP_NOTIFIER,
+      rateLimiter: new RateLimiter({ capacity: 10, refillRate: 10, refillIntervalMs: 1000 }),
+    });
+    if (handler === undefined) throw new Error('orchestrate handler was not registered');
+
+    const result = await handler({
       task: 'Refactor the distributed authentication architecture for concurrent security workloads.',
     });
+    const text = result.content.find((item) => item.type === 'text');
+    if (text?.type !== 'text') throw new Error('orchestrate response has no text');
+    const output: unknown = JSON.parse(text.text);
 
+    expect(result.isError).not.toBe(true);
+    expect(output).not.toHaveProperty('executed');
     expect(executingAgent.execute).toHaveBeenCalledOnce();
+    expect(append).toHaveBeenCalledOnce();
+    expect(append).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    expect(recordOutcome).toHaveBeenCalledOnce();
+    expect(recordOutcome).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
     expect(getOutcomeStore().query().at(-1)).toMatchObject({
       cli: 'codex',
       cliSource: 'executed',

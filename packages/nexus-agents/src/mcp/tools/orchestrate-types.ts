@@ -78,6 +78,10 @@ export type OrchestrateInput = z.infer<typeof OrchestrateInputSchema>;
 
 export const OrchestrateOutputSchema = z.object({
   taskId: z.string().describe('Unique execution ID'),
+  executed: z
+    .boolean()
+    .optional()
+    .describe('False when the simple-task shortcut returned analysis only; no execution occurred'),
   analysis: z.object({
     taskId: z.string(),
     complexity: z.number().min(1).max(10),
