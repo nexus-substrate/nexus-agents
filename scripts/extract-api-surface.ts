@@ -93,8 +93,11 @@ function stripInlineComments(text: string): string {
 /**
  * Strips machine-specific absolute paths out of printed type text.
  *
- * ts-morph prints an imported type as `import("/abs/path/to/module").Thing`.
- * The snapshot would then only match on the machine that generated it — CI
+ * ts-morph can print an imported type as `import("/abs/path/to/module").Thing`.
+ * Under ts-morph 27 (TypeScript 5.9) it always did; from ts-morph 28
+ * (TypeScript 6.0) the printer emits the specifier relative to the enclosing
+ * file (`import("./x.js")`, `import("zod/v4/core")`) where it can, and these
+ * rewrites remain for the cases it cannot (#4478). The snapshot would then only match on the machine that generated it — CI
  * uses /home/runner, so the gate failed on its own first PR and would have
  * failed on every PR forever. A gate that always fails gets switched off,
  * which is no better than one that never fires.
