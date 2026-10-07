@@ -9,7 +9,7 @@
  *   3. DECOMPOSE — PM splits approved plan into phases/epics/issues
  *   4. IMPLEMENT — code experts work assigned tasks in parallel
  *   5. QA REVIEW — QA expert reviews, sends back to PM if issues found
- *   6. SECURITY — SARIF scan blocks on critical/high findings
+ *   6. SECURITY — complete baseline comparison blocks introduced critical/high findings
  *   7. SHIP — all gates passed
  *
  * Each stage can iterate: vote feedback loops back to plan,
@@ -64,6 +64,7 @@ import { DEFAULT_MAX_NO_QUORUM_RETRIES, retryNoQuorumVote } from './iterative-co
 import { allOf, anyOf } from '../utils/verdict-aggregation.js';
 import { DevPipelineCancelledError, guardDevPipelineStages } from './dev-pipeline-deadlines.js';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
+import type { SecurityBaselineComparison, SecurityBaseline } from './security-gate.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -171,6 +172,8 @@ export interface QaReviewResult {
 export interface DevPipelineWorkspaceBinding {
   readonly directory: string;
   readonly dependencies: DevPipelineDependencies;
+  /** The commit actually used to create the implementation workspace. */
+  readonly baseline?: SecurityBaseline | undefined;
   readonly wrapper?: import('../cli-adapters/exec-file-tree.js').CommandWrapper | undefined;
 }
 
@@ -235,6 +238,8 @@ export interface DevPipelineResult {
   readonly securityRan?: boolean;
   /** Security-stage feedback explaining why a skipped scan did not run. */
   readonly securityNote?: string;
+  /** Baseline counts and blocking findings, including explicit incomplete coverage. */
+  readonly securityComparison?: SecurityBaselineComparison;
   /**
    * Conditions the caller should know about that do not change the verdict
    * (#6792), e.g. a quality gate that ran scripts in the directory the
@@ -385,6 +390,7 @@ export interface DevPipelineStages {
    * the contract; when absent, `passed` is read as a measured pass/fail.
    */
   securityScan(signal?: AbortSignal): Promise<{
+    readonly comparison?: SecurityBaselineComparison;
     readonly passed: boolean;
     readonly verdict?: 'pass' | 'fail' | 'skip';
     readonly feedback: string;
@@ -1005,6 +1011,7 @@ async function runImplSecurityPhase(
     qaIterations: implResult.totalIterations,
     securityPassed: security.passed,
     securityRan: security.verdict !== 'skip',
+    ...(security.comparison !== undefined ? { securityComparison: security.comparison } : {}),
     taskStatus,
     ...(security.verdict === 'skip' ? { securityNote: security.feedback } : {}),
     ...warnings,

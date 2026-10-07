@@ -22,12 +22,24 @@
  */
 
 import type { GateCheckResult } from '../security/quality-gate-types.js';
-import type { GateCheckFn } from '../security/quality-gate.js';
 import { executeSecurityScan } from '../mcp/tools/security-scan.js';
 import { queryOsvBatch } from '../security/osv-lookup.js';
 import type { OsvVulnerability } from '../security/osv-lookup.js';
 import type { SecurityFinding } from '../security/sarif-types.js';
 import { createLogger } from '../core/index.js';
+import {
+  compareSecurityBaseline,
+  type SecurityBaselineComparison,
+  type SecurityBaseline,
+} from './security-baseline.js';
+export type { SecurityBaselineComparison, SecurityBaseline } from './security-baseline.js';
+
+export interface SecurityGateResult extends GateCheckResult {
+  readonly comparison?: SecurityBaselineComparison;
+  /** Blocking SAST findings measured by a non-baseline scan. */
+  readonly blockingFindings?: readonly SecurityFinding[];
+}
+
 import { throwIfAborted } from '../adapters/abort-utils.js';
 
 const logger = createLogger({ component: 'security-gate' });
@@ -37,6 +49,8 @@ const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 
 /** Configuration for the security gate. */
 export interface SecurityGateConfig {
+  /** Actual pipeline base resolved before implementation. */
+  readonly baseline?: SecurityBaseline | undefined;
   /** Whether to run OSV dependency checks (default: true). */
   readonly enableOsv?: boolean | undefined;
   /** Subprocess environment. Absent: inherit the caller's environment. */
@@ -61,8 +75,9 @@ export function checkSecurityScan(
   targetDir: string,
   rulesets: readonly string[] = ['p/default'],
   config: SecurityGateConfig = {}
-): GateCheckFn {
-  return async (signal?: AbortSignal): Promise<GateCheckResult> => {
+): (signal?: AbortSignal) => Promise<SecurityGateResult> {
+  return async (signal?: AbortSignal): Promise<SecurityGateResult> => {
+    if (config.baseline !== undefined) return runBaselineGate(targetDir, rulesets, config, signal);
     const start = Date.now();
     const result = await executeSecurityScan(
       {
@@ -87,7 +102,48 @@ export function checkSecurityScan(
       };
     }
 
-    return runSecurityPipeline(result, targetDir, config, start, signal);
+    const gateResult = await runSecurityPipeline(result, targetDir, config, start, signal);
+    // Incomplete coverage cannot erase a measured SAST or OSV failure.
+    if (gateResult.verdict === 'fail') return gateResult;
+    if (result.parseDiagnostics !== undefined && result.parseDiagnostics.length > 0) {
+      return {
+        ...gateResult,
+        verdict: 'skip',
+        details: `Security scan incomplete: unparsed files ${result.parseDiagnostics.map((d) => d.file).join(', ')}`,
+        durationMs: Date.now() - start,
+      };
+    }
+    return gateResult;
+  };
+}
+
+/** Preserve dependency checking while comparing only the SAST change. */
+async function runBaselineGate(
+  target: string,
+  rulesets: readonly string[],
+  config: SecurityGateConfig,
+  signal?: AbortSignal
+): Promise<SecurityGateResult> {
+  const start = Date.now();
+  const comparison = await compareSecurityBaseline(target, rulesets, config, signal);
+  const osv = comparison.complete
+    ? await runOsvCheck(target, config.enableOsv ?? true, signal)
+    : OSV_EMPTY;
+  throwIfAborted(signal, 'Security baseline scan aborted');
+  const osvFailed = osv.vulnerabilities.some((v) => v.severity === 'CRITICAL');
+  const details = comparison.complete
+    ? `Base ${String(comparison.baseCount)}, worktree ${String(comparison.worktreeCount)} findings; ${String(comparison.introducedBlockingCount)} introduced blocking; ${buildScanSummary(comparison.worktreeCount ?? 0, comparison.introducedBlockingCount ?? 0, osv.vulnerabilities.length, osv)}`
+    : `Security comparison incomplete: ${comparison.errors.join('; ')}`;
+  return {
+    name: 'security_scan',
+    verdict: !comparison.complete
+      ? 'skip'
+      : comparison.introducedBlockingCount === 0 && !osvFailed
+        ? 'pass'
+        : 'fail',
+    details: details.slice(0, 500),
+    comparison,
+    durationMs: Date.now() - start,
   };
 }
 
@@ -110,7 +166,7 @@ async function runSecurityPipeline(
   config: SecurityGateConfig,
   start: number,
   signal: AbortSignal | undefined
-): Promise<GateCheckResult> {
+): Promise<SecurityGateResult> {
   // OSV dependency check (#1773)
   const osv = await runOsvCheck(targetDir, config.enableOsv ?? true, signal);
   // A batch cut short by the abort covers only some dependencies; no verdict.
@@ -140,6 +196,7 @@ async function runSecurityPipeline(
     name: 'security_scan',
     verdict: failed ? 'fail' : 'pass',
     details,
+    blockingFindings: blocking,
     durationMs: Date.now() - start,
   };
 }

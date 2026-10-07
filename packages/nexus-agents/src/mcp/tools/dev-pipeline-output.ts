@@ -6,6 +6,7 @@
  */
 
 import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
+import type { SecurityBaselineComparison } from '../../pipeline/security-gate.js';
 
 /** Build structured JSON output for harness consumption (#1700). */
 export function buildStructuredOutput(
@@ -77,14 +78,18 @@ function warningsField(
  * The security gate's status as a value that cannot be misread (#7181).
  *
  * `securityPassed: false` beside `securityRan: false` read as a failed check.
- * Only a scan that ran yields `passed`/`failed`; a scan that did not run, and a
- * producer that predates `securityRan` (#4782), are both `unmeasured`.
+ * Only a complete measurement yields `passed`/`failed`; an incomplete baseline
+ * comparison, a scan that did not run, and a producer that predates `securityRan`
+ * (#4782) are all `unmeasured`.
  */
-function securityStatus(result: Pick<DevPipelineResult, 'securityPassed' | 'securityRan'>): {
-  readonly status: 'passed' | 'failed' | 'unmeasured';
-} {
-  if (result.securityRan !== true) return { status: 'unmeasured' };
-  return { status: result.securityPassed ? 'passed' : 'failed' };
+function securityStatus(
+  result: Pick<DevPipelineResult, 'securityPassed' | 'securityRan' | 'securityComparison'>
+): { readonly status: 'passed' | 'failed' | 'unmeasured' } & Partial<SecurityBaselineComparison> {
+  const comparison = result.securityComparison ?? {};
+  if (result.securityRan !== true || result.securityComparison?.complete === false) {
+    return { status: 'unmeasured', ...comparison };
+  }
+  return { status: result.securityPassed ? 'passed' : 'failed', ...comparison };
 }
 
 /** The plan vote's decision and record id, each present only when produced (#7181). */

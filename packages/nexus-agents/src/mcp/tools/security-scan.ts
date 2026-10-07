@@ -8,12 +8,16 @@
  * @module mcp/tools/security-scan
  */
 
+import { z } from 'zod';
 import type { SecurityScanInput } from './security-scan-types.js';
 import { parseSarif } from '../../security/sarif-parser.js';
 import type { SarifParseResult } from '../../security/sarif-types.js';
 import { createLogger } from '../../core/index.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { execFileTree, type CommandWrapper } from '../../cli-adapters/exec-file-tree.js';
+import { access, constants } from 'node:fs/promises';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
+import { delimiter, isAbsolute, join, parse, resolve } from 'node:path';
 
 const logger = createLogger({ component: 'security-scan' });
 
@@ -24,13 +28,21 @@ const SCAN_TIMEOUT_MS = 300_000;
 async function isSemgrepAvailable(
   signal: AbortSignal | undefined,
   env: NodeJS.ProcessEnv | undefined,
-  wrapper: CommandWrapper | undefined
-): Promise<boolean> {
+  wrapper: CommandWrapper | undefined,
+  binary = 'semgrep',
+  cwd?: string
+): Promise<string | undefined> {
   try {
-    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal, env, wrapper });
-    return true;
+    const { stdout } = await execFileTree(binary, ['--version'], {
+      timeoutMs: 10_000,
+      signal,
+      env,
+      wrapper,
+      cwd,
+    });
+    return stdout.trim() || undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -44,16 +56,30 @@ async function runSemgrep(
   rulesets: readonly string[],
   signal: AbortSignal | undefined,
   env: NodeJS.ProcessEnv | undefined,
-  wrapper: CommandWrapper | undefined
+  options: SecurityScanOptions
 ): Promise<string> {
-  const args = ['--sarif', '--quiet', ...rulesets.flatMap((r) => ['--config', r]), targetDir];
+  const prepared = options.preparedScan;
+  const flags = prepared?.flags ?? (options.completeResults === true ? COMPLETE_SCAN_FLAGS : []);
+  const configs =
+    prepared?.rulesets ??
+    rulesets.map((ruleset) =>
+      /^(?:[pr]\/|https?:\/\/|auto$)/.test(ruleset) ? ruleset : resolve(ruleset)
+    );
+  const args = [
+    '--sarif',
+    '--quiet',
+    ...flags,
+    ...configs.flatMap((r) => ['--config', r]),
+    targetDir,
+  ];
 
-  const { stdout } = await execFileTree('semgrep', args, {
+  const { stdout } = await execFileTree(prepared?.binary ?? 'semgrep', args, {
+    cwd: parse(targetDir).root,
     timeoutMs: SCAN_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024, // 10MB for large SARIF output
     signal,
     env,
-    wrapper,
+    wrapper: options.wrapper,
   });
 
   return stdout;
@@ -78,6 +104,10 @@ function validateTargetPath(target: string, root: string = process.cwd()): strin
 
 /** Options for {@link executeSecurityScan}; one object so a wrapper forwards them whole. */
 export interface SecurityScanOptions {
+  /** Read every finding for a security comparison rather than an MCP display cap. */
+  readonly completeResults?: boolean;
+  /** Frozen scanner and rules shared by baseline and worktree scans. */
+  readonly preparedScan?: PreparedSecurityScan;
   /** Caller abort (#6747). */
   readonly signal?: AbortSignal | undefined;
   /** Scanner subprocess environment. Absent: inherit the caller's. */
@@ -91,6 +121,132 @@ export interface SecurityScanOptions {
    * every pipeline scan and left security unmeasured.
    */
   readonly root?: string | undefined;
+}
+
+/** Frozen configuration prepared once for an occurrence-aware comparison. */
+interface PreparedSecurityScan {
+  readonly binary: string;
+  readonly version: string;
+  readonly rulesets: readonly string[];
+  readonly flags: readonly string[];
+}
+
+const COMPLETE_SCAN_FLAGS = [
+  '--no-git-ignore',
+  '--max-target-bytes=0',
+  '--metrics=off',
+  '--disable-nosem',
+  '--no-rewrite-rule-ids',
+  // Avoid mutable ignore files and hidden-ancestor skips in scratch worktrees.
+  // Unsupported scanner versions fail closed on this explicitly pinned flag.
+  '--x-ignore-semgrepignore-files',
+  '--exclude=node_modules',
+  '--exclude=.git',
+] as const;
+
+/** Resolve an executable before either tree can affect PATH lookup. */
+async function resolveSemgrep(env: NodeJS.ProcessEnv): Promise<string> {
+  for (const directory of (env['PATH'] ?? '').split(delimiter)) {
+    if (!isAbsolute(directory)) continue;
+    const binary = join(directory, process.platform === 'win32' ? 'semgrep.exe' : 'semgrep');
+    try {
+      await access(binary, constants.X_OK);
+      return await realpath(binary);
+    } catch {
+      // Continue through the host PATH; an absent scanner fails preparation.
+    }
+  }
+  throw new Error('semgrep is not installed. Install with: pip install semgrep');
+}
+
+/** Download registry/URL rules once, or copy a local rule file into private scratch. */
+async function readRuleset(ruleset: string, signal: AbortSignal | undefined): Promise<string> {
+  const url = /^[pr]\//.test(ruleset) ? `https://semgrep.dev/c/${ruleset}` : ruleset;
+  if (!/^https?:\/\//.test(url)) return await readFile(resolve(ruleset), 'utf8');
+  const timeout = AbortSignal.timeout(30_000);
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
+  });
+  if (!response.ok) throw new Error(`Ruleset download failed: HTTP ${String(response.status)}`);
+  const text = await response.text();
+  if (text.length > 10 * 1024 * 1024) throw new Error('Ruleset download exceeds 10MB');
+  return unwrapRuleset(text);
+}
+
+/** Normalize the registry envelope without interpreting scanner rule syntax. */
+function unwrapRuleset(text: string): string {
+  // The registry supports both native rules JSON and a rule_config envelope.
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (typeof raw === 'object' && raw !== null && 'rule_config' in raw) {
+    const config: unknown = raw.rule_config;
+    return typeof config === 'string' ? config : JSON.stringify(config);
+  }
+  return text;
+}
+
+/** Probe the same prepared executable and reject version drift before scanning. */
+async function measureScannerVersion(
+  options: SecurityScanOptions,
+  targetDir: string
+): Promise<string | { error: string }> {
+  const version = await isSemgrepAvailable(
+    options.signal,
+    options.env,
+    options.wrapper,
+    options.preparedScan?.binary,
+    parse(targetDir).root
+  );
+  if (options.signal?.aborted === true) return { error: 'Scan aborted before semgrep ran' };
+  if (version === undefined)
+    return { error: 'semgrep is not installed. Install with: pip install semgrep' };
+  if (options.preparedScan !== undefined && options.preparedScan.version !== version) {
+    return {
+      error: `Scanner version changed: expected ${options.preparedScan.version}, got ${version}`,
+    };
+  }
+  return version;
+}
+
+/** Pin scanner version and freeze rule contents in a caller-owned scratch directory. */
+export async function prepareSecurityScan(
+  rulesets: readonly string[],
+  options: SecurityScanOptions & { readonly directory: string }
+): Promise<PreparedSecurityScan | { error: string }> {
+  try {
+    if (rulesets.length === 0) throw new Error('No security rulesets configured');
+    const binary = await resolveSemgrep(options.env ?? process.env);
+    const version = await isSemgrepAvailable(
+      options.signal,
+      options.env,
+      options.wrapper,
+      binary,
+      parse(resolve(options.directory)).root
+    );
+    if (version === undefined) throw new Error('Cannot measure semgrep version');
+    const configs: string[] = [];
+    for (const [index, ruleset] of rulesets.entries()) {
+      const contents = await readRuleset(ruleset, options.signal);
+      const file = join(options.directory, `security-rules-${String(index)}.yaml`);
+      await writeFile(file, contents, { mode: 0o400, flag: 'wx' });
+      configs.push(file);
+    }
+    return Object.freeze({
+      binary,
+      version,
+      rulesets: Object.freeze(configs),
+      flags: COMPLETE_SCAN_FLAGS,
+    });
+  } catch (error: unknown) {
+    return {
+      error: `Security scan preparation failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 /**
@@ -121,18 +277,15 @@ export async function executeSecurityScan(
     rulesets: input.rulesets,
   });
 
-  const available = await isSemgrepAvailable(signal, env, options.wrapper);
-  // An abort during the probe is not a missing scanner.
-  if (signal?.aborted === true) return { error: 'Scan aborted before semgrep ran' };
-  if (!available) {
-    return {
-      error: 'semgrep is not installed. Install with: pip install semgrep',
-    };
-  }
+  const version = await measureScannerVersion(options, targetDir);
+  if (typeof version !== 'string') return version;
 
   try {
-    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal, env, options.wrapper);
-    const result = parseSarif(sarifOutput, input.maxFindings);
+    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal, env, options);
+    const result = parseSarif(
+      sarifOutput,
+      options.completeResults === true ? Infinity : input.maxFindings
+    );
 
     logger.info('Security scan completed', {
       scanner: result.scanner,
@@ -140,12 +293,108 @@ export async function executeSecurityScan(
       errors: result.errors.length,
     });
 
-    return result;
+    return { ...result, scannerVersion: version };
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.warn('Security scan failed', { error: msg });
-    return { error: `Scan failed: ${msg.slice(0, 500)}` };
+    return handleScanFailure(
+      error,
+      version,
+      options.completeResults === true ? Infinity : input.maxFindings
+    );
   }
+}
+
+/** A nonzero scan needs positive invocation-success evidence before parse recovery. */
+const InvocationSuccessSchema = z.object({
+  runs: z
+    .array(
+      z.object({
+        invocations: z.array(z.object({ executionSuccessful: z.literal(true) })).min(1),
+      })
+    )
+    .min(1),
+});
+
+function failureCode(error: unknown): unknown {
+  return typeof error === 'object' && error !== null && 'code' in error ? error.code : 'unknown';
+}
+
+function failureOutput(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('stdout' in error)) return undefined;
+  return typeof error.stdout === 'string' && error.stdout.length > 0 ? error.stdout : undefined;
+}
+
+function scannerInvocationsSuccessful(output: string): boolean {
+  try {
+    return InvocationSuccessSchema.safeParse(JSON.parse(output)).success;
+  } catch {
+    return false;
+  }
+}
+
+function handleScanFailure(
+  error: unknown,
+  version: string,
+  maxFindings: number
+): SarifParseResult | { error: string } {
+  const output = failureOutput(error);
+  const result = output === undefined ? undefined : parseSarif(output, maxFindings);
+  if (result !== undefined && output !== undefined && failureCode(error) === 3) {
+    if (
+      result.coverageComplete === true &&
+      (result.parseDiagnostics?.length ?? 0) > 0 &&
+      scannerInvocationsSuccessful(output)
+    ) {
+      return { ...result, scannerVersion: version };
+    }
+  }
+  const message = `${summarizeScanFailure(error)}${failedOutputDetails(result)}`;
+  logger.warn('Security scan failed', { error: message });
+  return { error: message };
+}
+
+function failedOutputDetails(result: SarifParseResult | undefined): string {
+  if (result === undefined) return '';
+  const files = result.parseDiagnostics?.map((diagnostic) => diagnostic.file) ?? [];
+  const diagnostics = files.length > 0 ? `; affected files: ${[...new Set(files)].join(', ')}` : '';
+  const errors = result.errors.length > 0 ? `; ${result.errors.join('; ')}` : '';
+  return diagnostics + errors;
+}
+
+/** Keep exit codes and the actual diagnostic visible when command arguments are long. */
+function summarizeScanFailure(error: unknown): string {
+  const code = String(failureCode(error));
+  const message = error instanceof Error ? error.message : String(error);
+  const commandFailure = message.startsWith('Command failed:');
+  const newline = message.indexOf('\n');
+  const rawDiagnostic = commandFailure && newline >= 0 ? message.slice(newline + 1) : message;
+  const diagnostic = rawDiagnostic
+    .split('\n')
+    .filter((line) => !isScannerNoise(line))
+    .join('\n');
+  const detail =
+    diagnostic.length > 500 ? `[diagnostic truncated] ${diagnostic.slice(-500)}` : diagnostic;
+  const files = [
+    ...new Set(
+      [...diagnostic.matchAll(/^(?:Syntax error|Other syntax error) at line (.+):\d+:/gm)].map(
+        (match) => match[1]
+      )
+    ),
+  ];
+  const affected = files.length > 0 ? `; affected files: ${files.join(', ')}` : '';
+  const unavailable =
+    commandFailure && failureOutput(error) === undefined ? '; scanner stdout unavailable' : '';
+  return `Scan failed (exit ${code}${unavailable}${affected}): ${detail}`;
+}
+
+/** Known incidental Python/runtime warnings must not hide scanner diagnostics. */
+function isScannerNoise(line: string): boolean {
+  return (
+    /opentelemetry\/instrumentation\/dependencies\.py.*UserWarning: pkg_resources/.test(line) ||
+    /^\s*from pkg_resources import \(/.test(line) ||
+    /^pyenv: (?:cannot rehash|warning:)/.test(line) ||
+    /^.*WARNING.*(?:experimental|--x-).*$/i.test(line) ||
+    /^.*These options are not part of the semgrep API.*$/.test(line)
+  );
 }
 
 /** Test-only surface — do not import in production code. */

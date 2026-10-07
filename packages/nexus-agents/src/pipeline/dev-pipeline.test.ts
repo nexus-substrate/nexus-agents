@@ -258,6 +258,30 @@ describe('runDevPipeline', () => {
     expect(stages.implement).toHaveBeenCalledTimes(2);
   });
 
+  it('carries baseline security evidence into the pipeline result (#7238)', async () => {
+    const comparison = {
+      baseSha: 'a'.repeat(40),
+      baseCount: 7,
+      worktreeCount: 8,
+      introducedBlockingCount: 1,
+      complete: true,
+      errors: [],
+      blockingFindings: [
+        { rule: 'detect-eval', file: 'src/app.ts', startLine: 12, severity: 'high' },
+      ],
+    };
+    const stages = createMockStages({
+      securityScan: vi.fn().mockResolvedValue({
+        passed: false,
+        verdict: 'fail',
+        feedback: 'Introduced eval',
+        comparison,
+      }),
+    });
+    const result = await runDevPipeline('Build feature X', stages);
+    expect(result).toMatchObject({ completed: false, securityComparison: comparison });
+  });
+
   it('fails when security scan blocks', async () => {
     const stages = createMockStages({
       securityScan: vi.fn().mockResolvedValue({

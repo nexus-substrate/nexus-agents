@@ -13,6 +13,8 @@ import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
 import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 import type { ITaskTracker } from './task-tracker.js';
+import type { SecurityBaseline, SecurityGateResult } from './security-gate.js';
+import type { DevPipelineStages } from './dev-pipeline.js';
 import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
@@ -228,6 +230,8 @@ export interface AgentExecutorConfig {
   /** Pipeline checkpoint session, also used by the run trace; absent means unscoped. */
   readonly sessionId?: string | undefined;
   readonly scanTarget?: string | undefined;
+  /** The pipeline's pinned base commit and its source repository. */
+  readonly securityBaseline?: SecurityBaseline | undefined;
   readonly simulateVotes?: boolean | undefined;
   /** Voting strategy for consensus stages (default: higher_order). */
   readonly votingStrategy?:
@@ -266,6 +270,19 @@ export interface AgentExecutorConfig {
         readonly fieldsModified: number;
       }
     | undefined;
+}
+
+/** Preserve the security gate's structured evidence in the execution-stage result. */
+export function securityStageResult(
+  result: SecurityGateResult,
+  passed: boolean
+): Awaited<ReturnType<DevPipelineStages['securityScan']>> {
+  return {
+    passed,
+    verdict: result.verdict,
+    feedback: result.details,
+    ...(result.comparison !== undefined ? { comparison: result.comparison } : {}),
+  };
 }
 
 /**

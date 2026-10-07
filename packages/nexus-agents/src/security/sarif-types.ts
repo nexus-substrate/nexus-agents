@@ -51,12 +51,22 @@ export const SecurityFindingSchema = z.object({
   /** Scanner confidence (0-1). */
   confidence: z.number().min(0).max(1).default(0.5),
   /** Code snippet around the finding (optional). */
-  snippet: z.string().max(500).optional(),
+  snippet: z.string().optional(),
+  /** Scanner reported incompleteness or unusable truncation metadata; unsafe to match. */
+  snippetTruncated: z.boolean().optional(),
   /** Help URL for remediation guidance. */
   helpUrl: z.string().optional(),
 });
 
 export type SecurityFinding = z.infer<typeof SecurityFindingSchema>;
+
+/** A scanner-reported file parse gap, requiring comparison before it can be excused. */
+export interface ScannerParseDiagnostic {
+  readonly file: string;
+  readonly kind: 'parse' | 'partial-parse';
+  /** Full diagnostic identity, including the location and unexpected syntax. */
+  readonly message: string;
+}
 
 /** Result of parsing a SARIF file. */
 export interface SarifParseResult {
@@ -68,6 +78,12 @@ export interface SarifParseResult {
   readonly findings: readonly SecurityFinding[];
   /** Parsing errors (non-fatal). */
   readonly errors: readonly string[];
+  /** False for capped/malformed findings or non-parse failures; inspect parseDiagnostics too. */
+  readonly coverageComplete?: boolean;
+  /** Attributable parse gaps, distinct from unusable results and non-parse errors. */
+  readonly parseDiagnostics?: readonly ScannerParseDiagnostic[];
+  /** Version measured from the scanner executable, when run by security_scan. */
+  readonly scannerVersion?: string;
 }
 
 // ============================================================================
