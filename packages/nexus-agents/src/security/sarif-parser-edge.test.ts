@@ -107,7 +107,7 @@ describe('SARIF Parser — Adversarial Inputs', () => {
     expect(result.findings[0]?.file).toBe('src/中文.ts');
   });
 
-  it('truncates snippets longer than 500 chars', () => {
+  it('preserves complete snippets for occurrence matching (#7238)', () => {
     const longSnippet = 'x'.repeat(5000);
     const result = parseSarif(
       sarif({
@@ -130,7 +130,7 @@ describe('SARIF Parser — Adversarial Inputs', () => {
       })
     );
     const snippet = result.findings[0]?.snippet ?? '';
-    expect(snippet.length).toBeLessThanOrEqual(500);
+    expect(snippet).toBe(longSnippet);
   });
 
   it('respects maxFindings even with very large result arrays', () => {

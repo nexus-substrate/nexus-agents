@@ -11,7 +11,12 @@
 
 import { z } from 'zod';
 
-import type { SecurityFinding, FindingSeverity, SarifParseResult } from './sarif-types.js';
+import type {
+  SecurityFinding,
+  FindingSeverity,
+  SarifParseResult,
+  ScannerParseDiagnostic,
+} from './sarif-types.js';
 import { SARIF_LEVEL_MAP, SEVERITY_ORDER } from './sarif-types.js';
 
 // ============================================================================
@@ -65,7 +70,11 @@ const SarifLocationSchema = z.object({
           startLine: z.number().optional().catch(undefined),
           endLine: z.number().int().min(1).optional().catch(undefined),
           snippet: z
-            .object({ text: z.string().optional().catch(undefined) })
+            .object({
+              text: z.string().optional().catch(undefined),
+              // Unknown truncation metadata cannot establish a complete snippet.
+              truncated: z.boolean().optional().catch(true),
+            })
             .optional()
             .catch(undefined),
         })
@@ -133,6 +142,18 @@ const SarifRunSchema = z.object({
     })
     .optional(),
   results: z.array(z.unknown()).nullish(),
+  invocations: z.array(z.unknown()).optional(),
+});
+
+const SarifNotificationSchema = z.object({
+  descriptor: z.object({ id: z.string().optional() }).optional(),
+  level: z.string().optional(),
+  message: z.object({ text: z.string().optional() }).optional(),
+});
+const SarifInvocationSchema = z.object({
+  executionSuccessful: z.boolean().optional(),
+  toolExecutionNotifications: z.array(SarifNotificationSchema).optional(),
+  toolConfigurationNotifications: z.array(SarifNotificationSchema).optional(),
 });
 
 const SarifLogSchema = z.object({
@@ -220,7 +241,7 @@ export function parseSarif(sarifJson: string, maxFindings = 100): SarifParseResu
   const errors: string[] = [];
   const envelope = parseEnvelope(sarifJson);
   if (!envelope.ok) {
-    return { scanner: 'unknown', totalFindings: 0, findings: [], errors: [envelope.error] };
+    return emptyResult(envelope.error);
   }
   return parseLog(envelope.log, maxFindings, errors);
 }
@@ -234,26 +255,110 @@ function describeDriver(run: SarifRun): { scanner: string; rules: readonly unkno
 
 /** An empty result carrying one reason, for the several ways a log yields nothing. */
 function emptyResult(error: string): SarifParseResult {
-  return { scanner: 'unknown', totalFindings: 0, findings: [], errors: [error] };
+  return {
+    scanner: 'unknown',
+    totalFindings: 0,
+    findings: [],
+    errors: [error],
+    coverageComplete: false,
+  };
 }
 
 function parseLog(log: SarifLog, maxFindings: number, errors: string[]): SarifParseResult {
   const runs = log.runs;
   if (runs === undefined || runs.length === 0) return emptyResult('No runs in SARIF');
 
-  const parsedRun = SarifRunSchema.safeParse(runs[0]);
-  if (!parsedRun.success) {
-    return emptyResult(`Malformed SARIF run: ${describeZodError(parsedRun.error)}`);
+  let scanner = 'unknown';
+  const parseDiagnostics: ScannerParseDiagnostic[] = [];
+  const findings: SecurityFinding[] = [];
+  for (const [index, raw] of runs.entries()) {
+    const parsedRun = SarifRunSchema.safeParse(raw);
+    if (!parsedRun.success) {
+      errors.push(`Malformed SARIF run ${String(index)}: ${describeZodError(parsedRun.error)}`);
+      continue;
+    }
+    const driver = describeDriver(parsedRun.data);
+    checkRunCoverage(parsedRun.data, errors);
+    if (index === 0) scanner = driver.scanner;
+    checkInvocations(parsedRun.data.invocations ?? [], errors, parseDiagnostics);
+    const ruleMap = buildRuleMap(driver.rules, errors);
+    findings.push(
+      ...collectFindings(parsedRun.data.results ?? [], driver.scanner, ruleMap, errors)
+    );
   }
-  const { scanner, rules } = describeDriver(parsedRun.data);
-  const ruleMap = buildRuleMap(rules, errors);
-  const findings = collectFindings(parsedRun.data.results ?? [], scanner, ruleMap, errors);
+  findings.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  if (findings.length > maxFindings) {
+    errors.push(
+      `Truncated findings: returned ${String(maxFindings)} of ${String(findings.length)}`
+    );
+  }
   return {
     scanner,
     totalFindings: findings.length,
     findings: findings.slice(0, maxFindings),
     errors,
+    coverageComplete: errors.length === 0,
+    ...(parseDiagnostics.length > 0 ? { parseDiagnostics } : {}),
   };
+}
+
+/** Absence of scanner identity or a results array is not evidence of a clean scan. */
+function checkRunCoverage(run: SarifRun, errors: string[]): void {
+  if (run.tool?.driver?.name === undefined || run.tool.driver.name.length === 0) {
+    errors.push('SARIF run missing scanner identity');
+  }
+  if (run.results === undefined || run.results === null) {
+    errors.push('SARIF run missing measured results');
+  }
+}
+
+/** Scanner failures and warnings can represent skipped files or rules. */
+function checkInvocations(
+  invocations: readonly unknown[],
+  errors: string[],
+  parseDiagnostics: ScannerParseDiagnostic[]
+): void {
+  for (const raw of invocations) {
+    const parsed = SarifInvocationSchema.safeParse(raw);
+    if (!parsed.success) {
+      errors.push(`Malformed SARIF invocation: ${describeZodError(parsed.error)}`);
+      continue;
+    }
+    if (parsed.data.executionSuccessful === false) errors.push('Scanner invocation failed');
+    const notifications = [
+      ...(parsed.data.toolExecutionNotifications ?? []),
+      ...(parsed.data.toolConfigurationNotifications ?? []),
+    ];
+    checkNotifications(notifications, errors, parseDiagnostics);
+  }
+}
+
+/** Retain coverage-affecting warnings instead of treating them as a clean scan. */
+function checkNotifications(
+  notifications: z.infer<typeof SarifInvocationSchema>['toolExecutionNotifications'],
+  errors: string[],
+  parseDiagnostics: ScannerParseDiagnostic[]
+): void {
+  for (const notification of notifications ?? []) {
+    const diagnostic = parseNotification(notification);
+    if (diagnostic !== undefined) parseDiagnostics.push(diagnostic);
+    else if (notification.level !== 'note' && notification.level !== 'none')
+      errors.push(`Scanner notification: ${notification.message?.text ?? 'unknown scanner error'}`);
+  }
+}
+
+/** Semgrep SARIF retains a descriptor and message but drops JSON parse tags/spans. */
+function parseNotification(
+  notification: z.infer<typeof SarifNotificationSchema>
+): ScannerParseDiagnostic | undefined {
+  if (!/^(?:Syntax error|Other syntax error)$/.test(notification.descriptor?.id ?? ''))
+    return undefined;
+  const message = notification.message?.text;
+  if (message === undefined) return undefined;
+  const file = /^(?:Syntax error|Other syntax error) at line (.+):(\d+):(?:\n|$| )/.exec(
+    message
+  )?.[1];
+  return file === undefined ? undefined : { file, kind: 'parse', message };
 }
 
 /** Collect and sort findings from SARIF results. */
@@ -304,6 +409,7 @@ interface ParsedLocation {
   startLine: number;
   endLine?: number;
   snippet?: string;
+  snippetTruncated?: boolean;
 }
 
 /** Get the first physical location, or null if missing. */
@@ -327,7 +433,8 @@ function buildLocation(
   const endLine = phys.region?.endLine;
   const snippetText = phys.region?.snippet?.text;
   if (endLine !== undefined) loc.endLine = endLine;
-  if (snippetText !== undefined) loc.snippet = snippetText.slice(0, 500);
+  if (snippetText !== undefined) loc.snippet = snippetText;
+  if (phys.region?.snippet?.truncated === true) loc.snippetTruncated = true;
   return loc;
 }
 
@@ -438,6 +545,7 @@ function parseResult(
     cweIds: extractCweIds(rule),
     confidence: resolveConfidence(rule),
     snippet: loc.snippet,
+    snippetTruncated: loc.snippetTruncated,
     helpUrl: rule?.helpUri,
   };
 }

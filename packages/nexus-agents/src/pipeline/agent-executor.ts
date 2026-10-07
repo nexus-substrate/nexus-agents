@@ -80,12 +80,12 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     decompose: createDecomposeStage(deps),
     ...createExecutionStages(deps),
     // #6794: execution closures share the same guard and scratch directory.
-    withWorkspace: ({ directory, dependencies: workspaceDependencies, wrapper }) => {
+    withWorkspace: ({ directory, dependencies: workspaceDependencies, wrapper, baseline }) => {
       const bound = {
         ...deps,
         workspaceDependencies,
         wrapper,
-        config: { ...config, scanTarget: directory },
+        config: { ...config, scanTarget: directory, securityBaseline: baseline },
       };
       return {
         ...createExecutionStages(bound),

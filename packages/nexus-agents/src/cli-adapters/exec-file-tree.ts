@@ -101,7 +101,7 @@ export function execFileTree(
     run.child = spawnTracked(command, args, options, (error, stdout, stderr) => {
       finish(() => {
         if (error === null) resolve({ stdout, stderr });
-        else reject(error);
+        else reject(Object.assign(error, { stdout, stderr }));
       });
     });
   });

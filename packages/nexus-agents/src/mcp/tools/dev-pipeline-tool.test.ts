@@ -513,6 +513,58 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(result.isError).toBe(true);
   });
 
+  it('reports actionable baseline security evidence in the MCP response (#7238)', async () => {
+    const securityComparison = {
+      baseSha: 'a'.repeat(40),
+      baseCount: 7,
+      worktreeCount: 8,
+      introducedBlockingCount: 1,
+      complete: true,
+      errors: [],
+      blockingFindings: [
+        { rule: 'detect-eval', file: 'src/app.ts', startLine: 12, severity: 'high' },
+      ],
+    };
+    runDevPipelineMock.mockResolvedValueOnce({
+      ...PIPELINE_RESULT,
+      completed: false,
+      securityPassed: false,
+      securityRan: true,
+      securityComparison,
+    } as never);
+    const result = await captureHandler()({ task: 'Build feature X' }, STDIO_CTX);
+    const output = errorDetail(result);
+    expect(output['security']).toEqual({ status: 'failed', ...securityComparison });
+  });
+
+  it.each([false, true])(
+    'reports an incomplete comparison as unmeasured despite securityPassed %s',
+    async (securityPassed) => {
+      const securityComparison = {
+        baseSha: 'a'.repeat(40),
+        baseCount: 7,
+        worktreeCount: null,
+        introducedBlockingCount: null,
+        complete: false,
+        errors: ['Worktree scan failed'],
+        blockingFindings: [],
+      };
+      runDevPipelineMock.mockResolvedValueOnce({
+        ...PIPELINE_RESULT,
+        completed: false,
+        securityPassed,
+        securityRan: true,
+        securityComparison,
+      } as never);
+      const result = await captureHandler()({ task: 'Build feature X' }, STDIO_CTX);
+      expect(errorDetail(result)['security']).toEqual({
+        status: 'unmeasured',
+        ...securityComparison,
+      });
+      expect(result.isError).toBe(true);
+    }
+  );
+
   it('surfaces the dryRun marker too', async () => {
     // #4993 added `dryRun` to DevPipelineResult for the same reason as the two
     // fields above — `completed: false` was the request, not a fault — and then

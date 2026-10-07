@@ -348,6 +348,7 @@ export async function withDevPipelineWorkspace(
     // Preserve a workingDir that points at a package below the repository root.
     const bound = stages.withWorkspace({
       directory: join(scratch.path, relative(repoRoot, directory)),
+      baseline: { sha: baseSha, directory: repoRoot },
       dependencies,
       wrapper: sandbox.wrapper,
     });

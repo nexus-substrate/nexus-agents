@@ -22,6 +22,7 @@ import {
   emitStageEvent,
   postProgress,
   recordOutcome,
+  securityStageResult,
   outcomeFieldsFromBridge,
   runExpert,
 } from './agent-executor-core.js';
@@ -447,12 +448,8 @@ export function createQualityGateStage({
   };
 }
 
-export function createSecurityScanStage({
-  config,
-  startStage,
-  workspaceDependencies,
-  wrapper,
-}: StageDeps): DevPipelineStages['securityScan'] {
+export function createSecurityScanStage(deps: StageDeps): DevPipelineStages['securityScan'] {
+  const { config, startStage, workspaceDependencies, wrapper } = deps;
   return async (signal) => {
     startStage('security');
     const start = getTimeProvider().now();
@@ -462,6 +459,7 @@ export function createSecurityScanStage({
     // design, so the scan is contained to the scratch rather than to cwd.
     const scratchBound = workspaceDependencies !== undefined;
     const check = checkSecurityScan(target, undefined, {
+      baseline: config.securityBaseline,
       env: scratchBound ? hermeticGitEnv() : undefined,
       root: scratchBound ? target : undefined,
       wrapper,
@@ -503,6 +501,6 @@ export function createSecurityScanStage({
     await postProgress(config, 'Security', passed ? 'Passed' : securityNote);
     // Flush pipeline memory session at end of run
     flushPipelineMemory();
-    return { passed, verdict: result.verdict, feedback: result.details };
+    return securityStageResult(result, passed);
   };
 }

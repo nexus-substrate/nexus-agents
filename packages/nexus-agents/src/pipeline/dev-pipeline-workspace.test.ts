@@ -546,6 +546,20 @@ describe('dev pipeline workspace follow-up', () => {
     );
   });
 
+  it('binds the exact pinned implementation base to the security comparison (#7238)', async () => {
+    const stages = boundStages(repo);
+    const original = stages.withWorkspace;
+    const bind = vi.fn(
+      (binding: Parameters<NonNullable<DevPipelineStages['withWorkspace']>>[0]) =>
+        original?.(binding) ?? stages
+    );
+    stages.withWorkspace = bind;
+    const output = await withDevPipelineWorkspace(stages, edit);
+    expect(bind.mock.lastCall?.[0]).toMatchObject({
+      baseline: { sha: output.changes?.baseSha, directory: repo },
+    });
+  });
+
   it('warns about modified, staged, and untracked paths while still using HEAD', async () => {
     file('.gitignore', 'ignored/\n');
     commit();

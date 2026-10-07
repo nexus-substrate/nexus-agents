@@ -15,10 +15,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // vi.mock is hoisted above these declarations, so the factories must reach the
 // spies lazily via vi.hoisted rather than closing over module-level consts.
-const { runQualityGateMock, securityCheckMock } = vi.hoisted(() => ({
-  runQualityGateMock: vi.fn(),
-  securityCheckMock: vi.fn(),
-}));
+const { runQualityGateMock, securityCheckMock, securityFactoryMock, progressMock } = vi.hoisted(
+  () => ({
+    runQualityGateMock: vi.fn(),
+    securityCheckMock: vi.fn(),
+    securityFactoryMock: vi.fn(),
+    progressMock: vi.fn(),
+  })
+);
 
 vi.mock('../security/quality-gate.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../security/quality-gate.js')>();
@@ -26,14 +30,24 @@ vi.mock('../security/quality-gate.js', async (importOriginal) => {
 });
 
 vi.mock('./security-gate.js', () => ({
-  checkSecurityScan: () => securityCheckMock,
+  checkSecurityScan: (...args: unknown[]) => {
+    securityFactoryMock(...args);
+    return securityCheckMock;
+  },
 }));
+
+vi.mock('./agent-executor-core.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./agent-executor-core.js')>();
+  return { ...actual, postProgress: progressMock };
+});
 
 import { createAgentStages } from './agent-executor.js';
 
 beforeEach(() => {
   runQualityGateMock.mockReset();
   securityCheckMock.mockReset();
+  securityFactoryMock.mockReset();
+  progressMock.mockReset();
 });
 
 describe('#4355: an unmeasured gate does not pass', () => {
@@ -110,5 +124,69 @@ describe('#4355: an unmeasured gate does not pass', () => {
     const stages = createAgentStages();
 
     expect((await stages.securityScan?.())?.passed).toBe(true);
+  });
+});
+
+describe('#7238: baseline security evidence', () => {
+  it('preserves comparison counts and actionable findings from the gate', async () => {
+    const comparison = {
+      baseSha: 'a'.repeat(40),
+      baseCount: 7,
+      worktreeCount: 8,
+      introducedBlockingCount: 1,
+      complete: true,
+      errors: [],
+      blockingFindings: [
+        { rule: 'detect-eval', file: 'src/app.ts', startLine: 12, severity: 'high' },
+      ],
+    };
+    securityCheckMock.mockResolvedValue({
+      name: 'security_scan',
+      verdict: 'fail',
+      details: '1 introduced blocking finding',
+      comparison,
+    });
+    expect(await createAgentStages().securityScan()).toMatchObject({
+      passed: false,
+      verdict: 'fail',
+      comparison,
+    });
+  });
+
+  it('keeps the did-not-run message reachable for an incomplete baseline comparison', async () => {
+    securityCheckMock.mockResolvedValue({
+      name: 'security_scan',
+      verdict: 'skip',
+      details: 'Security comparison incomplete: scanner unavailable',
+      comparison: { complete: false, blockingFindings: [] },
+    });
+    expect(await createAgentStages().securityScan()).toMatchObject({
+      passed: false,
+      verdict: 'skip',
+      comparison: { complete: false, blockingFindings: [] },
+    });
+    expect(progressMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'Security',
+      expect.stringContaining('Security scan did not run: Security comparison incomplete')
+    );
+  });
+
+  it('uses the pinned pipeline baseline when execution is rebound', async () => {
+    const baseline = { sha: 'b'.repeat(40), directory: '/pinned/source' };
+    securityCheckMock.mockResolvedValue({
+      name: 'security_scan',
+      verdict: 'pass',
+      details: 'No introduced findings',
+    });
+    const bound = createAgentStages().withWorkspace?.({
+      directory: '/scratch/worktree',
+      dependencies: { status: 'none' },
+      baseline,
+    });
+    await bound?.securityScan();
+    const gateConfig = securityFactoryMock.mock.lastCall?.[2] as
+      Record<string, unknown> | undefined;
+    expect(gateConfig?.['baseline']).toEqual(baseline);
   });
 });

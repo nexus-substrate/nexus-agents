@@ -109,6 +109,19 @@ describe.skipIf(process.platform !== 'linux')('execFileTree on real processes (#
     ).rejects.toThrow(/Command failed/);
   });
 
+  it('preserves bounded stdout and stderr on a nonzero exit for scanner classification', async () => {
+    await expect(
+      execFileTree(
+        process.execPath,
+        [
+          '-e',
+          'process.stdout.write("partial results");process.stderr.write("diagnostic");process.exit(3)',
+        ],
+        { timeoutMs: 10_000 }
+      )
+    ).rejects.toMatchObject({ code: 3, stdout: 'partial results', stderr: 'diagnostic' });
+  });
+
   it('never spawns when the signal has already fired', async () => {
     const controller = new AbortController();
     controller.abort('cancelled');
