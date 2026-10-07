@@ -39,19 +39,11 @@ const sections = PRIMARY_SECTIONS.map((key) => ({
 
 <style>
   .notfound {
-    max-width: 68ex;
+    max-width: var(--measure);
     margin-inline: auto;
-    padding: var(--space-8) var(--space-4);
+    padding: var(--space-8) var(--gutter);
   }
-  /* Off-theme links (#7285): set the theme link colour locally so the page
-     does not depend on a global rule. */
-  a {
-    color: var(--color-link);
-    text-underline-offset: 0.2em;
-  }
-  a:hover {
-    color: var(--color-link-hover);
-  }
+  /* Link colour comes from the global rule in styles/docs.css. */
   a:focus-visible {
     outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
