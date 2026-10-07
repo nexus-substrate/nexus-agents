@@ -161,13 +161,53 @@ export function pageTypeLabel(type: Diataxis | undefined): string {
 const EDIT_BASE = 'https://github.com/nexus-substrate/nexus-agents/edit/main/';
 
 /**
- * GitHub edit URL for a docs collection entry, from its `filePath` (relative
- * to website/, e.g. `../docs/guides/X.md`). Generated TypeDoc pages under
- * `docs/api/` have no hand-written source to edit, so they get none.
+ * Docs written by a generator, so an "Edit this page" link would send a reader
+ * to a file that is overwritten on the next run. The one place this list
+ * lives. An entry ending in `/` matches the directory; any other matches the
+ * file exactly. `partial`: only marked blocks are generated, but an edit link
+ * would still invite edits inside them.
  */
-export function editUrlFor(filePath: string | undefined): string | undefined {
+const GENERATED_DOCS: ReadonlyArray<{ path: string; source: string; partial: boolean }> = [
+  { path: 'docs/api/', source: 'packages/nexus-agents/src (TypeDoc)', partial: false },
+  { path: 'docs/reference/tools/', source: 'scripts/generate-tool-reference.ts', partial: false },
+  {
+    path: 'docs/reference/strategies/',
+    source: 'scripts/generate-strategy-reference.ts',
+    partial: false,
+  },
+  {
+    path: 'docs/reference/capabilities.md',
+    source: 'scripts/generate-repo-index.ts',
+    partial: false,
+  },
+  {
+    path: 'docs/research/RESEARCH_INDEX.md',
+    source: 'scripts/update-research-index.ts',
+    partial: false,
+  },
+  { path: 'docs/ENTRYPOINTS.md', source: 'scripts/inject-governance.ts', partial: true },
+  { path: 'docs/interfaces/agent.md', source: 'scripts/generate-docs-content.ts', partial: true },
+];
+
+export type PageSource =
+  { kind: 'edit'; url: string } | { kind: 'generated'; source: string; partial: boolean };
+
+/**
+ * Where a docs page's content comes from, from its collection `filePath`
+ * (relative to website/, e.g. `../docs/guides/X.md`): a GitHub edit URL for a
+ * hand-written page, the generator for a generated one, undefined when the
+ * path is not under docs/.
+ */
+export function pageSource(filePath: string | undefined): PageSource | undefined {
   if (filePath === undefined) return undefined;
   const match = /(?:^|\/)(docs\/.+\.md)$/.exec(filePath);
-  if (match?.[1] === undefined || match[1].startsWith('docs/api/')) return undefined;
-  return `${EDIT_BASE}${match[1]}`;
+  const repoPath = match?.[1];
+  if (repoPath === undefined) return undefined;
+  const generated = GENERATED_DOCS.find((g) =>
+    g.path.endsWith('/') ? repoPath.startsWith(g.path) : repoPath === g.path
+  );
+  if (generated !== undefined) {
+    return { kind: 'generated', source: generated.source, partial: generated.partial };
+  }
+  return { kind: 'edit', url: `${EDIT_BASE}${repoPath}` };
 }

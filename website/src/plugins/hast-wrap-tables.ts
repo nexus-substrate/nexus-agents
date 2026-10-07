@@ -6,8 +6,10 @@
  * --content-reading — wrap them"). Without it, 2-, 3- and 5-column tables in
  * the docs pushed the page into horizontal scroll on a phone (#7199).
  *
- * The wrapper is a keyboard-focusable named region, so the overflow can be
- * scrolled without a pointer (axe: scrollable-region-focusable).
+ * The wrapper is deliberately plain. Making every one a focusable named
+ * region produced 34 identical "Scrollable table" landmarks on one page (axe
+ * landmark-unique); src/lib/scroll-regions.ts promotes only the wrappers that
+ * actually overflow, with a unique name each.
  *
  * @module website/src/plugins/hast-wrap-tables
  */
@@ -23,12 +25,7 @@ export default function hastWrapTables(): HastPluginDefinition {
         ctx.wrapNode(node, {
           type: 'element',
           tagName: 'div',
-          properties: {
-            className: ['scroll-wrap'],
-            tabIndex: 0,
-            role: 'region',
-            ariaLabel: 'Scrollable table',
-          },
+          properties: { className: ['scroll-wrap'] },
           children: [],
         });
       },

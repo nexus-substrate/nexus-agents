@@ -3,7 +3,7 @@ import { render } from 'astro:content';
 import DocsLayout from '../../layouts/DocsLayout.astro';
 import Callout from '../../components/Callout.astro';
 import { getPublishedDocs } from '../../lib/docs-collection.ts';
-import { editUrlFor } from '../../lib/docs-nav.ts';
+import { pageSource } from '../../lib/docs-nav.ts';
 
 export async function getStaticPaths() {
   const docs = await getPublishedDocs();
@@ -23,7 +23,7 @@ const archived = entry.id.startsWith('archive/');
   description={entry.data.description}
   headings={headings}
   diataxis={entry.data.diataxis}
-  editUrl={editUrlFor(entry.filePath)}
+  source={pageSource(entry.filePath)}
 >
   {archived && (
     <Callout title="Archived page" tone="warning">

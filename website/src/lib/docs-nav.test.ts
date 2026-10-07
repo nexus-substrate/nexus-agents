@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildNav,
-  editUrlFor,
+  pageSource,
   findNeighbors,
   findSection,
   pageTypeLabel,
@@ -121,19 +121,43 @@ describe('pageTypeLabel', () => {
   });
 });
 
-describe('editUrlFor', () => {
-  it('maps a collection file path to the GitHub edit URL of its source', () => {
-    expect(editUrlFor('../docs/guides/MCP_INTEGRATION.md')).toBe(
-      'https://github.com/nexus-substrate/nexus-agents/edit/main/docs/guides/MCP_INTEGRATION.md'
-    );
+describe('pageSource', () => {
+  it('offers the GitHub edit URL for a hand-written doc', () => {
+    expect(pageSource('../docs/guides/MCP_INTEGRATION.md')).toEqual({
+      kind: 'edit',
+      url: 'https://github.com/nexus-substrate/nexus-agents/edit/main/docs/guides/MCP_INTEGRATION.md',
+    });
   });
 
   it('returns undefined for a path outside docs/ or no path at all', () => {
-    expect(editUrlFor('src/pages/index.astro')).toBeUndefined();
-    expect(editUrlFor(undefined)).toBeUndefined();
+    expect(pageSource('src/pages/index.astro')).toBeUndefined();
+    expect(pageSource(undefined)).toBeUndefined();
   });
 
-  it('does not offer an edit link for generated API pages', () => {
-    expect(editUrlFor('../docs/api/core/index.md')).toBeUndefined();
+  it.each([
+    ['../docs/api/core/index.md', 'packages/nexus-agents/src (TypeDoc)'],
+    ['../docs/reference/tools/consensus_vote.md', 'scripts/generate-tool-reference.ts'],
+    ['../docs/reference/strategies/index.md', 'scripts/generate-strategy-reference.ts'],
+    ['../docs/reference/capabilities.md', 'scripts/generate-repo-index.ts'],
+    ['../docs/research/RESEARCH_INDEX.md', 'scripts/update-research-index.ts'],
+  ])('names the generator instead of an edit link for %s', (path, source) => {
+    expect(pageSource(path)).toEqual({ kind: 'generated', source, partial: false });
+  });
+
+  it('marks files with generated blocks as partly generated, with no edit link', () => {
+    expect(pageSource('../docs/ENTRYPOINTS.md')).toEqual({
+      kind: 'generated',
+      source: 'scripts/inject-governance.ts',
+      partial: true,
+    });
+    expect(pageSource('../docs/interfaces/agent.md')).toEqual({
+      kind: 'generated',
+      source: 'scripts/generate-docs-content.ts',
+      partial: true,
+    });
+  });
+
+  it('matches a directory entry by prefix only, not a sibling with the same stem', () => {
+    expect(pageSource('../docs/reference/tools-guide.md')?.kind).toBe('edit');
   });
 });

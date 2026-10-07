@@ -37,7 +37,18 @@
   let query = $state('');
   let results = $state<PagefindResultData[]>([]);
   let status = $state('');
+  let open = $state(false);
+  // Search needs the Pagefind script, so the form is rendered hidden and only
+  // revealed once this component is running: with JS off there is no input
+  // that silently does nothing.
+  let mounted = $state(false);
+  let form: HTMLFormElement | undefined;
+  let input: HTMLInputElement | undefined;
   let pagefind: Promise<PagefindApi> | undefined;
+
+  $effect(() => {
+    mounted = true;
+  });
 
   function loadPagefind(): Promise<PagefindApi> {
     pagefind ??= import(/* @vite-ignore */ `${base}/pagefind/pagefind.js`).then(
@@ -56,6 +67,7 @@
       status = '';
       return;
     }
+    if (results.length === 0) status = 'Searching…';
     let api: PagefindApi;
     try {
       api = await loadPagefind();
@@ -82,21 +94,39 @@
 
   function onInput(event: Event): void {
     query = (event.currentTarget as HTMLInputElement).value;
+    open = query.trim() !== '';
     void runSearch(query);
   }
 
+  // Escape from anywhere in the form (input or a result link) closes the
+  // panel and returns focus to the input.
   function onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') {
-      query = '';
-      results = [];
-      status = '';
-    }
+    if (event.key !== 'Escape' || !open) return;
+    event.preventDefault();
+    open = false;
+    input?.focus();
+  }
+
+  // Close when focus leaves the form entirely (Tab past the last result,
+  // click elsewhere). relatedTarget is null when focus goes to the page body.
+  function onFocusout(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node) || !form?.contains(next)) open = false;
   }
 </script>
 
-<form role="search" class="docs-search" onsubmit={(e) => e.preventDefault()}>
+<form
+  role="search"
+  class="docs-search"
+  hidden={!mounted}
+  bind:this={form}
+  onsubmit={(e) => e.preventDefault()}
+  onkeydown={onKeydown}
+  onfocusout={onFocusout}
+>
   <label for={inputId} class="visually-hidden">Search the docs</label>
   <input
+    bind:this={input}
     id={inputId}
     class="docs-control docs-search-input"
     type="search"
@@ -105,10 +135,12 @@
     aria-controls={resultsId}
     value={query}
     oninput={onInput}
-    onkeydown={onKeydown}
   />
-  <div class="docs-search-panel" id={resultsId} hidden={query.trim() === ''}>
-    <p class="docs-search-status" role="status">{status}</p>
+  <!-- Outside the panel, so it exists (and is announced) from the first
+       keystroke rather than appearing together with its first message. -->
+  <p class="visually-hidden" role="status">{status}</p>
+  <div class="docs-search-panel" id={resultsId} hidden={!open}>
+    <p class="docs-search-status" aria-hidden="true">{status}</p>
     {#if results.length > 0}
       <ul>
         {#each results as result (result.url)}
@@ -126,6 +158,9 @@
 <style>
   .docs-search {
     position: relative;
+  }
+  .docs-search[hidden] {
+    display: none;
   }
   .docs-search-input {
     width: min(16rem, 100%);

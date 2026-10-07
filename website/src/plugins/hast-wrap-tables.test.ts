@@ -18,10 +18,12 @@ async function render(md: string): Promise<string> {
 const TABLE = '| a | b |\n| - | - |\n| 1 | 2 |\n';
 
 describe('hastWrapTables', () => {
-  it('wraps a table in a focusable, labelled scroll container', async () => {
-    expect(await render(TABLE)).toMatch(
-      /^<div class="scroll-wrap" tabindex="0" role="region" aria-label="Scrollable table"><table>/
-    );
+  it('wraps a table in a plain scroll container', async () => {
+    expect(await render(TABLE)).toMatch(/^<div class="scroll-wrap"><table>/);
+  });
+
+  it('does not make every wrapper a focusable landmark (scroll-regions.ts does, on overflow only)', async () => {
+    expect(await render(TABLE)).not.toMatch(/tabindex|role=|aria-label/);
   });
 
   it('wraps every table, once each', async () => {
