@@ -17,8 +17,8 @@ import { PARSE_ARGS_CONFIG } from './cli-types.js';
 // ============================================================================
 
 describe('COMMAND_HELP', () => {
-  it('contains 11 command entries', () => {
-    expect(COMMAND_HELP).toHaveLength(11);
+  it('contains 12 command entries', () => {
+    expect(COMMAND_HELP).toHaveLength(12);
   });
 
   it('has unique command names', () => {
@@ -134,6 +134,25 @@ describe('formatCommandHelp', () => {
 // ============================================================================
 // formatAllCommandsHelp
 // ============================================================================
+
+describe('learning-metrics --help prints the per-command help (#7180)', () => {
+  // `learning-metrics --help` used to fall through to the top-level help,
+  // because no entry existed here; the command's own flags were unreachable.
+  const help = formatCommandHelp('learning-metrics');
+
+  it('has a per-command entry', () => {
+    expect(help).toBeDefined();
+    expect(help).toContain('nexus-agents learning-metrics --');
+  });
+
+  it('documents every flag the command honours, each one a parsed CLI option', () => {
+    const flags = ['--period', '--json', '--bandit-stats', '--no-trends', '--export'];
+    for (const flag of flags) {
+      expect(help).toContain(flag);
+      expect(Object.keys(PARSE_ARGS_CONFIG.options)).toContain(flag.slice(2));
+    }
+  });
+});
 
 describe('formatAllCommandsHelp', () => {
   it('lists all 10 commands', () => {

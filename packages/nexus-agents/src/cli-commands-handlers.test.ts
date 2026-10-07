@@ -33,6 +33,7 @@ vi.mock('./cli/index.js', async (importOriginal) => {
     researchCommand: vi.fn().mockResolvedValue({ text: 'ok', exitCode: 0 }),
     voteCommand: vi.fn().mockResolvedValue(0),
     doctorCommand: vi.fn().mockResolvedValue(0),
+    learningMetricsCommand: vi.fn().mockReturnValue(0),
   };
 });
 
@@ -46,6 +47,7 @@ import {
   handleDoctorCommand,
   handleExpertCommand,
   handleHelloCommand,
+  handleLearningMetricsCommand,
   handleResearchCommand,
   handleUnimplementedCommand,
   handleVoteCommand,
@@ -56,6 +58,7 @@ import {
   doctorCommand,
   expertListCommand,
   helloCommand,
+  learningMetricsCommand,
   researchCommand,
   voteCommand,
 } from './cli/index.js';
@@ -702,5 +705,61 @@ describe('handleResearchCommand forwards advertised flags (#5609)', () => {
       expect.objectContaining({ success: false, exitCode: 3, message: expect.any(String) })
     );
     expect(researchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleLearningMetricsCommand honours --json (#7180)', () => {
+  // `--json` parses into `options.json`, but the handler read only
+  // `options.format`, so `learning-metrics --json` silently printed ASCII.
+  const lmMock = learningMetricsCommand as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    lmMock.mockClear();
+  });
+
+  it('selects JSON output for --json', () => {
+    const base = createMockArgs();
+    handleLearningMetricsCommand({
+      ...base,
+      command: 'learning-metrics',
+      options: { ...base.options, json: true },
+      positionals: ['learning-metrics'],
+    });
+    expect(lmMock.mock.calls[0]?.[0]).toMatchObject({ format: 'json' });
+  });
+
+  it('still selects JSON output for --format=json', () => {
+    const base = createMockArgs();
+    handleLearningMetricsCommand({
+      ...base,
+      command: 'learning-metrics',
+      options: { ...base.options, format: 'json' },
+      positionals: ['learning-metrics'],
+    });
+    expect(lmMock.mock.calls[0]?.[0]).toMatchObject({ format: 'json' });
+  });
+
+  it('exports JSON, the only format --export documents', () => {
+    const base = createMockArgs();
+    handleLearningMetricsCommand({
+      ...base,
+      command: 'learning-metrics',
+      options: { ...base.options, export: 'metrics.json' },
+      positionals: ['learning-metrics'],
+    });
+    expect(lmMock.mock.calls[0]?.[0]).toMatchObject({
+      format: 'json',
+      exportPath: 'metrics.json',
+    });
+  });
+
+  it('defaults to ASCII with neither flag', () => {
+    const base = createMockArgs();
+    handleLearningMetricsCommand({
+      ...base,
+      command: 'learning-metrics',
+      positionals: ['learning-metrics'],
+    });
+    expect(lmMock.mock.calls[0]?.[0]).toMatchObject({ format: 'ascii' });
   });
 });

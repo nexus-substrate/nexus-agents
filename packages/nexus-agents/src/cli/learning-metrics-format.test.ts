@@ -24,6 +24,8 @@ function makeResult(overrides?: Partial<LearningMetricsResult>) {
         avgLatencyMs: 1200,
         avgQuality: 0.88,
         selectionPercent: 60,
+        rewardSource: 'bandit',
+        routingSelectionCount: 60,
       },
       {
         name: 'gemini',
@@ -34,6 +36,8 @@ function makeResult(overrides?: Partial<LearningMetricsResult>) {
         avgLatencyMs: 800,
         avgQuality: 0.72,
         selectionPercent: 35,
+        rewardSource: 'bandit',
+        routingSelectionCount: 35,
       },
     ],
     banditProgress: {
@@ -322,6 +326,8 @@ describe('learning-metrics-format', () => {
             avgLatencyMs: 0,
             avgQuality: 0,
             selectionPercent: 0,
+            rewardSource: 'bandit',
+            routingSelectionCount: 0,
           },
         ],
       });
@@ -337,6 +343,8 @@ describe('learning-metrics-format', () => {
             avgLatencyMs: 500,
             avgQuality: 0.99,
             selectionPercent: 100,
+            rewardSource: 'bandit',
+            routingSelectionCount: 100,
           },
         ],
       });

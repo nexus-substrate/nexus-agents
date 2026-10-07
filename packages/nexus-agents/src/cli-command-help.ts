@@ -299,6 +299,25 @@ const REVIEW_HELP: CommandHelpEntry = {
   ],
 };
 
+// #7180: without this entry `learning-metrics --help` fell through to the
+// top-level help. Every flag here is a PARSE_ARGS_CONFIG option the handler reads.
+const LEARNING_METRICS_HELP: CommandHelpEntry = {
+  command: 'learning-metrics',
+  examples: [
+    'nexus-agents learning-metrics',
+    'nexus-agents learning-metrics --period=48 --bandit-stats',
+    'nexus-agents learning-metrics --json',
+    'nexus-agents learning-metrics --export=metrics.json',
+  ],
+  flags: [
+    { flag: '--period=<hours>', description: 'Time period for metrics', defaultValue: '24' },
+    { flag: '--json', description: 'Output the same data as JSON (same as --format=json)' },
+    { flag: '--bandit-stats', description: 'Include LinUCB bandit progress and features' },
+    { flag: '--no-trends', description: 'Hide the reward trend section' },
+    { flag: '--export=<path>', description: 'Write the JSON output to a file' },
+  ],
+};
+
 /**
  * All per-command help entries.
  */
@@ -314,6 +333,7 @@ export const COMMAND_HELP: readonly CommandHelpEntry[] = [
   RESEARCH_HELP,
   FITNESS_AUDIT_HELP,
   REVIEW_HELP,
+  LEARNING_METRICS_HELP,
 ];
 
 /** Formats a single flag line with alignment. */
