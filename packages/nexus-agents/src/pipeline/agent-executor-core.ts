@@ -282,6 +282,7 @@ export function securityStageResult(
     verdict: result.verdict,
     feedback: result.details,
     ...(result.comparison !== undefined ? { comparison: result.comparison } : {}),
+    ...(result.coverageNote !== undefined ? { coverageNote: result.coverageNote } : {}),
   };
 }
 

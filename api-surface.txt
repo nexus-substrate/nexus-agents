@@ -3049,7 +3049,7 @@ InterfaceDeclaration DevPipelineStages
   qualityGate((signal?: AbortSignal) => Promise<{ feedback: string; passed: boolean; readonly verdict?: "fail" | "pass" | "skip"; }>) | undefined
   readonly implementWorkspace?: undefined | { readonly accessMode: ExecutionAccessMode; readonly directory: string; }
   research(task: string, signal?: AbortSignal) => Promise<ResearchContext>
-  securityScan(signal?: AbortSignal) => Promise<{ readonly comparison?: SecurityBaselineComparison; readonly feedback: string; readonly passed: boolean; readonly verdict?: "fail" | "pass" | "skip"; }>
+  securityScan(signal?: AbortSignal) => Promise<{ readonly comparison?: SecurityBaselineComparison; readonly coverageNote?: string; readonly feedback: string; readonly passed: boolean; readonly verdict?: "fail" | "pass" | "skip"; }>
   vote(plan: string, research: string, signal?: AbortSignal) => Promise<VoteResult>
   withWorkspace((binding: DevPipelineWorkspaceBinding) => DevPipelineStages) | undefined
 InterfaceDeclaration DevPipelineWorkspaceBinding

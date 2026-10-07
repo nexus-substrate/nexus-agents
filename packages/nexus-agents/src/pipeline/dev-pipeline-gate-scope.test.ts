@@ -1,6 +1,14 @@
 /** Security evidence covers the complete captured patch, preserving package execution. */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentStages } from './agent-executor.js';
@@ -51,6 +59,7 @@ describe('dev pipeline security and capture scope', () => {
   let changedFile: string;
   let content: string;
   let implementationDir: string;
+  let manifestAction: ((root: string) => void) | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -59,6 +68,8 @@ describe('dev pipeline security and capture scope', () => {
     workingDir = join(repo, 'packages/app');
     mkdirSync(workingDir, { recursive: true });
     writeFileSync(join(workingDir, 'package.json'), '{"name":"fixture-app"}\n');
+    mkdirSync(join(repo, 'packages/sibling'));
+    writeFileSync(join(repo, 'packages/sibling/package.json'), '{"name":"sibling"}\n');
     writeFileSync(join(repo, 'shared.ts'), 'export const shared = "clean";\n');
     writeFileSync(join(workingDir, 'inside.ts'), 'export const inside = "clean";\n');
     // Unchanged findings elsewhere in the repository remain baseline debt.
@@ -84,6 +95,7 @@ describe('dev pipeline security and capture scope', () => {
     const scratchRoot = join(temp, 'scratch');
     mkdirSync(scratchRoot);
     vi.stubEnv('NEXUS_TMPDIR', scratchRoot);
+    manifestAction = undefined;
     changedFile = 'shared.ts';
     content = 'export const shared = "TEST_BLOCKING";\n';
     mocks.expert.mockImplementation((role: string, _prompt: string, opts: { workDir: string }) => {
@@ -91,7 +103,9 @@ describe('dev pipeline security and capture scope', () => {
       expect(opts.workDir).toMatch(/\/packages\/app$/);
       if (role === 'code') {
         implementationDir = opts.workDir;
+        mkdirSync(join(opts.workDir, '../..', changedFile, '..'), { recursive: true });
         writeFileSync(join(opts.workDir, '../..', changedFile), content);
+        manifestAction?.(join(opts.workDir, '../..'));
       } else {
         expect(opts.workDir).toBe(implementationDir);
       }
@@ -207,6 +221,146 @@ describe('dev pipeline security and capture scope', () => {
     expect(result.securityComparison).toMatchObject({ complete: true, introducedBlockingCount: 1 });
   });
 
+  it.each(['package.json', 'packages/sibling/package.json'])(
+    'checks the captured dependency change in %s',
+    async (manifest) => {
+      changedFile = manifest;
+      content = '{"dependencies":{"fixture-dependency":"1.0.0"}}\n';
+      mocks.osv.mockResolvedValue([
+        { error: null, vulnerabilities: [{ id: 'TEST-OSV', severity: 'CRITICAL' }] },
+      ]);
+      const result = await run();
+      expect(result.changes?.diff).toContain(`diff --git a/${manifest} b/${manifest}`);
+      expect(result).toMatchObject({ completed: false, securityPassed: false, securityRan: true });
+      expect(mocks.osv).toHaveBeenCalledWith(
+        [{ name: 'fixture-dependency', version: '1.0.0' }],
+        undefined,
+        expect.any(AbortSignal)
+      );
+      expect(buildStructuredOutput(result, false)['security']).toMatchObject({ status: 'failed' });
+    }
+  );
+
+  /** Commit a workingDir manifest so the baseline and worktree share it. */
+  function commitWorkingDirManifest(manifest: string): void {
+    const git = (...args: string[]): void => {
+      execFileSync('git', args, { cwd: repo, env: hermeticGitEnv(), stdio: 'pipe' });
+    };
+    writeFileSync(join(workingDir, 'package.json'), manifest);
+    git('add', '--all');
+    git(
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'dependency fixture'
+    );
+  }
+
+  /** OSV fixture: `flagged` dependencies carry a critical advisory, others are clean. */
+  function osvFlagging(...flagged: string[]): void {
+    mocks.osv.mockImplementation((deps: { name: string }[]) =>
+      Promise.resolve(
+        deps.map((dep) => ({
+          error: null,
+          vulnerabilities: flagged.includes(dep.name)
+            ? [{ id: 'TEST-OSV', severity: 'CRITICAL' }]
+            : [],
+        }))
+      )
+    );
+  }
+
+  it('preserves the workingDir dependency check when no manifest changes', async () => {
+    changedFile = 'packages/app/inside.ts';
+    content = 'export const inside = "updated";\n';
+    mocks.osv.mockResolvedValue([]);
+    // The baseline and worktree contain the same manifest; only source changes.
+    commitWorkingDirManifest('{"dependencies":{"safe-pkg":"1.0.0"}}\n');
+    const result = await run();
+    expect(result).toMatchObject({ completed: true, securityPassed: true });
+    expect(result.changes?.diff).not.toContain('package.json');
+    expect(mocks.osv).toHaveBeenCalledWith(
+      [{ name: 'safe-pkg', version: '1.0.0' }],
+      undefined,
+      expect.any(AbortSignal)
+    );
+  });
+
+  it('fails closed and records an unparseable changed manifest', async () => {
+    changedFile = 'package.json';
+    content = '{invalid json\n';
+    const result = await run();
+    expect(result).toMatchObject({ completed: false, securityPassed: false });
+    expect(result.securityNote).toContain('package.json');
+    expect(result.securityNote).toContain('manifest');
+    expect(buildStructuredOutput(result, false)['securityNote']).toContain('package.json');
+  });
+
+  it.each(['package.json', 'packages/sibling/package.json'])(
+    'fails closed and records an unreadable changed manifest at %s',
+    async (manifest) => {
+      changedFile = manifest;
+      content = '{}\n';
+      manifestAction = (root) => {
+        rmSync(join(root, changedFile));
+        symlinkSync('missing-manifest.json', join(root, changedFile));
+      };
+      const result = await run();
+      expect(result).toMatchObject({ completed: false, securityPassed: false });
+      expect(result.securityNote).toContain(manifest);
+      expect(buildStructuredOutput(result, false)['securityNote']).toContain(manifest);
+    }
+  );
+
+  it('checks every changed manifest, including a renamed destination', async () => {
+    changedFile = 'package.json';
+    content = '{"dependencies":{"safe-pkg":"1.0.0"}}\n';
+    manifestAction = (root) => {
+      mkdirSync(join(root, 'packages/renamed'));
+      renameSync(
+        join(root, 'packages/sibling/package.json'),
+        join(root, 'packages/renamed/package.json')
+      );
+      writeFileSync(
+        join(root, 'packages/renamed/package.json'),
+        '{"dependencies":{"fixture-dependency":"1.0.0"}}\n'
+      );
+    };
+    mocks.osv.mockImplementation((deps: { name: string }[]) =>
+      Promise.resolve(
+        deps.map((dep) => ({
+          error: null,
+          vulnerabilities:
+            dep.name === 'fixture-dependency' ? [{ id: 'TEST-OSV', severity: 'CRITICAL' }] : [],
+        }))
+      )
+    );
+    const result = await run();
+    expect(result).toMatchObject({ completed: false, securityPassed: false });
+    expect(mocks.osv).toHaveBeenCalledTimes(2);
+    expect(result.changes?.diff).toContain('packages/renamed/package.json');
+  });
+
+  it('ignores installed manifests outside the capture scope', async () => {
+    changedFile = 'packages/app/inside.ts';
+    content = 'export const inside = "updated";\n';
+    manifestAction = (root) => {
+      mkdirSync(join(root, 'node_modules/fixture'), { recursive: true });
+      writeFileSync(join(root, 'node_modules/fixture/package.json'), '{invalid json\n');
+    };
+    const result = await run();
+    expect(result).toMatchObject({ completed: true, securityPassed: true });
+    expect(result.changes?.diff).not.toContain('node_modules');
+    expect(mocks.osv).not.toHaveBeenCalled();
+  });
+
   it('preserves dependency blocking for the selected package on an inside-only change', async () => {
     changedFile = 'packages/app/package.json';
     content = '{"name":"fixture-app","dependencies":{"fixture-dependency":"1.0.0"}}\n';
@@ -226,5 +380,78 @@ describe('dev pipeline security and capture scope', () => {
     );
     expect(result.securityComparison).toMatchObject({ complete: true, introducedBlockingCount: 0 });
     expect(mocks.scan.mock.calls[1]?.[0]).toMatchObject({ target: result.changes?.worktreePath });
+  });
+  it.each([
+    ['the lookup throws', () => mocks.osv.mockRejectedValue(new Error('lookup unavailable'))],
+    [
+      'every lookup errors',
+      () => mocks.osv.mockResolvedValue([{ error: 'timeout', vulnerabilities: [] }]),
+    ],
+  ])('blocks a changed manifest whose dependency lookup fails when %s', async (_case, arrange) => {
+    changedFile = 'packages/sibling/package.json';
+    content = '{"dependencies":{"fixture-dependency":"1.0.0"}}\n';
+    arrange();
+    const result = await run();
+    expect(result).toMatchObject({ completed: false, securityPassed: false, securityRan: true });
+    const output = buildStructuredOutput(result, false);
+    expect(output['security']).toMatchObject({ status: 'failed' });
+    expect(output['securityNote']).toContain('packages/sibling/package.json');
+    expect(output['securityNote']).toMatch(/lookup failed/i);
+  });
+
+  it('keeps pass-with-disclosure when the lookup fails for an unchanged workingDir manifest', async () => {
+    changedFile = 'packages/app/inside.ts';
+    content = 'export const inside = "updated";\n';
+    commitWorkingDirManifest('{"dependencies":{"safe-pkg":"1.0.0"}}\n');
+    mocks.osv.mockRejectedValue(new Error('lookup unavailable'));
+    const result = await run();
+    expect(result).toMatchObject({ completed: true, securityPassed: true });
+    expect(mocks.osv).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports partial dependency coverage on a passing run', async () => {
+    changedFile = 'packages/sibling/package.json';
+    const dependencies = Object.fromEntries(
+      Array.from({ length: 21 }, (_, i) => [`fixture-dependency-${String(i)}`, '1.0.0'])
+    );
+    content = `${JSON.stringify({ dependencies })}\n`;
+    osvFlagging();
+    const result = await run();
+    expect(result).toMatchObject({ completed: true, securityPassed: true });
+    const output = buildStructuredOutput(result, false);
+    expect(output['security']).toMatchObject({ status: 'passed' });
+    expect(output['securityNote']).toContain('20 of 21');
+  });
+
+  it('records no coverage note when every declared dependency was checked', async () => {
+    changedFile = 'packages/sibling/package.json';
+    content = '{"dependencies":{"fixture-dependency":"1.0.0"}}\n';
+    osvFlagging();
+    const result = await run();
+    expect(result).toMatchObject({ completed: true, securityPassed: true });
+    expect(mocks.osv).toHaveBeenCalledTimes(1);
+    expect(buildStructuredOutput(result, false)['securityNote']).toBeUndefined();
+  });
+
+  it('checks the unchanged workingDir manifest alongside an unrelated changed manifest', async () => {
+    commitWorkingDirManifest('{"dependencies":{"existing-dependency":"1.0.0"}}\n');
+    changedFile = 'packages/sibling/package.json';
+    content = '{"dependencies":{"fixture-dependency":"1.0.0"}}\n';
+    osvFlagging('existing-dependency');
+    const result = await run();
+    expect(result).toMatchObject({ completed: false, securityPassed: false });
+    const queried = mocks.osv.mock.calls.flatMap((call) =>
+      (call[0] as { name: string }[]).map((dep) => dep.name)
+    );
+    expect(queried.sort()).toEqual(['existing-dependency', 'fixture-dependency']);
+  });
+
+  it('checks a changed workingDir manifest once', async () => {
+    changedFile = 'packages/app/package.json';
+    content = '{"dependencies":{"fixture-dependency":"1.0.0"}}\n';
+    osvFlagging();
+    const result = await run();
+    expect(result).toMatchObject({ completed: true, securityPassed: true });
+    expect(mocks.osv).toHaveBeenCalledTimes(1);
   });
 });

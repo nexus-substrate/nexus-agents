@@ -461,6 +461,7 @@ export function createSecurityScanStage(deps: StageDeps): DevPipelineStages['sec
     const check = checkSecurityScan(target, undefined, {
       baseline: config.securityBaseline,
       dependencyTarget: config.scanTarget,
+      dependencyCaptureRoot: workspaceRoot,
       env: scratchBound ? hermeticGitEnv() : undefined,
       root: scratchBound ? target : undefined,
       wrapper,
