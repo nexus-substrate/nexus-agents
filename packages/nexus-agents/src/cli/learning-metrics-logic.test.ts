@@ -42,15 +42,15 @@ describe('gatherLearningMetrics', () => {
     expect(result.feedbackLoop.totalDecisions).toBe(0);
   });
 
-  it('sets correct reward trend when no metrics', () => {
+  it('marks legacy reward trend placeholders as unmeasured with no metrics', () => {
     const result = gatherLearningMetrics(undefined, undefined, undefined, {
       period: 1,
       format: 'ascii',
       banditStats: false,
       showTrends: true,
     });
-    expect(result.rewardTrend.current).toBe(0);
-    expect(result.rewardTrend.direction).toBe('stable');
+    // Previously asserted 'stable' over no observations (#7242).
+    expect(result.rewardTrend).toMatchObject({ sampleCount: 0, measurementStatus: 'unmeasured' });
   });
 
   it('summary reports unmeasured when no bandit is supplied', () => {

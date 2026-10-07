@@ -244,10 +244,24 @@ function computeBanditProgress(
 function computeRewardTrend(routingMetrics?: {
   avgReward: number;
   avgRewardTrend: number;
+  totalOutcomes: number;
 }): RewardTrend {
-  const current = routingMetrics?.avgReward ?? 0;
+  const sampleCount = routingMetrics?.totalOutcomes ?? 0;
+  // Empty case: the numeric placeholders are not measurements (#7242).
+  // Keep the legacy numeric contract; formatters emit unmeasured/null instead.
+  if (routingMetrics === undefined || sampleCount === 0) {
+    return {
+      current: 0,
+      previous: 0,
+      direction: 'stable',
+      changePercent: 0,
+      sampleCount: 0,
+      measurementStatus: 'unmeasured',
+    };
+  }
+  const current = routingMetrics.avgReward;
   // avgRewardTrend is the change from previous period (can be positive or negative)
-  const trendChange = routingMetrics?.avgRewardTrend ?? 0;
+  const trendChange = routingMetrics.avgRewardTrend;
   const previous = current - trendChange;
 
   let direction: 'improving' | 'declining' | 'stable';
@@ -263,7 +277,14 @@ function computeRewardTrend(routingMetrics?: {
   // Calculate percentage change
   const changePercent = previous !== 0 ? (trendChange / Math.abs(previous)) * 100 : 0;
 
-  return { current, previous, direction, changePercent };
+  return {
+    current,
+    previous,
+    direction,
+    changePercent,
+    sampleCount,
+    measurementStatus: 'measured',
+  };
 }
 
 /** Extract outcome distribution from feedback stats. */

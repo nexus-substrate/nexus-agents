@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatAsciiOutput } from './learning-metrics-format.js';
+import { formatAsciiOutput, formatJsonOutput } from './learning-metrics-format.js';
 import { gatherLearningMetrics } from './learning-metrics-logic.js';
 import type {
   LearningMetricsOptions,
@@ -22,7 +22,7 @@ import type {
   ModelLearningStats,
 } from './learning-metrics-types.js';
 import type { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
-import type { RoutingMetricsCollector } from '../observability/routing-metrics.js';
+import { RoutingMetricsCollector } from '../observability/routing-metrics.js';
 
 const OPTIONS: LearningMetricsOptions = {
   period: 24,
@@ -233,5 +233,129 @@ describe('gatherLearningMetrics records each per-model source (#7180)', () => {
       rewardSource: 'routing',
       routingSelectionCount: 5,
     });
+  });
+});
+
+describe('trend and JSON name missing measurements (#7242)', () => {
+  const options = { ...OPTIONS, showTrends: true };
+
+  it.each([undefined, new RoutingMetricsCollector()])(
+    'renders an absent or empty collector trend as unmeasured',
+    (collector) => {
+      const r = gatherLearningMetrics(undefined, collector, undefined, options);
+      const out = plain(formatAsciiOutput(r, options));
+      expect(out).toContain('Reward Trend:');
+      expect(out).toContain('unmeasured (0 routing outcomes)');
+      expect(out).not.toContain('stable');
+      expect(out).not.toContain('+0.0%');
+      expect(out).not.toContain('Current: 0.000');
+    }
+  );
+
+  it.each([undefined, new RoutingMetricsCollector()])(
+    'serializes absent overall and trend measurements explicitly',
+    (collector) => {
+      const r = gatherLearningMetrics(undefined, collector, undefined, options);
+      const json: unknown = JSON.parse(formatJsonOutput(r));
+      expect(json).toMatchObject({
+        summary: { totalRoutings: 0, overallSuccessRate: null, avgReward: null },
+        rewardTrend: {
+          current: null,
+          previous: null,
+          changePercent: null,
+          direction: 'unmeasured',
+          sampleCount: 0,
+          measurementStatus: 'unmeasured',
+        },
+        models: [],
+      });
+    }
+  );
+
+  it('does not treat routing decisions without outcomes as reward samples', () => {
+    const collector = {
+      getMetrics: () => ({
+        totalDecisions: 10,
+        totalOutcomes: 0,
+        avgReward: 0,
+        avgRewardTrend: 0,
+        modelMetrics: [],
+      }),
+    } as unknown as RoutingMetricsCollector;
+    const r = gatherLearningMetrics(undefined, collector, undefined, options);
+    const json: unknown = JSON.parse(formatJsonOutput(r));
+    expect(json).toMatchObject({
+      rewardTrend: { current: null, direction: 'unmeasured', sampleCount: 0 },
+    });
+    expect(plain(formatAsciiOutput(r, options))).toContain('unmeasured (0 routing outcomes)');
+  });
+
+  it.each([0, 12])('does not use %i bandit pulls as routing evidence', (pullCount) => {
+    const bandit = {
+      getDetailedStats: () => [{ ...model({ pullCount }), featureImportance: [] }],
+      getExplorationStats: () => ({
+        totalPulls: pullCount,
+        explorationRatio: 0.2,
+        armDistribution: [],
+      }),
+    } as unknown as LinUCBBandit;
+    const r = gatherLearningMetrics(bandit, undefined, undefined, options);
+    const json: unknown = JSON.parse(formatJsonOutput(r));
+    expect(json).toMatchObject({
+      summary: { totalRoutings: 0, overallSuccessRate: null },
+      rewardTrend: { direction: 'unmeasured', sampleCount: 0 },
+      models: [
+        {
+          routingSelectionCount: 0,
+          successRate: null,
+          selectionPercent: null,
+          avgQuality: null,
+          avgLatencyMs: null,
+          avgReward: pullCount === 0 ? null : 0.7,
+          cumulativeReward: pullCount === 0 ? null : 8.4,
+        },
+      ],
+    });
+    expect(plain(formatAsciiOutput(r, options))).not.toContain('stable');
+  });
+
+  it.each([0, 0.8])('preserves a measured reward of %f in text and JSON', (reward) => {
+    const collector = {
+      getMetrics: () => ({
+        totalDecisions: 10,
+        totalOutcomes: 10,
+        avgReward: reward,
+        avgRewardTrend: 0,
+        modelMetrics: [
+          {
+            model: 'claude',
+            selectionCount: 10,
+            selectionPercent: 100,
+            avgReward: reward,
+            successRate: reward,
+            avgQuality: reward,
+            avgLatencyMs: 500,
+          },
+        ],
+      }),
+    } as unknown as RoutingMetricsCollector;
+    const r = gatherLearningMetrics(undefined, collector, undefined, options);
+    const json: unknown = JSON.parse(formatJsonOutput(r));
+    expect(json).toMatchObject({
+      summary: { totalRoutings: 10, overallSuccessRate: reward, avgReward: reward },
+      rewardTrend: {
+        current: reward,
+        previous: reward,
+        changePercent: 0,
+        direction: 'stable',
+        sampleCount: 10,
+        measurementStatus: 'measured',
+      },
+      models: [{ successRate: reward, routingSelectionCount: 10, avgReward: reward }],
+    });
+    const out = plain(formatAsciiOutput(r, options));
+    expect(out).toContain('stable (+0.0%)');
+    expect(out).toContain(`Current: ${reward.toFixed(3)}`);
+    expect(out).not.toContain('unmeasured (0 routings)');
   });
 });
