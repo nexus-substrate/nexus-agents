@@ -66,8 +66,10 @@ export interface ExpertContextObservation {
  */
 export interface ContextUtilization {
   readonly tokensUsed: number;
-  readonly contextWindow: number;
-  readonly utilization: number; // 0..1
+  /** Undefined when no model window is known. */
+  readonly contextWindow: number | undefined;
+  /** Undefined when the window or token usage is unmeasured. */
+  readonly utilization: number | undefined; // ratio; can exceed 1
   readonly warned: boolean;
   readonly threshold: number;
 }
@@ -78,23 +80,21 @@ export interface ContextUtilization {
  * spamming the log channel.
  */
 export function computeExpertContextUtilization(
-  observation: Pick<ExpertContextObservation, 'modelId' | 'tokensUsed'>,
+  observation: Pick<ExpertContextObservation, 'modelId' | 'tokensUsed' | 'tokensMeasured'>,
   threshold: number = DEFAULT_CONTEXT_WARN_THRESHOLD
 ): ContextUtilization {
-  // Fail-closed 8 K default when modelId is unknown (#2177). Old 200 K
-  // masked routing-critical metadata for unknown models and gave
-  // utilization a rosy baseline that hid overruns.
-  const UNKNOWN_MODEL_CTX_DEFAULT = 8_192;
+  // No model means no window measurement (#7251), rather than an assumed one.
   const contextWindow =
-    observation.modelId !== undefined
-      ? getModelContextWindow(observation.modelId)
-      : UNKNOWN_MODEL_CTX_DEFAULT;
-  const utilization = contextWindow > 0 ? observation.tokensUsed / contextWindow : 0;
+    observation.modelId !== undefined ? getModelContextWindow(observation.modelId) : undefined;
+  const utilization =
+    contextWindow !== undefined && contextWindow > 0 && observation.tokensMeasured !== false
+      ? observation.tokensUsed / contextWindow
+      : undefined;
   return {
     tokensUsed: observation.tokensUsed,
     contextWindow,
     utilization,
-    warned: utilization >= threshold,
+    warned: utilization !== undefined && utilization >= threshold,
     threshold,
   };
 }
@@ -112,7 +112,7 @@ export function observeExpertContext(
 ): ContextUtilization {
   try {
     const util = computeExpertContextUtilization(observation, threshold);
-    if (util.warned) {
+    if (util.warned && util.utilization !== undefined) {
       logger?.warn('context_warning', {
         event: 'context_warning',
         expertId: observation.expertId,
@@ -131,16 +131,17 @@ export function observeExpertContext(
         expertId: observation.expertId,
         role: observation.role,
         modelId: observation.modelId,
-        utilizationPercent: Math.round(util.utilization * 100),
+        utilizationPercent:
+          util.utilization !== undefined ? Math.round(util.utilization * 100) : undefined,
       });
     }
     return util;
   } catch {
-    // Telemetry must never throw. Return a safe default.
+    // Telemetry must never throw or turn a failed measurement into a measured zero.
     return {
       tokensUsed: observation.tokensUsed,
-      contextWindow: 0,
-      utilization: 0,
+      contextWindow: undefined,
+      utilization: undefined,
       warned: false,
       threshold,
     };

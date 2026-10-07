@@ -327,7 +327,7 @@ function observeExpertContextIfOk(
   logger: ILogger | undefined
 ): void {
   if (!result.ok) return;
-  const expertModelId = expert.expertConfig.modelPreference?.modelId;
+  const expertModelId = resolveExecutedModelId(result, expert);
   const observation: ExpertContextObservation = {
     expertId: expert.id,
     role: expert.role,

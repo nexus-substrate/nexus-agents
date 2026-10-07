@@ -125,19 +125,28 @@ function captureCreateTask(deps: ExecuteExpertDeps): CapturedCreateTask {
 
 async function executeRegisteredExpert(
   tokensUsed: number,
-  tokensMeasured: boolean
-): Promise<{ response: ExecuteExpertResponse; completion: Record<string, unknown> }> {
+  tokensMeasured: boolean,
+  options: { model?: string; preference?: string } = { model: 'test-model' }
+): Promise<{
+  response: ExecuteExpertResponse;
+  completion: Record<string, unknown>;
+  logger: ILogger;
+}> {
   const expert = createMockExpert('code_expert');
+  if (options.preference !== undefined) {
+    expert.expertConfig.modelPreference = { modelId: options.preference };
+  }
   expert.execute = vi.fn().mockResolvedValue({
     ok: true,
     value: {
       output: 'analysis',
-      metadata: { durationMs: 10, tokensUsed, tokensMeasured, toolsUsed: [], model: 'test-model' },
+      metadata: { durationMs: 10, tokensUsed, tokensMeasured, toolsUsed: [], model: options.model },
     },
   });
   const info = vi.fn();
   const notifier: IMcpNotifier = { info, debug: vi.fn(), warn: vi.fn() };
-  const deps = createTestDeps();
+  const logger = createMockLogger();
+  const deps = createTestDeps(logger);
   deps.expertRegistry.set('test-expert', expert);
   deps.notifier = notifier;
   deps.cliCache = {
@@ -159,8 +168,64 @@ async function executeRegisteredExpert(
   const completion = info.mock.calls.find(
     (call) => (call[1] as Record<string, unknown>)['event'] === 'expert_complete'
   )?.[1] as Record<string, unknown>;
-  return { response: JSON.parse(stored.content[0]!.text) as ExecuteExpertResponse, completion };
+  return {
+    response: JSON.parse(stored.content[0]!.text) as ExecuteExpertResponse,
+    completion,
+    logger,
+  };
 }
+
+describe('execute_expert context utilization (#7251)', () => {
+  it('observes the served large-window model when the expert has no preference', async () => {
+    const { response, logger } = await executeRegisteredExpert(41_370, true, {
+      model: 'gpt-6.1-sol',
+    });
+
+    expect(response.modelUsed).toBe('gpt-6.1-sol');
+    expect(logger.warn).not.toHaveBeenCalledWith('context_warning', expect.anything());
+    expect(logger.debug).toHaveBeenCalledWith(
+      'context_utilization',
+      expect.objectContaining({ modelId: response.modelUsed, utilizationPercent: 4 })
+    );
+  });
+
+  it('prefers the served model over a different configured preference', async () => {
+    const { response, logger } = await executeRegisteredExpert(100_000, true, {
+      model: 'claude-opus',
+      preference: 'gpt-6.1-sol',
+    });
+
+    expect(response.modelUsed).toBe('claude-opus');
+    expect(logger.debug).toHaveBeenCalledWith(
+      'context_utilization',
+      expect.objectContaining({ modelId: response.modelUsed, utilizationPercent: 10 })
+    );
+  });
+
+  it('reports utilization as unmeasured when neither execution nor preference names a model', async () => {
+    const { response, logger } = await executeRegisteredExpert(41_370, true, {});
+
+    expect(response.modelUsed).toBeUndefined();
+    expect(response.tokensMeasured).toBe(true);
+    expect(logger.warn).not.toHaveBeenCalledWith('context_warning', expect.anything());
+    expect(logger.debug).toHaveBeenCalledWith(
+      'context_utilization',
+      expect.objectContaining({ modelId: undefined, utilizationPercent: undefined })
+    );
+  });
+
+  it('keeps unreported token usage unmeasured even when the served model is known (#4743)', async () => {
+    const { response, logger } = await executeRegisteredExpert(0, false, {
+      model: 'claude-opus',
+    });
+
+    expect(response.tokensMeasured).toBe(false);
+    expect(logger.debug).toHaveBeenCalledWith(
+      'context_utilization',
+      expect.objectContaining({ modelId: 'claude-opus', utilizationPercent: undefined })
+    );
+  });
+});
 
 describe('ExecuteExpertInputSchema', () => {
   describe('expertId validation', () => {
