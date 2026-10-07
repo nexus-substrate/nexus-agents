@@ -17,6 +17,9 @@ const logger = createLogger({ component: 'gemini-parser' });
 /**
  * Gemini CLI response structure.
  * (Source: CLI testing 2026-01-04)
+ *
+ * Output shape of the retired standalone `gemini` CLI (EOL, #4389); see the
+ * deprecation on {@link GeminiResponseParser}.
  */
 export interface GeminiCliResponse {
   readonly session_id?: string;
@@ -47,6 +50,11 @@ export interface GeminiCliResponse {
 /**
  * Parser for Gemini CLI JSON output.
  * Implements defensive parsing - only requires essential fields.
+ *
+ * @deprecated Parses the retired standalone `gemini` CLI (EOL, #4389), which
+ * no adapter spawns any more: the gemini arm runs `agy` and parses it with
+ * `AgyResponseParser`. Nothing in nexus-agents consumes this class; it stays
+ * exported only because removing public API is a breaking change.
  */
 export class GeminiResponseParser implements ICliResponseParser<GeminiCliResponse> {
   readonly name = 'gemini-parser';

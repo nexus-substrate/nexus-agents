@@ -9,6 +9,8 @@ import { describe, it, expect } from 'vitest';
 import { GeminiResponseParser } from './gemini-parser.js';
 
 describe('GeminiResponseParser', () => {
+  // Deprecated public API (#4389); its behaviour stays pinned until removal.
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- testing the deprecated class itself
   const parser = new GeminiResponseParser();
 
   describe('metadata', () => {

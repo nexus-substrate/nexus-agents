@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GeminiCliAdapter, createGeminiAdapter } from './gemini-adapter.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 import type { CommandConfig } from '../subprocess-adapter.js';
+import { AgyResponseParser } from '../parsers/agy-parser.js';
 
 /** Expected default model ID for Gemini, derived from canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('gemini'));
@@ -318,13 +319,12 @@ describe('GeminiCliAdapter runs agy, not the retired gemini CLI (#4346)', () => 
   });
 });
 
-describe('GeminiCliAdapter resilient parsing', () => {
-  it('should use resilient parser for JSON parsing', async () => {
+describe('GeminiCliAdapter parses agy output (#4389)', () => {
+  it('uses the fail-closed agy parser, not a parser for the retired gemini CLI', async () => {
     const adapter = new GeminiCliAdapter();
+    const { parser } = adapter as unknown as { parser: unknown };
 
-    // The adapter internally uses ResilientGeminiParser
-    // This is verified by the adapter's construction
-    expect(adapter.name).toBe('gemini');
+    expect(parser).toBeInstanceOf(AgyResponseParser);
 
     await adapter.dispose();
   });

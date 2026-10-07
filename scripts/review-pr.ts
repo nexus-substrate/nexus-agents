@@ -1,8 +1,8 @@
 /**
  * CLI-Based PR Review Script
  *
- * Uses locally authenticated CLI tools (Claude, Gemini, Codex) for PR review
- * instead of API calls. Leverages existing subscriptions at zero marginal cost.
+ * Uses locally authenticated CLI tools (Claude, Gemini via `agy`, Codex) for PR
+ * review instead of API calls. Leverages existing subscriptions at zero marginal cost.
  *
  * Usage:
  *   pnpm review <PR#|PR_URL> [--model=claude|gemini|codex] [--dry-run] [--all]
@@ -17,7 +17,14 @@ import { createHash } from 'node:crypto';
 import { writeFileSync, rmSync } from 'node:fs';
 import { nexusMkdtempSync } from '../packages/nexus-agents/src/config/nexus-tmp-dir.js';
 import { join } from 'node:path';
+import { GEMINI_CLI_COMMAND } from '../packages/nexus-agents/src/cli-adapters/cli-error-envelope.js';
 import { REVIEW_PROMPT } from './review-pr-prompt.js';
+import {
+  MODEL_COMMANDS,
+  buildCLIInvocation,
+  collectOutput,
+  extractReviewText,
+} from './review-pr-cli.js';
 
 // Types
 interface ReviewOptions {
@@ -51,12 +58,6 @@ interface PRInfo {
 }
 
 // Constants
-const MODEL_COMMANDS: Record<string, { cmd: string; args: string[] }> = {
-  claude: { cmd: 'claude', args: ['-p', '--output-format', 'text'] },
-  gemini: { cmd: 'gemini', args: [] },
-  codex: { cmd: 'codex', args: ['exec'] },
-};
-
 const HELP_TEXT = `
 CLI-Based PR Review
 
@@ -76,7 +77,7 @@ Examples:
 
 Model Selection Guidance:
   - claude: Best for security, architecture, complex reasoning
-  - gemini: Best for large files (1M context), bulk analysis
+  - gemini: Best for large files (1M context), bulk analysis (runs agy)
   - codex:  Best for code quality, test coverage
 `;
 
@@ -99,11 +100,9 @@ function checkCLI(name: string, versionCmd: string): CLIHealth {
 }
 
 function getAvailableCLIs(): CLIHealth[] {
-  return [
-    checkCLI('claude', 'claude --version 2>/dev/null'),
-    checkCLI('gemini', 'gemini --version 2>/dev/null'),
-    checkCLI('codex', 'codex --version 2>/dev/null'),
-  ];
+  return Object.entries(MODEL_COMMANDS).map(([name, { cmd }]) =>
+    checkCLI(name, `${cmd} --version 2>/dev/null`)
+  );
 }
 
 function selectModel(preferred: string, available: CLIHealth[]): string | null {
@@ -121,7 +120,7 @@ function selectModel(preferred: string, available: CLIHealth[]): string | null {
   }
 
   console.error(
-    'Error: No CLI tools available. Install and authenticate claude, gemini, or codex.'
+    `Error: No CLI tools available. Install and authenticate claude, ${GEMINI_CLI_COMMAND} (gemini seat), or codex.`
   );
   return null;
 }
@@ -143,61 +142,21 @@ function getPRInfo(prNumber: number): PRInfo {
   return { title: data.title, author: data.author.login, url: data.url };
 }
 
-function collectOutput(
-  child: ChildProcessWithoutNullStreams
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
-    child.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-    child.on('close', () => {
-      resolve({ stdout, stderr });
-    });
-  });
-}
-
 function spawnCLI(model: string, prompt: string): ChildProcessWithoutNullStreams {
-  const config = MODEL_COMMANDS[model];
-  if (config === undefined) {
-    throw new Error(`Unknown model: ${model}`);
-  }
-
-  if (model === 'claude') {
-    // Avoid shell interpolation entirely — pipe prompt via stdin instead of
-    // building a shell-escaped echo command. The prior `replace(/"/g, '\\"')`
-    // didn't escape backslashes (CodeQL js/incomplete-sanitization).
-    const child = spawn(config.cmd, config.args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    child.stdin.write(prompt);
-    child.stdin.end();
-    return child;
-  }
-
-  if (model === 'gemini') {
-    return spawn(config.cmd, [prompt], { stdio: ['pipe', 'pipe', 'pipe'] });
-  }
-
-  // codex
-  return spawn(config.cmd, [...config.args, prompt], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const { cmd, args, stdin } = buildCLIInvocation(model, prompt);
+  const child = spawn(cmd, [...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+  if (stdin !== undefined) child.stdin.write(stdin);
+  child.stdin.end();
+  return child;
 }
 
 async function runCLIReview(model: string, prompt: string): Promise<string> {
   const child = spawnCLI(model, prompt);
-  const { stdout, stderr } = await collectOutput(child);
-
-  return new Promise((resolve, reject) => {
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(`${model} exited with code ${String(code)}: ${stderr}`));
-      }
-    });
-  });
+  const { stdout, stderr, code } = await collectOutput(child);
+  if (code !== 0) {
+    throw new Error(`${model} exited with code ${String(code)}: ${stderr}`);
+  }
+  return extractReviewText(model, stdout);
 }
 
 function parseReviewOutput(output: string): {

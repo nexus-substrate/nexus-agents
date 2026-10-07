@@ -24,7 +24,7 @@ Detailed installation instructions for nexus-agents across all platforms, Docker
 | ------------ | ------------------------------ |
 | Docker       | Sandboxed code execution       |
 | Claude CLI   | Enhanced Claude model access   |
-| Gemini CLI   | Enhanced Gemini model access   |
+| agy          | Enhanced Gemini model access   |
 | Codex CLI    | Enhanced OpenAI model access   |
 | OpenCode CLI | Enhanced OpenCode model access |
 
@@ -232,12 +232,21 @@ npm install -g @anthropic-ai/claude-code
 claude auth login
 ```
 
-### Gemini CLI
+### Antigravity CLI (`agy`) — serves the Gemini arm
+
+The standalone `gemini` CLI (`@google/gemini-cli`) is retired: it exits 55 with
+`IneligibleTierError` on every invocation. The `gemini` routing arm now spawns
+`agy`, Google's Antigravity CLI, which serves the Gemini models. Install `agy`
+following Google's Antigravity instructions, sign in through `agy` itself, then
+confirm it is on `PATH`:
 
 ```bash
-npm install -g @google/gemini-cli
-gemini auth login
+agy --version
+agy models    # lists the model slugs agy accepts
 ```
+
+`agy` does not read `GOOGLE_AI_API_KEY`, `GEMINI_API_KEY` or
+`~/.gemini/oauth_creds.json`; those configure the old CLI only.
 
 ### Codex CLI
 

@@ -84,6 +84,7 @@ export { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 // Parsers
 export { ClaudeResponseParser } from './parsers/claude-parser.js';
 export type { ClaudeCliResponse } from './parsers/claude-parser.js';
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- public API; removal is breaking (#4389)
 export { GeminiResponseParser } from './parsers/gemini-parser.js';
 export type { GeminiCliResponse } from './parsers/gemini-parser.js';
 export { CodexResponseParser } from './parsers/codex-parser.js';

@@ -9,28 +9,6 @@
 export { ClaudeResponseParser } from './claude-parser.js';
 export type { ClaudeCliResponse } from './claude-parser.js';
 
-export { GeminiResponseParser } from './gemini-parser.js';
-export type { GeminiCliResponse } from './gemini-parser.js';
-
-export { ResilientGeminiParser, createResilientGeminiParser } from './gemini-parser-resilient.js';
-export type {
-  ResilientParseResult,
-  ParseStrategy,
-  GeminiErrorInfo,
-  TokenTotals,
-} from './gemini-parser-resilient-types.js';
-
-// Re-export helpers for advanced use cases
-export {
-  asRecord,
-  extractStringField,
-  extractUsageFromRecord,
-  extractSessionIdFromText,
-  extractTextFromMarkdown,
-  extractErrorMessage,
-  isLikelyErrorOutput,
-} from './gemini-parser-resilient-helpers.js';
-
 export { CodexResponseParser } from './codex-parser.js';
 export type {
   CodexCliResponse,
