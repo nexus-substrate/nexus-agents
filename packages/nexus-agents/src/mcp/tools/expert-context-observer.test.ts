@@ -70,31 +70,87 @@ describe('resolveContextWarnThreshold', () => {
 });
 
 describe('computeExpertContextUtilization', () => {
-  it('uses fail-closed 8k default window when modelId is undefined (#2177)', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 4_096 });
-    expect(u.contextWindow).toBe(8_192);
-    expect(u.utilization).toBeCloseTo(0.5, 5);
+  it('leaves window and utilization unmeasured when no model is known (#7251)', () => {
+    // Previously pinned the assumed 8K window (#2177) as a measurement.
+    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 41_370 });
+    expect(u.contextWindow).toBeUndefined();
+    expect(u.utilization).toBeUndefined();
     expect(u.warned).toBe(false);
   });
 
   it('sets warned=true when utilization >= threshold', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 7_000 }, 0.85);
+    const u = computeExpertContextUtilization(
+      { modelId: 'claude-opus', tokensUsed: 850_000 },
+      0.85
+    );
     expect(u.utilization).toBeGreaterThanOrEqual(0.85);
     expect(u.warned).toBe(true);
   });
 
   it('sets warned=false when utilization < threshold', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 4_000 }, 0.85);
+    const u = computeExpertContextUtilization(
+      { modelId: 'claude-opus', tokensUsed: 400_000 },
+      0.85
+    );
+    expect(u.contextWindow).toBe(1_000_000);
+    expect(u.utilization).toBeCloseTo(0.4, 5);
     expect(u.warned).toBe(false);
   });
 
   it('honors custom threshold', () => {
-    const u = computeExpertContextUtilization({ modelId: undefined, tokensUsed: 3_000 }, 0.3);
+    const u = computeExpertContextUtilization({ modelId: 'claude-opus', tokensUsed: 300_000 }, 0.3);
     expect(u.warned).toBe(true);
+  });
+
+  it('distinguishes unreported usage from a measured zero (#4743)', () => {
+    const missing = computeExpertContextUtilization({
+      modelId: 'claude-opus',
+      tokensUsed: 0,
+      tokensMeasured: false,
+    });
+    const zero = computeExpertContextUtilization({
+      modelId: 'claude-opus',
+      tokensUsed: 0,
+      tokensMeasured: true,
+    });
+    expect(missing.contextWindow).toBe(1_000_000);
+    expect(missing.utilization).toBeUndefined();
+    expect(missing.warned).toBe(false);
+    expect(zero.utilization).toBe(0);
+    expect(zero.warned).toBe(false);
   });
 });
 
 describe('observeExpertContext', () => {
+  it('logs unmeasured utilization without warning when no model is known', () => {
+    const logger = makeLogger();
+    const result = observeExpertContext(
+      makeObservation({ modelId: undefined, tokensUsed: 41_370 }),
+      logger
+    );
+    expect(result.contextWindow).toBeUndefined();
+    expect(result.utilization).toBeUndefined();
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      'context_utilization',
+      expect.objectContaining({
+        modelId: undefined,
+        utilizationPercent: undefined,
+      })
+    );
+  });
+
+  it('returns unmeasured utilization if telemetry fails', () => {
+    const logger = makeLogger();
+    vi.mocked(logger.debug).mockImplementation(() => {
+      throw new Error('logger unavailable');
+    });
+    const result = observeExpertContext(makeObservation(), logger);
+    expect(result.contextWindow).toBeUndefined();
+    expect(result.utilization).toBeUndefined();
+    expect(result.warned).toBe(false);
+  });
+
   it('emits warn log when threshold crossed', () => {
     const logger = makeLogger();
     // claude-opus has a 1M context window per config/in-tree-data.ts, so
