@@ -374,6 +374,7 @@ jobs:
         run: pnpm --filter nexus-memory --fail-if-no-match build
 
       - name: Check generated tool reference
+        if: ${{ !cancelled() }}
         run: |
           if pnpm exec tsx scripts/generate-tool-reference.ts --check; then
             echo "✅ Generated tool reference is up to date"
@@ -385,9 +386,11 @@ jobs:
 
       # #7200: reuse this blocking generator job and its aggregate verdict.
       - name: Check generated environment reference
+        if: ${{ !cancelled() }}
         run: pnpm exec tsx scripts/generate-env-reference.ts --check
 
       - name: Check generated CLI reference
+        if: ${{ !cancelled() }}
         run: pnpm exec tsx scripts/generate-cli-reference.ts --check
 
   # Job 6c: Strategy-Reference Drift (#3838) — the generated strategy-manifest

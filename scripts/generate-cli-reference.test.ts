@@ -43,6 +43,15 @@ afterEach(() => {
 });
 
 describe('generate-cli-reference', () => {
+  it('sorts commands by codepoint rather than locale', () => {
+    const output = renderCliReference(`export const COMMAND_CATALOG = [
+      { command: 'a', audience: 'essential', description: 'Lowercase' },
+      { command: 'Z', audience: 'essential', description: 'Uppercase' },
+      { command: 'A_', audience: 'essential', description: 'Underscore' },
+      { command: 'A0', audience: 'essential', description: 'Digit' },
+    ];`);
+    expect(output.match(/^\| `[^`]+`/gm)).toEqual(['| `A0`', '| `A_`', '| `Z`', '| `a`']);
+  });
   it('renders angle-bracket placeholders as text rather than inline HTML', () => {
     const output = renderCliReference(`export const COMMAND_CATALOG = [
       { command: 'init', audience: 'essential', description: 'Initialize <repo> at <path>' },

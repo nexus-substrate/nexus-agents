@@ -8,16 +8,21 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as ts from 'typescript';
-import { DOCS_ROOT, ROOT } from './script-paths.js';
+import { ROOT } from './script-paths.js';
 
 const SOURCE_PATH = 'packages/nexus-agents/src/config/env-schema.ts';
-const OUTPUT_PATH = join(DOCS_ROOT, 'reference/environment.md');
+const OUTPUT_PATH = 'docs/reference/environment.md';
 
 export interface EnvEntry {
   readonly name: string;
   readonly acceptedValues: string;
   readonly defaultValue: string;
   readonly description: string;
+}
+
+export interface EnvFamily {
+  readonly prefix: string;
+  readonly suffixes: string;
 }
 
 interface ValidatorInfo {
@@ -84,7 +89,7 @@ function baseValidator(method: string, args: readonly ts.Expression[]): Validato
     ) {
       throw new Error('env-reference: enum must have a nonempty literal value list');
     }
-    acceptedValues = values.elements.map(literal).join(' | ');
+    acceptedValues = values.elements.map((value) => `\`${literal(value)}\``).join(' | ');
   } else if (method === 'literal') {
     acceptedValues = literal(args[0]);
   } else if (['string', 'number', 'boolean'].includes(method)) {
@@ -129,7 +134,17 @@ function applyModifier(
   }
 }
 
-function sourceDescription(prop: ts.PropertyAssignment, source: ts.SourceFile): string {
+function sourceDescription(
+  prop: ts.PropertyAssignment,
+  source: ts.SourceFile,
+  next: ts.PropertyAssignment | undefined,
+  names: ReadonlySet<string>
+): string {
+  // A comment over multiple keys is a group note, not the first key's description.
+  if (next !== undefined) {
+    const between = source.text.slice(prop.end, next.getStart(source));
+    if (!/\r?\n[\t ]*\r?\n|\/\/\s*---/.test(between)) return '';
+  }
   const comments = ts.getLeadingCommentRanges(source.text, prop.getFullStart()) ?? [];
   const adjacent: string[] = [];
   let nextStart = prop.getStart(source);
@@ -146,12 +161,13 @@ function sourceDescription(prop: ts.PropertyAssignment, source: ts.SourceFile): 
   }
   const description = adjacent.join(' ').replace(/\s+/g, ' ').trim();
   // Detached removal notes describe an absent entry, not the next live field.
-  return /\bremoved\b/i.test(description) ? '' : description;
+  const removalNames = description.matchAll(
+    /\bNEXUS_[A-Z0-9_]+\b(?=[`'"]?\s+(?:(?:was|is|were)\s+)?removed\b)/gi
+  );
+  return [...removalNames].some(([name]) => !names.has(name)) ? '' : description;
 }
 
-/** Empty or unparseable schemas are failures, never an apparently healthy page. */
-export function parseEnvSchema(content: string): EnvEntry[] {
-  const source = ts.createSourceFile('env-schema.ts', content, ts.ScriptTarget.Latest, true);
+function declarationsIn(source: ts.SourceFile): Map<string, ts.Expression> {
   const declarations = new Map<string, ts.Expression>();
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
@@ -161,17 +177,22 @@ export function parseEnvSchema(content: string): EnvEntry[] {
       }
     }
   }
-  return schemaProperties(declarations.get('NexusEnvSchema'), source).map((prop) => {
-    if (
-      !ts.isPropertyAssignment(prop) ||
-      (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name))
-    ) {
-      throw new Error('env-reference: schema entries must be named property assignments');
-    }
+  return declarations;
+}
+
+/** Empty or unparseable schemas are failures, never an apparently healthy page. */
+export function parseEnvSchema(content: string): EnvEntry[] {
+  const source = ts.createSourceFile('env-schema.ts', content, ts.ScriptTarget.Latest, true);
+  const declarations = declarationsIn(source);
+  const properties = schemaProperties(declarations.get('NexusEnvSchema'), source);
+  const names = new Set(
+    properties.map((prop) => prop.name.getText(source).replace(/^['"]|['"]$/g, ''))
+  );
+  return properties.map((prop, index) => {
     const info = validatorInfo(prop.initializer, declarations);
-    const comment = sourceDescription(prop, source);
+    const comment = sourceDescription(prop, source, properties[index + 1], names);
     return {
-      name: prop.name.text,
+      name: prop.name.getText(source).replace(/^['"]|['"]$/g, ''),
       ...info,
       description:
         info.description === 'Not described in schema' && comment !== ''
@@ -184,7 +205,7 @@ export function parseEnvSchema(content: string): EnvEntry[] {
 function schemaProperties(
   schema: ts.Expression | undefined,
   source: ts.SourceFile
-): readonly ts.ObjectLiteralElementLike[] {
+): readonly ts.PropertyAssignment[] {
   if (
     schema === undefined ||
     !ts.isCallExpression(schema) ||
@@ -195,7 +216,47 @@ function schemaProperties(
     throw new Error('env-reference: missing or unreadable NexusEnvSchema object');
   }
   if (schema.arguments[0].properties.length === 0) throw new Error('env-reference: empty schema');
-  return schema.arguments[0].properties;
+  return schema.arguments[0].properties.map((prop) => {
+    if (
+      !ts.isPropertyAssignment(prop) ||
+      (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name))
+    ) {
+      throw new Error('env-reference: schema entries must be named property assignments');
+    }
+    return prop;
+  });
+}
+
+/** Render suffix rules as source expressions without executing runtime imports. */
+export function parseEnvFamilies(content: string): EnvFamily[] {
+  const source = ts.createSourceFile('env-schema.ts', content, ts.ScriptTarget.Latest, true);
+  const families = declarationsIn(source).get('DYNAMIC_FAMILIES');
+  if (families === undefined || !ts.isArrayLiteralExpression(families)) {
+    throw new Error('env-reference: missing or unreadable DYNAMIC_FAMILIES array');
+  }
+  // An explicit empty array declares that no runtime variable families exist.
+  return families.elements.map((family) => {
+    if (!ts.isObjectLiteralExpression(family)) throw new Error('env-reference: unreadable family');
+    const fields = new Map(
+      family.properties
+        .filter(ts.isPropertyAssignment)
+        .map((prop) => [prop.name.getText(source), prop.initializer])
+    );
+    const prefix = fields.get('prefix');
+    const suffixes = fields.get('suffixes');
+    if (
+      prefix === undefined ||
+      !ts.isStringLiteralLike(prefix) ||
+      prefix.text === '' ||
+      suffixes === undefined
+    ) {
+      throw new Error('env-reference: family requires a literal prefix and suffix rule');
+    }
+    return {
+      prefix: prefix.text,
+      suffixes: ts.isStringLiteralLike(suffixes) ? suffixes.text : suffixes.getText(source),
+    };
+  });
 }
 
 function escapeCell(value: string): string {
@@ -214,10 +275,13 @@ function escapeDescription(value: string): string {
     .join('');
 }
 
-export function renderEnvReference(entries: readonly EnvEntry[]): string {
+export function renderEnvReference(
+  entries: readonly EnvEntry[],
+  families: readonly EnvFamily[] = []
+): string {
   if (entries.length === 0) throw new Error('env-reference: empty schema');
   const rows = [...entries]
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     .map(
       (entry) =>
         `| \`${escapeCell(entry.name)}\` | ${escapeCell(entry.acceptedValues)} | ${escapeCell(entry.defaultValue)} | ${escapeDescription(entry.description)} |`
@@ -247,13 +311,36 @@ export function renderEnvReference(entries: readonly EnvEntry[]): string {
     '| ---- | ---------------------- | ------- | ----------- |',
     ...rows,
     '',
+    ...renderFamilies(families),
   ].join('\n');
 }
 
+function renderFamilies(families: readonly EnvFamily[]): string[] {
+  const intro = [
+    '## Variable families',
+    '',
+    'Family names combine a registered prefix with a suffix accepted by its source rule.',
+    'Suffix expressions below are shown from `DYNAMIC_FAMILIES` without evaluation.',
+    '',
+  ];
+  if (families.length === 0) return [...intro, 'No variable families registered.', ''];
+  return [
+    ...intro,
+    '| Prefix | Suffix rule |',
+    '| ------ | ----------- |',
+    ...[...families]
+      .sort((a, b) => (a.prefix < b.prefix ? -1 : a.prefix > b.prefix ? 1 : 0))
+      .map((family) => `| \`${escapeCell(family.prefix)}\` | \`${escapeCell(family.suffixes)}\` |`),
+    '',
+  ];
+}
+
 function main(): void {
-  const output = renderEnvReference(parseEnvSchema(readFileSync(join(ROOT, SOURCE_PATH), 'utf8')));
+  const content = readFileSync(join(ROOT, SOURCE_PATH), 'utf8');
+  const output = renderEnvReference(parseEnvSchema(content), parseEnvFamilies(content));
+  const target = join(ROOT, OUTPUT_PATH);
   if (process.argv.includes('--check')) {
-    if (!existsSync(OUTPUT_PATH) || readFileSync(OUTPUT_PATH, 'utf8') !== output) {
+    if (!existsSync(target) || readFileSync(target, 'utf8') !== output) {
       console.error(
         `Environment reference drift: ${OUTPUT_PATH}. Run pnpm exec tsx scripts/generate-env-reference.ts`
       );
@@ -263,8 +350,8 @@ function main(): void {
     console.log('Environment reference up to date.');
     return;
   }
-  mkdirSync(join(DOCS_ROOT, 'reference'), { recursive: true });
-  writeFileSync(OUTPUT_PATH, output, 'utf8');
+  mkdirSync(join(ROOT, 'docs/reference'), { recursive: true });
+  writeFileSync(target, output, 'utf8');
   console.log(`Generated ${OUTPUT_PATH}`);
 }
 
