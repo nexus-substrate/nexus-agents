@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.3.1
+
+### Patch Changes
+
+- [#7257](https://github.com/nexus-substrate/nexus-agents/pull/7257) [`3d4c22e`](https://github.com/nexus-substrate/nexus-agents/commit/3d4c22e5de7bf18404fec78d74e7344bca6ffd62) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `learning-metrics` reporting missing routing data as measured zeroes. The text trend now says `unmeasured` without routing outcomes. JSON reports absent summary and per-model measurements as `null`, and an absent trend as `direction: "unmeasured"` with `sampleCount: 0`. Measured values, including real zeroes, are preserved.
+
 ## 11.3.0
 
 ### Minor Changes
