@@ -102,7 +102,7 @@ import {
     <p class="terminal-cite">
       Verbatim from a real run on 2026-05-17 (a proposal from the website backlog;
       the panel said yes 4 to 2). Seven specialised voter roles deliberate via your
-      local Claude, Codex, and Gemini CLIs — no API keys required to start. Pass
+      authenticated Claude Code or Codex CLIs — no separate API keys required. Pass
       <code>--record &lt;issue-number&gt;</code> to write the result back to GitHub as a
       structured comment; pass <code>--verbose</code> to print per-vote verification
       hashes.
@@ -130,6 +130,13 @@ nexus-agents doctor</code></pre>
         </p>
       </div>
 
+      <p class="proof-next">
+        To try a walkthrough before configuring CLI authentication, run
+        <code>nexus-agents tour</code>. It shows illustrative cached fixtures
+        without live model calls, API keys, or an authenticated CLI.
+        Add <code>--non-interactive</code> to skip the prompts between steps.
+      </p>
+
       <div class="proof-step">
         <p class="step-label"><span class="step-num">2</span> Run a real consensus vote (no API keys needed)</p>
         <pre data-copy class="code-step"><code>nexus-agents vote --quick \
@@ -138,7 +145,8 @@ nexus-agents doctor</code></pre>
           <span class="expected-tag">expected</span>
           Output in the same shape as the hero transcript above, but with 3 voters
           instead of 7 (<code>--quick</code>). Roles deliberate via your local
-          Claude/Codex/Gemini CLIs (whichever you have installed). Approval, reject,
+          authenticated Claude Code or Codex CLIs; at least one must be available.
+          Gemini and OpenCode do not serve voter seats. Approval, reject,
           abstain counts + final decision print to the terminal.
         </p>
       </div>
@@ -286,13 +294,13 @@ nexus-agents setup</code></pre>
           </p>
         </a>
 
-        <a href="/nexus-agents/docs/workflows/self_development_workflow/" class="next-card">
+        <a href="/nexus-agents/docs/getting-started/compose_your_first_pipeline/" class="next-card">
           <p class="next-kind">try</p>
           <h3 class="next-title">Run the full dev pipeline.</h3>
           <p class="next-blurb">
-            Research → plan → vote → implement → QA, end-to-end on a real change.
-            Three modes: autonomous, harness, dry-run. The workflow nexus-agents
-            uses on itself.
+            Chain research, consensus, and <code>run_dev_pipeline</code> for a
+            concrete task. Start with a dry run to review the plan and vote
+            before implementation.
           </p>
         </a>
 
@@ -301,7 +309,7 @@ nexus-agents setup</code></pre>
           <h3 class="next-title">Tune routing &amp; experts.</h3>
           <p class="next-blurb">
             Model preferences, custom expert personae, consensus thresholds,
-            sandbox modes, ClawGuard policy — what each knob does, and the
+            sandbox modes, PolicyFirewall settings — what each knob does, and the
             safe defaults to start from.
           </p>
         </a>
