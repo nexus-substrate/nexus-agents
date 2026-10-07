@@ -98,6 +98,15 @@ Only `id`, `vendor`, and `family` are required — behavior fields default sensi
 
 Schema: [manifest-overlay.ts](../../packages/nexus-agents/src/config/manifest-overlay.ts).
 
+An overlay entry replaces the lower-tier entry with the same id,
+with one exception (#7132): an entry that omits `pricing` keeps the lower
+tier's rate (including cache rates and its billing-scope provenance). This
+applies through every tier, including a user overlay beneath an operator
+manifest. The inherited rate keeps its price basis: an in-tree or catalog
+rate stays `list`, and a user-declared rate stays `declared`. An entry that
+supplies `pricing` replaces the whole rate object (missing cache rates are not
+filled in) and is reported `declared` (#4600).
+
 ## Pricing sources and freshness
 
 Pricing resolves through the full registry chain, highest priority first:

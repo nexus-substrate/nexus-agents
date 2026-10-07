@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { ModelRegistry } from './model-registry.js';
 
 import {
   loadManifestOverlay,
@@ -240,8 +241,8 @@ describe('loadManifestOverlay USER+OPERATOR merge (#3351)', () => {
       [MANIFEST_ENV_VAR]: operatorPath,
     };
     const result = loadManifestOverlay({ env });
-    const shared = result.entries.find((e) => e.id === 'shared-id');
-    expect(shared?.family).toBe('claude-sonnet');
+    const shared = new ModelRegistry({ manifestEntries: result.entries }).getEntry('shared-id');
+    expect(shared.family).toBe('claude-sonnet');
   });
 
   it('user entry survives when the operator manifest is absent', () => {

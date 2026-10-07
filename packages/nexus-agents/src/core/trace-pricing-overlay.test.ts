@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { calculateCost, priceBasisCaveat, priceBasisFor } from './trace-pricing.js';
 import { buildInTreeEntries } from '../config/in-tree-entries.js';
 import { loadManifestOverlay } from '../config/manifest-overlay.js';
+import { getModelPricing } from '../config/model-config-helpers.js';
 import {
   getDefaultRegistry,
   ModelRegistry,
@@ -89,6 +90,7 @@ describe('manifest overlay price basis (#4600)', () => {
     if (model === 'sonnet') return;
     expect(detail.costUsd).toBeCloseTo(3.6);
     expect(priceBasisOf(detail)).toBe('declared');
+    expect(getDefaultRegistry().getEntry(model).pricing).toEqual(RATE);
   });
 
   it('honors overlay pricing on the first lazy registry lookup', () => {
@@ -132,12 +134,46 @@ describe('manifest overlay price basis (#4600)', () => {
     expect(priceBasisOf(computeCostDetail('gemini-pro', MILLION, MILLION))).toBe('list');
   });
 
-  it('does not declare a metadata-only overlay price', () => {
-    // Tracked defect #7132: trace's legacy matrix inherits a list price for a
-    // metadata-only overlay, while computeCostDetail resolves no registry rate.
+  it('agrees on inherited list pricing for a metadata-only overlay (#7132)', () => {
+    // Previously pinned the divergence: trace retained a list price while the
+    // usage ledger and cost ceiling lost it at the registry merge point.
+    expect(getDefaultRegistry().getEntry('claude-opus').contextWindow).toBe(100000);
     expect(calculateCost('claude-opus', MILLION, MILLION)).toBe(30);
     expect(priceBasisFor('claude-opus')).toBe('list');
-    expect(priceBasisOf(computeCostDetail('claude-opus', MILLION, MILLION))).toBe('unknown');
+    const detail = computeCostDetail('claude-opus', MILLION, MILLION);
+    expect(detail).toMatchObject({ costUsd: 30, priced: true });
+    expect(priceBasisOf(detail)).toBe('list');
+    expect(getModelPricing('claude-opus')).toEqual({ inputPer1M: 5, outputPer1M: 25 });
+  });
+
+  it('inherits a user-declared rate through a metadata-only operator overlay', () => {
+    const userPath = join(dir, 'user.json');
+    writeFileSync(
+      userPath,
+      JSON.stringify({
+        version: 1,
+        models: [{ id: 'claude-opus', vendor: 'anthropic', family: 'claude-opus', pricing: RATE }],
+      })
+    );
+    vi.stubEnv('NEXUS_MODEL_REGISTRY_OVERLAY', userPath);
+    setDefaultRegistry(undefined);
+    expect(calculateCost('claude-opus', MILLION, MILLION)).toBeCloseTo(3.6);
+    expect(priceBasisFor('claude-opus')).toBe('declared');
+    const detail = computeCostDetail('claude-opus', MILLION, MILLION);
+    expect(detail.costUsd).toBeCloseTo(3.6);
+    expect(priceBasisOf(detail)).toBe('declared');
+    expect(getModelPricing('claude-opus')).toEqual(RATE);
+  });
+
+  it('declares explicitly supplied pricing even when it reuses an in-tree rate object', () => {
+    const inTree = getDefaultRegistry().getEntry('gemini-pro');
+    const registry = new ModelRegistry({
+      inTreeEntries: [inTree],
+      manifestEntries: [{ ...inTree, source: 'manifest' }],
+    });
+    setDefaultRegistry(registry);
+    expect(priceBasisFor(inTree.id)).toBe('declared');
+    expect(priceBasisOf(computeCostDetail(inTree.id, MILLION, MILLION))).toBe('declared');
   });
 
   it.each(['models-dev', 'generated', 'derived'] as const)(

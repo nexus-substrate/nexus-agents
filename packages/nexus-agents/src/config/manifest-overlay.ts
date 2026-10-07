@@ -20,8 +20,9 @@
  *      nothing to migrate.
  *   2. OPERATOR path — `~/.nexus-agents/models-manifest.yaml` (or
  *      whatever `NEXUS_MODELS_OVERLAY_PATH` points at). Loaded SECOND,
- *      higher precedence. On an id collision the operator entry
- *      overwrites the user entry.
+ *      higher precedence. On an id collision the operator entry replaces
+ *      the user entry at the registry's merge point, except that an
+ *      operator entry without `pricing` keeps the user rate (#7132).
  *
  * Net registry precedence (low → high):
  *   generated < models-dev < in-tree < USER-overlay < OPERATOR-manifest.
@@ -201,8 +202,8 @@ export const ManifestSchema = z.object({
  * When an explicit `path` is given (tests / single-file inspection) only that
  * file is loaded — single-path behaviour is preserved. With no `path`, both
  * the user overlay (`~/.nexus-agents/models.yaml`) and the operator manifest
- * (`~/.nexus-agents/models-manifest.yaml`) are loaded and merged by id, with
- * the operator entry winning on collision.
+ * (`~/.nexus-agents/models-manifest.yaml`) are returned in precedence order;
+ * the registry merges same-id records (operator wins; omitted pricing inherits).
  */
 export function loadManifestOverlay(options?: {
   readonly path?: string;
@@ -226,17 +227,15 @@ export function loadManifestOverlay(options?: {
 }
 
 /**
- * Merge two overlay results: `lower` first, then `higher`. Entries from
- * `higher` overwrite same-id entries from `lower`. Status/path/rejections
+ * Combine two overlay results: `lower` first, then `higher`. Keep same-id
+ * records so the registry's merge point alone applies precedence and pricing
+ * inheritance (#7132). Status/path/rejections
  * are reported for the OPERATOR (higher-precedence) result so the registry's
  * existing `status === 'loaded'` gate behaves unchanged; user-only state is
  * reported via {@link loadUserManifestOverlay} for the doctor.
  */
 function mergeOverlays(lower: ManifestLoadResult, higher: ManifestLoadResult): ManifestLoadResult {
-  const byId = new Map<string, ModelEntry>();
-  for (const entry of lower.entries) byId.set(entry.id, entry);
-  for (const entry of higher.entries) byId.set(entry.id, entry);
-  const entries = [...byId.values()];
+  const entries = [...lower.entries, ...higher.entries];
   const merged: ManifestLoadResult = {
     entries,
     rejections: [...lower.rejections, ...higher.rejections],
