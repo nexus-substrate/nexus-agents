@@ -32,7 +32,7 @@ export interface CustomApiSetupInput {
   readonly baseUrl: string;
   /** API key. If absent, `configureCustomApi` will prompt (or fail non-interactively). */
   readonly apiKey?: string;
-  /** Model id to default to. Omitted → documented fallback "gpt-4o". */
+  /** Model id to default to. Omitted → `CUSTOM_API_DEFAULT_MODEL` from `config/defaults.ts`. */
   readonly model?: string;
   /** Skip the TTY prompt for the API key — useful for CI and scripting. */
   readonly nonInteractive?: boolean;

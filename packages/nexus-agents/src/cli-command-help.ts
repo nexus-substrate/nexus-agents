@@ -15,6 +15,7 @@
 
 import { getCommandDescription } from './cli-command-catalog.js';
 import { VOTE_TIMEOUTS } from './config/timeouts.js';
+import { CUSTOM_API_DEFAULT_MODEL } from './config/defaults.js';
 
 /**
  * Flag metadata for a CLI command.
@@ -236,7 +237,7 @@ const SETUP_HELP: CommandHelpEntry = {
     { flag: '--custom-api-key <key>', description: 'API key for --custom-api (else prompt/env)' },
     {
       flag: '--custom-model <id>',
-      description: 'Default model for --custom-api (default: gpt-4o)',
+      description: `Default model for --custom-api (default: ${CUSTOM_API_DEFAULT_MODEL})`,
     },
   ],
 };
