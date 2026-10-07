@@ -92,15 +92,14 @@ the upstream blog rubric.
 
 | Dim                          | Pts | Tag   | How to score                                                                                                                                                                                                                                                                         |
 | ---------------------------- | --- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Heading hierarchy            | 3   | `[M]` | Exactly one H1; no skips (H2→H4); no H6+.                                                                                                                                                                                                                                            |
+| Heading hierarchy            | 2   | `[M]` | Exactly one H1; no skips (H2→H4); no H6+. markdownlint (MD001, MD025) blocks the mechanical cases in CI; score what it cannot see, such as a heading that names the wrong section.                                                                                                   |
 | Code blocks valid            | 3   | `[M]` | Fenced with language tag; syntax parses; no truncated examples.                                                                                                                                                                                                                      |
-| Cross-doc consistency        | 2   | `[J]` | Doesn't contradict canonical paths in CLAUDE.md or `.rules/governance.md`. **Defer to `blog-overlap`** if there's an existing doc on the same topic — refine vs. duplicate.                                                                                                          |
-| Internal links resolve       | 2   | `[M]` | All `./other-doc.md` and `#anchor` references work.                                                                                                                                                                                                                                  |
-| Summary box / TL;DR          | 2   | `[J]` | Long docs (>800 words) have a `Key Takeaways` block in the first screen.                                                                                                                                                                                                             |
-| Frontmatter on tier-1/2 docs | 1   | `[M]` | Tier-1/2 docs require `title` / `description` / `tier` / `keywords`. Defer to whichever existing CI gate validates this in the repo at the time of review.                                                                                                                           |
-| Spec / RFC alignment         | 1   | `[J]` | Where the doc cites Anthropic API behavior, governance rules, or RFC fields, the cited fields exist as described.                                                                                                                                                                    |
+| Cross-doc consistency        | 4   | `[J]` | Doesn't contradict canonical paths in CLAUDE.md or `.rules/governance.md`. **Defer to `blog-overlap`** if there's an existing doc on the same topic — refine vs. duplicate.                                                                                                          |
+| Internal links resolve       | 1   | `[M]` | All `./other-doc.md` and `#anchor` references work. Lychee with fragment checking blocks broken links and anchors in CI; score links that resolve but point at the wrong target.                                                                                                     |
+| Summary box / TL;DR          | 1   | `[J]` | Long docs (>800 words) have a `Key Takeaways` block in the first screen.                                                                                                                                                                                                             |
+| Frontmatter on tier-1/2 docs | 2   | `[M]` | Tier-1/2 docs require `title` / `description` / `tier` / `keywords`, and every doc declares one `diataxis` value and an `audience` that fit its directory. `scripts/check-diataxis-frontmatter.ts` checks presence and validity; the reviewer checks the fit.                        |
+| Spec / RFC alignment         | 3   | `[J]` | Where the doc cites Anthropic API behavior, governance rules, or RFC fields, the cited fields exist as described.                                                                                                                                                                    |
 | File size + sprawl           | 2   | `[J]` | Per CLAUDE.md anti-sprawl: doesn't create a parallel `enhanced_*` / `v2_*` doc when an existing canonical doc could be extended.                                                                                                                                                     |
-| Single Diátaxis type         | 2   | `[M]` | Frontmatter declares exactly one `diataxis` value and an `audience`, and the value fits the page's directory. `scripts/check-diataxis-frontmatter.ts` checks presence and validity; the reviewer checks the fit.                                                                     |
 | Mode purity                  | 2   | `[J]` | No passage serves a different Diátaxis type: no explanation inside a how-to's steps, no procedure inside a reference page. Judge sentence by sentence with the compass in [`skills/diataxis`](../skills/diataxis/SKILL.md); a mixed page loses both points and is a split candidate. |
 
 ### 5. Audience Fit — 10 pts
@@ -114,15 +113,15 @@ the upstream blog rubric.
 
 **Persona-based readability bands (advisory):**
 
-| Audience                                    | Flesch Reading Ease | Notes                                               |
-| ------------------------------------------- | ------------------- | --------------------------------------------------- |
-| Operator-facing CLI docs / first-run README | 60-80               | Wide audience, low prior context                    |
-| Tutorial (`diataxis: tutorial`)             | 60-80               | Learner; assume nothing beyond the prerequisites    |
-| How-to guide (`diataxis: how-to`)           | 50-60               | Day-job knowledge assumed                           |
-| Reference (`diataxis: reference`)           | not scored          | Award the 4 points; Flesch is meaningless on tables |
-| Explanation (`diataxis: explanation`)       | 40-60               | Reader is studying, not acting                      |
-| Architecture docs / RFCs / ADRs             | 30-50               | Specialist audience; precision over readability     |
-| CLAUDE.md-style governance                  | 40-60               | Read by both humans and other agents                |
+| Audience                                    | Flesch Reading Ease | Notes                                                            |
+| ------------------------------------------- | ------------------- | ---------------------------------------------------------------- |
+| Operator-facing CLI docs / first-run README | 60-80               | Wide audience, low prior context                                 |
+| Tutorial (`diataxis: tutorial`)             | 60-80               | Learner; assume nothing beyond the prerequisites                 |
+| How-to guide (`diataxis: how-to`)           | 50-60               | Day-job knowledge assumed                                        |
+| Reference (`diataxis: reference`)           | 40-60               | Score prose only (intros, descriptions); exclude tables and code |
+| Explanation (`diataxis: explanation`)       | 40-60               | Reader is studying, not acting                                   |
+| Architecture docs / RFCs / ADRs             | 30-50               | Specialist audience; precision over readability                  |
+| CLAUDE.md-style governance                  | 40-60               | Read by both humans and other agents                             |
 
 A doc scoring outside its band loses 1 point per band-step away. Anything more
 aggressive than that produces too many false positives — the contrarian was
