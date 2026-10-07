@@ -23,8 +23,7 @@
 
 import type { GateCheckResult } from '../security/quality-gate-types.js';
 import { executeSecurityScan } from '../mcp/tools/security-scan.js';
-import { queryOsvBatch } from '../security/osv-lookup.js';
-import type { OsvVulnerability } from '../security/osv-lookup.js';
+import { runOsvCheck, OSV_EMPTY, type OsvCheckResult } from './dependency-gate.js';
 import type { SecurityFinding } from '../security/sarif-types.js';
 import { createLogger } from '../core/index.js';
 import {
@@ -38,6 +37,8 @@ export interface SecurityGateResult extends GateCheckResult {
   readonly comparison?: SecurityBaselineComparison;
   /** Blocking SAST findings measured by a non-baseline scan. */
   readonly blockingFindings?: readonly SecurityFinding[];
+  /** Dependency coverage the verdict did not reach. Present on any verdict, including a pass. */
+  readonly coverageNote?: string;
 }
 
 import { throwIfAborted } from '../adapters/abort-utils.js';
@@ -51,6 +52,8 @@ const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 export interface SecurityGateConfig {
   /** Manifest directory for OSV checks. Defaults to the file scan target. */
   readonly dependencyTarget?: string | undefined;
+  /** Shared capture root used to select changed manifests. Absent: check dependencyTarget only. */
+  readonly dependencyCaptureRoot?: string | undefined;
   /** Actual pipeline base resolved before implementation. */
   readonly baseline?: SecurityBaseline | undefined;
   /** Whether to run OSV dependency checks (default: true). */
@@ -135,10 +138,10 @@ async function runBaselineGate(
   const start = Date.now();
   const comparison = await compareSecurityBaseline(target, rulesets, config, signal);
   const osv = comparison.complete
-    ? await runOsvCheck(config.dependencyTarget ?? target, config.enableOsv ?? true, signal)
+    ? await runOsvCheck(config.dependencyTarget ?? target, config, signal)
     : OSV_EMPTY;
   throwIfAborted(signal, 'Security baseline scan aborted');
-  const osvFailed = osv.vulnerabilities.some((v) => v.severity === 'CRITICAL');
+  const osvFailed = blocksDependencyCheck(osv);
   const details = comparison.complete
     ? `Base ${String(comparison.baseCount)}, worktree ${String(comparison.worktreeCount)} findings; ${String(comparison.introducedBlockingCount)} introduced blocking; ${buildScanSummary(comparison.worktreeCount ?? 0, comparison.introducedBlockingCount ?? 0, osv.vulnerabilities.length, osv)}`
     : `Security comparison incomplete: ${comparison.errors.join('; ')}`;
@@ -149,8 +152,12 @@ async function runBaselineGate(
       : comparison.introducedBlockingCount === 0 && !osvFailed
         ? 'pass'
         : 'fail',
-    details: details.slice(0, 500),
+    details: (osv.manifestError === undefined ? details : `${osv.manifestError}; ${details}`).slice(
+      0,
+      500
+    ),
     comparison,
+    ...coverageNoteField(osv),
     durationMs: Date.now() - start,
   };
 }
@@ -176,7 +183,7 @@ async function runSecurityPipeline(
   signal: AbortSignal | undefined
 ): Promise<SecurityGateResult> {
   // OSV dependency check (#1773)
-  const osv = await runOsvCheck(targetDir, config.enableOsv ?? true, signal);
+  const osv = await runOsvCheck(targetDir, config, signal);
   // A batch cut short by the abort covers only some dependencies; no verdict.
   throwIfAborted(signal, 'Security scan aborted');
   const osvVulns = osv.vulnerabilities;
@@ -199,12 +206,13 @@ async function runSecurityPipeline(
     sarifParseErrors: sarifResult.errors.length,
   });
 
-  const failed = blocking.length > 0 || osvVulns.some((v) => v.severity === 'CRITICAL');
+  const failed = blocking.length > 0 || blocksDependencyCheck(osv);
   return {
     name: 'security_scan',
     verdict: failed ? 'fail' : 'pass',
-    details,
+    details: osv.manifestError === undefined ? details : `${osv.manifestError}; ${details}`,
     blockingFindings: blocking,
+    ...coverageNoteField(osv),
     durationMs: Date.now() - start,
   };
 }
@@ -213,93 +221,11 @@ async function runSecurityPipeline(
 // Helpers
 // ============================================================================
 
-/** Run OSV dependency check if enabled (#1773). */
-/**
- * Result of the OSV dependency lookup, carrying what it could NOT check.
- *
- * #5018: this returned a bare array, so an unreachable OSV API produced `[]`
- * — byte-identical to a clean scan — and `buildScanSummary` folded it into
- * "none blocking". `queryOsv` reports `{ vulnerabilities: [], error }` on a
- * non-200 or a timeout; the error was never read.
- */
-interface OsvCheckResult {
-  readonly vulnerabilities: OsvVulnerability[];
-  /** Lookups that returned an error rather than a verdict. */
-  readonly failedLookups: number;
-  /** Dependencies queried, and how many the manifest declared. */
-  readonly queried: number;
-  readonly declared: number;
-  /**
-   * The check did not run to completion — a manifest read error, or
-   * `queryOsvBatch` throwing.
-   *
-   * Distinct from `failedLookups`, which counts dependencies whose INDIVIDUAL
-   * lookup errored. The outer catch used to return `OSV_EMPTY`, resetting
-   * `failedLookups` to 0 and so defeating the disclosure #5018 added: the
-   * summary fell through to "none blocking", the exact phrase that counter
-   * exists to prevent.
-   *
-   * Also distinct from the two HONEST empties — OSV disabled, and a manifest
-   * with no dependencies — which keep `checkFailed: false` so the new message
-   * does not print on every opted-out run.
-   */
-  readonly checkFailed: boolean;
-}
-
-const OSV_EMPTY: OsvCheckResult = {
-  vulnerabilities: [],
-  failedLookups: 0,
-  queried: 0,
-  declared: 0,
-  checkFailed: false,
-};
-
-/** The empty result for a check that ERRORED, as opposed to finding nothing. */
-const OSV_CHECK_FAILED: OsvCheckResult = { ...OSV_EMPTY, checkFailed: true };
-
-/** Dependencies queried per run. The cap is disclosed in the scan summary. */
-const OSV_DEPENDENCY_CAP = 20;
-
-async function runOsvCheck(
-  targetDir: string,
-  enabled: boolean,
-  signal: AbortSignal | undefined
-): Promise<OsvCheckResult> {
-  if (!enabled) return OSV_EMPTY;
-  try {
-    const fs = await import('node:fs');
-    const path = await import('node:path');
-    const pkgPath = path.join(targetDir, 'package.json');
-    if (!fs.existsSync(pkgPath)) return OSV_EMPTY;
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
-      dependencies?: Record<string, string>;
-    };
-    const declared = Object.keys(pkg.dependencies ?? {}).length;
-    const deps = Object.entries(pkg.dependencies ?? {})
-      .slice(0, OSV_DEPENDENCY_CAP)
-      .map(([name, version]) => ({
-        name,
-        version: version.replace(/^[\^~>=<]+/, ''),
-      }));
-    if (deps.length === 0) return OSV_EMPTY;
-    const results = await queryOsvBatch(deps, undefined, signal);
-    return {
-      vulnerabilities: results.flatMap((r) => [...r.vulnerabilities]),
-      // The half that used to be dropped: a 503 or a timeout yields an empty
-      // `vulnerabilities` array with an `error` set, which read as "clean".
-      failedLookups: results.filter((r) => r.error !== null).length,
-      queried: deps.length,
-      declared,
-      // The check ran. Individual lookups may still have errored — that is
-      // `failedLookups`, a different and finer-grained fact.
-      checkFailed: false,
-    };
-  } catch (error) {
-    // `warn`, not `debug`: debug is invisible at normal log levels, so an
-    // operator saw a clean security summary with no signal the check failed.
-    logger.warn('OSV check did not run', { error: String(error) });
-    return OSV_CHECK_FAILED;
-  }
+/** A changed-manifest coverage error blocks alongside measured critical advisories. */
+function blocksDependencyCheck(osv: OsvCheckResult): boolean {
+  return (
+    osv.manifestError !== undefined || osv.vulnerabilities.some((v) => v.severity === 'CRITICAL')
+  );
 }
 
 /**
@@ -336,14 +262,35 @@ function getBlockingFindings(findings: readonly SecurityFinding[]): SecurityFind
  * error fell through to the clean-scan phrase.
  */
 function osvCoverageNote(blocking: number, osvCount: number, osv?: OsvCheckResult): string {
-  if (osv?.checkFailed === true) {
-    return 'OSV check did not run (error) — dependency vulnerabilities unknown';
-  }
-  if (osv !== undefined && osv.failedLookups > 0) {
-    return `OSV not checked for ${String(osv.failedLookups)} of ${String(osv.queried)} dependencies (lookup failed)`;
-  }
+  if (osv?.checkFailed === true) return OSV_DID_NOT_RUN;
+  if (osv !== undefined && osv.failedLookups > 0) return failedLookupsNote(osv);
   if (blocking === 0 && osvCount === 0) return 'none blocking';
   return '';
+}
+
+const OSV_DID_NOT_RUN = 'OSV check did not run (error) — dependency vulnerabilities unknown';
+
+function failedLookupsNote(osv: OsvCheckResult): string {
+  return `OSV not checked for ${String(osv.failedLookups)} of ${String(osv.queried)} dependencies (lookup failed)`;
+}
+
+function cappedCoverageNote(osv: OsvCheckResult): string {
+  return `OSV covered ${String(osv.queried)} of ${String(osv.declared)} declared dependencies`;
+}
+
+/**
+ * Dependency coverage the OSV verdict did not reach, as a field for the gate
+ * result. `details` is dropped on a pass, so partial coverage needs its own
+ * field to avoid being recorded as full coverage. Absent when coverage is full.
+ */
+function coverageNoteField(osv: OsvCheckResult): { coverageNote?: string } {
+  const gaps: string[] = [];
+  if (osv.checkFailed) gaps.push(OSV_DID_NOT_RUN);
+  if (osv.failedLookups > 0) gaps.push(failedLookupsNote(osv));
+  if (osv.declared > osv.queried) gaps.push(cappedCoverageNote(osv));
+  return gaps.length === 0
+    ? {}
+    : { coverageNote: `Dependency coverage partial: ${gaps.join('; ')}` };
 }
 
 function buildScanSummary(
@@ -367,9 +314,7 @@ function buildScanSummary(
   // State the denominator the OSV verdict actually covers: the query is capped,
   // and devDependencies are never queried at all.
   if (osv !== undefined && osv.declared > osv.queried) {
-    parts.push(
-      `OSV covered ${String(osv.queried)} of ${String(osv.declared)} declared dependencies`
-    );
+    parts.push(cappedCoverageNote(osv));
   }
   return parts.filter((p) => p !== '').join(', ');
 }

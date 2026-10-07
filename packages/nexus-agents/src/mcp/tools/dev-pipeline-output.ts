@@ -23,6 +23,7 @@ export function buildStructuredOutput(
     // is true. `security` below is the field that cannot misread (#7181).
     securityPassed: result.securityPassed,
     security: securityStatus(result),
+    ...(result.securityNote !== undefined ? { securityNote: result.securityNote } : {}),
     // #4772: these two are what make `completed: false` legible. Without them a
     // caller cannot tell a failed planner from a successful dry run, or a
     // security rejection from a gate that never ran — which is the whole point
