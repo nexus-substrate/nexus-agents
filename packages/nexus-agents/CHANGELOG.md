@@ -1,5 +1,29 @@
 # nexus-agents
 
+## 11.0.1
+
+### Patch Changes
+
+- [#7177](https://github.com/nexus-substrate/nexus-agents/pull/7177) [`dff60f5`](https://github.com/nexus-substrate/nexus-agents/commit/dff60f56d3d7a139b0d4e6d44167e8443a574e80) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A model-registry overlay entry that omits `pricing` (for example, one that only
+  overrides `contextWindow`) no longer drops the model's lower-tier price ([#7132](https://github.com/nexus-substrate/nexus-agents/issues/7132)).
+  The entry keeps the lower tier's rate, cache rates and billing-scope provenance,
+  and the price keeps its basis: in-tree and catalog rates stay `list`, a rate
+  declared in the user overlay stays `declared` under an operator manifest. Trace
+  cost (`calculateCost`), usage-ledger cost (`computeCostDetail`) and cost-ceiling
+  pricing (`getModelPricing`) now agree for such models instead of the ledger and
+  ceiling treating them as unpriced. An overlay that supplies `pricing` still
+  replaces the whole rate and is reported `declared`.
+
+  `loadManifestOverlay()` now returns user and operator overlay entries in
+  precedence order (user first, then operator) instead of pre-merging them by id.
+  A caller that reads its `entries` directly can therefore see the same model id
+  twice when both overlays define it; the registry resolves the collision
+  (operator wins, omitted `pricing` inherits).
+
+- [#7186](https://github.com/nexus-substrate/nexus-agents/pull/7186) [`9be7e05`](https://github.com/nexus-substrate/nexus-agents/commit/9be7e05c7792aeaa852f62dbdfafb324bca04fa4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Dev-pipeline scratch dependency installs no longer inherit the config a package-manager launcher exported. When the server or CLI runs under `pnpm run`, `npm run` or `npx`, the launcher flattens its resolved config into `npm_config_*` environment variables. Those variables reached the scratch `npm ci`, and npm 11 treats an env entry like a command-line flag. As a result, an `allow-scripts=…` line in `~/.npmrc`, which npm accepts in the file, failed every scratch install with `EALLOWSCRIPTS`. When launcher markers (`npm_lifecycle_event`, `npm_execpath`) are present, the install environment now drops the `npm_*`/`pnpm_*` variables, `PNPM_SCRIPT_SRC_DIR` and `NODE_PATH`. The installer re-reads `.npmrc` files itself. A `NPM_CONFIG_*` override exported in the shell is ignored in that case. Without a launcher, inherited npm config passes through unchanged, as before.
+
+- [#7183](https://github.com/nexus-substrate/nexus-agents/pull/7183) [`c0eca6f`](https://github.com/nexus-substrate/nexus-agents/commit/c0eca6f13f4d20abb32b0b2e187c67c4a754c144) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `search_codebase` and `search_usages` no longer fail with "Maximum call stack size exceeded" when run at a repository root. The shared source-file walker now appends files one at a time instead of spreading each subdirectory's results into a single call, which threw a RangeError once a subtree held more than about 120k files. It also no longer descends into dot-directories such as `.git` and `.nexus-agents`, in addition to `node_modules` and `dist`. A walk rooted at a dot-directory is still allowed.
+
 ## 11.0.0
 
 ### Major Changes
