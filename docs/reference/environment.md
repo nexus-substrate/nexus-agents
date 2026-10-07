@@ -2,6 +2,7 @@
 title: 'Environment Variable Reference'
 description: 'Registered NEXUS environment variables, accepted values, schema defaults and descriptions.'
 diataxis: reference
+audience: user
 tier: 2
 keywords: [environment, configuration, reference]
 related_files: [packages/nexus-agents/src/config/env-schema.ts]

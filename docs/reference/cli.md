@@ -2,6 +2,7 @@
 title: 'CLI Reference'
 description: 'Generated reference for every nexus-agents CLI command, audience, and description.'
 diataxis: reference
+audience: user
 tier: 1
 keywords: [cli, commands, catalog, reference]
 related_files: [docs/ENTRYPOINTS.md, docs/reference/environment.md]

@@ -205,6 +205,7 @@ describe('generate-env-reference', () => {
     const output = renderEnvReference(entries);
     expect(output).toBe(renderEnvReference([...entries].reverse()));
     expect(output).toContain('diataxis: reference');
+    expect(output).toContain('audience: user');
     expect(output).toContain(`Generated from ${schemaPath} — do not edit by hand`);
     expect(output).toContain('`true` \\| `false`');
     expect(output.match(/^\| `NEXUS_/gm)).toHaveLength(entries.length);

@@ -74,7 +74,9 @@ describe('generate-cli-reference', () => {
 
   it('renders reference metadata and exact source provenance without volatile data', () => {
     const output = renderCliReference(SOURCE);
-    expect(output).toMatch(/^---\ntitle: .+\ndescription: .+\ndiataxis: reference\n/);
+    expect(output).toMatch(
+      /^---\ntitle: .+\ndescription: .+\ndiataxis: reference\naudience: user\n/
+    );
     expect(output).toContain('tier: 1');
     expect(output).toContain('keywords: [');
     expect(output).toContain('related_files: [');
