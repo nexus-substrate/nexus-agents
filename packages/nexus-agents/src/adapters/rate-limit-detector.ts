@@ -8,7 +8,12 @@
  * (Source: Issue #996 — Rate limit error surfacing)
  */
 
-import { RateLimitError, getErrorMessage, getTimeProvider } from '../core/index.js';
+// Leaf modules, not the `core/index.js` barrel: the barrel reaches the router,
+// which reaches `cli-adapters/cli-binary-on-path.ts`, which reads a constant
+// from `cli-error-envelope.ts` — this module's own importer — before it is
+// initialized. A deep import of the envelope then crashed (#7213).
+import { RateLimitError, getErrorMessage } from '../core/errors.js';
+import { getTimeProvider } from '../core/time-provider.js';
 
 // ============================================================================
 // Detection
