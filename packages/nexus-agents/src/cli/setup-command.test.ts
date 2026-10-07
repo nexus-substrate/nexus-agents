@@ -526,7 +526,7 @@ describe('Setup Command', () => {
       const result: SetupResult = {
         success: true,
         steps: [{ name: 'Test', status: 'success' }],
-        mcpSnippet: '{"mcpServers": {}}',
+        mcpSnippet: generateMcpSnippet(),
         warnings: [],
         errors: [],
         durationMs: 100,
@@ -537,6 +537,24 @@ describe('Setup Command', () => {
       const output = writeCalls.join('');
       expect(output).toContain('MCP Configuration');
       expect(output).toContain('claude mcp add-json');
+    });
+
+    it.each([false, true])('prints a bare add-json server entry (useNpx=%s)', (useNpx) => {
+      const result: SetupResult = {
+        success: false,
+        steps: [{ name: 'MCP Configuration', status: 'failed' }],
+        mcpSnippet: generateMcpSnippet(useNpx),
+        warnings: [],
+        errors: ['Manual configuration required'],
+        durationMs: 0,
+      };
+
+      printSetupResult(result, false);
+
+      const payload = /claude mcp add-json nexus-agents '([^']+)'/.exec(writeCalls.join(''))?.[1];
+      expect(payload).toBeDefined();
+      const entry: unknown = JSON.parse(payload ?? 'null');
+      expect(entry).toEqual(useNpx ? NEXUS_AGENTS_MCP_NPX_ENTRY : NEXUS_AGENTS_MCP_ENTRY);
     });
 
     it('should print warnings when present', () => {

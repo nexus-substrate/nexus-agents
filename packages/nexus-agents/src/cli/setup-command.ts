@@ -11,7 +11,13 @@
  */
 
 import { existsSync } from 'node:fs';
-import type { SetupOptions, SetupResult, SetupStep, EnvironmentInfo } from './setup-types.js';
+import type {
+  SetupOptions,
+  SetupResult,
+  SetupStep,
+  EnvironmentInfo,
+  McpJsonConfig,
+} from './setup-types.js';
 import { SetupOptionsSchema } from './setup-types.js';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
@@ -69,6 +75,19 @@ function writeEmptyLine(): void {
 /**
  * Prints MCP configuration result section.
  */
+/**
+ * `claude mcp add-json` takes the bare server entry, not the `{ mcpServers }`
+ * wrapper the snippet carries. A snippet without that entry is printed as-is.
+ */
+function bareServerEntry(snippet: string): string {
+  try {
+    const entry = (JSON.parse(snippet) as McpJsonConfig).mcpServers?.['nexus-agents'];
+    return entry === undefined ? snippet : JSON.stringify(entry);
+  } catch {
+    return snippet;
+  }
+}
+
 function printMcpResult(mcpResult: McpConfigResult, snippet: string | undefined): void {
   writeLine(formatHeader('MCP Configuration'));
   writeLine('─'.repeat(40));
@@ -81,7 +100,7 @@ function printMcpResult(mcpResult: McpConfigResult, snippet: string | undefined)
       writeEmptyLine();
       writeLine('Manual fallback - run:');
       writeEmptyLine();
-      writeLine(formatCodeBlock(`claude mcp add-json nexus-agents '${snippet}'`));
+      writeLine(formatCodeBlock(`claude mcp add-json nexus-agents '${bareServerEntry(snippet)}'`));
     }
   }
   writeEmptyLine();
@@ -429,7 +448,7 @@ function runHooksStep(
 /**
  * Runs the OpenCode MCP configuration step (#1253).
  */
-function runOpenCodeStep(options: SetupOptions): SetupStep {
+function runOpenCodeStep(options: SetupOptions, projectRoot: string): SetupStep {
   const startTime = getTimeProvider().now();
   if (options.skipOpencode) {
     return {
@@ -448,7 +467,13 @@ function runOpenCodeStep(options: SetupOptions): SetupStep {
       durationMs: getTimeProvider().now() - startTime,
     };
   }
-  const result = configureOpenCode(options.force, options.dryRun);
+  const result = configureOpenCode(
+    options.force,
+    options.dryRun,
+    options.scope === 'project'
+      ? { force: options.force, dryRun: options.dryRun, projectRoot }
+      : undefined
+  );
   return {
     name: 'OpenCode MCP',
     status: result.success ? (result.alreadyConfigured ? 'skipped' : 'success') : 'failed',
@@ -485,7 +510,7 @@ function runDataDirStep(options: SetupOptions): { step: SetupStep; result: DataD
 /**
  * Runs the Codex CLI MCP configuration step (#1263).
  */
-function runCodexStep(options: SetupOptions): SetupStep {
+function runCodexStep(options: SetupOptions, warnings: string[]): SetupStep {
   const startTime = getTimeProvider().now();
   if (options.skipCodex) {
     return {
@@ -503,6 +528,11 @@ function runCodexStep(options: SetupOptions): SetupStep {
       message: `${formatDetectionMessage('Codex CLI', cliInfo.detectionError)}\n  → ${detectionRecoveryHint('codex', cliInfo.detectionError)}`,
       durationMs: getTimeProvider().now() - startTime,
     };
+  }
+  if (options.scope === 'project') {
+    warnings.push(
+      'Codex setup does not honour --scope project; using user scope (~/.codex/config.toml).'
+    );
   }
   const result = configureCodex(options.force, options.dryRun);
   return {
@@ -668,12 +698,12 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   const { step: dataDirStep, result: dataDirResult } = runDataDirStep(parsedOptions);
 
   // Step 7: OpenCode MCP Configuration (#1253)
-  const openCodeStep = runOpenCodeStep(parsedOptions);
+  const openCodeStep = runOpenCodeStep(parsedOptions, env.projectInfo.root);
 
   // Step 8: Codex MCP Configuration (#1263). The Gemini MCP step was removed
   // in #4389: it configured the retired `gemini` binary, and `agy` does not
   // read that file.
-  const codexStep = runCodexStep(parsedOptions);
+  const codexStep = runCodexStep(parsedOptions, warnings);
 
   const configStep = runConfigStep(projectRoot, parsedOptions); // Step 9
   const steps = [
