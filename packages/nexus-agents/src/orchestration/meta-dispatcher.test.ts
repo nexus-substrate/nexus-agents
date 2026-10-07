@@ -170,9 +170,34 @@ describe('MetaDispatcher.dispatch', () => {
       expect(outcomes).toHaveLength(1);
       expect(outcomes[0]?.decisionId).toBe(decision.decisionId);
       expect(outcomes[0]?.strategy).toBe(decision.strategy);
-      expect(outcomes[0]?.success).toBe(mode !== 'enforce');
-      if (mode === 'enforce') expect(outcomes[0]?.failureReason).toContain('rejected');
-      else expect(outcomes[0]?.failureReason).toBeUndefined();
+      // #7127: the panel delivered a verdict, so the STRATEGY succeeded in every
+      // mode; under enforce the gate's refusal is recorded beside it, not as a failure.
+      expect(outcomes[0]?.success).toBe(true);
+      expect(outcomes[0]?.failureReason).toBeUndefined();
+      if (mode === 'enforce') expect(outcomes[0]?.gateRefusal).toContain('rejected');
+      else expect(outcomes[0]).not.toHaveProperty('gateRefusal');
+    }
+  );
+
+  it.each(['off', 'audit', 'enforce'] as const)(
+    'records an unresolved consensus panel as a strategy failure only in %s=enforce (#7127)',
+    async (mode) => {
+      const decision = decisionFor('should we adopt A or B');
+      const executors: StrategyExecutorMap = {
+        [decision.strategy]: () => Promise.resolve({ decision: 'no_quorum' }),
+      };
+      const sink = createRecordingOutcomeSink();
+      const dispatcher = createMetaDispatcher({
+        executors,
+        outcomeSink: sink,
+        classifyResult: (result) => classifyEngineResult(result, mode),
+      });
+
+      await dispatcher.dispatch(decision, { goal: 'should we do X or Y' });
+      const [outcome] = sink.getOutcomes();
+      expect(outcome?.success).toBe(mode !== 'enforce');
+      expect(outcome).not.toHaveProperty('gateRefusal');
+      if (mode === 'enforce') expect(outcome?.failureReason).toContain('no_quorum');
     }
   );
 
@@ -317,6 +342,12 @@ describe('consensus enforcement classification', () => {
       const classification = classifyEngineResult({ decision }, mode);
       expect(classification.success).toBe(mode !== 'enforce' || decision === 'approved');
       if (!classification.success) expect(classification.failureReason).toContain(decision);
+      // #7127: only a delivered "no" is a gate refusal; no_quorum produced no verdict.
+      if (mode === 'enforce' && decision === 'rejected') {
+        expect(classification.gateRefusal).toBe('Consensus rejected');
+      } else {
+        expect(classification).not.toHaveProperty('gateRefusal');
+      }
     });
   }
 });

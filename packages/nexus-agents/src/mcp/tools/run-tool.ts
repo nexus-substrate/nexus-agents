@@ -332,6 +332,8 @@ export function isShadowTrainEnabled(): boolean {
 /**
  * Builds the train edge: on each dispatch outcome (success OR failure), update
  * the process-scoped shadow selector and append a sanitized record to disk.
+ * `record.success` is the STRATEGY verdict: an enforced consensus refusal of a
+ * delivered "rejected" verdict trains as a success (#7127).
  * Returns undefined when training is disabled — no selector update, no write.
  */
 function buildShadowTrainObserver(logger?: ILogger): MetaOutcomeObserver | undefined {
@@ -344,6 +346,7 @@ function buildShadowTrainObserver(logger?: ILogger): MetaOutcomeObserver | undef
         decisionId: decision.decisionId,
         strategy: decision.strategy,
         success: record.success,
+        ...(record.gateRefusal !== undefined ? { gateRefusal: record.gateRefusal } : {}),
         armStats: getShadowSelector().stats(),
       });
     }
