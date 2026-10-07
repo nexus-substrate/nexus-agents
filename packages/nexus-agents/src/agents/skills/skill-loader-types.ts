@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import type { Result } from '../../core/result.js';
 import type { AgentRole } from '../../core/types/agent.js';
 import type { Skill, SkillCategory } from './skill-types.js';
 
@@ -123,10 +124,7 @@ export interface ISkillLoader {
    * @param role - Role of the agent
    * @returns Result with LoadedSkillSet or SkillLoaderError
    */
-  loadForAgent(
-    agentId: string,
-    role: AgentRole
-  ): import('../../core/result.js').Result<LoadedSkillSet, SkillLoaderError>;
+  loadForAgent(agentId: string, role: AgentRole): Result<LoadedSkillSet, SkillLoaderError>;
 
   /**
    * Loads skills for a specific task based on role and task description.
@@ -141,7 +139,7 @@ export interface ISkillLoader {
     agentId: string,
     role: AgentRole,
     taskDescription: string
-  ): import('../../core/result.js').Result<LoadedSkillSet, SkillLoaderError>;
+  ): Result<LoadedSkillSet, SkillLoaderError>;
 
   /**
    * Gets all skills available to a specific role.
@@ -158,9 +156,7 @@ export interface ISkillLoader {
    * @param set - The loaded skill set to validate
    * @returns Result with void on success or SkillLoaderError on failure
    */
-  validateLoadedSet(
-    set: LoadedSkillSet
-  ): import('../../core/result.js').Result<void, SkillLoaderError>;
+  validateLoadedSet(set: LoadedSkillSet): Result<void, SkillLoaderError>;
 }
 
 // ============================================================================

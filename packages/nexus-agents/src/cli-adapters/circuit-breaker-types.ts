@@ -6,6 +6,7 @@
  * (Source: Issue #81 - Circuit breaker for CLI failures)
  */
 
+import type { Result } from '../core/index.js';
 import { NexusError, ErrorCode } from '../core/errors.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import type { RoutingArmId, ObservedArmId } from './types.js';
@@ -110,7 +111,7 @@ export interface ICircuitBreaker {
   /**
    * Executes a function with circuit breaker protection.
    */
-  execute<T>(fn: () => Promise<T>): Promise<import('../core/index.js').Result<T, CircuitError>>;
+  execute<T>(fn: () => Promise<T>): Promise<Result<T, CircuitError>>;
 
   /**
    * Gets the current circuit state.
@@ -140,7 +141,7 @@ export interface ICircuitBreaker {
   /**
    * Checks whether an execution can proceed under current circuit state.
    */
-  canExecute(): import('../core/index.js').Result<true, CircuitError>;
+  canExecute(): Result<true, CircuitError>;
 
   /**
    * Releases a half-open probe request without recording success or failure (#6613).

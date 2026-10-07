@@ -6,7 +6,8 @@
  * @module self-eval/aggregation-types
  */
 
-import type { EvaluatorRole, Recommendation } from './evaluation-agents.js';
+import type { ILogger } from '../core/index.js';
+import type { EvaluatorRole, Recommendation, EvaluationResult } from './evaluation-agents.js';
 
 /**
  * Component criticality levels for threshold selection.
@@ -41,9 +42,9 @@ export interface AggregatedResult {
   /** Overall confidence (0-1) */
   readonly confidence: number;
   /** All evaluator votes */
-  readonly votes: readonly import('./evaluation-agents.js').EvaluationResult[];
+  readonly votes: readonly EvaluationResult[];
   /** Dissenting opinions (different from final recommendation) */
-  readonly dissent: readonly import('./evaluation-agents.js').EvaluationResult[];
+  readonly dissent: readonly EvaluationResult[];
   /** Complete audit trail */
   readonly auditTrail: readonly AuditEntry[];
   /** Evidence quality score (0-1) */
@@ -59,7 +60,7 @@ export interface AggregatedResult {
  */
 export interface AggregationConfig {
   /** Logger instance */
-  readonly logger?: import('../core/index.js').ILogger;
+  readonly logger?: ILogger;
   /** Override criticality detection */
   readonly criticalityOverrides?: ReadonlyMap<string, ComponentCriticality>;
   /** Patterns to identify security-critical components */

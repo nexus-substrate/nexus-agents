@@ -38,7 +38,7 @@ export interface WaveSchedulerConfig {
   /** Optional callback invoked after each wave completes. Used for checkpointing. */
   readonly onWaveComplete?: (
     waveIndex: number,
-    results: readonly import('./wave-scheduler-types.js').WaveTaskResult[],
+    results: readonly WaveTaskResult[],
     cumulativeTokens: number
   ) => Promise<void>;
 }

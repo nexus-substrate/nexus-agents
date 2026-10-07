@@ -26,6 +26,7 @@
  * @module testing/cli-spawn-guard.setup
  */
 
+import type * as ChildProcess from 'node:child_process';
 import { afterEach, vi } from 'vitest';
 
 /**
@@ -44,7 +45,7 @@ import { afterEach, vi } from 'vitest';
  */
 // eslint-disable-next-line max-lines-per-function -- `vi.mock` factories are hoisted, so every helper this wrapper needs (the guarded-binary set, the promisify.custom handling) must be declared INSIDE the factory; extracting them to module scope would run before the mock is installed
 vi.mock('node:child_process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:child_process')>();
+  const actual = await importOriginal<typeof ChildProcess>();
   const { promisify } = await import('node:util');
   const {
     GUARDED_CLI_BINARIES,
