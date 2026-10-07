@@ -573,6 +573,7 @@ function buildSimpleTaskResult(
 ): OrchestrateOutput {
   return {
     taskId,
+    executed: false,
     analysis: {
       taskId,
       complexity: Math.round(decision.analysis.complexityScore * 10) || 1,
@@ -593,9 +594,7 @@ function buildSimpleTaskResult(
 /** Fast-path: simple tasks skip expensive LLM orchestration (Issue #1132). */
 function trySimpleTaskFastPath(ctx: {
   taskId: string;
-  task: string;
   decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
-  workflowRouter: IWorkflowRouter;
   startTime: number;
   logger: ILogger;
 }): Result<OrchestrateOutput, OrchestrationError> | undefined {
@@ -606,8 +605,7 @@ function trySimpleTaskFastPath(ctx: {
     taskType: ctx.decision.analysis.taskType,
     durationMs,
   });
-  recordOrchestrationSuccess(ctx.taskId, ctx.task, 0, durationMs);
-  recordRouterOutcome(ctx.workflowRouter, ctx.decision, true, durationMs);
+  // Analysis alone is not an execution outcome (#7241).
   return ok(buildSimpleTaskResult(ctx.taskId, ctx.decision, durationMs));
 }
 
@@ -705,9 +703,7 @@ async function executeOrchestration(
   if (snapshot !== undefined) setRouting(snapshot, buildRoutingInfo(decision));
   const fastResult = trySimpleTaskFastPath({
     taskId,
-    task: input.task,
     decision,
-    workflowRouter,
     startTime,
     logger,
   });
