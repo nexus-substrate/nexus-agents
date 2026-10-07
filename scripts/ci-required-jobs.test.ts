@@ -108,6 +108,9 @@ describe('CI required-job wiring', () => {
       'ci.yml',
       'benchmark-extraction-gate.yml',
       'codeql.yml',
+      // Website build/a11y/link checks on PRs (#7248): advisory for the docs
+      // site, not a required context for package changes.
+      'deploy-website.yml',
       'docs-check.yml',
       'governor-review.yml',
       'link-check.yml',
