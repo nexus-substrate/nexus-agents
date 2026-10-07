@@ -449,17 +449,18 @@ export function createQualityGateStage({
 }
 
 export function createSecurityScanStage(deps: StageDeps): DevPipelineStages['securityScan'] {
-  const { config, startStage, workspaceDependencies, wrapper } = deps;
+  const { config, startStage, workspaceDependencies, workspaceRoot, wrapper } = deps;
   return async (signal) => {
     startStage('security');
     const start = getTimeProvider().now();
-    const target = config.scanTarget ?? process.cwd();
+    const target = workspaceRoot ?? config.scanTarget ?? process.cwd();
     await postProgress(config, 'Security', `Scanning ${target}...`);
     // Bound to the pipeline's own scratch (#6794): it lives outside cwd by
     // design, so the scan is contained to the scratch rather than to cwd.
     const scratchBound = workspaceDependencies !== undefined;
     const check = checkSecurityScan(target, undefined, {
       baseline: config.securityBaseline,
+      dependencyTarget: config.scanTarget,
       env: scratchBound ? hermeticGitEnv() : undefined,
       root: scratchBound ? target : undefined,
       wrapper,

@@ -9,7 +9,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentStages } from './agent-executor.js';
 import { runDevPipeline, type DevPipelineStages } from './dev-pipeline.js';
@@ -124,7 +124,7 @@ describe('dev pipeline scratch worktree', () => {
     });
     mocks.gate.mockResolvedValue({ verdict: 'pass', feedback: 'OK' });
     mocks.scan.mockImplementation((cwd: string) => {
-      expect(cwd).toBe(workspace);
+      expect(cwd).toBe(dirname(dirname(workspace ?? '')));
       return () => Promise.resolve({ verdict: 'pass', details: 'OK' });
     });
   });
@@ -154,13 +154,13 @@ describe('dev pipeline scratch worktree', () => {
       expect.stringContaining('diff --git a/packages/nexus-agents/package.json')
     );
     expect(mocks.check).toHaveBeenCalledTimes(3);
-    // The scan is contained to the scratch it was bound to, not to cwd (#6794).
+    // Security coverage uses the same scratch root as patch capture.
     expect(mocks.scan).toHaveBeenCalledWith(
-      workspace,
+      result.changes?.worktreePath,
       undefined,
       expect.objectContaining({
         env: hermeticGitEnv(),
-        root: workspace,
+        root: result.changes?.worktreePath,
       })
     );
     expect(

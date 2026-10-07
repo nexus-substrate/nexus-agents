@@ -49,6 +49,8 @@ const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 
 /** Configuration for the security gate. */
 export interface SecurityGateConfig {
+  /** Manifest directory for OSV checks. Defaults to the file scan target. */
+  readonly dependencyTarget?: string | undefined;
   /** Actual pipeline base resolved before implementation. */
   readonly baseline?: SecurityBaseline | undefined;
   /** Whether to run OSV dependency checks (default: true). */
@@ -102,7 +104,13 @@ export function checkSecurityScan(
       };
     }
 
-    const gateResult = await runSecurityPipeline(result, targetDir, config, start, signal);
+    const gateResult = await runSecurityPipeline(
+      result,
+      config.dependencyTarget ?? targetDir,
+      config,
+      start,
+      signal
+    );
     // Incomplete coverage cannot erase a measured SAST or OSV failure.
     if (gateResult.verdict === 'fail') return gateResult;
     if (result.parseDiagnostics !== undefined && result.parseDiagnostics.length > 0) {
@@ -127,7 +135,7 @@ async function runBaselineGate(
   const start = Date.now();
   const comparison = await compareSecurityBaseline(target, rulesets, config, signal);
   const osv = comparison.complete
-    ? await runOsvCheck(target, config.enableOsv ?? true, signal)
+    ? await runOsvCheck(config.dependencyTarget ?? target, config.enableOsv ?? true, signal)
     : OSV_EMPTY;
   throwIfAborted(signal, 'Security baseline scan aborted');
   const osvFailed = osv.vulnerabilities.some((v) => v.severity === 'CRITICAL');
