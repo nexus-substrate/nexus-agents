@@ -1,6 +1,22 @@
 ---
+// Landing page (#7199), on remarque's Landing archetype: one serif statement
+// of identity, navigation to the four kinds of documentation, one install
+// command and one output figure. No cards, no buttons dressed as CTAs.
+//
+// The "Four ways into the docs" lists are generated from the docs collection
+// (getSiteNav + sectionListing), the same source as the nav rail and the
+// section index pages. Capability counts come from site-data.ts, which
+// scripts/inject-governance.ts regenerates; never type a count here.
 import BaseLayout from '../layouts/BaseLayout.astro';
-import '../styles/global.css';
+import { BASE, docsHref, getSiteNav } from '../lib/docs-collection.ts';
+import {
+  PRIMARY_SECTIONS,
+  navLabel,
+  sectionIndexHref,
+  sectionIntro,
+  sectionLabel,
+  sectionListing,
+} from '../lib/docs-nav.ts';
 import {
   MCP_TOOL_COUNT,
   EXPERT_TYPE_COUNT,
@@ -12,714 +28,359 @@ import {
   MEMORY_BACKEND_COUNT,
   DISCOVERY_SOURCE_COUNT,
   PAPER_COUNT,
-  NEXUS_AGENTS_VERSION,
 } from '../data/site-data';
+
+/** How many pages each "way into the docs" lists before the section link. */
+const PAGES_PER_WAY = 3;
+
+const nav = await getSiteNav();
+const ways = PRIMARY_SECTIONS.map((key) => {
+  const listing = sectionListing(nav, key);
+  return {
+    key,
+    label: sectionLabel(key),
+    href: sectionIndexHref(BASE, key),
+    intro: sectionIntro(key),
+    pages: listing.pages.slice(0, PAGES_PER_WAY),
+    total: listing.pages.length,
+    provisional: listing.provisional,
+  };
+});
+
+// The tutorial is the first page of Start here; with none classified yet the
+// link goes to the section index rather than nowhere.
+const tutorial = sectionListing(nav, 'start').pages[0];
+const tutorialHref = tutorial?.href ?? sectionIndexHref(BASE, 'start');
+// `nexus-agents tour` is introduced in step 2 of the first-task tutorial.
+const tourHref = `${docsHref('getting-started/first_task')}#2-verify`;
+const threatModelHref = docsHref('security/audit-hash-chain-threat-model');
 ---
 
 <BaseLayout
   title="Home"
-  description="Autonomic control plane for AI coding agents — one entry point, adversarial review, tamper-evident hash-chained audit, bounded self-tuning. Works across Claude, Codex, Gemini, and OpenCode via MCP."
+  description="Governance substrate for AI coding agents: adversarial consensus review, drift-checked rules and a tamper-evident audit chain, as an MCP server for Claude Code, Codex, Gemini CLI and OpenCode."
 >
-  <!-- ─── Hero ─── -->
-  <header class="hero">
-    <p class="hero-eyebrow">
-      <span class="hero-version">{NEXUS_AGENTS_VERSION}</span>
-      <span class="hero-sep" aria-hidden="true">·</span>
-      <span>MIT-licensed</span>
-      <span class="hero-sep" aria-hidden="true">·</span>
-      <span>Node 24+</span>
-      <span class="hero-sep" aria-hidden="true">·</span>
-      <span>Works with Claude · Codex · Gemini · OpenCode</span>
-    </p>
-
-    <h1 class="display hero-headline">
-      A control plane for <span class="register-em">AI coding agents</span>.
-    </h1>
-
-    <p class="lede hero-lede">
-      Your agents already write the code — they're the data plane. Nexus Agents
-      is the control plane above them: it admits work through one entry point,
-      reviews it adversarially before it ships, records every action in a
-      tamper-evident hash-chained audit log, and routes the next task based on
-      what actually worked. One MCP server. Every CLI you already have.
-    </p>
-
-    <div class="hero-actions">
-      <a href="#proof" class="cta-primary">
-        <span class="cta-label">Run the 60-second proof</span>
-        <span class="cta-arrow" aria-hidden="true">→</span>
-      </a>
-      <a href="https://github.com/nexus-substrate/nexus-agents" target="_blank" rel="noopener noreferrer" class="cta-secondary">
-        Source on GitHub
-      </a>
-      <a href="/nexus-agents/docs/getting-started/installation/" class="cta-secondary">
-        Installation
-      </a>
+  <section class="landing-hero" aria-labelledby="landing-title">
+    <div class="landing-intro">
+      <p class="landing-kicker">Governance substrate for AI coding agents</p>
+      <h1 id="landing-title" class="landing-title">
+        The agents do the engineering. nexus-agents holds them to the rules.
+      </h1>
+      <p class="landing-lead">
+        It reviews their work with adversarial consensus panels, keeps the rules they follow
+        drift-checked, and writes everything they touch to a tamper-evident audit chain. It runs
+        as an MCP server inside Claude Code, Codex, Gemini CLI or OpenCode.
+      </p>
+      <ul class="landing-links">
+        <li><a href={tutorialHref}>Start the tutorial<span aria-hidden="true"> →</span></a></li>
+        <li><a href={tourHref}>Try the tour, no API keys needed</a></li>
+      </ul>
+      <pre class="landing-install" data-copy><code>npm install -g nexus-agents</code></pre>
     </div>
-  </header>
 
-  <!-- ─── Signature visual: a real `vote --quick` transcript ─── -->
-  <section class="terminal-section" aria-label="Sample output from the nexus-agents vote command">
-    <div class="terminal">
-      <div class="terminal-chrome">
-        <span class="terminal-dot" aria-hidden="true"></span>
-        <span class="terminal-dot" aria-hidden="true"></span>
-        <span class="terminal-dot" aria-hidden="true"></span>
-        <span class="terminal-title">~/work · nexus-agents vote · 2026-05-17</span>
-      </div>
-      <pre class="terminal-body" aria-label="Terminal transcript"><span class="t-prompt">$</span> <span class="t-cmd">nexus-agents vote --proposal "Add a 'nexus-agents tour' interactive</span>
-<span class="t-cmd">    walkthrough command that runs after 'setup'..."</span>
+    <figure class="landing-figure">
+      <div class="landing-transcript" role="region" tabindex="0" aria-labelledby="transcript-caption">
+<pre><span class="t-dim">$</span> nexus-agents vote --proposal "Add a 'nexus-agents tour' interactive
+    walkthrough command that runs after 'setup'..."
 
-<span class="t-heading">Nexus Agents Consensus Vote</span>
-<span class="t-heading">============================</span>
+Nexus Agents Consensus Vote
+============================
 
 <span class="t-dim">Proposal: Add a 'nexus-agents tour' interactive walkthrough command that runs after 'setup'...</span>
 
 <span class="t-dim">Collecting votes from 7 agents (timeout: 300s each)...</span>
 
-<span class="t-section">Votes</span>
+Votes
 
-  <span class="t-pass">✓</span> Software Architect:   <span class="t-bold">APPROVE</span> (82%)
-  <span class="t-pass">✓</span> Security Engineer:    <span class="t-bold">APPROVE</span> (90%)
-  <span class="t-pass">✓</span> Developer Experience: <span class="t-bold">APPROVE</span> (88%)
-  <span class="t-fail">✗</span> AI/ML Engineer:       <span class="t-bold-fail">REJECT</span>  (75%)
-  <span class="t-pass">✓</span> Product Manager:      <span class="t-bold">APPROVE</span> (82%)
-  <span class="t-fail">✗</span> Contrarian Analyst:   <span class="t-bold-fail">REJECT</span>  (95%)
-  <span class="t-fail">✗</span> Scope Steward:        <span class="t-bold-fail">ERROR</span>   — MCP error -32001: Request timed out
+  <span class="t-pass">✓</span> Software Architect:   APPROVE (82%)
+  <span class="t-pass">✓</span> Security Engineer:    APPROVE (90%)
+  <span class="t-pass">✓</span> Developer Experience: APPROVE (88%)
+  <span class="t-fail">✗</span> AI/ML Engineer:       REJECT  (75%)
+  <span class="t-pass">✓</span> Product Manager:      APPROVE (82%)
+  <span class="t-fail">✗</span> Contrarian Analyst:   REJECT  (95%)
+  <span class="t-fail">✗</span> Scope Steward:        ERROR   — MCP error -32001: Request timed out
 
-<span class="t-section">Summary</span>
+Summary
 
   Approve:  4
   Reject:   2
   Abstain:  0
-  <span class="t-fail">Errored:  1</span>
+  Errored:  1
   Approval: 66.7%
   Threshold: simple_majority
 
-<span class="t-bold">Result: <span class="t-decision">APPROVED</span></span>
+<span class="t-pass">Result: APPROVED</span>
 
-<span class="t-dim">Completed in 188487ms</span>
-</pre>
+<span class="t-dim">Completed in 188487ms</span></pre>
+      </div>
+      <figcaption id="transcript-caption">
+        Fig. 01 — Verbatim output of a real seven-voter run on 2026-05-17, a proposal from the
+        website backlog. One seat timed out and is reported as errored, not counted as a vote.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="landing-ways" aria-labelledby="ways-title">
+    <div class="landing-band">
+      <h2 id="ways-title" class="landing-h2">Four ways into the docs</h2>
+      <ul class="landing-ways-list">
+        {ways.map((way) => (
+          <li>
+            <p class="landing-kicker">{way.intro.kicker}</p>
+            <h3 class="landing-h3"><a href={way.href}>{way.label}</a></h3>
+            <p class="landing-muted">{way.intro.summary}</p>
+            {way.pages.length === 0 ? (
+              <p class="landing-note">No pages classified yet.</p>
+            ) : (
+              <ul class="landing-pages">
+                {way.pages.map((page) => (
+                  <li><a href={page.href}>{navLabel(page)}</a></li>
+                ))}
+              </ul>
+            )}
+            {way.provisional && (
+              <p class="landing-note">Provisional: unclassified pages, until the backfill lands.</p>
+            )}
+            {way.total > way.pages.length && (
+              <p class="landing-more">
+                <a href={way.href}>All {way.total} pages<span class="visually-hidden"> in {way.label}</span></a>
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
-    <p class="terminal-cite">
-      Verbatim from a real run on 2026-05-17 (a proposal from the website backlog;
-      the panel said yes 4 to 2). Seven specialised voter roles deliberate via your
-      authenticated Claude Code or Codex CLIs — no separate API keys required. Pass
-      <code>--record &lt;issue-number&gt;</code> to write the result back to GitHub as a
-      structured comment; pass <code>--verbose</code> to print per-vote verification
-      hashes.
+  </section>
+
+  <section class="landing-enforces" aria-labelledby="enforces-title">
+    <h2 id="enforces-title" class="landing-h2">What it enforces</h2>
+    <dl>
+      <dt>Adversarial review</dt>
+      <dd>
+        A seven-seat <code>consensus_vote</code> panel, including a contrarian seat, decides real
+        forks. Thresholds are counted over the voters who answered, and a change to the governance
+        substrate needs a whole panel. There are {CONSENSUS_ALGORITHM_COUNT} aggregation
+        strategies, and every decision is recorded with each voter's reasoning.
+      </dd>
+      <dt>Rules that cannot drift silently</dt>
+      <dd>
+        The governance blocks in the rule files every agent reads are generated from the code, and
+        CI fails when a hand edit diverges from the source.
+      </dd>
+      <dt>A tamper-evident audit chain</dt>
+      <dd>
+        Every decision is appended to a hash chain you can check with{' '}
+        <code>verify_audit_chain</code>. Tamper-evident, not tamper-proof: the{' '}
+        <a href={threatModelHref}>threat model</a> says exactly what that buys.
+      </dd>
+      <dt>Closed-loop telemetry</dt>
+      <dd>
+        Outcomes feed back into model routing, within bounds, so a {ROUTING_STAGE_COUNT}-stage
+        router learns which of the {CLI_ADAPTER_COUNT} CLI adapters handles which task.
+      </dd>
+    </dl>
+    <p class="landing-muted">
+      In the box: {MCP_TOOL_COUNT} MCP tools, {EXPERT_TYPE_COUNT} expert roles, {SKILL_COUNT} skills, {STRATEGY_COUNT} execution strategies, {MEMORY_BACKEND_COUNT} memory backends, and a
+      research registry of {PAPER_COUNT} papers from {DISCOVERY_SOURCE_COUNT} discovery sources.
     </p>
-  </section>
-
-  <!-- ─── The 60-second proof ─── -->
-  <section id="proof" class="article-section">
-    <hr class="section-rule-divider" />
-
-    <div class="article-body">
-      <h2 class="headline section-headline">The 60-second proof.</h2>
-      <p class="lede section-lede">
-        Three commands. No keys to set up just to look. The hard part is later.
-      </p>
-
-      <div class="proof-step">
-        <p class="step-label"><span class="step-num">1</span> Install</p>
-        <pre data-copy class="code-step"><code>npm install -g nexus-agents
-nexus-agents doctor</code></pre>
-        <p class="expected">
-          <span class="expected-tag">expected</span>
-          A health table; rows that need API keys are marked
-          <code>missing</code>. <code>doctor</code> only reads; it never writes.
-        </p>
-      </div>
-
-      <p class="proof-next">
-        To try a walkthrough before configuring CLI authentication, run
-        <code>nexus-agents tour</code>. It shows illustrative cached fixtures
-        without live model calls, API keys, or an authenticated CLI.
-        Add <code>--non-interactive</code> to skip the prompts between steps.
-      </p>
-
-      <div class="proof-step">
-        <p class="step-label"><span class="step-num">2</span> Run a real consensus vote (no API keys needed)</p>
-        <pre data-copy class="code-step"><code>nexus-agents vote --quick \
-  --proposal "Use SQLite over JSON files for the outcome store"</code></pre>
-        <p class="expected">
-          <span class="expected-tag">expected</span>
-          Output in the same shape as the hero transcript above, but with 3 voters
-          instead of 7 (<code>--quick</code>). Roles deliberate via your local
-          authenticated Claude Code or Codex CLIs; at least one must be available.
-          Gemini and OpenCode do not serve voter seats. Approval, reject,
-          abstain counts + final decision print to the terminal.
-        </p>
-      </div>
-
-      <div class="proof-step">
-        <p class="step-label"><span class="step-num">3</span> Attach to your editor</p>
-        <pre data-copy class="code-step"><code># Auto-configure as an MCP server for Claude Code, Cursor, etc.
-nexus-agents setup</code></pre>
-        <p class="expected">
-          <span class="expected-tag">expected</span>
-          The MCP server registers in your editor's config. Restart the editor,
-          and {MCP_TOOL_COUNT} new tools (<code>orchestrate</code>, <code>consensus_vote</code>,
-          <code>research_synthesize</code>, <code>verify_audit_chain</code>, &hellip;) become
-          available to whatever agent you're already using.
-        </p>
-      </div>
-
-      <p class="proof-next">
-        That's the smoke task. Every command above is configurable, but the
-        defaults already work — <code>nexus-agents orchestrate "&hellip;"</code>
-        will pick the right CLI, run the right experts, and write the trace.
-      </p>
-    </div>
-  </section>
-
-  <!-- ─── What's in the box ─── -->
-  <section class="article-section">
-    <hr class="section-rule-divider" />
-
-    <div class="article-body">
-      <h2 class="headline section-headline">What's in the box.</h2>
-
-      <div class="pillars">
-        <article class="pillar">
-          <p class="pillar-tag">admission control</p>
-          <h3 class="pillar-title">Adversarial review before it ships.</h3>
-          <p class="pillar-body">
-            The gate that catches what a data-plane agent would otherwise ship.
-            <code>pr_review</code> runs voter roles against a verification gate;
-            <code>consensus_vote</code> offers {CONSENSUS_ALGORITHM_COUNT}
-            aggregation strategies — simple majority, supermajority, unanimous,
-            opinion-wise, higher-order Bayesian — across seven specialised
-            roles. Every decision is recorded with per-voter reasoning.
-          </p>
-        </article>
-
-        <article class="pillar">
-          <p class="pillar-tag">event log</p>
-          <h3 class="pillar-title">Tamper-evident hash-chained audit.</h3>
-          <p class="pillar-body">
-            Every model call, every vote, every routing choice flows through an
-            append-only, hash-chained audit log on disk. Replay any decision;
-            integrity is verifiable via <code>verify_audit_chain</code>. It is
-            tamper-evident, not tamper-proof — alteration is detectable, not
-            impossible. Drift detection fires when conventions slip.
-          </p>
-        </article>
-
-        <article class="pillar">
-          <p class="pillar-tag">closed loop</p>
-          <h3 class="pillar-title">Route the next task on evidence.</h3>
-          <p class="pillar-body">
-            A {ROUTING_STAGE_COUNT}-stage pipeline (budget → capability →
-            preference → TOPSIS → LinUCB → latency) picks the right CLI from the
-            {CLI_ADAPTER_COUNT} adapters you have installed. Outcomes feed
-            {MEMORY_BACKEND_COUNT} memory backends so tomorrow's routing learns
-            from today's failures. A second bounded loop demotes unhealthy CLIs
-            automatically — capped, auto-decaying, demotion-only. Higher
-            authority is earned against evidence, never flipped on by default.
-          </p>
-        </article>
-      </div>
-
-      <p class="pillars-cite">
-        Plus {EXPERT_TYPE_COUNT} expert personae, {SKILL_COUNT} skills,
-        {STRATEGY_COUNT} execution strategies, {DISCOVERY_SOURCE_COUNT} research
-        sources, and {PAPER_COUNT}+ tracked papers feeding the planner. The full
-        inventory lives in <a href="/nexus-agents/docs/architecture/readme/">the architecture pages</a>.
-      </p>
-    </div>
-  </section>
-
-  <!-- ─── Architecture ─── -->
-  <section class="article-section">
-    <hr class="section-rule-divider" />
-
-    <div class="article-body">
-      <h2 class="headline section-headline">Architecture, briefly.</h2>
-      <p class="lede section-lede">
-        Control plane and data plane. Work is admitted through MCP, scheduled to
-        whichever CLI scored best, reviewed by consensus, and recorded in the
-        audit log — then outcomes feed back so the control plane routes the next
-        task on what actually worked.
-      </p>
-
-      <div class="mermaid diagram" aria-label="Architecture diagram: MCP protocol feeds the Orchestrator, which routes through a multi-stage pipeline to one of several CLIs. Consensus, memory, and audit run alongside. Outcomes feed back into the router.">
-{`flowchart LR
-  mcp["MCP Protocol<br/>${MCP_TOOL_COUNT} tools"]
-  orch["Orchestrator<br/>task analysis"]
-  router["Composite Router · ${ROUTING_STAGE_COUNT} stages<br/>Budget → Capability → Preference<br/>TOPSIS → LinUCB → Latency"]
-  clis["Claude · Gemini · Codex · OpenCode"]
-  outcome[("Outcome Store<br/>feeds back")]
-
-  subgraph services ["Supporting"]
-    consensus["Consensus<br/>${CONSENSUS_ALGORITHM_COUNT} strategies"]
-    memory["Memory<br/>${MEMORY_BACKEND_COUNT} backends"]
-    audit["Audit chain"]
-  end
-
-  mcp --> orch --> router --> clis --> outcome
-  outcome -.->|learns routing| router
-  orch -.-> services`}
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── Next steps ─── -->
-  <section class="article-section">
-    <hr class="section-rule-divider" />
-
-    <div class="article-body next-body">
-      <h2 class="headline section-headline">Next steps.</h2>
-      <p class="lede section-lede">
-        Action items first; reference last. Pick any one — they don't have to be
-        in order.
-      </p>
-
-      <div class="next-grid">
-        <a href="/nexus-agents/docs/entrypoints/" class="next-card">
-          <p class="next-kind">try</p>
-          <h3 class="next-title">Run an orchestration.</h3>
-          <p class="next-blurb">
-            <code>nexus-agents orchestrate "&hellip;"</code> picks the right CLI,
-            spins up the right experts, and writes the trace. The full
-            command + MCP-tool reference.
-          </p>
-        </a>
-
-        <a href="/nexus-agents/docs/guides/mcp_integration/" class="next-card">
-          <p class="next-kind">try</p>
-          <h3 class="next-title">Connect Claude Code, Cursor, or any MCP client.</h3>
-          <p class="next-blurb">
-            Wire {MCP_TOOL_COUNT} tools (orchestrate, vote, research,
-            verify_audit_chain&hellip;) into whatever editor you already use.
-            <code>setup</code> auto-configures most of it.
-          </p>
-        </a>
-
-        <a href="/nexus-agents/docs/getting-started/compose_your_first_pipeline/" class="next-card">
-          <p class="next-kind">try</p>
-          <h3 class="next-title">Run the full dev pipeline.</h3>
-          <p class="next-blurb">
-            Chain research, consensus, and <code>run_dev_pipeline</code> for a
-            concrete task. Start with a dry run to review the plan and vote
-            before implementation.
-          </p>
-        </a>
-
-        <a href="/nexus-agents/docs/getting-started/configuration/" class="next-card">
-          <p class="next-kind">configure</p>
-          <h3 class="next-title">Tune routing &amp; experts.</h3>
-          <p class="next-blurb">
-            Model preferences, custom expert personae, consensus thresholds,
-            sandbox modes, PolicyFirewall settings — what each knob does, and the
-            safe defaults to start from.
-          </p>
-        </a>
-
-        <a href="/nexus-agents/docs/architecture/readme/" class="next-card">
-          <p class="next-kind">read</p>
-          <h3 class="next-title">Architecture deep dive.</h3>
-          <p class="next-blurb">
-            How the composite router decides. How experts are spawned. How
-            consensus votes are aggregated. How the audit chain stays
-            content-addressed. The full anatomy.
-          </p>
-        </a>
-
-        <!-- RESEARCH_INDEX.md is generated without frontmatter, so Astro never publishes it (#5750); #5752 tracks publishing it. -->
-        <a href="https://github.com/nexus-substrate/nexus-agents/blob/main/docs/research/RESEARCH_INDEX.md" class="next-card">
-          <p class="next-kind">read</p>
-          <h3 class="next-title">Browse the research registry.</h3>
-          <p class="next-blurb">
-            {PAPER_COUNT}+ tracked papers across {DISCOVERY_SOURCE_COUNT} sources.
-            Technique alignment, synthesis, and the evidence trail behind every
-            routing strategy.
-          </p>
-        </a>
-      </div>
-    </div>
   </section>
 </BaseLayout>
 
 <style>
-  /* ─── Article scaffolding ─── */
-  .article-section { padding: 4.5rem 0 0; }
-  .article-body { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem; }
-  .section-headline { margin: 0 0 1rem; }
-  .section-lede { margin: 0 0 2rem; }
-  .section-rule-divider {
-    max-width: 78rem;
-    margin: 0 auto 3rem;
-    padding: 0 1.5rem;
-    border: 0;
-    border-top: 1px solid var(--ink);
-  }
-
-  /* ─── Hero ─── */
-  .hero {
-    max-width: 60rem;
-    margin: 0 auto;
-    padding: 4.5rem 1.5rem 2rem;
-  }
-  .hero-eyebrow {
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    letter-spacing: 0.04em;
-    color: var(--ink-mid);
-    margin: 0 0 1.5rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem 0.6rem;
-    align-items: baseline;
-  }
-  .hero-version {
-    color: var(--register);
-    font-weight: 500;
-  }
-  .hero-sep { color: var(--rule); }
-
-  .hero-headline { margin: 0 0 1.5rem; max-width: 22ch; }
-  .register-em {
-    color: var(--register);
-    font-style: italic;
-    font-variation-settings: 'opsz' 144, 'SOFT' 90;
-  }
-
-  .hero-lede {
-    max-width: 42rem;
-    margin: 0 0 2.2rem;
-  }
-
-  .hero-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1.2rem 1.6rem;
-  }
-  .cta-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.65rem;
-    padding: 0.85rem 1.25rem;
-    background: var(--ink);
-    color: var(--paper);
-    text-decoration: none;
-    border: 1px solid var(--ink);
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    transition: background 120ms linear, color 120ms linear, border-color 120ms linear;
-  }
-  .cta-primary:hover { background: var(--register); border-color: var(--register); }
-  .cta-arrow {
-    font-family: var(--font-mono);
-    transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
-  }
-  .cta-primary:hover .cta-arrow { transform: translateX(4px); }
-  .cta-secondary {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    color: var(--ink);
-    text-decoration: underline;
-    text-decoration-color: var(--register);
-    text-decoration-thickness: 1.5px;
-    text-underline-offset: 4px;
-  }
-  .cta-secondary:hover { text-decoration-thickness: 3px; }
-
-  /* ─── Terminal section ─── */
-  .terminal-section {
-    max-width: 60rem;
-    margin: 2rem auto 0;
-    padding: 0 1.5rem;
-  }
-  .terminal {
-    background: var(--ink);
-    border: 1px solid var(--ink);
-    box-shadow: 0 1px 0 var(--rule), 0 10px 32px -16px oklch(0 0 0 / 0.18);
-  }
-  .terminal-chrome {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.55rem 0.9rem;
-    background: oklch(0.10 0.012 30);
-    border-bottom: 1px solid oklch(0.30 0.015 30);
-  }
-  .terminal-dot {
-    width: 0.65rem;
-    height: 0.65rem;
-    border-radius: 50%;
-    background: oklch(0.35 0.012 30);
-  }
-  .terminal-title {
-    margin-left: 0.6rem;
-    font-family: var(--font-mono);
-    font-size: 0.74rem;
-    color: oklch(0.7 0.01 30);
-    letter-spacing: 0.02em;
-  }
-  .terminal-body {
-    margin: 0;
-    padding: 1.1rem 1.2rem;
-    font-family: var(--font-mono);
-    font-size: 0.84rem;
-    line-height: 1.7;
-    color: var(--paper);
-    overflow-x: auto;
-    white-space: pre;
-    tab-size: 2;
-  }
-  .t-prompt { color: var(--register); font-weight: 600; }
-  .t-cmd { color: oklch(0.92 0.01 75); }
-  .t-heading { color: oklch(0.94 0.01 75); font-weight: 600; }
-  .t-section { color: oklch(0.78 0.10 200); font-weight: 600; }
-  .t-pass { color: var(--mark); font-weight: 600; }
-  .t-fail { color: oklch(0.72 0.16 25); font-weight: 600; }
-  .t-bold { color: oklch(0.94 0.01 75); font-weight: 600; }
-  .t-bold-fail { color: oklch(0.78 0.14 25); font-weight: 600; }
-  .t-dim { color: oklch(0.62 0.012 60); }
-  .t-decision { color: var(--mark); }
-
-  .terminal-cite {
-    font-family: var(--font-body);
-    font-size: 0.875rem;
-    color: var(--ink-mid);
-    line-height: 1.6;
-    margin: 1rem 0 0;
-    max-width: 44rem;
-  }
-  .terminal-cite code {
-    font-family: var(--font-mono);
-    font-size: 0.92em;
-    color: var(--ink);
-    background: var(--paper-deep);
-    padding: 0.05em 0.32em;
-  }
-
-  /* ─── Proof steps ─── */
-  .proof-step { margin: 1.5rem 0 1.8rem; }
-  .step-label {
-    display: flex;
-    align-items: baseline;
-    gap: 0.65rem;
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: var(--ink);
-    margin: 0 0 0.55rem;
-  }
-  .step-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.4rem;
-    height: 1.4rem;
-    border: 1px solid var(--ink);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--ink);
-    flex-shrink: 0;
-  }
-  .code-step,
-  pre.code-step {
-    background: var(--ink);
-    color: var(--paper);
-    font-family: var(--font-mono);
-    font-size: 0.86rem;
-    line-height: 1.65;
-    padding: 0.9rem 1.1rem;
-    margin: 0 0 0.75rem;
-    overflow-x: auto;
-    border-left: 3px solid var(--register);
-    position: relative;
-  }
-  .expected {
-    font-family: var(--font-body);
-    font-size: 0.92rem;
-    color: var(--ink-mid);
-    line-height: 1.6;
-    margin: 0;
-    padding-left: 0.7rem;
-    border-left: 1px solid var(--rule);
-  }
-  .expected-tag {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--register);
-    margin-right: 0.5rem;
-    font-weight: 600;
-  }
-  .expected code {
-    font-family: var(--font-mono);
-    font-size: 0.85em;
-    color: var(--ink);
-    background: var(--paper-deep);
-    padding: 0.05em 0.3em;
-  }
-  .proof-next {
-    font-family: var(--font-body);
-    font-size: 0.95rem;
-    color: var(--ink-mid);
-    line-height: 1.6;
-    margin: 1.8rem 0 0;
-    padding: 1rem 0 0;
-    border-top: 1px solid var(--rule);
-  }
-  .proof-next code {
-    font-family: var(--font-mono);
-    font-size: 0.92em;
-    color: var(--ink);
-    background: var(--paper-deep);
-    padding: 0.05em 0.32em;
-  }
-
-  /* ─── Pillars ─── */
-  .pillars {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0;
-    margin: 0 0 1.5rem;
-    border-top: 1px solid var(--ink);
-    border-bottom: 1px solid var(--ink);
-  }
-  .pillar {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.35rem;
-    padding: 1.4rem 0;
-    border-bottom: 1px solid var(--rule-soft);
-  }
-  .pillar:last-child { border-bottom: none; }
-  .pillar-tag {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--register);
-    margin: 0;
-  }
-  .pillar-title {
-    font-family: var(--font-display);
-    font-variation-settings: 'opsz' 36;
-    font-weight: 600;
-    font-size: 1.3rem;
-    line-height: 1.2;
-    color: var(--ink);
-    margin: 0;
-  }
-  .pillar-body {
-    font-family: var(--font-body);
-    font-size: 0.97rem;
-    line-height: 1.6;
-    color: var(--ink-mid);
-    margin: 0.2rem 0 0;
-  }
-  .pillar-body code {
-    font-family: var(--font-mono);
-    font-size: 0.9em;
-    color: var(--ink);
-    background: var(--paper-deep);
-    padding: 0.04em 0.32em;
-  }
-  .pillars-cite {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    color: var(--ink-soft);
-    margin: 0;
-    line-height: 1.55;
-  }
-  .pillars-cite a {
-    color: var(--ink);
-    text-decoration: underline;
-    text-decoration-color: var(--register);
-    text-underline-offset: 3px;
-  }
-
-  /* ─── Architecture diagram ─── */
-  .diagram {
-    margin-top: 1rem;
-    padding: 1.5rem 1rem;
-    border-top: 1px solid var(--ink);
-    border-bottom: 1px solid var(--ink);
-    background: var(--paper-deep);
-  }
-
-  /* ─── Next steps grid ─── */
-  .next-body { max-width: 58rem; }
-  .next-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0;
-    border-top: 1px solid var(--ink);
-    border-bottom: 1px solid var(--ink);
-  }
-  .next-card {
+  /* Landing archetype on remarque tokens. Spacing, type and color are all
+     tokens; the only literals are the breakpoint-free grid minimums. */
+  .landing-hero {
+    max-width: var(--content-standard);
+    margin-inline: auto;
+    padding: var(--space-9) var(--space-5) var(--space-8);
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
-    padding: 1.4rem 1.4rem 1.5rem;
-    text-decoration: none;
-    color: var(--ink);
-    border-right: 1px solid var(--rule-soft);
-    border-bottom: 1px solid var(--rule-soft);
-    transition: background 120ms linear;
+    gap: var(--space-8);
   }
-  .next-card:nth-child(2n) { border-right: none; }
-  .next-card:nth-last-child(-n + 2) { border-bottom: none; }
-  .next-card:hover { background: var(--paper-deep); }
-  .next-kind {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--register);
+  .landing-intro {
+    max-width: var(--content-reading);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+  .landing-kicker {
     margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+    font-variant-caps: all-small-caps;
+    letter-spacing: var(--tracking-caps);
+    color: var(--color-fg-muted);
   }
-  .next-title {
+  .landing-title {
+    margin: 0;
     font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 1.12rem;
-    line-height: 1.25;
-    color: var(--ink);
+    font-weight: var(--weight-display);
+    font-size: var(--text-display);
+    line-height: var(--leading-display);
+    letter-spacing: var(--tracking-display);
+    text-wrap: balance;
+  }
+  .landing-lead {
     margin: 0;
-    text-decoration: underline;
-    text-decoration-color: var(--register);
-    text-underline-offset: 3px;
-    text-decoration-thickness: 1.5px;
+    font-size: var(--text-body-lg);
+    color: var(--color-fg-muted);
   }
-  .next-card:hover .next-title { text-decoration-thickness: 3px; }
-  .next-blurb {
-    margin: 0.2rem 0 0;
-    font-family: var(--font-body);
-    font-size: 0.92rem;
-    color: var(--ink-mid);
-    line-height: 1.55;
+  .landing-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-6);
+    font-weight: var(--weight-medium);
   }
-  .next-blurb code {
+  .landing-links a,
+  .landing-more a {
+    display: inline-block;
+    padding-block: var(--space-1);
+  }
+  .landing-pages li {
+    padding-block: var(--space-1);
+  }
+  .landing-install {
+    position: relative;
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
     font-family: var(--font-mono);
-    font-size: 0.9em;
-    color: var(--ink);
-    background: var(--paper-deep);
-    padding: 0.04em 0.3em;
-  }
-  @media (max-width: 720px) {
-    .next-grid { grid-template-columns: 1fr; }
-    .next-card { border-right: none !important; }
-    .next-card:not(:last-child) { border-bottom: 1px solid var(--rule-soft) !important; }
-    .next-card:last-child { border-bottom: none !important; }
+    font-size: var(--text-meta);
+    background: var(--color-code-bg);
+    color: var(--color-code-fg);
+    border: var(--border-width) var(--border-style) var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
   }
 
-  /* ─── Responsive ─── */
-  @media (max-width: 640px) {
-    .hero { padding-top: 3rem; }
-    .article-section { padding-top: 3rem; }
-    .dossier-item a { grid-template-columns: 2.4rem 1fr; }
-    .terminal-body { font-size: 0.75rem; }
+  .landing-figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .landing-transcript {
+    border: var(--border-width) var(--border-style) var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-code-bg);
+    overflow-x: auto;
+  }
+  .landing-transcript pre {
+    margin: 0;
+    padding: var(--space-4) var(--space-5);
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+    background: var(--color-code-bg);
+    color: var(--color-code-fg);
+  }
+  .landing-transcript:focus-visible,
+  .landing-install:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  .t-dim {
+    color: var(--color-fg-muted);
+  }
+  .t-pass {
+    color: var(--color-success);
+  }
+  .t-fail {
+    color: var(--color-error);
+  }
+  .landing-figure figcaption {
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+    color: var(--color-fg-muted);
+    max-width: var(--content-reading);
+  }
+
+  .landing-ways {
+    border-block: var(--border-width) var(--border-style) var(--color-border);
+    background: var(--color-bg-subtle);
+  }
+  .landing-band {
+    max-width: var(--content-standard);
+    margin-inline: auto;
+    padding: var(--space-8) var(--space-5);
+  }
+  .landing-h2 {
+    margin: 0 0 var(--space-6);
+    font-family: var(--font-display);
+    font-weight: var(--weight-display);
+    font-size: var(--text-title);
+    line-height: var(--leading-title);
+    letter-spacing: var(--tracking-title);
+    text-wrap: balance;
+  }
+  .landing-ways-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: var(--space-7);
+  }
+  .landing-ways-list > li {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .landing-h3 {
+    margin: 0;
+    font-size: var(--text-body-lg);
+    font-weight: var(--weight-semibold);
+  }
+  .landing-h3 a {
+    color: var(--color-fg);
+  }
+  .landing-muted {
+    margin: 0;
+    color: var(--color-fg-muted);
+  }
+  .landing-pages {
+    margin: var(--space-2) 0 0;
+    padding-inline-start: var(--space-5);
+  }
+  .landing-note,
+  .landing-more {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+    color: var(--color-fg-muted);
+  }
+
+  .landing-enforces {
+    max-width: var(--content-reading);
+    margin-inline: auto;
+    padding: var(--space-9) var(--space-5);
+  }
+  .landing-enforces dl {
+    margin: 0 0 var(--space-6);
+  }
+  .landing-enforces dt {
+    font-weight: var(--weight-semibold);
+    margin-top: var(--space-5);
+  }
+  .landing-enforces dt:first-child {
+    margin-top: 0;
+  }
+  .landing-enforces dd {
+    margin: var(--space-1) 0 0;
+    color: var(--color-fg-muted);
+  }
+  .landing-enforces code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    padding: 0.05em 0.3em;
+    background: var(--color-code-bg);
+    color: var(--color-code-fg);
+    border-radius: var(--radius-sm);
   }
 </style>

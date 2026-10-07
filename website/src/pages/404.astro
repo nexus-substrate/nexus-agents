@@ -1,89 +1,55 @@
 ---
+// 404 page (#7199), on the same remarque shell as the rest of the site.
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { BASE, docsHref } from '../lib/docs-collection.ts';
+import { PRIMARY_SECTIONS, sectionIndexHref, sectionLabel } from '../lib/docs-nav.ts';
 ---
 
-<BaseLayout title="404 — Not Found" description="The page you requested could not be found." noindex>
-  <article class="notfound">
-    <p class="code">404</p>
-    <h1 class="display heading">
-      Page not found.
-    </h1>
-    <p class="lede">
-      The link, the slug, or the page itself is gone. Try the home page,
-      or jump to the documentation.
+<BaseLayout title="Page not found" description="The page you requested could not be found." noindex>
+  <div class="notfound">
+    <p class="notfound-kicker">Error 404</p>
+    <h1 class="notfound-title">Page not found</h1>
+    <p class="notfound-lead">
+      The link, the slug, or the page itself is gone. Search the docs from the header, or start
+      from one of these:
     </p>
-    <div class="links">
-      <a href="/nexus-agents/" class="cta-primary">
-        <span class="cta-label">Home</span>
-        <span class="cta-arrow" aria-hidden="true">→</span>
-      </a>
-      <a href="/nexus-agents/docs/readme/" class="cta-secondary">Documentation</a>
-    </div>
-  </article>
+    <ul>
+      <li><a href={`${BASE}/`}>Home</a></li>
+      <li><a href={docsHref('readme')}>Documentation index</a></li>
+      {PRIMARY_SECTIONS.map((key) => (
+        <li><a href={sectionIndexHref(BASE, key)}>{sectionLabel(key)}</a></li>
+      ))}
+    </ul>
+  </div>
 </BaseLayout>
 
 <style>
   .notfound {
-    max-width: 38rem;
-    margin: 5rem auto 8rem;
-    padding: 0 1.5rem;
+    max-width: var(--content-reading);
+    margin-inline: auto;
+    padding: var(--space-9) var(--space-5);
   }
-  .code {
+  .notfound-kicker {
+    margin: 0 0 var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    font-variant-caps: all-small-caps;
+    letter-spacing: var(--tracking-caps);
+    color: var(--color-fg-muted);
+  }
+  .notfound-title {
+    margin: 0 0 var(--space-5);
     font-family: var(--font-display);
-    font-variation-settings: 'opsz' 144, 'SOFT' 90;
-    font-style: italic;
-    font-size: clamp(5rem, 11vw, 8rem);
-    font-weight: 500;
-    line-height: 1;
-    color: var(--register);
-    margin: 0 0 1rem;
-    letter-spacing: -0.04em;
+    font-weight: var(--weight-display);
+    font-size: var(--text-title);
+    line-height: var(--leading-title);
+    letter-spacing: var(--tracking-title);
   }
-  .heading {
-    margin: 0 0 1.5rem;
-    font-size: clamp(1.85rem, 3vw, 2.3rem);
+  .notfound-lead {
+    font-size: var(--text-body-lg);
+    color: var(--color-fg-muted);
   }
-  .lede {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 1.15rem;
-    line-height: 1.55;
-    color: var(--ink-mid);
-    max-width: 32rem;
-    margin: 0 0 2rem;
+  .notfound li {
+    padding-block: var(--space-1);
   }
-  .links {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1.2rem 1.6rem;
-  }
-  .cta-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.65rem;
-    padding: 0.85rem 1.25rem;
-    background: var(--ink);
-    color: var(--paper);
-    text-decoration: none;
-    border: 1px solid var(--ink);
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    transition: background 120ms linear, border-color 120ms linear;
-  }
-  .cta-primary:hover { background: var(--register); border-color: var(--register); }
-  .cta-arrow { font-family: var(--font-mono); transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1); }
-  .cta-primary:hover .cta-arrow { transform: translateX(4px); }
-  .cta-secondary {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    color: var(--ink);
-    text-decoration: underline;
-    text-decoration-color: var(--register);
-    text-decoration-thickness: 1.5px;
-    text-underline-offset: 4px;
-  }
-  .cta-secondary:hover { text-decoration-thickness: 3px; }
 </style>

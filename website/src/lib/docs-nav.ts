@@ -25,6 +25,8 @@ export interface NavPage {
   /** Absolute href, base path included. */
   href: string;
   title: string;
+  /** Frontmatter description, shown on section index pages. */
+  description?: string | undefined;
   /** Short label for the rail; falls back to `title`. */
   navTitle?: string | undefined;
   diataxis?: Diataxis | undefined;
@@ -145,6 +147,96 @@ export function findNeighbors(nav: readonly NavSection[], href: string): Neighbo
   return { prev: section.pages[index - 1], next: section.pages[index + 1] };
 }
 
+/** The four reader-facing sections the Primary nav and the landing page offer. */
+export const PRIMARY_SECTIONS = ['start', 'how-to', 'reference', 'concepts'] as const;
+export type PrimarySectionKey = (typeof PRIMARY_SECTIONS)[number];
+
+export function sectionLabel(key: SectionKey): string {
+  const found = SECTIONS.find((s) => s.key === key);
+  if (found === undefined) throw new Error(`unknown docs section: ${key}`);
+  return found.label;
+}
+
+/**
+ * URL segment of each section index page, under /docs/. A doc whose
+ * collection id equals one of these would be shadowed by the index page, so
+ * the section route fails the build on a collision (sectionRouteCollisions).
+ */
+const SECTION_SLUGS: Record<PrimarySectionKey, string> = {
+  start: 'start-here',
+  'how-to': 'how-to',
+  reference: 'reference',
+  concepts: 'concepts',
+};
+
+export function sectionSlug(key: PrimarySectionKey): string {
+  return SECTION_SLUGS[key];
+}
+
+export function sectionIndexHref(base: string, key: PrimarySectionKey): string {
+  return `${base}/docs/${SECTION_SLUGS[key]}/`;
+}
+
+/** Section slugs that a docs collection id would collide with. */
+export function sectionRouteCollisions(docIds: readonly string[]): string[] {
+  const ids = new Set(docIds);
+  return PRIMARY_SECTIONS.map((key) => SECTION_SLUGS[key]).filter((slug) => ids.has(slug));
+}
+
+export interface SectionIntro {
+  /** The Diátaxis need the section serves, as a one-word kicker. */
+  kicker: string;
+  summary: string;
+}
+
+const SECTION_INTROS: Record<PrimarySectionKey, SectionIntro> = {
+  start: { kicker: 'Learning', summary: 'Start from nothing and finish with a working result.' },
+  'how-to': { kicker: 'Tasks', summary: 'Steps for a goal you already have.' },
+  reference: {
+    kicker: 'Information',
+    summary:
+      'The CLI, the MCP tools, configuration and the API, much of it generated from the code.',
+  },
+  concepts: { kicker: 'Understanding', summary: 'Why it works the way it does.' },
+};
+
+export function sectionIntro(key: PrimarySectionKey): SectionIntro {
+  return SECTION_INTROS[key];
+}
+
+/**
+ * Directories whose unclassified pages stand in for a section that has no
+ * classified page yet. A stopgap while the Diátaxis backfill (#7198) lands:
+ * it switches itself off per section as soon as one page there declares the
+ * type, and the listing is flagged `provisional` so the page can say so.
+ */
+const PROVISIONAL_PREFIXES: Record<PrimarySectionKey, readonly string[]> = {
+  start: ['getting-started/'],
+  'how-to': ['guides/'],
+  reference: ['reference/'],
+  concepts: ['architecture/'],
+};
+
+export interface SectionListing {
+  pages: NavPage[];
+  /** True when `pages` is the directory fallback, not classified pages. */
+  provisional: boolean;
+}
+
+/**
+ * The pages of one primary section, from the output of buildNav so the nav
+ * rail, the section index pages and the landing page agree. Empty input
+ * yields an empty, non-provisional listing.
+ */
+export function sectionListing(nav: readonly NavSection[], key: PrimarySectionKey): SectionListing {
+  const classified = nav.find((s) => s.key === key)?.pages ?? [];
+  if (classified.length > 0) return { pages: [...classified], provisional: false };
+  const unsorted = nav.find((s) => s.key === 'unsorted')?.pages ?? [];
+  const prefixes = PROVISIONAL_PREFIXES[key];
+  const guessed = unsorted.filter((p) => prefixes.some((prefix) => p.id.startsWith(prefix)));
+  return { pages: guessed, provisional: guessed.length > 0 };
+}
+
 const TYPE_LABELS: Record<Diataxis, string> = {
   tutorial: 'Tutorial',
   'how-to': 'How-to guide',
@@ -175,6 +267,12 @@ const GENERATED_DOCS: ReadonlyArray<{ path: string; source: string; partial: boo
     source: 'scripts/generate-strategy-reference.ts',
     partial: false,
   },
+  {
+    path: 'docs/reference/environment.md',
+    source: 'scripts/generate-env-reference.ts',
+    partial: false,
+  },
+  { path: 'docs/reference/cli.md', source: 'scripts/generate-cli-reference.ts', partial: false },
   {
     path: 'docs/reference/capabilities.md',
     source: 'scripts/generate-repo-index.ts',

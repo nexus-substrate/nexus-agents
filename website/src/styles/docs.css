@@ -1,5 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────────
- * Docs site — remarque Reference/Docs archetype (#7199).
+ * Site stylesheet — remarque tokens for every page; the docs pages use its
+ * Reference/Docs archetype, the landing page its Landing archetype (#7199).
  *
  * remarque-tokens is pinned exact (pre-1.0). Import order is its contract
  * (AGENT_RULES.md "Build Order"): fonts, then tokens (core + palette +

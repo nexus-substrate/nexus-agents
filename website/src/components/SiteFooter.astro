@@ -1,0 +1,14 @@
+---
+// Site footer shared by every page (#7199). The version is read from
+// packages/nexus-agents/package.json at build (src/data/site-data.ts).
+import { NEXUS_AGENTS_VERSION } from '../data/site-data';
+import { docsHref } from '../lib/docs-collection.ts';
+---
+
+<footer class="docs-footer">
+  <p>
+    nexus-agents {NEXUS_AGENTS_VERSION} · MIT licensed ·{' '}
+    <a href="https://github.com/nexus-substrate/nexus-agents">Source</a> ·{' '}
+    <a href={docsHref('development/readme')}>Project and contributor docs</a>
+  </p>
+</footer>
