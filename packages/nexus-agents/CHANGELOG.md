@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.2.2
+
+### Patch Changes
+
+- [#7255](https://github.com/nexus-substrate/nexus-agents/pull/7255) [`c0a003b`](https://github.com/nexus-substrate/nexus-agents/commit/c0a003b33fe0f1d643eb888eeb92a2eb08f669bc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix false context-utilization warnings from `execute_expert` by using the model that actually served the request. Report utilization as unmeasured when no model is known or token usage was not reported, instead of assuming an 8,192-token window or presenting missing usage as zero.
+
 ## 11.2.1
 
 ### Patch Changes
