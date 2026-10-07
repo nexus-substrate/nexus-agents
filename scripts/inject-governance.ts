@@ -38,6 +38,7 @@ import {
   scan as scanMemoryContract,
 } from './check-memory-contract.js';
 import { checkStrategyManifestRegistry } from './check-strategy-manifest-drift.js';
+import { STRATEGY_MANIFEST_REGISTRY } from '../packages/nexus-agents/src/orchestration/strategy-manifest-registry.js';
 import { checkAuthorityTierDeclarations } from './check-authority-tier-drift.js';
 import { GOVERNANCE_STAMP_DIGEST_LENGTH } from './governance-stamp-exemption.js';
 import { MARKERS } from './governance-markers.js';
@@ -2435,6 +2436,7 @@ export async function checkGovernance(): Promise<boolean> {
     checkToolOutputConsistency(),
     checkMemoryContract(),
     checkServerJson(actual.tools.length),
+    checkWebsiteCapabilityCounts(actual),
     ...checkStrategyRegistryGates(),
   ];
 
@@ -2842,7 +2844,7 @@ export async function injectGovernance(): Promise<void> {
   // #2295 follow-up: sync ancillary count surfaces that the docs-content-
   // drift gate (#2107) checks but didn't write. Each new tool used to
   // require manual edits in 5+ places; now they all flow from this script.
-  syncWebsiteToolCount(tools.length);
+  syncWebsiteCapabilityCounts(registries);
   syncDesignDocsToolCount(tools.length);
   syncReadmeToolCount(tools.length);
 
@@ -3117,18 +3119,52 @@ function syncServerJson(toolNames: readonly string[]): void {
 const SITE_DATA_PATH = join(ROOT, 'website/src/data/site-data.ts');
 const COMPONENTS_DOC_PATH = join(ROOT, 'docs/design/components.md');
 
+/** Website counts use the same registry readers as the governance surfaces. */
+function buildWebsiteCountProbes(registries: GovernanceRegistries): Probe[] {
+  const counts: readonly [string, number][] = [
+    ['MCP_TOOL_COUNT', registries.tools.length],
+    ['EXPERT_TYPE_COUNT', registries.experts.length],
+    ['SKILL_COUNT', registries.skills.length],
+    ['STRATEGY_COUNT', STRATEGY_MANIFEST_REGISTRY.manifests.length],
+  ];
+  return counts.map(([name, expected]) => ({
+    path: SITE_DATA_PATH,
+    pattern: new RegExp(`^export const ${name}\\s*=\\s*(\\d+)(?=\\s*;)`, 'm'),
+    expected,
+    label: `website ${name}`,
+  }));
+}
+
+/** Empty canonical registries are missing measurements, not healthy zero counts. */
+function checkWebsiteCapabilityCounts(registries: GovernanceRegistries): boolean {
+  const results = buildWebsiteCountProbes(registries).map((probe) => {
+    if (probe.expected === 0) {
+      console.error(`❌ ${probe.label}: canonical registry is empty`);
+      return false;
+    }
+    return runProbe(probe);
+  });
+  // The four declared capabilities above always produce four measurements.
+  return results.every(Boolean);
+}
+
 /**
- * Update the `MCP_TOOL_COUNT = N` constant in the website's site-data.ts
- * (#2295 follow-up). Soft-skip if the website module isn't checked out.
+ * Regenerate only the website capability constants (#7200). Exported so callers
+ * can refresh this surface without writing governance documents.
  */
-function syncWebsiteToolCount(toolCount: number): void {
+export function syncWebsiteCapabilityCounts(
+  registries: GovernanceRegistries = loadAllRegistries()
+): void {
   if (!existsSync(SITE_DATA_PATH)) return;
-  const content = readFileSync(SITE_DATA_PATH, 'utf-8');
-  const updated = content.replace(
-    /(export const MCP_TOOL_COUNT\s*=\s*)\d+(\s*;)/,
-    `$1${String(toolCount)}$2`
-  );
-  if (updated !== content) writeFileSync(SITE_DATA_PATH, updated);
+  let content = readFileSync(SITE_DATA_PATH, 'utf-8');
+  for (const probe of buildWebsiteCountProbes(registries)) {
+    if (probe.expected === 0) throw new Error(`${probe.label}: canonical registry is empty`);
+    if (!probe.pattern.test(content)) throw new Error(`${probe.label}: count declaration missing`);
+    content = content.replace(probe.pattern, (match) =>
+      match.replace(/\d+$/, String(probe.expected))
+    );
+  }
+  if (content !== readFileSync(SITE_DATA_PATH, 'utf-8')) writeFileSync(SITE_DATA_PATH, content);
 }
 
 /**

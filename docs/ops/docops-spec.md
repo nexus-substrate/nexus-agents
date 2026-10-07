@@ -112,6 +112,21 @@ pnpm exec tsx scripts/inject-governance.ts check   # CI validation
 - `<!-- GOVERNANCE:TOOL_INDEX:START/END -->` - MCP tool table
 - `<!-- GOVERNANCE:VERSION:START/END -->` - Governance version
 
+### Environment and CLI references (#7200)
+
+`scripts/generate-env-reference.ts` reads the environment schema and emits
+`docs/reference/environment.md`. `scripts/generate-cli-reference.ts` uses the
+shared CLI catalog parser to emit `docs/reference/cli.md`. Both declare
+`diataxis: reference`, carry source provenance, and fail on empty input.
+Run either script with `pnpm exec tsx`; pass `--check` to compare the generated
+content against disk without writing. The blocking Tool Reference Drift job
+in `docs-check.yml` runs both checks alongside the MCP reference check.
+
+The existing `inject-governance.ts` injection and check also derive the website's
+tools, experts, skills and execution-strategy counts from their canonical
+registries. The numeric exports in `website/src/data/site-data.ts` are generated
+values consumed by the website; no website build dependency is required.
+
 ---
 
 ## CI Validation Jobs

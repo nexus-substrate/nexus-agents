@@ -13,6 +13,10 @@ on:
       - 'scripts/generate-docs-content.ts'
       - 'scripts/generate-tool-reference.ts'
       - 'scripts/generate-strategy-reference.ts'
+      - 'scripts/generate-env-reference.ts'
+      - 'scripts/generate-cli-reference.ts'
+      - 'scripts/parse-cli-command-catalog.ts'
+      - 'website/src/data/site-data.ts'
       - 'scripts/claims-check.ts'
       - 'scripts/check-diataxis-frontmatter.ts'
       - 'governance/claims-registry.yaml'
@@ -378,6 +382,13 @@ jobs:
             echo "Run 'pnpm docs:tools' and commit the changes"
             exit 1
           fi
+
+      # #7200: reuse this blocking generator job and its aggregate verdict.
+      - name: Check generated environment reference
+        run: pnpm exec tsx scripts/generate-env-reference.ts --check
+
+      - name: Check generated CLI reference
+        run: pnpm exec tsx scripts/generate-cli-reference.ts --check
 
   # Job 6c: Strategy-Reference Drift (#3838) — the generated strategy-manifest
   # reference (docs/reference/strategies/, from
