@@ -76,11 +76,15 @@ audience: user # user | project
   report the disagreement. Do not silently rewrite the declaration to match the
   content, because the content may be what is wrong.
 
-The gate is a ratchet. The count of pages missing either key may not grow past
-`docs/ops/diataxis-frontmatter-baseline.json`. When a PR lowers the count, run
-`pnpm exec tsx scripts/check-diataxis-frontmatter.ts --update-baseline` so the
-gain sticks. Zero pages scanned is a failure reported as `unmeasured`, not a
-pass.
+The gate is a ratchet over a set of pages, not a count.
+`docs/ops/diataxis-frontmatter-baseline.json` lists, for each key, the exact
+pages allowed to omit it. The check fails when an undeclared page is not on
+the list, when a listed page now declares the key, and when a listed path no
+longer exists. So a PR that declares a page must also drop it from the list:
+run `pnpm exec tsx scripts/check-diataxis-frontmatter.ts --update-baseline`,
+which only removes entries. Adding an entry needs `--allow-growth` as well, and
+a reviewer should ask why. Zero pages scanned is a failure reported as
+`unmeasured`, not a pass.
 
 ## Modes
 
@@ -179,8 +183,12 @@ to the diataxis.fr page that explains the type in depth.
       section per command, tool, env var or schema field).
 - [ ] Entries use the same format, so a reader can scan them.
 - [ ] Examples show usage briefly without becoming a procedure.
-- [ ] It is accurate and complete for what it covers. If it can be generated
-      from code, it is, and the page says so.
+- [ ] It is accurate and complete for what it covers.
+- [ ] _This repo's policy, not a Diátaxis rule:_ if a reference page can be
+      generated from code, generate it and say so on the page. diataxis.fr
+      endorses generation for accuracy, but warns that generated reference is
+      not all the documentation a project needs. A generated page does not
+      replace the tutorials, how-tos and explanation around it.
 
 ### Explanation: understanding why ([diataxis.fr/explanation](https://diataxis.fr/explanation/))
 

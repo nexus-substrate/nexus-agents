@@ -528,8 +528,11 @@ jobs:
   # Every docs/ page (except generated docs/api/) declares `diataxis:` and
   # `audience:`, one scalar each; `none` only on the kinds in
   # docs/ops/diataxis-none-kinds.json. Invalid values fail outright. Missing
-  # declarations are a ratchet against docs/ops/diataxis-frontmatter-baseline.json:
-  # the count may not grow. Zero pages scanned fails as `unmeasured`.
+  # declarations are a per-page ratchet against
+  # docs/ops/diataxis-frontmatter-baseline.json: an undeclared page not in the
+  # set fails, and so does a stale entry (now declared, or no longer exists).
+  # Zero pages scanned fails as `unmeasured`. Feeds docs-success, which is not
+  # yet a required context (#4802), so this is merge-blocking only once it is.
   diataxis-frontmatter:
     name: Diátaxis Frontmatter
     runs-on: ubuntu-latest

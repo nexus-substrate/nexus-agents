@@ -19,18 +19,25 @@
  *   - malformed frontmatter;
  *   - zero pages scanned — reported as `unmeasured`, because a scan that finds
  *     nothing has measured nothing, not found a clean tree;
- *   - the number of pages MISSING either key growing past the committed
- *     baseline (docs/ops/diataxis-frontmatter-baseline.json). The two keys are
- *     counted separately so progress on one cannot hide a regression on the
- *     other.
+ *   - any drift from the committed baseline
+ *     (docs/ops/diataxis-frontmatter-baseline.json), which lists, per key, the
+ *     exact set of pages allowed to omit it:
+ *       - an undeclared page that is not in the set (new debt);
+ *       - a listed page that now declares the key (stale entry);
+ *       - a listed path that no longer exists (stale entry).
  *
- * The missing-declaration count is a ratchet, not a requirement: the tree
- * started with no declarations at all, and #7198 classifies the pages. When
- * the count falls, `--update-baseline` locks the gain in.
+ * WHY A SET, NOT A COUNT. A count ratchet passes when one page is declared and
+ * another is added undeclared (the swap), and it lets the slack from a fixed
+ * page be spent later. A set has neither hole, and failing on stale entries
+ * means every gain is locked in by the PR that made it.
+ *
+ * `--update-baseline` only REMOVES entries. Adding one needs `--allow-growth`
+ * as well, so loosening the ratchet is an explicit, reviewable act.
  *
  * Usage:
  *   pnpm exec tsx scripts/check-diataxis-frontmatter.ts                    # CI gate
- *   pnpm exec tsx scripts/check-diataxis-frontmatter.ts --update-baseline  # rewrite baseline
+ *   pnpm exec tsx scripts/check-diataxis-frontmatter.ts --update-baseline  # drop stale entries
+ *   pnpm exec tsx scripts/check-diataxis-frontmatter.ts --update-baseline --allow-growth
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
@@ -38,11 +45,10 @@ import { basename, join, relative, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
-const ROOT = process.cwd();
-const DOCS_DIR = join(ROOT, 'docs');
 const EXCLUDED_PREFIXES = ['docs/api/'];
-const KINDS_FILE = join(ROOT, 'docs', 'ops', 'diataxis-none-kinds.json');
-const BASELINE_FILE = join(ROOT, 'docs', 'ops', 'diataxis-frontmatter-baseline.json');
+const KINDS_REL = 'docs/ops/diataxis-none-kinds.json';
+const BASELINE_REL = 'docs/ops/diataxis-frontmatter-baseline.json';
+const KEYS = ['diataxis', 'audience'] as const;
 
 export const DIATAXIS_VALUES = ['tutorial', 'how-to', 'reference', 'explanation', 'none'] as const;
 export const AUDIENCE_VALUES = ['user', 'project'] as const;
@@ -56,38 +62,54 @@ const KindsFileSchema = z.object({
   description: z.string().optional(),
   kinds: z.record(z.string(), KindSchema),
 });
-const Count = z.number().int().nonnegative();
+const PathSet = z
+  .array(z.string())
+  .refine((xs) => new Set(xs).size === xs.length, { message: 'duplicate path in baseline' });
 const BaselineFileSchema = z.object({
-  missing: z.object({ diataxis: Count, audience: Count }),
+  missing: z.object({ diataxis: PathSet, audience: PathSet }),
 });
 
+type Key = (typeof KEYS)[number];
 export type NoneKind = Omit<z.infer<typeof KindSchema>, 'description'>;
 export type NoneKinds = Record<string, NoneKind>;
-export interface MissingCounts {
-  diataxis: number;
-  audience: number;
-}
+/** Per key, the sorted set of page paths that omit it. */
+export type Baseline = Record<Key, string[]>;
 export interface PageResult {
   path: string;
   errors: string[];
-  missing: { diataxis: boolean; audience: boolean };
+  missing: Record<Key, boolean>;
 }
 export type FrontmatterParse =
   { ok: true; data: Record<string, unknown> | null } | { ok: false; error: string };
 export interface Verdict {
   status: 'pass' | 'fail' | 'unmeasured';
   scanned: number;
-  missing: MissingCounts;
+  /** What the tree omits now. */
+  missing: Baseline;
   invalid: PageResult[];
-  grew: Array<keyof MissingCounts>;
-  canTighten: boolean;
+  /** Undeclared now, not in the baseline. */
+  newlyMissing: Baseline;
+  /** In the baseline, but the page now declares the key. */
+  nowDeclared: Baseline;
+  /** In the baseline, but the path is no longer a scanned page. */
+  vanished: Baseline;
+}
+export type BaselineUpdate =
+  | { ok: true; baseline: Baseline }
+  | { ok: false; reason: 'unmeasured' }
+  | { ok: false; reason: 'growth'; added: Baseline };
+export interface CliResult {
+  code: number;
+  out: string[];
+  err: string[];
 }
 
 /** Splits off a leading `---` block. `data: null` means the file has none. */
 export function parseFrontmatter(src: string): FrontmatterParse {
-  const lines = src.split(/\r?\n/);
-  if (lines[0] !== '---') return { ok: true, data: null };
-  const end = lines.indexOf('---', 1);
+  const lines = src.replace(/^\uFEFF/, '').split(/\r?\n/);
+  const isFence = (line: string | undefined): boolean => line?.trimEnd() === '---';
+  if (!isFence(lines[0])) return { ok: true, data: null };
+  const end = lines.findIndex((line, i) => i > 0 && isFence(line));
   if (end === -1) return { ok: false, error: 'frontmatter opened with --- but never closed' };
   let parsed: unknown;
   try {
@@ -174,121 +196,202 @@ export function parseNoneKinds(raw: unknown): NoneKinds {
   return kinds;
 }
 
-export function parseBaseline(raw: unknown): MissingCounts {
-  return BaselineFileSchema.parse(raw).missing;
+export function parseBaseline(raw: unknown): Baseline {
+  const { missing } = BaselineFileSchema.parse(raw);
+  return { diataxis: missing.diataxis, audience: missing.audience };
 }
 
-/** Aggregates page results against the baseline. Zero pages is `unmeasured`. */
-export function evaluate(pages: readonly PageResult[], baseline: MissingCounts): Verdict {
-  const missing: MissingCounts = {
-    diataxis: pages.filter((p) => p.missing.diataxis).length,
-    audience: pages.filter((p) => p.missing.audience).length,
-  };
+function emptyBaseline(): Baseline {
+  return { diataxis: [], audience: [] };
+}
+
+function currentMissing(pages: readonly PageResult[]): Baseline {
+  const out = emptyBaseline();
+  for (const k of KEYS)
+    out[k] = pages
+      .filter((p) => p.missing[k])
+      .map((p) => p.path)
+      .sort();
+  return out;
+}
+
+function isEmpty(b: Baseline): boolean {
+  return KEYS.every((k) => b[k].length === 0);
+}
+
+/** Compares the tree with the baseline set. Zero pages is `unmeasured`. */
+export function evaluate(pages: readonly PageResult[], baseline: Baseline): Verdict {
+  const missing = currentMissing(pages);
+  const scannedPaths = new Set(pages.map((p) => p.path));
+  const newlyMissing = emptyBaseline();
+  const nowDeclared = emptyBaseline();
+  const vanished = emptyBaseline();
+  for (const k of KEYS) {
+    const listed = new Set(baseline[k]);
+    const now = new Set(missing[k]);
+    newlyMissing[k] = missing[k].filter((p) => !listed.has(p));
+    vanished[k] = [...listed].filter((p) => !scannedPaths.has(p)).sort();
+    nowDeclared[k] = [...listed].filter((p) => scannedPaths.has(p) && !now.has(p)).sort();
+  }
   const invalid = pages.filter((p) => p.errors.length > 0);
-  const keys: Array<keyof MissingCounts> = ['diataxis', 'audience'];
-  const grew = keys.filter((k) => missing[k] > baseline[k]);
-  const canTighten = keys.some((k) => missing[k] < baseline[k]);
 
   let status: Verdict['status'];
+  // Named explicitly: with no pages every drift list is empty, which would read as a pass.
   if (pages.length === 0) status = 'unmeasured';
-  else if (invalid.length > 0 || grew.length > 0) status = 'fail';
+  else if (
+    invalid.length > 0 ||
+    !isEmpty(newlyMissing) ||
+    !isEmpty(nowDeclared) ||
+    !isEmpty(vanished)
+  )
+    status = 'fail';
   else status = 'pass';
 
-  return { status, scanned: pages.length, missing, invalid, grew, canTighten };
+  return {
+    status,
+    scanned: pages.length,
+    missing,
+    invalid,
+    newlyMissing,
+    nowDeclared,
+    vanished,
+  };
+}
+
+/**
+ * The baseline `--update-baseline` would write: the tree's current missing set.
+ * Without `allowGrowth` it may only remove entries; an absent old baseline is
+ * treated as empty, so seeding one also needs `allowGrowth`.
+ */
+export function updateBaseline(
+  pages: readonly PageResult[],
+  old: Baseline | undefined,
+  allowGrowth: boolean
+): BaselineUpdate {
+  if (pages.length === 0) return { ok: false, reason: 'unmeasured' };
+  const next = currentMissing(pages);
+  const prior = old ?? emptyBaseline();
+  const added = emptyBaseline();
+  for (const k of KEYS) {
+    const listed = new Set(prior[k]);
+    added[k] = next[k].filter((p) => !listed.has(p));
+  }
+  if (!allowGrowth && !isEmpty(added)) return { ok: false, reason: 'growth', added };
+  return { ok: true, baseline: next };
 }
 
 function toPosix(p: string): string {
   return p.split(sep).join('/');
 }
 
-function collectPages(dir: string): string[] {
+function collectPages(root: string, dir: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
-    const rel = toPosix(relative(ROOT, full));
+    const rel = toPosix(relative(root, full));
     if (EXCLUDED_PREFIXES.some((p) => `${rel}/`.startsWith(p))) continue;
-    if (entry.isDirectory()) out.push(...collectPages(full));
+    if (entry.isDirectory()) out.push(...collectPages(root, full));
     else if (entry.isFile() && entry.name.endsWith('.md')) out.push(full);
   }
   return out.sort();
 }
 
-function readJson(file: string): unknown {
-  return JSON.parse(readFileSync(file, 'utf8')) as unknown;
+function load<T>(root: string, rel: string, parse: (raw: unknown) => T): T {
+  return parse(JSON.parse(readFileSync(join(root, rel), 'utf8')) as unknown);
 }
 
-function report(v: Verdict): void {
-  for (const p of v.invalid) {
-    for (const e of p.errors) console.error(`  ✗ ${p.path}: ${e}`);
+function listDrift(label: string, b: Baseline, err: string[]): void {
+  for (const k of KEYS) for (const p of b[k]) err.push(`  ✗ ${p}: ${label} (\`${k}\`)`);
+}
+
+function runUpdate(pages: readonly PageResult[], root: string, argv: readonly string[]): CliResult {
+  const out: string[] = [];
+  const err: string[] = [];
+  const old = existsSync(join(root, BASELINE_REL))
+    ? load(root, BASELINE_REL, parseBaseline)
+    : undefined;
+  const r = updateBaseline(pages, old, argv.includes('--allow-growth'));
+  if (!r.ok && r.reason === 'unmeasured') {
+    err.push('diataxis-frontmatter: UNMEASURED — scanned 0 pages; refusing to write a baseline.');
+    return { code: 1, out, err };
   }
-  for (const k of v.grew) {
-    console.error(
-      `  ✗ pages missing \`${k}\` grew past the baseline. Declare it on the new or edited ` +
-        'pages (see skills/diataxis/SKILL.md).'
+  if (!r.ok) {
+    err.push('diataxis-frontmatter: refusing to ADD pages to the baseline without --allow-growth:');
+    listDrift('undeclared, not in baseline', r.added, err);
+    err.push('  Declare the keys on these pages instead (see skills/diataxis/SKILL.md).');
+    return { code: 1, out, err };
+  }
+  writeFileSync(join(root, BASELINE_REL), `${JSON.stringify({ missing: r.baseline }, null, 2)}\n`);
+  out.push(
+    `diataxis-frontmatter: baseline written — ${String(r.baseline.diataxis.length)} pages omit ` +
+      `diataxis, ${String(r.baseline.audience.length)} omit audience, of ${String(pages.length)}.`
+  );
+  return { code: 0, out, err };
+}
+
+function reportVerdict(v: Verdict, err: string[]): void {
+  for (const p of v.invalid) for (const e of p.errors) err.push(`  ✗ ${p.path}: ${e}`);
+  listDrift('undeclared and not in the baseline; declare it', v.newlyMissing, err);
+  listDrift('now declared but still in the baseline (stale)', v.nowDeclared, err);
+  listDrift('listed in the baseline but no longer exists (stale)', v.vanished, err);
+  if (!isEmpty(v.nowDeclared) || !isEmpty(v.vanished)) {
+    err.push(
+      '  Drop the stale entries: pnpm exec tsx scripts/check-diataxis-frontmatter.ts --update-baseline'
     );
   }
 }
 
-/** Reads a JSON config through `parse`; exits non-zero on any read or shape error. */
-function loadOrExit<T>(file: string, parse: (raw: unknown) => T): T {
+/** The CLI, with the repo root injected so tests can drive it against a fixture tree. */
+export function runCli(argv: readonly string[], root: string): CliResult {
+  const out: string[] = [];
+  const err: string[] = [];
+  let kinds: NoneKinds;
   try {
-    return parse(readJson(file));
-  } catch (err) {
-    // An unreadable config or baseline is a failure, not a pass.
-    console.error(
-      `diataxis-frontmatter: cannot read ${toPosix(relative(ROOT, file))}: ${(err as Error).message}`
-    );
-    process.exit(1);
+    kinds = load(root, KINDS_REL, parseNoneKinds);
+  } catch (e) {
+    err.push(`diataxis-frontmatter: cannot read ${KINDS_REL}: ${(e as Error).message}`);
+    return { code: 1, out, err };
   }
-}
-
-function writeBaseline(pages: readonly PageResult[]): void {
-  const v = evaluate(pages, { diataxis: 0, audience: 0 });
-  if (v.status === 'unmeasured') {
-    console.error(
-      'diataxis-frontmatter: UNMEASURED — scanned 0 pages; refusing to write a baseline.'
-    );
-    process.exit(1);
-  }
-  writeFileSync(BASELINE_FILE, `${JSON.stringify({ missing: v.missing }, null, 2)}\n`);
-  console.log(
-    `diataxis-frontmatter: baseline written — ${String(v.missing.diataxis)} missing diataxis, ` +
-      `${String(v.missing.audience)} missing audience, of ${String(v.scanned)} pages.`
-  );
-}
-
-function main(): void {
-  const kinds = loadOrExit(KINDS_FILE, parseNoneKinds);
-  const pages = collectPages(DOCS_DIR).map((f) =>
-    checkPage(toPosix(relative(ROOT, f)), readFileSync(f, 'utf8'), kinds)
+  const pages = collectPages(root, join(root, 'docs')).map((f) =>
+    checkPage(toPosix(relative(root, f)), readFileSync(f, 'utf8'), kinds)
   );
 
-  if (process.argv.includes('--update-baseline')) {
-    writeBaseline(pages);
-    return;
+  try {
+    if (argv.includes('--update-baseline')) return runUpdate(pages, root, argv);
+  } catch (e) {
+    err.push(`diataxis-frontmatter: cannot read ${BASELINE_REL}: ${(e as Error).message}`);
+    return { code: 1, out, err };
   }
 
-  const baseline = loadOrExit(BASELINE_FILE, parseBaseline);
+  let baseline: Baseline;
+  try {
+    baseline = load(root, BASELINE_REL, parseBaseline);
+  } catch (e) {
+    // An unreadable baseline is a failure, not a pass.
+    err.push(`diataxis-frontmatter: cannot read ${BASELINE_REL}: ${(e as Error).message}`);
+    return { code: 1, out, err };
+  }
+
   const v = evaluate(pages, baseline);
   if (v.status === 'unmeasured') {
-    console.error(
+    err.push(
       'diataxis-frontmatter: UNMEASURED — scanned 0 pages under docs/. The scan broke; the tree is not clean.'
     );
-    process.exit(1);
+    return { code: 1, out, err };
   }
-  report(v);
-  console.log(
+  reportVerdict(v, err);
+  out.push(
     `diataxis-frontmatter: ${v.status.toUpperCase()} — ${String(v.scanned)} pages, ` +
-      `${String(v.invalid.length)} invalid; missing diataxis ${String(v.missing.diataxis)}/${String(baseline.diataxis)}, ` +
-      `missing audience ${String(v.missing.audience)}/${String(baseline.audience)} (current/baseline).`
+      `${String(v.invalid.length)} invalid; ${String(v.missing.diataxis.length)} omit diataxis, ` +
+      `${String(v.missing.audience.length)} omit audience (all in the baseline when PASS).`
   );
-  if (v.status === 'pass' && v.canTighten) {
-    console.log(
-      '  The missing count fell. Lock it in: pnpm exec tsx scripts/check-diataxis-frontmatter.ts --update-baseline'
-    );
-  }
-  process.exit(v.status === 'pass' ? 0 : 1);
+  return { code: v.status === 'pass' ? 0 : 1, out, err };
 }
 
-if (process.argv[1]?.endsWith('check-diataxis-frontmatter.ts') === true) main();
+if (process.argv[1]?.endsWith('check-diataxis-frontmatter.ts') === true) {
+  const r = runCli(process.argv.slice(2), process.cwd());
+  for (const line of r.err) console.error(line);
+  for (const line of r.out) console.log(line);
+  process.exit(r.code);
+}
