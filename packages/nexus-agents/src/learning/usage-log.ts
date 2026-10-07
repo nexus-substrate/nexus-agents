@@ -38,6 +38,7 @@ import type { UsageMeasurement } from './usage-measurement.js';
 // time inside computeCostDetail.
 import {
   getDefaultRegistry,
+  pricingSourceOf,
   type MatchedVia,
   type ModelPricingProvenance,
 } from '../config/model-registry.js';
@@ -148,7 +149,8 @@ export function computeCostDetail(
   return {
     costUsd: roundToMicroUsd(costUsd),
     priced: true,
-    ...(getDefaultRegistry().getEntry(entry.resolvedFrom ?? entry.id).source === 'manifest'
+    ...(pricingSourceOf(getDefaultRegistry().getEntry(entry.resolvedFrom ?? entry.id)) ===
+    'manifest'
       ? { declared: true as const }
       : {}),
     resolvedId,

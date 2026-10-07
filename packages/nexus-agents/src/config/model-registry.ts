@@ -205,6 +205,20 @@ export interface ModelEntry {
 // Registry
 // ============================================================================
 
+// Price provenance belongs to the rate, not the entry's overall tier (#7132):
+// a metadata-only overlay entry is `source: 'manifest'` while its inherited
+// rate is still a list price. Keys are registry-owned rate objects, so
+// inheritance and fuzzy-match copies keep the key; a supplied rate gets a
+// fresh one.
+const pricingSources = new WeakMap<Pricing, EntrySource>();
+
+/** Internal rate-tier lookup; unregistered entries retain their source semantics. */
+export function pricingSourceOf(entry: ModelEntry): EntrySource {
+  return (
+    (entry.pricing === undefined ? undefined : pricingSources.get(entry.pricing)) ?? entry.source
+  );
+}
+
 export interface ModelRegistryOptions {
   /** Authoritative in-tree entries. Highest priority. */
   readonly inTreeEntries?: readonly ModelEntry[];
@@ -364,9 +378,26 @@ export class ModelRegistry {
 
   private loadEntries(entries: readonly ModelEntry[]): void {
     for (const entry of entries) {
-      this.byId.set(entry.id, entry);
-      if (entry.aliases !== undefined) {
-        for (const alias of entry.aliases) {
+      const merged: { -readonly [K in keyof ModelEntry]: ModelEntry[K] } = { ...entry };
+      if (entry.pricing === undefined) {
+        // #7132: a same-id overlay that omits pricing keeps the lower tier's
+        // rate, its billing scope and (via pricingSources) its price basis.
+        const lower = this.byId.get(entry.id);
+        if (lower?.pricing !== undefined) {
+          merged.pricing = lower.pricing;
+          if (lower.pricingProvenance !== undefined) {
+            merged.pricingProvenance = lower.pricingProvenance;
+          }
+        }
+      } else {
+        // A supplied rate is a fresh key even when its numbers match a lower
+        // tier's, so an explicit overlay price is always `declared` (#4600).
+        merged.pricing = { ...entry.pricing };
+        pricingSources.set(merged.pricing, entry.source);
+      }
+      this.byId.set(entry.id, merged);
+      if (merged.aliases !== undefined) {
+        for (const alias of merged.aliases) {
           this.byAlias.set(alias, entry.id);
           // Tiers load lowest-priority first, so a direct `byId` entry under
           // this alias key can only come from a lower tier (e.g. the generated

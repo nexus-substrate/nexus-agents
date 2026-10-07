@@ -12,7 +12,7 @@
 
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
-import { getDefaultRegistry, type EntrySource } from '../config/model-registry.js';
+import { getDefaultRegistry, pricingSourceOf, type EntrySource } from '../config/model-registry.js';
 import type { PriceBasis } from './price-basis.js';
 
 // The vocabulary lives in a dependency-free leaf module (#4406 review) so the
@@ -84,9 +84,9 @@ function isPrefixMatch(
  *
  * Initialize the registry at call time before projecting the overlay-aware
  * in-tree matrix. The matrix preserves legacy CLI alias/prefix matching but
- * drops provenance, so recover the selected entry's source by its canonical id.
- * A metadata-only overlay inherits an in-tree rate in this compatibility path;
- * without pricing on the manifest entry itself, that rate remains `'list'`.
+ * drops provenance, so recover the selected rate's source by its canonical id.
+ * A metadata-only overlay inherits pricing and its source in the registry;
+ * inherited in-tree/catalog rates remain `'list'`.
  *
  * The full-registry fallback retains normalized/identity resolution. Those
  * matches report `source: 'derived'`; `resolvedFrom` identifies the entry whose
@@ -106,13 +106,13 @@ function lookupCanonicalPricing(model: string): {
     const entry = registry.getEntry(matched.id);
     return {
       pricing: toPricing(matched.pricing),
-      source: entry.pricing === undefined ? 'in-tree' : entry.source,
+      source: entry.pricing === undefined ? 'in-tree' : pricingSourceOf(entry),
     };
   }
   const entry = registry.getEntry(model);
   return {
     pricing: toPricing(entry.pricing),
-    source: registry.getEntry(entry.resolvedFrom ?? entry.id).source,
+    source: pricingSourceOf(registry.getEntry(entry.resolvedFrom ?? entry.id)),
   };
 }
 

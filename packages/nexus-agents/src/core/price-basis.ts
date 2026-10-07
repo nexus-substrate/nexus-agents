@@ -61,9 +61,10 @@ export const PriceBasisSchema = z.enum(['list', 'declared', 'unknown']);
  * not belong to the id being priced.
  *
  * The manifest overlay (`config/manifest-overlay.ts`) is the highest pricing
- * tier. A price supplied there reports `'declared'`, using the existing
- * `source: 'manifest'` provenance, including through a fuzzy match's
- * `resolvedFrom`. Metadata-only overlays do not declare an inherited rate.
+ * tier. A price supplied there reports `'declared'`, using the rate's supplying
+ * tier, including through a fuzzy match's `resolvedFrom`. Metadata-only overlays
+ * inherit the lower tier's rate and basis; the overall entry can be a manifest
+ * while its price remains `list`.
  *
  * Explicit `NEXUS_GATEWAY_COST` rates (`priced:<in>,<out>`, `free`, `local`)
  * also report `'declared'`, including measured zero. Bare `priced` delegates
