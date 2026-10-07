@@ -435,8 +435,7 @@ export class SdkAdapter extends BaseAdapter {
     this.model = providerModule.model;
 
     // AI SDK is an optional peer dependency — validate shape at runtime
-    const aiModule = await import('ai');
-    this.sdkFunctions = extractAiSdkFunctions(aiModule);
+    this.sdkFunctions = extractAiSdkFunctions(await import('ai'));
   }
 
   /**
@@ -485,6 +484,8 @@ export class SdkAdapter extends BaseAdapter {
   } {
     const options: Record<string, unknown> = {
       model: this.model,
+      // AI SDK 7 requires opt-in to preserve our system-role message contract.
+      allowSystemInMessages: true,
       messages: request.messages.map((m) => ({
         role: m.role === 'system' ? 'system' : m.role,
         content:
