@@ -151,7 +151,9 @@ Run `docs-review` again on the rewritten file. Compare:
 - Top-10 issues vs. baseline issues (which were resolved?)
 - Any newly-introduced issues (regressions)
 
-**Reject the rewrite if the new score is lower than the baseline.**
+**Reject the rewrite if the new score is lower than the baseline.** Compare the
+100-point subtotal and the Diátaxis mode-purity deduction separately: reject if
+the subtotal drops or the deduction grows, even when the net score rises.
 This is non-negotiable: if the rewrite made the doc worse by the
 rubric, revert and re-plan. The validate gate is the rubric's purpose.
 

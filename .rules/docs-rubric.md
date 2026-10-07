@@ -90,16 +90,32 @@ not the prose around it.
 This is the _technical-doc-specific_ category — the part that has no analog in
 the upstream blog rubric.
 
-| Dim                          | Pts | Tag   | How to score                                                                                                                                                                |
-| ---------------------------- | --- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Heading hierarchy            | 3   | `[M]` | Exactly one H1; no skips (H2→H4); no H6+.                                                                                                                                   |
-| Code blocks valid            | 3   | `[M]` | Fenced with language tag; syntax parses; no truncated examples.                                                                                                             |
-| Cross-doc consistency        | 4   | `[J]` | Doesn't contradict canonical paths in CLAUDE.md or `.rules/governance.md`. **Defer to `blog-overlap`** if there's an existing doc on the same topic — refine vs. duplicate. |
-| Internal links resolve       | 2   | `[M]` | All `./other-doc.md` and `#anchor` references work.                                                                                                                         |
-| Summary box / TL;DR          | 2   | `[J]` | Long docs (>800 words) have a `Key Takeaways` block in the first screen.                                                                                                    |
-| Frontmatter on tier-1/2 docs | 1   | `[M]` | Tier-1/2 docs require `title` / `description` / `tier` / `keywords`. Defer to whichever existing CI gate validates this in the repo at the time of review.                  |
-| Spec / RFC alignment         | 3   | `[J]` | Where the doc cites Anthropic API behavior, governance rules, or RFC fields, the cited fields exist as described.                                                           |
-| File size + sprawl           | 2   | `[J]` | Per CLAUDE.md anti-sprawl: doesn't create a parallel `enhanced_*` / `v2_*` doc when an existing canonical doc could be extended.                                            |
+| Dim                          | Pts | Tag   | How to score                                                                                                                                                                                                                                                  |
+| ---------------------------- | --- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Heading hierarchy            | 3   | `[M]` | Exactly one H1; no skips (H2→H4); no H6+.                                                                                                                                                                                                                     |
+| Code blocks valid            | 3   | `[M]` | Fenced with language tag; syntax parses; no truncated examples.                                                                                                                                                                                               |
+| Cross-doc consistency        | 4   | `[J]` | Doesn't contradict canonical paths in CLAUDE.md or `.rules/governance.md`. **Defer to `blog-overlap`** if there's an existing doc on the same topic — refine vs. duplicate.                                                                                   |
+| Internal links resolve       | 2   | `[M]` | All `./other-doc.md` and `#anchor` references work.                                                                                                                                                                                                           |
+| Summary box / TL;DR          | 2   | `[J]` | Long docs (>800 words) have a `Key Takeaways` block in the first screen.                                                                                                                                                                                      |
+| Frontmatter on tier-1/2 docs | 1   | `[M]` | Tier-1/2 docs require `title` / `description` / `tier` / `keywords`, and every doc declares one `diataxis` value and an `audience` that fit its directory. `scripts/check-diataxis-frontmatter.ts` checks presence and validity; the reviewer checks the fit. |
+| Spec / RFC alignment         | 3   | `[J]` | Where the doc cites Anthropic API behavior, governance rules, or RFC fields, the cited fields exist as described.                                                                                                                                             |
+| File size + sprawl           | 2   | `[J]` | Per CLAUDE.md anti-sprawl: doesn't create a parallel `enhanced_*` / `v2_*` doc when an existing canonical doc could be extended.                                                                                                                              |
+
+**Mode-purity deduction `[J]` (Diátaxis).** After scoring the rows above, deduct
+2 points for each passage that serves a different Diátaxis type from the page's
+declared `diataxis` value: explanation inside a how-to's steps, a procedure inside
+a reference page, options and alternatives inside a tutorial. The deduction is
+capped at 4 and Structure cannot go below 0. Judge passage by passage with the
+compass in [`skills/diataxis`](../skills/diataxis/SKILL.md) and quote each
+offending passage. A page that loses the full 4 is a split candidate. The
+deduction only lowers scores, so a page with no mixed passages scores exactly
+what it scored before this rule existed.
+
+Report the deduction on its own line, separate from the 100-point subtotal. Any
+no-regression rule applied to rubric scores, including `docs-rewrite`'s, checks
+the two independently: the subtotal must not decrease and the deduction must not
+increase. Removing a mixed passage therefore never offsets a regression
+elsewhere.
 
 ### 5. Audience Fit — 10 pts
 
