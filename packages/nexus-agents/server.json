@@ -6,12 +6,12 @@
     "url": "https://github.com/nexus-substrate/nexus-agents",
     "source": "github"
   },
-  "version": "11.4.5",
+  "version": "11.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "nexus-agents",
-      "version": "11.4.5",
+      "version": "11.5.0",
       "runtime": "node",
       "runtimeArguments": [
         "--experimental-vm-modules"
