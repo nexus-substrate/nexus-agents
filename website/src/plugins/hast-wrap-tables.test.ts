@@ -55,6 +55,17 @@ describe('hastWrapTables', () => {
     expect(html).toContain('<td data-label="b">2</td>');
   });
 
+  it('lets an identifier in a cell break after each underscore', async () => {
+    const html = await render('| Name |\n| - |\n| `NEXUS_ALLOW_SIMULATE` |\n');
+    expect(html).toContain('<code>NEXUS_<wbr>ALLOW_<wbr>SIMULATE</code>');
+  });
+
+  it('adds no break after a trailing underscore or in code outside a table', async () => {
+    const html = await render('`A_B`\n\n| n |\n| - |\n| `X_` |\n');
+    expect(html).toContain('<p><code>A_B</code></p>');
+    expect(html).toContain('<code>X_</code>');
+  });
+
   it('leaves a document with no table unchanged', async () => {
     expect(await render('just *text*\n')).toBe(markdownToHtml('just *text*\n').html);
   });

@@ -16,11 +16,17 @@
  * header text as `data-label`, which styles/components.css prints beside the
  * value once the columns stack below 30rem.
  *
+ * Long identifiers in cells (`NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS`) had no
+ * break opportunity and pushed the env reference table past its wrapper on a
+ * desktop. Inline code in a body cell gets a `<wbr>` after each inner
+ * underscore, so a name breaks only at a word boundary of its own. Copying
+ * the name still yields the plain text.
+ *
  * @module website/src/plugins/hast-wrap-tables
  */
 
 import { defineHastPlugin, type HastPluginDefinition } from 'satteri';
-import { el, isElement, textOf, type HastChild, type HastElement } from './hast-tree.ts';
+import { el, isElement, text, textOf, type HastChild, type HastElement } from './hast-tree.ts';
 
 function cellsOf(row: HastElement, tagName: 'th' | 'td'): HastElement[] {
   return row.children.filter((c): c is HastElement => isElement(c, tagName));
@@ -50,13 +56,35 @@ function withScope(row: HastElement): HastElement {
   );
 }
 
+/** Text split after each underscore that is followed by more text, joined by <wbr>. */
+export function breakAfterUnderscores(value: string): HastChild[] {
+  const parts = value.split(/(?<=_)(?=[^_])/);
+  return parts.flatMap((part, i) => (i === 0 ? [text(part)] : [el('wbr', {}), text(part)]));
+}
+
+function isTextNode(node: HastChild): node is HastChild & { type: 'text'; value: string } {
+  const n = node as { type: string; value?: unknown };
+  return n.type === 'text' && typeof n.value === 'string';
+}
+
+/** A cell child with underscore breaks added inside its inline code. */
+function withCodeBreaks(node: HastChild): HastChild {
+  if (!isElement(node)) return node;
+  const children =
+    node.tagName === 'code'
+      ? node.children.flatMap((c) => (isTextNode(c) ? breakAfterUnderscores(c.value) : [c]))
+      : node.children.map(withCodeBreaks);
+  return el(node.tagName, node.properties, children);
+}
+
 function withLabels(row: HastElement, labels: readonly string[]): HastElement {
   let column = 0;
   const children = row.children.map((c): HastChild => {
     if (!isElement(c, 'td')) return c;
     const label = labels.at(column++);
-    if (label === undefined || label === '') return c;
-    return el('td', { ...c.properties, dataLabel: label }, c.children);
+    const cellChildren = c.children.map(withCodeBreaks);
+    if (label === undefined || label === '') return el('td', c.properties, cellChildren);
+    return el('td', { ...c.properties, dataLabel: label }, cellChildren);
   });
   return el('tr', row.properties, children);
 }

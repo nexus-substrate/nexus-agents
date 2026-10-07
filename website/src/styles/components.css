@@ -85,9 +85,24 @@
 }
 .remarque-prose .scroll-wrap > table :where(th, td) {
   vertical-align: top;
+  /* A short column ("Default": "Not declared in schema") was squeezed to one
+     word per line by its long neighbours. */
+  min-width: 14ch;
+  /* A long path or URL in a cell set the column's min-content and pushed the
+     table past its wrapper; with the floor above, it may break anywhere. */
+  overflow-wrap: anywhere;
 }
+/* The first column usually holds the key (a variable or option name). With
+   underscore breaks its min-content is one word, and auto layout gave the
+   description everything, splitting NEXUS_ / AORCHESTRA over two lines. */
+.remarque-prose .scroll-wrap > table :where(th, td):first-child {
+  min-width: 24ch;
+}
+/* Identifiers break only after an underscore: the table plugin puts a <wbr>
+   there, which needs wrapping allowed (nowrap suppresses <wbr>). Without
+   this the env reference overflowed its wrapper on a desktop. */
 .remarque-prose .scroll-wrap > table td code {
-  white-space: nowrap;
+  white-space: normal;
 }
 .remarque-prose .scroll-wrap > table tbody tr:nth-child(even) {
   /* Translucent, so the scroll shadow behind the rows stays visible. */
@@ -99,7 +114,12 @@
    the box edge. A shadow shows only on a side that has more table to scroll
    to, needs no JS, and draws nothing when the table fits. */
 .remarque-prose .scroll-wrap {
-  --scroll-shadow: color-mix(in oklch, var(--color-fg) 45%, transparent);
+  /* A dark shadow on a dark page is invisible, so in dark mode the cue is a
+     light edge glow, and needs more weight to read against the near-black. */
+  --scroll-shadow: light-dark(
+    color-mix(in oklch, var(--color-fg) 45%, transparent),
+    color-mix(in oklch, var(--color-fg) 80%, transparent)
+  );
   background:
     linear-gradient(to right, var(--color-bg) 30%, transparent) left center / 2.5rem 100% no-repeat
       local,
