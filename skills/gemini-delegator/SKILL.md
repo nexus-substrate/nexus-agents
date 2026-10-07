@@ -1,11 +1,11 @@
 ---
 name: gemini-delegator
 description: |
-  Delegate large context and multimodal tasks to Gemini CLI.
-  Use when context exceeds 100K tokens, analyzing images/screenshots,
-  processing large codebases, or for speed/cost-sensitive operations.
+  Delegate large-context tasks to Gemini models through the agy
+  (Antigravity) CLI. Use when context exceeds 100K tokens, when processing
+  large codebases, or for speed/cost-sensitive operations.
   Triggers on "delegate to gemini", "route to gemini", "use gemini",
-  "large context", "analyze image", "screenshot analysis".
+  "use agy", "large context".
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
