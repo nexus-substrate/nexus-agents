@@ -43,13 +43,17 @@ Task arrives
 
 ## CLI Profiles
 
-### Gemini CLI
+### Gemini (via `agy`)
+
+The standalone `gemini` CLI is retired: it exits 55 with `IneligibleTierError`
+on every invocation (#4389). The `gemini` routing arm keeps its name but spawns
+`agy` (Google's Antigravity CLI), which serves the Gemini models.
 
 **Strengths:** Massive context window, fast codebase analysis, cost-effective.
 
 | Metric      | Measured Value | Notes                      |
 | ----------- | -------------- | -------------------------- |
-| Latency     | 10-73s         | Varies with context size   |
+| Latency     | 10-73s         | Measured on the old CLI    |
 | Max Context | 1M tokens      | ~978 files in single query |
 | Best For    | Analysis       | Code review, exploration   |
 | Cost        | Low            | Free tier available        |
@@ -57,25 +61,32 @@ Task arrives
 **Invocation:**
 
 ```bash
-# Non-interactive prompt mode
-gemini -p "Analyze this codebase for security issues"
+# Non-interactive prompt mode; model slugs come from `agy models`
+agy --model gemini-3.1-pro-high --print "Analyze this codebase for security issues"
 
-# With file context
-gemini -p "Review these files: $(cat file_list.txt)"
+# Large prompts on stdin, with the workspace named explicitly (#6254)
+cat prompt.md | agy --output-format json --add-dir "$PWD"
 ```
 
 **JSON Output Parsing:**
 
-Gemini output may include markdown fencing. Extract JSON:
+`--output-format json` returns
+`{conversation_id, status, response, duration_seconds, num_turns, usage}`.
+agy exits 0 even when the run failed, so check `status`, never the exit code.
+A `SUCCESS` envelope with an empty `response` is a stalled turn (#6277), not an
+empty answer. In this repo, reuse `AgyResponseParser`
+(`packages/nexus-agents/src/cli-adapters/parsers/agy-parser.ts`).
 
-````typescript
-function parseGeminiOutput(output: string): unknown {
-  // Strip markdown code fences if present
-  const jsonMatch = output.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonStr = jsonMatch ? jsonMatch[1].trim() : output.trim();
-  return JSON.parse(jsonStr);
+```typescript
+function parseAgyOutput(output: string): string {
+  const result = JSON.parse(output) as { status: string; response?: string; error?: string };
+  if (result.status !== 'SUCCESS') throw new Error(result.error ?? `agy status ${result.status}`);
+  if (result.response === undefined || result.response.trim() === '') {
+    throw new Error('agy returned an empty response');
+  }
+  return result.response;
 }
-````
+```
 
 ### Codex CLI
 
@@ -206,14 +217,16 @@ const decision = await router.route({
 For direct CLI invocation:
 
 ```typescript
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 
 function delegateToGemini(prompt: string): string {
-  const result = execSync(`gemini -p "${prompt.replace(/"/g, '\\"')}"`, {
+  // agy serves the gemini arm. Prompt on stdin: no shell, no argv length limit.
+  const output = execFileSync('agy', ['--output-format', 'json', '--print-timeout', '115s'], {
+    input: prompt,
     encoding: 'utf-8',
     timeout: 120000, // 2 minute timeout
   });
-  return result;
+  return parseAgyOutput(output); // agy exits 0 on failure; see above
 }
 
 function delegateToCodex(prompt: string): string {
@@ -291,7 +304,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
 **Solution:** Verify installation:
 
 ```bash
-which gemini && gemini --version
+which agy && agy --version   # the gemini arm runs agy
 which codex && codex --version
 which claude && claude --version
 ```

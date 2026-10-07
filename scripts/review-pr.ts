@@ -11,20 +11,13 @@
  * (Source: Issue #182, 5-0 consensus vote for CLI-based PR review)
  */
 
-import { execSync, execFileSync, spawn } from 'node:child_process';
-import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { writeFileSync, rmSync } from 'node:fs';
 import { nexusMkdtempSync } from '../packages/nexus-agents/src/config/nexus-tmp-dir.js';
 import { join } from 'node:path';
-import { GEMINI_CLI_COMMAND } from '../packages/nexus-agents/src/cli-adapters/cli-error-envelope.js';
 import { REVIEW_PROMPT } from './review-pr-prompt.js';
-import {
-  MODEL_COMMANDS,
-  buildCLIInvocation,
-  collectOutput,
-  extractReviewText,
-} from './review-pr-cli.js';
+import { GEMINI_CLI_COMMAND, MODEL_COMMANDS, runCLIReview } from './review-pr-cli.js';
 
 // Types
 interface ReviewOptions {
@@ -140,23 +133,6 @@ function getPRInfo(prNumber: number): PRInfo {
   }
   const data = JSON.parse(json) as { title: string; author: { login: string }; url: string };
   return { title: data.title, author: data.author.login, url: data.url };
-}
-
-function spawnCLI(model: string, prompt: string): ChildProcessWithoutNullStreams {
-  const { cmd, args, stdin } = buildCLIInvocation(model, prompt);
-  const child = spawn(cmd, [...args], { stdio: ['pipe', 'pipe', 'pipe'] });
-  if (stdin !== undefined) child.stdin.write(stdin);
-  child.stdin.end();
-  return child;
-}
-
-async function runCLIReview(model: string, prompt: string): Promise<string> {
-  const child = spawnCLI(model, prompt);
-  const { stdout, stderr, code } = await collectOutput(child);
-  if (code !== 0) {
-    throw new Error(`${model} exited with code ${String(code)}: ${stderr}`);
-  }
-  return extractReviewText(model, stdout);
 }
 
 function parseReviewOutput(output: string): {
