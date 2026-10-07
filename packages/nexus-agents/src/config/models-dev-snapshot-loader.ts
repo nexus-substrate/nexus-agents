@@ -24,7 +24,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { createLogger } from '../core/index.js';
+import { createLogger } from '../core/logger.js';
 import type { ModelEntry } from './model-registry.js';
 
 // Path resolution: try the source-tree location first (development);

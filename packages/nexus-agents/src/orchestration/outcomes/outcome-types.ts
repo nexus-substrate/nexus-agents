@@ -13,7 +13,7 @@ import { CliNameSchema } from '../../config/model-capabilities-types.js';
 import { EndpointArmIdSchema } from '../../cli-adapters/types-core.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger } from '../../core/logger.js';
 import type { ExecutionAccessMode } from '../../core/index.js';
 import { PriceBasisSchema } from '../../core/price-basis.js';
 

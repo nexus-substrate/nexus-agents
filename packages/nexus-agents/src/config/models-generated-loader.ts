@@ -21,7 +21,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogger } from '../core/index.js';
+import { createLogger } from '../core/logger.js';
 import { nexusDataPath } from './nexus-data-dir.js';
 import { resolveModelIdentitySync } from './model-identity.js';
 import { deriveEntry } from './model-derivation.js';
