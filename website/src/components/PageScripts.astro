@@ -77,7 +77,8 @@
     nodeBorder: '#e3dcce',
     clusterBorder: '#cf6464',
     defaultLinkColor: '#a89c8a',
-    edgeLabelBackground: '#221d1a',
+    // Flowchart edge labels share the dark text color of the light nodes.
+    edgeLabelBackground: '#e3dcce',
   } as const;
 
   function buildTheme(isDark: boolean): MermaidConfig {

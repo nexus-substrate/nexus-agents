@@ -6,6 +6,7 @@ import pagefind from 'astro-pagefind';
 import { createCssVariablesTheme } from 'shiki';
 import mdastRewriteLinks from './src/plugins/mdast-rewrite-links.ts';
 import hastWrapTables from './src/plugins/hast-wrap-tables.ts';
+import hastTaskListStatus from './src/plugins/hast-task-list-status.ts';
 
 // Code colors come from remarque's --color-syntax-* palette tokens, so they
 // follow the light/dark toggle. Pass the theme OBJECT, not the
@@ -31,7 +32,10 @@ export default defineConfig({
     // Markdown processor (#4359). `markdown.remarkPlugins` only works if the
     // legacy `@astrojs/markdown-remark` processor is pulled back in; the link
     // rewriter was ported to a native mdast plugin instead.
-    processor: satteri({ mdastPlugins: [mdastRewriteLinks()], hastPlugins: [hastWrapTables()] }),
+    processor: satteri({
+      mdastPlugins: [mdastRewriteLinks()],
+      hastPlugins: [hastTaskListStatus(), hastWrapTables()],
+    }),
     shikiConfig: { theme: remarqueShikiTheme },
   },
 });

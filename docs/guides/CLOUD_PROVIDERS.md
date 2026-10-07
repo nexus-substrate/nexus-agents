@@ -59,15 +59,15 @@ See OpenRouter's [model catalog](https://openrouter.ai/models) for the full list
 
 ### Pros / cons
 
-|     | OpenRouter direct                                                                                 |
-| --- | ------------------------------------------------------------------------------------------------- |
-| ✅  | Single API key for every cloud-hosted model                                                       |
-| ✅  | Hosted — no infra to run                                                                          |
-| ✅  | Built-in fallback routing across providers                                                        |
-| ✅  | Free-tier models (Llama, Mixtral, Qwen) work without payment                                      |
-| ⚠   | OpenRouter is in the data path — encrypted in transit, but a third party sees prompts/completions |
-| ⚠   | Per-token cost markup vs. provider-direct pricing                                                 |
-| ⚠   | Cannot use AWS IAM / GCP service-account / Azure RBAC; auth is via OpenRouter API key only        |
+| Assessment | OpenRouter direct                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------- |
+| ✅         | Single API key for every cloud-hosted model                                                       |
+| ✅         | Hosted — no infra to run                                                                          |
+| ✅         | Built-in fallback routing across providers                                                        |
+| ✅         | Free-tier models (Llama, Mixtral, Qwen) work without payment                                      |
+| ⚠          | OpenRouter is in the data path — encrypted in transit, but a third party sees prompts/completions |
+| ⚠          | Per-token cost markup vs. provider-direct pricing                                                 |
+| ⚠          | Cannot use AWS IAM / GCP service-account / Azure RBAC; auth is via OpenRouter API key only        |
 
 **When NOT to use:** regulated environments (HIPAA, FedRAMP, on-prem); workloads that must stay inside a single cloud's IAM boundary; cost-sensitive high-volume workloads.
 
@@ -127,15 +127,15 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ### Pros / cons
 
-|     | LiteLLM-proxy + custom-openai                                                |
-| --- | ---------------------------------------------------------------------------- |
-| ✅  | Native AWS IAM / GCP service-account / Azure managed identity                |
-| ✅  | Self-hosted — prompts/completions never leave your network                   |
-| ✅  | Per-provider routing rules, retries, fallbacks, and cost tracking in LiteLLM |
-| ✅  | One integration covers Bedrock + Vertex + Azure + 100+ others                |
-| ⚠   | Operational burden — you run the container, monitor it, patch it             |
-| ⚠   | Adds one network hop                                                         |
-| ⚠   | LiteLLM config is a separate source of truth from your IDE setup             |
+| Assessment | LiteLLM-proxy + custom-openai                                                |
+| ---------- | ---------------------------------------------------------------------------- |
+| ✅         | Native AWS IAM / GCP service-account / Azure managed identity                |
+| ✅         | Self-hosted — prompts/completions never leave your network                   |
+| ✅         | Per-provider routing rules, retries, fallbacks, and cost tracking in LiteLLM |
+| ✅         | One integration covers Bedrock + Vertex + Azure + 100+ others                |
+| ⚠          | Operational burden — you run the container, monitor it, patch it             |
+| ⚠          | Adds one network hop                                                         |
+| ⚠          | LiteLLM config is a separate source of truth from your IDE setup             |
 
 **When NOT to use:** trial / proof-of-concept work where Path A's setup time dominates; environments without container infrastructure.
 
@@ -159,13 +159,13 @@ Gateway calls default to chat completions. Set `NEXUS_CUSTOM_API_SURFACE=respons
 
 ### Pros / cons
 
-|     | Any OpenAI-compatible gateway                                                                        |
-| --- | ---------------------------------------------------------------------------------------------------- |
-| ✅  | Reuse existing gateway investment (auth, rate limiting, observability)                               |
-| ✅  | No new infra to run                                                                                  |
-| ✅  | Gateway handles cloud auth — nexus-agents only sees the gateway's API key                            |
-| ⚠   | Constrained to whichever models your gateway supports                                                |
-| ⚠   | Cloud-specific features (e.g. Bedrock guardrails, Vertex tools) require your gateway to forward them |
+| Assessment | Any OpenAI-compatible gateway                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------- |
+| ✅         | Reuse existing gateway investment (auth, rate limiting, observability)                               |
+| ✅         | No new infra to run                                                                                  |
+| ✅         | Gateway handles cloud auth — nexus-agents only sees the gateway's API key                            |
+| ⚠          | Constrained to whichever models your gateway supports                                                |
+| ⚠          | Cloud-specific features (e.g. Bedrock guardrails, Vertex tools) require your gateway to forward them |
 
 For full setup — including the SSRF guard, model-id mapping, and OpenCode transport variant — see [CUSTOM_ENDPOINT_SETUP.md](./CUSTOM_ENDPOINT_SETUP.md).
 

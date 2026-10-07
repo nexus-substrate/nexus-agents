@@ -7,6 +7,14 @@ on:
       - 'website/**'
       - 'docs/**'
       - '.github/workflows/deploy-website.yml'
+  # Build, link-check and accessibility also run on PRs, so a broken build or
+  # an a11y regression fails before merge; only the deploy job is main-only.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'docs/**'
+      - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
 
 permissions:
@@ -15,8 +23,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('pages-pr-{0}', github.event.pull_request.number) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -45,6 +53,8 @@ jobs:
         run: pnpm --dir website install --frozen-lockfile
 
       - name: Build website
+        env:
+          NODE_ENV: production
         run: pnpm --dir website build
 
       # The failure mode this guards is silent: a missing collection is not a
@@ -118,9 +128,62 @@ jobs:
             'site/nexus-agents/**/*.html'
           fail: true
 
+  accessibility:
+    name: Check Accessibility and Reachability
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-node
+        with:
+          install: 'false'
+
+      - name: Install website dependencies (own lockfile)
+        run: pnpm --dir website install --frozen-lockfile
+
+      - name: Install Chromium
+        working-directory: website
+        run: npx playwright install --with-deps chromium
+
+      - name: Test the gates and real docs navigation
+        run: pnpm --dir website test
+
+      - name: Download built artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: github-pages
+          path: website
+
+      - name: Extract built artifact
+        run: mkdir -p website/dist && tar -xf website/artifact.tar -C website/dist
+
+      - name: Axe on every sitemap URL in both themes
+        run: pnpm --dir website a11y --report /tmp/a11y-report.json
+
+      # This audits the actual remarque palette plus source policy, not CSS
+      # cascade contrast. Legacy landing/404 policy findings await redesign;
+      # rendered contrast on those pages is blocking in the axe step above.
+      - name: Audit remarque palette and source policy (advisory)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        working-directory: website
+        run: npx remarque-audit --palette node_modules/remarque-tokens/tokens-palette.css --src src --json > /tmp/remarque-report.json
+
+      - name: Upload accessibility measurements
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: website-accessibility-reports
+          path: |
+            /tmp/a11y-report.json
+            /tmp/remarque-report.json
+
   deploy:
     name: Deploy to GitHub Pages
-    needs: [build, link-check]
+    needs: [build, link-check, accessibility]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
