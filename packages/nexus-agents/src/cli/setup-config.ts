@@ -46,6 +46,11 @@ models:
 experts:
   builtin: true
 
+security:
+  audit:
+    enabled: true
+    enableHashChain: true
+
 logging:
   level: info
   format: json

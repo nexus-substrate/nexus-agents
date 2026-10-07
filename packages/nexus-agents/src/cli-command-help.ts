@@ -7,7 +7,7 @@
  * The one-line command description is NOT stored here (#3209). It is
  * single-sourced from `COMMAND_CATALOG` in `cli-command-catalog.ts` and looked
  * up via `getCommandDescription` when formatting. This module owns the RICHER
- * per-command help — flags, examples, API-key requirements — that the catalog
+ * per-command help — flags, examples, prerequisites — that the catalog
  * does not carry.
  *
  * @module cli-command-help
@@ -31,12 +31,13 @@ export interface CommandFlagEntry {
  *
  * No `description` field: the one-line summary comes from `COMMAND_CATALOG`
  * (single source — #3209) via {@link getCommandDescription}. This entry holds
- * only the richer help the catalog lacks (flags, examples, API-key needs).
+ * only the richer help the catalog lacks (flags, examples, prerequisites).
  */
 export interface CommandHelpEntry {
   readonly command: string;
   readonly examples: readonly string[];
   readonly flags?: readonly CommandFlagEntry[];
+  readonly prerequisite?: string;
   readonly requiresApiKey?: readonly string[];
 }
 
@@ -128,7 +129,7 @@ const VOTE_HELP: CommandHelpEntry = {
     },
     { flag: '--verbose', description: 'Show vote verification hashes' },
   ],
-  requiresApiKey: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'],
+  prerequisite: 'an authenticated Claude Code or Codex CLI, a gateway, or an API key',
 };
 
 const EXPERT_HELP: CommandHelpEntry = {
@@ -354,7 +355,7 @@ function describe(command: string): string {
 }
 
 /**
- * Look up the richer help entry (examples/flags/api-key needs) for a command.
+ * Look up the richer help entry (examples/flags/prerequisites) for a command.
  * The single source other surfaces derive from — e.g. the error-usage messages
  * in `cli-commands-usage.ts` render their Examples block from `entry.examples`
  * rather than hand-maintaining a parallel (drift-prone) copy (#3209, epic #3691).
@@ -388,7 +389,10 @@ export function formatCommandHelp(command: string): string | undefined {
     lines.push('');
   }
 
-  if (entry.requiresApiKey !== undefined && entry.requiresApiKey.length > 0) {
+  if (entry.prerequisite !== undefined) {
+    lines.push(`REQUIRES: ${entry.prerequisite}`);
+    lines.push('');
+  } else if (entry.requiresApiKey !== undefined && entry.requiresApiKey.length > 0) {
     lines.push(`REQUIRES: ${entry.requiresApiKey.join(', ')} (at least one)`);
     lines.push('');
   }

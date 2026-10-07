@@ -7,6 +7,7 @@ import { mkdirSync, existsSync, rmSync, readFileSync, readdirSync, writeFileSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runConfigInitSync } from './setup-config.js';
+import { loadConfig } from '../config/config-loader.js';
 
 describe('runConfigInitSync (#1252)', () => {
   let testDir: string;
@@ -33,6 +34,18 @@ describe('runConfigInitSync (#1252)', () => {
     const content = readFileSync(dotdirPath, 'utf-8');
     expect(content).toContain('models:');
     expect(content).toContain('experts:');
+  });
+
+  it('writes YAML that the real config loader validates with audit logging enabled', () => {
+    const generated = runConfigInitSync(testDir, false, false);
+    expect(generated.success).toBe(true);
+
+    const loaded = loadConfig({ configPath: generated.path, cwd: testDir });
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) throw loaded.error;
+    expect(loaded.value.usingDefaults).toBe(false);
+    expect(loaded.value.config.security?.audit?.enabled).toBe(true);
+    expect(loaded.value.config.security?.audit?.enableHashChain).toBe(true);
   });
 
   it('edits legacy root-level config in place when one exists (epic #2872)', () => {
