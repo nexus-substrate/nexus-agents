@@ -17,8 +17,10 @@ vi.mock('ai', () => ({
   streamText: () => {
     throw new Error('custom-openai must use gateway HTTP');
   },
-  generateObject: () => {
-    throw new Error('custom-openai must use gateway HTTP');
+  Output: {
+    object: () => {
+      throw new Error('custom-openai must use gateway HTTP');
+    },
   },
   jsonSchema: (schema: unknown) => schema,
 }));

@@ -18,9 +18,11 @@ import { assessCapacity } from '../../cli-adapters/routing/stages/capacity-stage
 const fullAiMock = (): Record<string, unknown> => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
+  // Deprecated in ai 7 and never called by the adapter; still surfaced (deprecated).
   generateObject: vi.fn(),
+  Output: { object: vi.fn((options: unknown) => options) },
   // jsonSchema wraps a raw JSON schema; the real helper returns a Schema
-  // object. The adapter only forwards it to generateObject, so a passthrough
+  // object. The adapter only forwards it to Output.object, so a passthrough
   // that records the input is sufficient for assertions.
   jsonSchema: vi.fn((schema: unknown) => ({ jsonSchema: schema })),
 });
@@ -393,17 +395,17 @@ describe('SdkAdapter', () => {
       }
     });
 
-    it('routes json_schema to generateObject with maxOutputTokens and returns stringified object (#3433)', async () => {
-      const { generateObject, jsonSchema, generateText } = await import('ai');
-      const mockObject = vi.mocked(generateObject);
+    it('routes json_schema to generateText+Output with maxOutputTokens and returns stringified object (#3433)', async () => {
+      const { generateText, jsonSchema, Output } = await import('ai');
       const mockJsonSchema = vi.mocked(jsonSchema);
       const mockText = vi.mocked(generateText);
-      mockObject.mockResolvedValueOnce({
-        object: { answer: 42 },
+      mockText.mockResolvedValueOnce({
+        text: '{"answer":42}',
+        output: { answer: 42 },
         finishReason: 'stop',
         usage: { inputTokens: 10, outputTokens: 5 },
         response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
-      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const schema = { type: 'object', properties: { answer: { type: 'number' } } };
       const adapter = new SdkAdapter({
@@ -417,10 +419,13 @@ describe('SdkAdapter', () => {
         responseFormat: { type: 'json_schema', schema },
       });
 
-      expect(mockObject).toHaveBeenCalledTimes(1);
-      expect(mockObject.mock.calls[0]?.[0]).toHaveProperty('maxOutputTokens', 100);
-      expect(mockObject.mock.calls[0]?.[0]).not.toHaveProperty('maxTokens');
-      expect(mockText).not.toHaveBeenCalled();
+      expect(mockText).toHaveBeenCalledTimes(1);
+      expect(Output.object).toHaveBeenCalledWith({ schema: { jsonSchema: schema } });
+      expect(mockText.mock.calls[0]?.[0]).toMatchObject({
+        output: { schema: { jsonSchema: schema } },
+      });
+      expect(mockText.mock.calls[0]?.[0]).toHaveProperty('maxOutputTokens', 100);
+      expect(mockText.mock.calls[0]?.[0]).not.toHaveProperty('maxTokens');
       expect(mockJsonSchema).toHaveBeenCalledWith(schema);
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -438,16 +443,17 @@ describe('SdkAdapter', () => {
       }
     });
 
-    it('routes json_object to generateObject with a permissive schema (#3433)', async () => {
-      const { generateObject, jsonSchema } = await import('ai');
-      const mockObject = vi.mocked(generateObject);
+    it('routes json_object to generateText with a permissive schema (#3433)', async () => {
+      const { generateText, jsonSchema, Output } = await import('ai');
+      const mockText = vi.mocked(generateText);
       const mockJsonSchema = vi.mocked(jsonSchema);
-      mockObject.mockResolvedValueOnce({
-        object: { foo: 'bar' },
+      mockText.mockResolvedValueOnce({
+        text: '{"foo":"bar"}',
+        output: { foo: 'bar' },
         finishReason: 'stop',
         usage: { inputTokens: 3, outputTokens: 2 },
         response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
-      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',
@@ -460,7 +466,10 @@ describe('SdkAdapter', () => {
         responseFormat: { type: 'json_object' },
       });
 
-      expect(mockObject).toHaveBeenCalledTimes(1);
+      expect(mockText).toHaveBeenCalledTimes(1);
+      expect(Output.object).toHaveBeenCalledWith({
+        schema: { jsonSchema: { type: 'object' } },
+      });
       expect(mockJsonSchema).toHaveBeenCalledWith({ type: 'object' });
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -472,9 +481,8 @@ describe('SdkAdapter', () => {
     });
 
     it('routes text responseFormat to generateText (regression #3433)', async () => {
-      const { generateText, generateObject } = await import('ai');
+      const { generateText, Output } = await import('ai');
       const mockText = vi.mocked(generateText);
-      const mockObject = vi.mocked(generateObject);
       mockText.mockResolvedValueOnce({
         text: 'plain text',
         finishReason: 'stop',
@@ -494,7 +502,8 @@ describe('SdkAdapter', () => {
       });
 
       expect(mockText).toHaveBeenCalledTimes(1);
-      expect(mockObject).not.toHaveBeenCalled();
+      expect(Output.object).not.toHaveBeenCalled();
+      expect(mockText.mock.calls[0]?.[0]).not.toHaveProperty('output');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.content[0]).toEqual({ type: 'text', text: 'plain text' });
@@ -505,27 +514,40 @@ describe('SdkAdapter', () => {
     // `extractAiSdkFunctions` with hand-built partial module objects — NOT via
     // `vi.doMock('ai')` + `vi.resetModules()`, whose module-registry mutation
     // leaked across the parallel suite and intermittently red-barred CI.
+    const complete = {
+      generateText: vi.fn(),
+      streamText: vi.fn(),
+      generateObject: vi.fn(),
+      Output: { object: vi.fn() },
+      jsonSchema: vi.fn(),
+    };
     it.each([
-      ['generateText', { streamText: vi.fn(), generateObject: vi.fn(), jsonSchema: vi.fn() }],
-      ['streamText', { generateText: vi.fn(), generateObject: vi.fn(), jsonSchema: vi.fn() }],
-      ['generateObject', { generateText: vi.fn(), streamText: vi.fn(), jsonSchema: vi.fn() }],
-      ['jsonSchema', { generateText: vi.fn(), streamText: vi.fn(), generateObject: vi.fn() }],
+      ['generateText', { ...complete, generateText: undefined }],
+      ['streamText', { ...complete, streamText: undefined }],
+      ['generateObject', { ...complete, generateObject: undefined }],
+      ['Output.object', { ...complete, Output: undefined }],
+      ['Output.object', { ...complete, Output: {} }],
+      ['jsonSchema', { ...complete, jsonSchema: undefined }],
     ])('throws a clear error when the %s export is missing (#3433/#3449)', (missing, partial) => {
       expect(() => extractAiSdkFunctions(partial as Record<string, unknown>)).toThrow(
         new RegExp(`missing expected export: '${missing}'`)
       );
     });
 
-    it('returns the four functions when the module is complete', () => {
+    it('returns the required functions when the module is complete', () => {
       const mod = {
         generateText: vi.fn(),
         streamText: vi.fn(),
         generateObject: vi.fn(),
+        Output: { object: vi.fn() },
         jsonSchema: vi.fn(),
       };
       const fns = extractAiSdkFunctions(mod);
       expect(fns.generateText).toBe(mod.generateText);
       expect(fns.jsonSchema).toBe(mod.jsonSchema);
+      expect(fns.objectOutput).toBe(mod.Output.object);
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- pins the deprecated field until removal
+      expect(fns.generateObject).toBe(mod.generateObject);
     });
   });
 
@@ -657,17 +679,20 @@ describe('SdkAdapter', () => {
       }
     });
 
-    it('returns a MODEL_ERROR when generateObject finishes with content-filter', async () => {
-      const { generateObject, jsonSchema } = await import('ai');
+    it('returns a MODEL_ERROR when structured generateText finishes with content-filter', async () => {
+      const { generateText, jsonSchema } = await import('ai');
       vi.mocked(jsonSchema).mockReturnValueOnce({
         type: 'object',
       } as unknown as ReturnType<typeof jsonSchema>);
-      vi.mocked(generateObject).mockResolvedValueOnce({
-        object: null,
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: '',
+        get output(): unknown {
+          throw new Error('No output generated');
+        },
         finishReason: 'content-filter',
         usage: { inputTokens: 10, outputTokens: 0 },
         response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
-      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',
@@ -772,15 +797,18 @@ describe('SdkAdapter', () => {
       await expect(collectStream()).rejects.toThrow(/reasoning before any output/);
     });
 
-    it('returns a MODEL_ERROR when generateObject finishes with length and null object', async () => {
-      const { generateObject, jsonSchema } = await import('ai');
+    it('returns a MODEL_ERROR when generateText finishes with length and no output', async () => {
+      const { generateText, jsonSchema } = await import('ai');
       vi.mocked(jsonSchema).mockReturnValueOnce({} as unknown as ReturnType<typeof jsonSchema>);
-      vi.mocked(generateObject).mockResolvedValueOnce({
-        object: null,
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: '',
+        get output(): unknown {
+          throw new Error('No output generated');
+        },
         finishReason: 'length',
         usage: { inputTokens: 10, outputTokens: 100, totalTokens: 110 },
         response: { modelId: 'test-model' },
-      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',
@@ -798,6 +826,37 @@ describe('SdkAdapter', () => {
         expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
         expect(result.error.context?.['reason']).toBe('reasoning_truncated');
         expect(result.error.message).toContain('reasoning before any output');
+      }
+    });
+
+    it('maps a structured result whose output getter throws to a MODEL_ERROR', async () => {
+      const { generateText, jsonSchema } = await import('ai');
+      vi.mocked(jsonSchema).mockReturnValueOnce({} as unknown as ReturnType<typeof jsonSchema>);
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: '',
+        get output(): unknown {
+          throw new Error('No output generated');
+        },
+        finishReason: 'error',
+        usage: { inputTokens: 10, outputTokens: 0, totalTokens: 10 },
+        response: { modelId: 'test-model' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete({
+        ...TEST_REQUEST,
+        responseFormat: { type: 'json_object' },
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
+        expect(result.error.message).toContain('No output generated');
       }
     });
 
@@ -826,15 +885,16 @@ describe('SdkAdapter', () => {
       }
     });
 
-    it('returns ok with max_tokens stopReason when generateObject finishes with length and valid object', async () => {
-      const { generateObject, jsonSchema } = await import('ai');
+    it('returns ok with max_tokens stopReason when generateText finishes with length and valid output', async () => {
+      const { generateText, jsonSchema } = await import('ai');
       vi.mocked(jsonSchema).mockReturnValueOnce({} as unknown as ReturnType<typeof jsonSchema>);
-      vi.mocked(generateObject).mockResolvedValueOnce({
-        object: { key: 'value' },
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: '{"key":"value"}',
+        output: { key: 'value' },
         finishReason: 'length',
         usage: { inputTokens: 10, outputTokens: 100, totalTokens: 110 },
         response: { modelId: 'test-model' },
-      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',

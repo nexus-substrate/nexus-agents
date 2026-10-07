@@ -45,41 +45,13 @@ import {
   type OpenAICompatConfig,
 } from '../openai-compat-adapter.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
-
-/** Minimal AI SDK model interface (duck-typed for optional dependency). */
-interface AiSdkModel {
-  readonly modelId: string;
-}
-
-/** AI SDK generateText result shape (duck-typed). */
-interface GenerateTextResult {
-  text: string;
-  finishReason: string;
-  usage: {
-    inputTokens: number | undefined;
-    outputTokens: number | undefined;
-    totalTokens: number | undefined;
-  };
-  response: { modelId: string };
-}
-
-/** AI SDK streamText result shape (duck-typed). */
-interface StreamTextResult {
-  textStream: AsyncIterable<string>;
-  finishReason?: Promise<string> | string | undefined;
-}
-
-/** AI SDK generateObject result shape (duck-typed). */
-interface GenerateObjectResult {
-  object: unknown;
-  finishReason: string;
-  usage: {
-    inputTokens: number | undefined;
-    outputTokens: number | undefined;
-    totalTokens: number | undefined;
-  };
-  response: { modelId: string };
-}
+import type {
+  AiSdkFunctions,
+  AiSdkModel,
+  GenerateTextResult,
+  StreamTextResult,
+  StructuredTextResult,
+} from './ai-sdk-shapes.js';
 
 /** Maps SDK counters without presenting a partial component sum as a total. */
 function mapSdkUsage(usage: GenerateTextResult['usage']): TokenUsage | undefined {
@@ -89,17 +61,6 @@ function mapSdkUsage(usage: GenerateTextResult['usage']): TokenUsage | undefined
   }
   if (inputTokens === undefined || outputTokens === undefined) return undefined;
   return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
-}
-
-/** Opaque schema handle returned by the AI SDK `jsonSchema` helper. */
-type AiSdkSchema = unknown;
-
-/** Function signatures for AI SDK entry points (loaded dynamically). */
-interface AiSdkFunctions {
-  generateText: (options: Record<string, unknown>) => Promise<GenerateTextResult>;
-  streamText: (options: Record<string, unknown>) => StreamTextResult;
-  generateObject: (options: Record<string, unknown>) => Promise<GenerateObjectResult>;
-  jsonSchema: (schema: Record<string, unknown>) => AiSdkSchema;
 }
 
 /** AI SDK provider factory: creates a provider instance that is callable as a model factory. */
@@ -171,6 +132,11 @@ export function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFuncti
   const generateText = mod['generateText'];
   const streamText = mod['streamText'];
   const generateObject = mod['generateObject'];
+  const output = mod['Output'];
+  const objectOutput =
+    typeof output === 'object' && output !== null
+      ? (output as Record<string, unknown>)['object']
+      : undefined;
   const jsonSchema = mod['jsonSchema'];
   if (typeof generateText !== 'function') {
     throw new Error("AI SDK module missing expected export: 'generateText'");
@@ -178,9 +144,13 @@ export function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFuncti
   if (typeof streamText !== 'function') {
     throw new Error("AI SDK module missing expected export: 'streamText'");
   }
-  // #3433: structured output routes through generateObject + jsonSchema.
+  // Still surfaced (deprecated) for API compatibility; the adapter does not call it.
   if (typeof generateObject !== 'function') {
     throw new Error("AI SDK module missing expected export: 'generateObject'");
+  }
+  // Structured output uses generateText with Output.object + jsonSchema.
+  if (typeof objectOutput !== 'function') {
+    throw new Error("AI SDK module missing expected export: 'Output.object'");
   }
   if (typeof jsonSchema !== 'function') {
     throw new Error("AI SDK module missing expected export: 'jsonSchema'");
@@ -189,29 +159,32 @@ export function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFuncti
     generateText: generateText as AiSdkFunctions['generateText'],
     streamText: streamText as AiSdkFunctions['streamText'],
     generateObject: generateObject as AiSdkFunctions['generateObject'],
+    objectOutput: objectOutput as AiSdkFunctions['objectOutput'],
     jsonSchema: jsonSchema as AiSdkFunctions['jsonSchema'],
   };
 }
 
 /**
- * Runtime-validates the duck-typed `generateObject` result shape (#3433).
+ * Runtime-validates the duck-typed `generateText` result shape (#3433).
  *
- * `generateObject` comes from the optional `ai` peer dependency, so its
+ * `generateText` comes from the optional `ai` peer dependency, so its
  * result is `unknown` to us. We narrow it here rather than casting, so a
  * shape change in the SDK surfaces as a clear error instead of a silent
  * `undefined` downstream.
  */
-function isGenerateObjectResult(value: unknown): value is GenerateObjectResult {
+function isStructuredTextResult(value: unknown): value is StructuredTextResult {
   if (typeof value !== 'object' || value === null) return false;
   const record = value as Record<string, unknown>;
-  if (!('object' in record)) return false;
+  if (typeof record['text'] !== 'string' || !('output' in record)) return false;
   if (typeof record['finishReason'] !== 'string') return false;
   const usage = record['usage'];
   if (typeof usage !== 'object' || usage === null) return false;
-  const response = record['response'];
+  return hasModelId(record['response']);
+}
+
+function hasModelId(response: unknown): boolean {
   if (typeof response !== 'object' || response === null) return false;
-  if (typeof (response as Record<string, unknown>)['modelId'] !== 'string') return false;
-  return true;
+  return typeof (response as Record<string, unknown>)['modelId'] === 'string';
 }
 
 /**
@@ -435,8 +408,7 @@ export class SdkAdapter extends BaseAdapter {
     this.model = providerModule.model;
 
     // AI SDK is an optional peer dependency — validate shape at runtime
-    const aiModule = await import('ai');
-    this.sdkFunctions = extractAiSdkFunctions(aiModule);
+    this.sdkFunctions = extractAiSdkFunctions(await import('ai'));
   }
 
   /**
@@ -485,6 +457,8 @@ export class SdkAdapter extends BaseAdapter {
   } {
     const options: Record<string, unknown> = {
       model: this.model,
+      // AI SDK 7 requires opt-in to preserve our system-role message contract.
+      allowSystemInMessages: true,
       messages: request.messages.map((m) => ({
         role: m.role === 'system' ? 'system' : m.role,
         content:
@@ -543,7 +517,7 @@ export class SdkAdapter extends BaseAdapter {
   }
 
   /**
-   * generateObject path (#3433) — json_object / json_schema responseFormat.
+   * Structured generateText path (#3433) — json_object / json_schema responseFormat.
    *
    * Uses the AI SDK `jsonSchema` helper to build the schema handle
    * (permissive `{ type: 'object' }` for json_object), then stringifies the
@@ -558,22 +532,26 @@ export class SdkAdapter extends BaseAdapter {
     const rawSchema: Record<string, unknown> =
       responseFormat.type === 'json_schema' ? responseFormat.schema : { type: 'object' };
     const schema = sdk.jsonSchema(rawSchema);
-    const result: unknown = await sdk.generateObject({ ...options, schema });
-    if (!isGenerateObjectResult(result)) {
+    const result: unknown = await sdk.generateText({
+      ...options,
+      output: sdk.objectOutput({ schema }),
+    });
+    if (!isStructuredTextResult(result)) {
       throw new Error(
-        'AI SDK generateObject returned an unexpected result shape ' +
-          '(missing object/usage/finishReason/response.modelId)'
+        'AI SDK generateText returned an unexpected structured result shape ' +
+          '(missing text/output/usage/finishReason/response.modelId)'
       );
     }
-    assertValidCompletion(
-      `${this.providerId}/${this.modelId}`,
-      result.finishReason,
-      result.object !== null && result.object !== undefined,
-      result.response.modelId
-    );
+    // ai 7 parses `output` from `text` only when text is non-empty or the finish is
+    // `stop`; otherwise the getter throws. Classify the non-answer finish first so
+    // content-filter / empty-length keep their typed errors.
+    const { finishReason, response } = result;
+    const source = `${this.providerId}/${this.modelId}`;
+    assertValidCompletion(source, finishReason, result.text.trim() !== '', response.modelId);
+    const output = result.output;
     const usage = mapSdkUsage(result.usage);
     return {
-      content: [{ type: 'text', text: JSON.stringify(result.object) }],
+      content: [{ type: 'text', text: JSON.stringify(output) }],
       ...(usage !== undefined ? { usage } : {}),
       stopReason: mapFinishReason(result.finishReason),
       model: result.response.modelId,
@@ -597,8 +575,7 @@ export class SdkAdapter extends BaseAdapter {
       const { options, dropped } = this.buildSdkOptions(request);
 
       // #3433: native structured output. json_object/json_schema route
-      // through generateObject; everything else keeps the generateText path
-      // unchanged.
+      // through generateText + Output.object; text uses the default output.
       const responseFormat = request.responseFormat;
       const base =
         responseFormat !== undefined && responseFormat.type !== 'text'
