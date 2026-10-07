@@ -1,0 +1,104 @@
+---
+// Light/dark toggle for the docs pages (#7199). Adapted from
+// oklch-terminal-themes' site/src/components/ThemeToggle.astro (MIT,
+// William Zujkowski). ThemeInit.astro restores the stored choice before
+// paint; this button reflects and changes it.
+//
+// aria-pressed reports whether the EFFECTIVE theme is dark, so it is right
+// whether the theme came from a stored choice or from the OS. Until the
+// reader chooses, OS preference changes keep being followed.
+//
+// Rendered `hidden` and revealed by the script, so with JS off there is no
+// dead button reporting a state it cannot change.
+//
+// No "follow the OS again" state: a third state does not fit aria-pressed
+// (a two-state control), and a separate reset control was not judged worth
+// its header space. Clearing site data restores OS-following.
+---
+
+<button
+  type="button"
+  class="docs-control theme-toggle"
+  data-theme-toggle
+  aria-pressed="false"
+  hidden
+>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+  <span>Dark theme</span>
+</button>
+
+<script>
+  import { THEME_STORAGE_KEY as STORAGE_KEY } from '../lib/theme.ts';
+
+  const root = document.documentElement;
+  const osDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function effectiveDark(): boolean {
+    const chosen = root.dataset.theme;
+    if (chosen === 'dark' || chosen === 'light') return chosen === 'dark';
+    return osDark.matches;
+  }
+
+  function sync(): void {
+    const pressed = String(effectiveDark());
+    document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]').forEach((button) => {
+      button.setAttribute('aria-pressed', pressed);
+    });
+  }
+
+  // Set when the reader chooses on this page. Kept even if storage throws, so
+  // an OS preference change cannot silently undo an in-page choice.
+  let chosenThisPage = false;
+
+  function hasChoice(): boolean {
+    if (chosenThisPage) return true;
+    try {
+      return localStorage.getItem(STORAGE_KEY) !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const next = effectiveDark() ? 'light' : 'dark';
+      root.dataset.theme = next;
+      chosenThisPage = true;
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        // Storage unavailable: the choice lasts for this page only.
+      }
+      sync();
+      document.dispatchEvent(new CustomEvent('nexus:themechange'));
+    });
+  });
+
+  osDark.addEventListener('change', () => {
+    if (hasChoice()) return;
+    delete root.dataset.theme;
+    sync();
+    document.dispatchEvent(new CustomEvent('nexus:themechange'));
+  });
+
+  sync();
+  document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]').forEach((button) => {
+    button.hidden = false;
+  });
+</script>
+
+<style>
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    transition: border-color var(--motion-fast) var(--motion-easing);
+  }
+  .theme-toggle[hidden] {
+    display: none;
+  }
+  .theme-toggle:hover {
+    border-color: var(--color-fg-muted);
+  }
+</style>

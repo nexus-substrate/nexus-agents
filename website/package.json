@@ -17,8 +17,11 @@
     "@astrojs/sitemap": "^3.7.4",
     "@astrojs/svelte": "~9.0.1",
     "astro": "~7.3.5",
+    "astro-pagefind": "2.0.1",
     "mermaid": "^11.17.2",
+    "remarque-tokens": "0.26.0",
     "satteri": "^0.10.5",
+    "shiki": "4.5.0",
     "svelte": "^5.57.1",
     "typescript": "^6.0.3"
   },

@@ -1,0 +1,23 @@
+---
+// No-flash theme restore for the docs pages (#7199). Rendered in <head>, so
+// it runs before first paint. Adapted from oklch-terminal-themes'
+// site/src/components/ThemeToggle.astro (MIT, William Zujkowski).
+//
+// With no stored choice it sets nothing: remarque's palette is authored with
+// light-dark() under `color-scheme: light dark`, so the page already follows
+// prefers-color-scheme. A stored 'light' or 'dark' sets [data-theme], which
+// remarque keys on. Storage can throw (private mode, blocked site data); the
+// page then simply follows the OS.
+import { THEME_STORAGE_KEY as STORAGE_KEY } from '../lib/theme.ts';
+---
+
+<script is:inline define:vars={{ STORAGE_KEY }}>
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') {
+      document.documentElement.dataset.theme = stored;
+    }
+  } catch {
+    // Storage unavailable: follow prefers-color-scheme.
+  }
+</script>

@@ -7,6 +7,8 @@
 // renderer freeze. Re-introduce only with a verified fix for the renderer
 // contention (ClientRouter + prefetch race against the page's other scripts).
 import { NEXUS_AGENTS_VERSION } from '../data/site-data';
+import SiteHead from '../components/SiteHead.astro';
+import PageScripts from '../components/PageScripts.astro';
 
 interface Props {
   title: string;
@@ -14,67 +16,14 @@ interface Props {
   noindex?: boolean;
 }
 
-const {
-  title,
-  description = 'Autonomic control plane for AI coding agents — one entry point, adversarial review, tamper-evident hash-chained audit, bounded self-tuning.',
-  noindex = false,
-} = Astro.props;
-const siteTitle =
-  title === 'Home'
-    ? 'Nexus Agents — Autonomic control plane for AI coding agents'
-    : `${title} — Nexus Agents`;
-const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const { title, description, noindex = false } = Astro.props;
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content={description} />
-    <title>{siteTitle}</title>
-
-    <link rel="canonical" href={canonicalURL} />
-
-    <link rel="icon" type="image/svg+xml" sizes="16x16" href={`${import.meta.env.BASE_URL}/favicon-16.svg`} />
-    <link rel="icon" type="image/svg+xml" sizes="any" href={`${import.meta.env.BASE_URL}/favicon.svg`} />
+    <SiteHead title={title} description={description} noindex={noindex} />
     <meta name="theme-color" content="#902020" />
-
-    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-
-    {noindex && <meta name="robots" content="noindex, nofollow" />}
-
-    <meta property="og:title" content={siteTitle} />
-    <meta property="og:description" content={description} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={canonicalURL} />
-    <meta property="og:site_name" content="Nexus Agents" />
-
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content={siteTitle} />
-    <meta name="twitter:description" content={description} />
-
-    <script type="application/ld+json" set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Nexus Agents",
-      "description": "Autonomic control plane for AI coding agents — one entry point, adversarial review across Claude/Codex/Gemini/OpenCode, tamper-evident hash-chained audit, bounded self-tuning. The agents are the data plane; nexus-agents admits, reviews, audits, and routes their work.",
-      "url": Astro.site?.toString(),
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "Cross-platform",
-      "license": "https://opensource.org/licenses/MIT",
-      "author": {
-        "@type": "Organization",
-        "name": "Nexus Substrate",
-        "url": "https://github.com/nexus-substrate"
-      },
-      "creator": {
-        "@type": "Person",
-        "name": "William Zujkowski",
-        "url": "https://github.com/williamzujkowski"
-      }
-    })} />
 
     <!-- Fonts: Fraunces (display serif, opsz + soft axes), Source Sans 3 (body), IBM Plex Mono (code) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -131,140 +80,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       </div>
     </footer>
 
-    <!-- Copy buttons -->
-    <script is:inline>
-      (function () {
-        function attach() {
-          if (!navigator.clipboard) return;
-          document.querySelectorAll('pre.code-block, pre.astro-code, pre[data-copy]').forEach(function (pre) {
-            if (pre.dataset.copyAttached === '1') return;
-            pre.dataset.copyAttached = '1';
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'copy-btn';
-            btn.setAttribute('aria-label', 'Copy code');
-            btn.textContent = 'Copy';
-            btn.addEventListener('click', function () {
-              var code = pre.querySelector('code');
-              var text = code ? code.textContent : pre.textContent;
-              navigator.clipboard.writeText(text || '').then(function () {
-                btn.textContent = 'Copied';
-                btn.classList.add('copied');
-                setTimeout(function () {
-                  btn.textContent = 'Copy';
-                  btn.classList.remove('copied');
-                }, 1500);
-              });
-            });
-            pre.style.position = 'relative';
-            pre.appendChild(btn);
-          });
-        }
-        attach();
-        document.addEventListener('astro:page-load', attach);
-      })();
-    </script>
-
-    <!-- Mermaid: ink-on-paper theme, derived from the same tokens as the rest of the site -->
-    <script>
-      import type { MermaidConfig } from 'mermaid';
-
-      const LIGHT_VARS = {
-        primaryColor: '#1c1715',          // ink
-        primaryTextColor: '#fbf6ed',       // paper
-        primaryBorderColor: '#1c1715',
-        secondaryColor: '#efe9dc',         // paper-deep
-        secondaryTextColor: '#1c1715',
-        tertiaryColor: '#fbf6ed',
-        tertiaryTextColor: '#1c1715',
-        lineColor: '#1c1715',
-        textColor: '#1c1715',
-        mainBkg: '#1c1715',
-        secondBkg: '#efe9dc',
-        background: 'transparent',
-        nodeBorder: '#1c1715',
-        clusterBkg: 'rgba(144, 32, 32, 0.06)',
-        clusterBorder: '#902020',          // register red
-        defaultLinkColor: '#3d2e26',
-        edgeLabelBackground: '#fbf6ed',
-        fontSize: '14px',
-      } as const;
-
-      const DARK_VARS = {
-        ...LIGHT_VARS,
-        primaryColor: '#e3dcce',
-        primaryTextColor: '#1c1715',
-        primaryBorderColor: '#e3dcce',
-        secondaryColor: '#2c2521',
-        secondaryTextColor: '#e3dcce',
-        tertiaryColor: '#221d1a',
-        tertiaryTextColor: '#e3dcce',
-        lineColor: '#bfb6a4',
-        textColor: '#e3dcce',
-        mainBkg: '#e3dcce',
-        secondBkg: '#2c2521',
-        nodeBorder: '#e3dcce',
-        clusterBorder: '#cf6464',
-        defaultLinkColor: '#a89c8a',
-        edgeLabelBackground: '#221d1a',
-      } as const;
-
-      function buildTheme(isDark: boolean): MermaidConfig {
-        return {
-          startOnLoad: false,
-          theme: 'base',
-          securityLevel: 'strict',
-          fontFamily: "'Source Sans 3', system-ui, sans-serif",
-          themeVariables: isDark ? DARK_VARS : LIGHT_VARS,
-          flowchart: { curve: 'linear', padding: 16, useMaxWidth: true, htmlLabels: true },
-        };
-      }
-
-      let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
-      function currentIsDark(): boolean {
-        return window.matchMedia('(prefers-color-scheme: dark)').matches;
-      }
-      function loadMermaid(): Promise<typeof import('mermaid').default> {
-        mermaidPromise ??= import('mermaid').then((m) => {
-          m.default.initialize(buildTheme(currentIsDark()));
-          return m.default;
-        });
-        return mermaidPromise;
-      }
-      async function renderMermaid(): Promise<void> {
-        const blocks = document.querySelectorAll<HTMLElement>('.mermaid:not([data-mermaid-rendered])');
-        if (blocks.length === 0) return;
-        const mermaid = await loadMermaid();
-        for (const block of blocks) {
-          const source = (block.dataset.source ?? block.textContent ?? '').trim();
-          if (!block.dataset.source) block.dataset.source = source;
-          try {
-            const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
-            const { svg } = await mermaid.render(id, source);
-            block.innerHTML = svg;
-            block.dataset.mermaidRendered = '1';
-          } catch (err) {
-            block.innerHTML = `<pre class="code-block" style="color:#902020;">Diagram render failed: ${String(err)}</pre>`;
-          }
-        }
-      }
-      function resetAndRender(): void {
-        document.querySelectorAll<HTMLElement>('.mermaid[data-mermaid-rendered]').forEach((el) => {
-          const source = el.dataset.source;
-          if (source !== undefined) {
-            el.textContent = source;
-            delete el.dataset.mermaidRendered;
-          }
-        });
-        void renderMermaid();
-      }
-      renderMermaid();
-      document.addEventListener('astro:page-load', resetAndRender);
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        mermaidPromise = null;
-        resetAndRender();
-      });
-    </script>
+    <PageScripts />
   </body>
 </html>
 
