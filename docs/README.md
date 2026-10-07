@@ -76,7 +76,7 @@ docs/
 ├── guides/                # How-to guides
 ├── interfaces/            # Interface specifications
 ├── ops/                   # Operational runbooks
-├── reference/             # Generated CLI/MCP/strategy references
+├── reference/             # Generated CLI/env/MCP/strategy references
 └── workflows/             # Workflow documentation
 ```
 
@@ -319,15 +319,17 @@ Interface specs, generated references, the research loop's catalog, ADRs, and hi
 
 > Owned by the docs-site single-sourcing epics (#3532/#3688/#3763): these pages are emitted by their generators and live where the generators write them. This IA pass indexes them but does not own their bodies.
 
-| Document                                                  | Description                                                                    | Status    |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------ | --------- |
-| [capabilities.md](./reference/capabilities.md)            | CLI/MCP/Workflow capability index                                              | Generated |
-| [MCP tool reference](./reference/tools/index.md)          | Per-tool MCP reference (name, description, input schema)                       | Generated |
-| [Strategy reference](./reference/strategies/index.md)     | Force-strategy escape hatches: entrypoint tool, when-to-force, tiers, executor | Generated |
-| [Price basis](./reference/price-basis.md)                 | `PriceBasis` members (`list`/`declared`/`unknown`) and persisted-reader compat | Canonical |
-| [skills-index.md](./skills-index.md)                      | LLM context loading index                                                      | Canonical |
-| [dependency-graph.md](./architecture/dependency-graph.md) | Module dependency diagram                                                      | Generated |
-| [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)   | Machine-readable component map                                                 | Generated |
+| Document                                                  | Description                                                                      | Status    |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------- | --------- |
+| [capabilities.md](./reference/capabilities.md)            | CLI/MCP/Workflow capability index                                                | Generated |
+| [MCP tool reference](./reference/tools/index.md)          | Per-tool MCP reference (name, description, input schema)                         | Generated |
+| [Environment reference](./reference/environment.md)       | Registered environment variables, accepted values, schema defaults, descriptions | Generated |
+| [CLI reference](./reference/cli.md)                       | Complete CLI command catalog with audience and description                       | Generated |
+| [Strategy reference](./reference/strategies/index.md)     | Force-strategy escape hatches: entrypoint tool, when-to-force, tiers, executor   | Generated |
+| [Price basis](./reference/price-basis.md)                 | `PriceBasis` members (`list`/`declared`/`unknown`) and persisted-reader compat   | Canonical |
+| [skills-index.md](./skills-index.md)                      | LLM context loading index                                                        | Canonical |
+| [dependency-graph.md](./architecture/dependency-graph.md) | Module dependency diagram                                                        | Generated |
+| [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)   | Machine-readable component map                                                   | Generated |
 
 ### System maps & design
 

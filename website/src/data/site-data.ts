@@ -1,12 +1,10 @@
 /**
  * Canonical capability counts for the nexus-agents website.
  *
- * Update these when adding new tools, experts, backends, etc.
- * Single source of truth for all numbers displayed on the website.
- *
- * Source files for each count are documented inline.
- * Run `pnpm --filter nexus-agents test` to verify these stay in sync
- * with the codebase (export contract tests catch drift).
+ * Tools, experts, skills, and execution strategies are generated from their
+ * canonical registries by scripts/inject-governance.ts; do not edit those
+ * counts by hand. `pnpm governance:check` rejects drift.
+ * Other capability counts have their source files documented inline.
  */
 
 import pkg from '../../../packages/nexus-agents/package.json' with { type: 'json' };
@@ -21,14 +19,17 @@ import pkg from '../../../packages/nexus-agents/package.json' with { type: 'json
  */
 export const NEXUS_AGENTS_VERSION: string = `v${pkg.version}`;
 
-/** MCP tools registered in src/mcp/tools/index.ts registerTools() */
+/** Generated from src/mcp/tools/tool-manifest.ts TOOL_MANIFEST. */
 export const MCP_TOOL_COUNT = 47;
 
-/**
- * Built-in expert types in src/agents/experts/expert-config.ts BUILT_IN_EXPERTS.
- * code, architecture, security, documentation, testing, devops, research, pm, ux, infrastructure, qa
- */
-export const EXPERT_TYPE_COUNT = 11;
+/** Generated from src/agents/experts/expert-config.ts BuiltInExpertType. */
+export const EXPERT_TYPE_COUNT = 12;
+
+/** Generated from canonical skills/<name>/SKILL.md entries. */
+export const SKILL_COUNT = 34;
+
+/** Generated from src/orchestration/strategy-manifest-registry.ts manifests. */
+export const STRATEGY_COUNT = 8;
 
 /** CLI adapters in src/cli-adapters/adapters/ (claude, codex, codex-mcp, gemini, opencode) */
 export const CLI_ADAPTER_COUNT = 5;

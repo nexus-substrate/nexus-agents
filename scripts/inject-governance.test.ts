@@ -36,6 +36,8 @@ import {
   rmSync,
   cpSync,
   renameSync,
+  readdirSync,
+  existsSync,
 } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -45,6 +47,7 @@ import { parseRegisteredToolNames } from './parse-tool-manifest.js';
 import { GOVERNANCE_STAMP_PATTERN } from './governance-stamp-exemption.js';
 import { parseCommandCatalog } from './parse-cli-command-catalog.js';
 import { MARKERS } from './governance-markers.js';
+import { STRATEGY_MANIFEST_REGISTRY } from '../packages/nexus-agents/src/orchestration/strategy-manifest-registry.js';
 
 /** Real repo root (parent of `scripts/`). Source of the pristine fixtures. */
 const REAL_ROOT = join(import.meta.dirname, '..');
@@ -79,6 +82,7 @@ let SANDBOX = '';
 let core: {
   checkGovernance: () => Promise<boolean>;
   injectGovernance: () => Promise<void>;
+  syncWebsiteCapabilityCounts: () => void;
   GOVERNANCE_STAMP_SOURCES: readonly string[];
   renderClaudeMd: (currentClaudeMd: string) => Promise<string>;
   checkMcpErrorEnvelope: () => boolean;
@@ -1946,6 +1950,105 @@ describe('inject-governance ancillary count surfaces (#2295 follow-up)', () => {
       expect(match).not.toBeNull();
       expect(parseInt(match![1]!, 10)).toBeGreaterThanOrEqual(30);
     });
+  });
+
+  it('derives all four website capability counts from the canonical registries', async () => {
+    await withInjectSnapshot(async () => {
+      const stale = readFileSync(box(SITE_DATA), 'utf-8').replace(
+        /(export const (?:MCP_TOOL|EXPERT_TYPE|SKILL|STRATEGY)_COUNT\s*=\s*)\d+/g,
+        '$1999'
+      );
+      writeFileSync(box(SITE_DATA), stale);
+      await runInject();
+      const content = readFileSync(box(SITE_DATA), 'utf-8');
+      const toolCount = parseRegisteredToolNames(
+        readFileSync(box('packages/nexus-agents/src/mcp/tools/tool-manifest.ts'), 'utf-8')
+      ).length;
+      const expertSource = readFileSync(
+        box('packages/nexus-agents/src/agents/experts/expert-config.ts'),
+        'utf-8'
+      );
+      const expertCount = expertSource
+        .match(/type\s+BuiltInExpertType\s*=([\s\S]*?);/)?.[1]
+        ?.match(/'[^']+'/g)?.length;
+      const skillCount = readdirSync(box('skills'), { withFileTypes: true }).filter(
+        (entry) => entry.isDirectory() && existsSync(box(`skills/${entry.name}/SKILL.md`))
+      ).length;
+      expect(content).toContain(`export const MCP_TOOL_COUNT = ${String(toolCount)};`);
+      expect(content).toContain(`export const EXPERT_TYPE_COUNT = ${String(expertCount)};`);
+      expect(content).toContain(`export const SKILL_COUNT = ${String(skillCount)};`);
+      expect(content).toContain(
+        `export const STRATEGY_COUNT = ${String(STRATEGY_MANIFEST_REGISTRY.manifests.length)};`
+      );
+      const once = content;
+      await runInject();
+      expect(readFileSync(box(SITE_DATA), 'utf-8')).toBe(once);
+    });
+  });
+
+  it.each(['MCP_TOOL_COUNT', 'EXPERT_TYPE_COUNT', 'SKILL_COUNT', 'STRATEGY_COUNT'])(
+    'rejects website drift in %s',
+    async (name) => {
+      await withInjectSnapshot(async () => {
+        await runInject();
+        const content = readFileSync(box(SITE_DATA), 'utf-8');
+        const stale = content.replace(new RegExp(`(${name}\\s*=\\s*)\\d+`), '$1999');
+        expect(stale).not.toBe(content);
+        writeFileSync(box(SITE_DATA), stale);
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain(`website ${name}`);
+      });
+    }
+  );
+
+  it.each(['e2', '.5', ' + 1'])(
+    'rejects a website integer-prefix expression with suffix %s',
+    async (suffix) => {
+      await withInjectSnapshot(async () => {
+        await runInject();
+        const content = readFileSync(box(SITE_DATA), 'utf-8');
+        const malformed = content.replace(
+          /(export const SKILL_COUNT\s*=\s*)(\d+);/,
+          (_match, prefix: string, value: string) => `${prefix}${value}${suffix};`
+        );
+        expect(malformed).not.toBe(content);
+        writeFileSync(box(SITE_DATA), malformed);
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('website SKILL_COUNT: pattern not found');
+        expect(() => {
+          core.syncWebsiteCapabilityCounts();
+        }).toThrow('website SKILL_COUNT: count declaration missing');
+        expect(readFileSync(box(SITE_DATA), 'utf-8')).toBe(malformed);
+      });
+    }
+  );
+
+  it('fails closed when a website capability count declaration is missing', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const content = readFileSync(box(SITE_DATA), 'utf-8');
+      writeFileSync(box(SITE_DATA), content.replace(/export const EXPERT_TYPE_COUNT[^\n]+/, ''));
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('website EXPERT_TYPE_COUNT: pattern not found');
+    });
+  });
+
+  it('rejects an empty canonical skill registry instead of declaring zero healthy', async () => {
+    const skillsPath = box('skills');
+    const savedPath = box('skills-saved');
+    renameSync(skillsPath, savedPath);
+    mkdirSync(skillsPath);
+    try {
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(false);
+      expect(output).toContain('website SKILL_COUNT: canonical registry is empty');
+    } finally {
+      rmSync(skillsPath, { recursive: true });
+      renameSync(savedPath, skillsPath);
+    }
   });
 
   it('syncs the three "N tool" mentions in docs/design/components.md', async () => {
