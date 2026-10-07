@@ -1,6 +1,8 @@
 ---
 title: pr_review eval candidate-mining curation pipeline
 description: How merged-PR history is mined into CANDIDATE pr_review eval cases for owner adjudication — the weak-label triage heuristic, the no-fabrication guarantee, idempotent dedup, and the mine -> adjudicate -> promote flow toward n>=50.
+diataxis: explanation
+audience: project
 tier: 2
 keywords: [pr-review, eval, dataset, curation, candidate-mining, weak-label, autonomous-sdlc]
 ---

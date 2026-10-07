@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0004: Structural Plugin Flags for Experimental Features (Default Off)
 
 **Status:** Accepted

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Spike: fork_session / branch-comparison on the existing graph builder
 
 **Issue:** #2665 (Epic F — Future Capabilities)

@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # Packaged vs repo-only assets
 
 **What ships to npm, what stays in the repo, and how a runtime read of an

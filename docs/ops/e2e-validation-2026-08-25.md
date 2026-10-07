@@ -1,6 +1,8 @@
 ---
 title: E2E Validation — 2026-08-25
 description: Periodic real-usage validation of the nexus-agents loops after a day of releases (#4488 cadence).
+diataxis: explanation
+audience: project
 tier: 3
 keywords: [validation, e2e, dogfooding, consensus, audit, release]
 ---

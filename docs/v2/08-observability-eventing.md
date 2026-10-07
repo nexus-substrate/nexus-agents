@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # 08 — Observability & Eventing
 
 ---

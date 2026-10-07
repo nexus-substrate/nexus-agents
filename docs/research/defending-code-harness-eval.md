@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Evaluation: Anthropic `defending-code-reference-harness`
 
 **Status:** research spike (#3574). **Source:** <https://github.com/anthropics/defending-code-reference-harness>

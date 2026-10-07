@@ -1,6 +1,8 @@
 ---
 title: Git Housekeeping
 description: How to clear the "too many unreachable loose objects" warning and keep .git from accumulating cruft (#3062).
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [git, gc, housekeeping, cleanup, maintenance]
 ---

@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0011: Orchestrator Interface Unification
 
 ## Status

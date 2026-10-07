@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Nexus Agents - Security Audit Report
 
 **Date:** 2026-01-23

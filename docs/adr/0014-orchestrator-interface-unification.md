@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0014: Orchestrator Interface Unification
 
 ## Status

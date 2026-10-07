@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0001: Pipeline OS + Plugins as the Only Orchestration Primitive
 
 **Status:** Accepted

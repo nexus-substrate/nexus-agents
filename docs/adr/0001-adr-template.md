@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0001: Architecture Decision Record Template
 
 ## Status

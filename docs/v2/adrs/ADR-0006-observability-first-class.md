@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0006: Observability as First-Class (Event Bus + Provenance)
 
 **Status:** Accepted

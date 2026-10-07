@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Research-to-Project Pipeline (removed)
 
 **Status:** Archived — the subsystem this document describes no longer exists.

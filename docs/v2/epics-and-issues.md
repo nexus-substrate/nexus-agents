@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # V2 Epics & Issues
 
 _Work breakdown with acceptance criteria, dependencies, risk, and sizing._

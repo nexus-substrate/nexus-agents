@@ -1,3 +1,8 @@
+---
+diataxis: how-to
+audience: project
+---
+
 # Publishing nexus-agents to Registries & Directories
 
 Step-by-step guide for listing nexus-agents on all major platforms.

@@ -1,6 +1,8 @@
 ---
 title: 'ADR 0017: Authority Ladder'
 description: Four-tier earned-autonomy model (observe → suggest → advisory → enforce) with a machine-checkable evidence-threshold schema and ratification-linked promotion
+diataxis: none
+audience: project
 tier: 3
 keywords:
   [authority, ladder, autonomy, governance, tiers, evidence, ratification, promotion, demotion, adr]

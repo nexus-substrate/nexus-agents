@@ -1,6 +1,8 @@
 ---
 title: Memory Development Guide
 description: Walkthrough for implementing and extending memory backends in nexus-agents
+diataxis: how-to
+audience: project
 tier: 2
 keywords: [memory, backend, development, session, belief, adaptive, typed]
 ---

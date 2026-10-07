@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # 09 — Context Store & Turn DAG Option
 
 ---

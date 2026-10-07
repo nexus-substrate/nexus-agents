@@ -1,6 +1,8 @@
 ---
 title: 'Loop Promotion Criteria'
 description: Per-loop authority-ladder promotion/demotion criteria — the concrete evidence (evalN, precision/recall, soak, ratification) each loop needs to move between tiers, grounded in ADR-0017's evidence-threshold schema
+diataxis: reference
+audience: project
 tier: 3
 keywords:
   [

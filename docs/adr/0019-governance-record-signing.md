@@ -1,6 +1,8 @@
 ---
 title: 'ADR 0019: Governance-Record Signing'
 description: Design-of-record for signing governance records (vote-records, pr-review-records) — CI-commit-time Sigstore/cosign keyless signing that attests provenance-through-CI, with Rekor inclusion verification mandatory and the build explicitly deferred to the record producer plus a multi-party-review threat model.
+diataxis: none
+audience: project
 tier: 3
 keywords:
   [

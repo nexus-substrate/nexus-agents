@@ -1,6 +1,8 @@
 ---
 title: 'Agent Development Guide'
 description: 'Walkthrough for creating and extending custom agents in nexus-agents'
+diataxis: how-to
+audience: project
 tier: 2
 keywords:
   - agents
@@ -197,9 +199,7 @@ export class MyAgent implements IAgent {
 
   private analyzeTask(task: Task): TaskAnalysis {
     // Task analysis logic
-    return {
-      /* ... */
-    };
+    return {/* ... */};
   }
 
   private async performAction(analysis: TaskAnalysis): Promise<string> {
@@ -224,17 +224,13 @@ describe('MyAgent', () => {
   });
 
   it('should initialize correctly', async () => {
-    const result = await agent.initialize({
-      /* context */
-    });
+    const result = await agent.initialize({/* context */});
     expect(result.ok).toBe(true);
     expect(agent.state).toBe('idle');
   });
 
   it('should execute task', async () => {
-    await agent.initialize({
-      /* context */
-    });
+    await agent.initialize({/* context */});
 
     const result = await agent.execute({
       id: 'task-1',

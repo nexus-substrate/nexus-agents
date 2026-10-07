@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0003: Unified QuorumValidator
 
 ## Status

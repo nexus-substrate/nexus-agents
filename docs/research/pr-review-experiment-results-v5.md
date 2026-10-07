@@ -1,6 +1,8 @@
 ---
 title: pr_review experiment v5 — JSON-native findings unlock the verification gate
 description: Fifth run of pr_review with #2254 JSON-native findings. Bug-catch 100%, known-bug location-match 83%, false-positive 50% on a focused synthetic dataset (n=10) — directional, not statistically significant. Recommendation - update dataset, file caught bugs as issues, ship.
+diataxis: none
+audience: project
 tier: 2
 keywords: [pr-review, experiment, results, json-findings, autonomous-sdlc]
 ---

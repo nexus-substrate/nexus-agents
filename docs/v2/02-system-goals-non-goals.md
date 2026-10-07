@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # 02 — System Goals & Non-Goals
 
 ---

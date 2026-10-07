@@ -1,6 +1,8 @@
 ---
 title: Research Index
 description: 180 papers and 43 techniques tracked across the nexus-agents research registry.
+diataxis: none
+audience: project
 ---
 
 <!--

@@ -1,6 +1,8 @@
 ---
 title: MCP spec and SDK audit (2026-10)
 description: Version drift between the MCP revision and TypeScript SDK this repo targets and what is current upstream, plus a build-vs-adopt call for each hand-rolled feature the protocol or SDK now covers.
+diataxis: none
+audience: project
 tier: 2
 keywords: [mcp, sdk, outputSchema, listChanged, tasks, roots, logging, protocol-version, audit]
 ---

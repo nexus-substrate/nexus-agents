@@ -1,3 +1,8 @@
+---
+diataxis: how-to
+audience: project
+---
+
 # 10 — Migration Plan: V1 to V2
 
 _Incremental. Non-breaking. Wrapping before replacing._

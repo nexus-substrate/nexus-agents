@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Model Routing
 
 **Last Updated:** 2026-04-18 (ET)

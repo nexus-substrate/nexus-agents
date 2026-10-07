@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # V2 Rearchitecture — Executive Summary
 
 _Nexus Agents reviewing Nexus Agents. No marketing. Evidence-backed._

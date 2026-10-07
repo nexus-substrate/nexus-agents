@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Research: CLI-First Adapter Strategy
 
 **Issue:** #691

@@ -1,6 +1,8 @@
 ---
 title: pr_review eval dataset curation pipeline
 description: How the pr_review eval dataset grows — the curate-pr-review-dataset.ts pipeline, the sourcing procedure for real labeled cases, provenance and rubric-version stamping, and an honest assessment of what reaching n≥50 requires.
+diataxis: explanation
+audience: project
 tier: 2
 keywords: [pr-review, eval, dataset, curation, provenance, autonomous-sdlc]
 ---

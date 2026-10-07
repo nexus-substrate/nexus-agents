@@ -1,3 +1,8 @@
+---
+diataxis: how-to
+audience: project
+---
+
 # Contributing to Research Documentation
 
 **Last Updated:** 2026-05-12 (ET)

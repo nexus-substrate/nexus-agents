@@ -1,3 +1,8 @@
+---
+diataxis: explanation
+audience: project
+---
+
 # E2E Validation — 2026-08-23 — nexus-agents 3.9.4 (sha af5a369834)
 
 **Trigger:** release + ≥3 behavior-affecting fixes landed the same day (9 PRs merged).

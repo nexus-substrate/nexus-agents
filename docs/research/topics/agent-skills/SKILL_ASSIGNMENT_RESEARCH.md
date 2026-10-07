@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Agent Skill Loading and Assignment: Research & Recommendations
 
 **Date:** 2026-01-22 (ET)

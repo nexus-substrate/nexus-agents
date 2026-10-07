@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # V2 Architecture Proposal: Pipeline OS with Plugins
 
 _A deterministic pipeline runner with policy gates, where agents are implementations of pipeline stages._

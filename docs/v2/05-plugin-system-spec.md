@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # 05 — Plugin System Specification
 
 ---

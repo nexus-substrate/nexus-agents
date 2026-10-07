@@ -1,6 +1,8 @@
 ---
 title: 'Contribution Guide'
 description: 'Detailed contribution workflows, standards, and development setup'
+diataxis: how-to
+audience: project
 tier: 2
 keywords:
   - contributing

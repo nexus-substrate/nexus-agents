@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # 06 — Graph Execution Model
 
 _Unifying with the existing GraphBuilder, aligned with LangGraph semantics._

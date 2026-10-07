@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Listing Submissions Tracker
 
 Tracking where nexus-agents is listed and submission status.

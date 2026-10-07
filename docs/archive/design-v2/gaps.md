@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Gaps Analysis: Intended vs Actual
 
 _Honest assessment of what's documented/claimed versus what actually exists and works._

@@ -1,6 +1,8 @@
 ---
 title: Historical System Reviews (January 2026)
 description: Archived system review transcripts from the alignment roadmap
+diataxis: none
+audience: project
 tier: 3
 keywords: [system-review, archive, historical, consensus]
 ---

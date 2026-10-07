@@ -1,3 +1,8 @@
+---
+diataxis: reference
+audience: project
+---
+
 # Documentation Inventory
 
 **Generated:** 2026-02-01

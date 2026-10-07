@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # Skills.md Standard Audit and Improvement Proposal
 
 **Date:** 2026-01-09 (ET)

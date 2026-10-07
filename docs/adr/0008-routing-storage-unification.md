@@ -1,3 +1,8 @@
+---
+diataxis: none
+audience: project
+---
+
 # ADR-0008: Routing Storage Unification
 
 ## Status

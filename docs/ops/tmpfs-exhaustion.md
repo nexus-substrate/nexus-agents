@@ -1,6 +1,8 @@
 ---
 title: Scratch filesystem exhaustion runbook
 description: Symptom, diagnostic, and recovery for a full /tmp during a long autonomous run — every subprocess fails after doing its work, so the output is lost rather than the command refused.
+diataxis: how-to
+audience: user
 tier: 2
 keywords: [ops, tmpfs, tmp, disk, scratch, ENOSPC, autonomous, doctor]
 ---
