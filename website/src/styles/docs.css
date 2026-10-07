@@ -24,6 +24,8 @@
 @import 'remarque-tokens/print.css';
 /* Site token layer (USWDS-derived) and palette overrides — after remarque. */
 @import './tokens.css';
+/* Content components (callouts, tables, process list, summary box). */
+@import './components.css';
 
 /* ─── Shiki css-variables bridge (REMARQUE.md "Astro / Shiki wiring") ──── */
 .astro-code {
