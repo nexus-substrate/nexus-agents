@@ -89,7 +89,7 @@ function requestedModel(v: Pick<AgentVoteResult, 'model'>): string | undefined {
  * is computed from this, so the summary names the panel that actually voted —
  * the same model the ledger and `costSummary.perModel` record.
  */
-function resolvedModel(v: AgentVoteResult): string | undefined {
+export function resolvedModel(v: AgentVoteResult): string | undefined {
   const served = realModel(v.servedModel);
   return served === undefined ? requestedModel(v) : qualifiedServedModel(v, served);
 }
