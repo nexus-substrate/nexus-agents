@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.4.4
+
+### Patch Changes
+
+- [#7281](https://github.com/nexus-substrate/nexus-agents/pull/7281) [`3ac47e4`](https://github.com/nexus-substrate/nexus-agents/commit/3ac47e4057f0f364eedebf597894ba4a9610dbb6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run_dev_pipeline`'s static-analysis (Semgrep) scan now covers every file the pipeline captures. Before, it scanned only the selected working directory while the captured patch could include files elsewhere in the repository. Both the pinned baseline and the scratch worktree are now scanned from their repository roots. The working directory still scopes implementation, quality checks and the dependency (OSV) check, which reads only that directory's `package.json`.
+
 ## 11.4.3
 
 ### Patch Changes
