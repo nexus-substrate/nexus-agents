@@ -247,8 +247,11 @@ agy --version
 agy models    # lists the model slugs agy accepts
 ```
 
-`agy` does not read `GOOGLE_AI_API_KEY`, `GEMINI_API_KEY` or
-`~/.gemini/oauth_creds.json`; those configure the old CLI only.
+Sign in through `agy`; do not rely on an API key. `agy` does not use
+`~/.gemini/oauth_creds.json` (#4391), and `GOOGLE_AI_API_KEY` does not appear
+in the `agy` 1.3.1 binary. `GEMINI_API_KEY` does appear in it, but with `agy`
+signed in, a bogus `GEMINI_API_KEY` left `agy models` output unchanged. Whether
+a signed-out `agy` falls back to `GEMINI_API_KEY` has not been measured.
 
 ### Codex CLI
 
@@ -461,7 +464,9 @@ After installation, run the doctor command:
 nexus-agents doctor
 ```
 
-Illustrative example output for a complete setup (your versions and details will differ):
+Illustrative excerpt for a host with all four CLIs installed and signed in
+(your versions and details will differ; the environment, capability, registry
+and storage sections are omitted):
 
 ```
 Nexus Agents Doctor
@@ -470,25 +475,42 @@ Nexus Agents Doctor
 Checking CLI installations...
 
 ✓ Claude CLI
-  Version: 2.0.76 (supported)
-  Auth: OAuth
-  Capacity: 85% remaining
+  Version: 2.1.292 (supported)
+  Auth: CLI auth
+  Capacity: unknown (no usage observed this session)
+  Auth evidence: artifact (claude credentials file)
 
-✓ Gemini CLI
-  Version: 0.22.5 (supported)
-  Auth: ADC configured
+⚠ Gemini CLI
+  Version: 1.3.1 (supported)
+  Auth: unverified (no non-interactive auth check)
+  Capacity: unknown (no usage observed this session)
+  Auth evidence: none (agy probe unknown)
 
 ✓ Codex CLI
-  Version: 0.77.0 (supported)
-  Auth: OAuth
+  Version: 0.160.0 (supported)
+  Auth: CLI auth
+  Capacity: unknown (no usage observed this session)
+  Auth evidence: probe (codex login status)
+
+✓ Opencode CLI
+  Version: 1.2.0 (supported)
+  Auth: CLI auth
+  Capacity: unknown (no usage observed this session)
+  Auth evidence: probe (opencode auth list)
 
 Checking MCP configuration...
 
 ✓ MCP Server mode: Ready
-✓ MCP Client mode: Ready (Codex mcp-server)
+⚠ MCP Client mode: unavailable — codex-cli ≥0.154 has no mcp-server subcommand; using codex exec
+✓ Voter transport: CLI subprocess
+  Set NEXUS_OPENAI_COMPAT_URL and NEXUS_OPENAI_COMPAT_KEY for faster in-process voting
 
-Summary: All systems operational
+Summary: 1 issue(s) found (CLI gemini)
 ```
+
+The `Gemini CLI` row reports the `agy` binary, which serves the Gemini arm.
+`agy` offers no non-interactive auth check, so doctor reports its auth as
+`unverified` and counts the row as an issue even when `agy` is signed in.
 
 ## Updating
 

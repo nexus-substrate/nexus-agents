@@ -34,7 +34,6 @@ import { initDataDirectories } from './setup-data-dir.js';
 import type { DataDirInitResult } from './setup-data-dir.js';
 import { runConfigInitSync } from './setup-config.js';
 import { detectOpenCodeCli, configureOpenCode } from './setup-opencode.js';
-import { detectGeminiCli, configureGemini } from './setup-gemini.js';
 import { detectCodexCli, configureCodex } from './setup-codex.js';
 import { formatDetectionMessage, detectionRecoveryHint } from './cli-detection-error.js';
 import { VERSION } from '../version.js';
@@ -459,37 +458,6 @@ function runOpenCodeStep(options: SetupOptions): SetupStep {
 }
 
 /**
- * Runs the Gemini CLI MCP configuration step (#1259).
- */
-function runGeminiStep(options: SetupOptions): SetupStep {
-  const startTime = getTimeProvider().now();
-  if (options.skipGemini) {
-    return {
-      name: 'Gemini MCP',
-      status: 'skipped',
-      message: 'Skipped (--skip-gemini)',
-      durationMs: 0,
-    };
-  }
-  const cliInfo = detectGeminiCli();
-  if (!cliInfo.installed) {
-    return {
-      name: 'Gemini MCP',
-      status: 'skipped',
-      message: `${formatDetectionMessage('Gemini CLI', cliInfo.detectionError)}\n  → ${detectionRecoveryHint('gemini', cliInfo.detectionError)}`,
-      durationMs: getTimeProvider().now() - startTime,
-    };
-  }
-  const result = configureGemini(options.force, options.dryRun, options.scope);
-  return {
-    name: 'Gemini MCP',
-    status: result.success ? (result.alreadyConfigured ? 'skipped' : 'success') : 'failed',
-    message: result.message,
-    durationMs: getTimeProvider().now() - startTime,
-  };
-}
-
-/**
  * Runs the data directory initialization step (#1249).
  */
 function runDataDirStep(options: SetupOptions): { step: SetupStep; result: DataDirInitResult } {
@@ -702,13 +670,12 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   // Step 7: OpenCode MCP Configuration (#1253)
   const openCodeStep = runOpenCodeStep(parsedOptions);
 
-  // Step 8: Gemini MCP Configuration (#1259)
-  const geminiStep = runGeminiStep(parsedOptions);
-
-  // Step 9: Codex MCP Configuration (#1263)
+  // Step 8: Codex MCP Configuration (#1263). The Gemini MCP step was removed
+  // in #4389: it configured the retired `gemini` binary, and `agy` does not
+  // read that file.
   const codexStep = runCodexStep(parsedOptions);
 
-  const configStep = runConfigStep(projectRoot, parsedOptions); // Step 10
+  const configStep = runConfigStep(projectRoot, parsedOptions); // Step 9
   const steps = [
     detectionStep,
     prereqStep,
@@ -717,11 +684,10 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
     hooksStep,
     dataDirStep,
     openCodeStep,
-    geminiStep,
     codexStep,
     configStep,
   ];
-  steps.push(runValidationStep(steps)); // Step 11: Validation (#1271)
+  steps.push(runValidationStep(steps)); // Step 10: Validation (#1271)
 
   return buildSetupResult({
     startTime,

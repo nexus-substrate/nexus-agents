@@ -196,7 +196,7 @@ Restart your editor. The 47 MCP tools (`orchestrate`, `consensus_vote`, `researc
 
 #### What `setup` configures
 
-By default, `setup` writes/updates up to seven things in your environment. Each can be skipped with the corresponding `--skip-*` flag if you don't want it.
+By default, `setup` writes/updates up to six things in your environment. Each can be skipped with the corresponding `--skip-*` flag if you don't want it.
 
 | Configured                       | Where written                                        | Opt-out flag      |
 | -------------------------------- | ---------------------------------------------------- | ----------------- |
@@ -204,7 +204,6 @@ By default, `setup` writes/updates up to seven things in your environment. Each 
 | Project rules                    | `.cursor/rules/` and/or `.claude/rules/`             | `--skip-rules`    |
 | Session hooks                    | `~/.claude/hooks/` (session-start / pre-tool / etc.) | `--skip-hooks`    |
 | OpenCode MCP config              | `~/.config/opencode/opencode.json`                   | `--skip-opencode` |
-| Gemini MCP config                | `~/.gemini/settings.json`                            | `--skip-gemini`   |
 | Codex MCP config                 | `~/.codex/config.toml`                               | `--skip-codex`    |
 | Project config file              | `./nexus-agents.yaml`                                | `--skip-config`   |
 

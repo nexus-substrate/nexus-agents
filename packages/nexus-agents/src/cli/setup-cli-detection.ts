@@ -2,13 +2,13 @@
  * Shared CLI binary detection helpers (#2155, child of #2151).
  *
  * Consolidates the near-identical detection logic that previously lived in
- * `setup-codex.ts`, `setup-gemini.ts`, and `setup-opencode.ts`. Each setup
- * file now delegates to `detectCliBinary(name)` instead of carrying its
- * own copy of the platform-aware locator + version-extraction logic.
+ * `setup-codex.ts` and `setup-opencode.ts`. Each setup file now delegates
+ * to `detectCliBinary(name)` instead of carrying its own copy of the
+ * platform-aware locator + version-extraction logic.
  *
  * The per-CLI `ConfigResult` interfaces remain separate because they
- * legitimately differ (Codex writes via MCP, Gemini and OpenCode write to
- * config files with paths).
+ * legitimately differ (Codex writes via MCP, OpenCode writes to a config
+ * file with a path).
  *
  * @module cli/setup-cli-detection
  */

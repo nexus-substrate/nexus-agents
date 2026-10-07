@@ -253,6 +253,7 @@ export interface ParsedCliArgs {
     skipHooks: boolean;
     skipConfig: boolean;
     skipOpencode: boolean;
+    /** Deprecated no-op, still parsed so existing invocations do not fail: the Gemini MCP step was removed (#4389). */
     skipGemini: boolean;
     skipCodex: boolean;
     scope?: 'user' | 'project';
