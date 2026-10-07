@@ -26,7 +26,7 @@ export const MCP_TOOL_COUNT = 47;
 export const EXPERT_TYPE_COUNT = 12;
 
 /** Generated from canonical skills/<name>/SKILL.md entries. */
-export const SKILL_COUNT = 33;
+export const SKILL_COUNT = 34;
 
 /** Generated from src/orchestration/strategy-manifest-registry.ts manifests. */
 export const STRATEGY_COUNT = 8;
