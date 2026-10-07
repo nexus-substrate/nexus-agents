@@ -5,7 +5,7 @@ diataxis: tutorial
 audience: user
 tier: 2
 keywords: [getting-started, tutorial, mcp, pipeline, compose, research, consensus, dev-pipeline]
-order: 2
+order: 4
 ---
 
 # Compose Your First Pipeline

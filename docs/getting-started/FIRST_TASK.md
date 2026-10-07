@@ -6,7 +6,7 @@ audience: user
 tier: 1
 keywords: [getting-started, first-task, smoke-test, tutorial, onboarding]
 related_files: [./INSTALLATION.md, ./CONFIGURATION.md, ./PLUGIN_INSTALL.md]
-order: 1
+order: 3
 ---
 
 # Your first task

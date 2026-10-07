@@ -3,7 +3,7 @@ title: 'Try nexus-agents with the tour'
 description: 'Walk through four nexus-agents tools with the built-in tour. No API keys, no authenticated CLI and no model calls.'
 diataxis: tutorial
 audience: user
-order: 1
+order: 2
 tier: 1
 keywords: [tour, getting-started, tutorial, onboarding, no-api-keys]
 related_files: [./YOUR_FIRST_RUN.md, ./FIRST_TASK.md, ./INSTALLATION.md]

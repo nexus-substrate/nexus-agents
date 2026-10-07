@@ -3,7 +3,7 @@ title: 'Your first run'
 description: 'Install nexus-agents, connect it to your coding agent, ask the run tool for a routing decision, execute it as a live vote, and verify the audit chain.'
 diataxis: tutorial
 audience: user
-order: 2
+order: 1
 tier: 1
 keywords: [getting-started, tutorial, run, first-run, mcp, verify_audit_chain]
 related_files:

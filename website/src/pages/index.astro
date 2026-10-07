@@ -51,8 +51,8 @@ const ways = PRIMARY_SECTIONS.map((key) => {
 // link goes to the section index rather than nowhere.
 const tutorial = sectionListing(nav, 'start').pages[0];
 const tutorialHref = tutorial?.href ?? sectionIndexHref(BASE, 'start');
-// `nexus-agents tour` is introduced in step 2 of the first-task tutorial.
-const tourHref = `${docsHref('getting-started/first_task')}#2-verify`;
+// The tour has its own page in Start here.
+const tourHref = docsHref('getting-started/tour');
 const threatModelHref = docsHref('security/audit-hash-chain-threat-model');
 ---
 
