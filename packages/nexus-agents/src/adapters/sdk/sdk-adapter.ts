@@ -509,7 +509,7 @@ export class SdkAdapter extends BaseAdapter {
       options['temperature'] = plan.temperature;
     }
     if (request.maxTokens !== undefined) {
-      options['maxTokens'] = request.maxTokens;
+      options['maxOutputTokens'] = request.maxTokens;
     }
     if (request.stop !== undefined) {
       options['stopSequences'] = request.stop;
