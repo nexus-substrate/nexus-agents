@@ -11,3 +11,9 @@ cost (`calculateCost`), usage-ledger cost (`computeCostDetail`) and cost-ceiling
 pricing (`getModelPricing`) now agree for such models instead of the ledger and
 ceiling treating them as unpriced. An overlay that supplies `pricing` still
 replaces the whole rate and is reported `declared`.
+
+`loadManifestOverlay()` now returns user and operator overlay entries in
+precedence order (user first, then operator) instead of pre-merging them by id.
+A caller that reads its `entries` directly can therefore see the same model id
+twice when both overlays define it; the registry resolves the collision
+(operator wins, omitted `pricing` inherits).
