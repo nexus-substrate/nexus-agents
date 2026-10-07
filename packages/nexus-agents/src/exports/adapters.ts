@@ -61,7 +61,6 @@ export {
   OpenAIAdapter,
   createOpenAIAdapter,
   OPENAI_MODELS,
-  OPENAI_MODEL_ALIASES,
   type OpenAIAdapterConfig,
   // Ollama adapter
   OllamaAdapter,

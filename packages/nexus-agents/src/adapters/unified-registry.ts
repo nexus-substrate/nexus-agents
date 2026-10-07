@@ -191,11 +191,11 @@ export class UnifiedAdapterRegistry {
    * because the `EndpointArmId` type admits any `api:` string, so a cast from an
    * unvalidated name is exactly what this refuses.
    * Registering an id twice replaces (and disposes) the earlier adapter.
-   * CLI-slot behaviour is untouched. A registered endpoint arm is observable
-   * here and in the breaker registry but is NOT a `RoutingArmId`: it cannot
-   * enter outcome records until #6291. A gateway arm registered without a
-   * `NEXUS_GATEWAY_COST` declaration is warned about here, once, at the
-   * moment it becomes routable (#4392 increment 2).
+   * CLI-slot behaviour is untouched. Endpoint arms are observable here and in
+   * the shared breaker registry. The router factory admits them only with
+   * NEXUS_ROUTE_GATEWAY_ARMS opt-in and a cost declaration (#7151). An arm
+   * registered without NEXUS_GATEWAY_COST is warned about once here, even
+   * when routing is disabled (#4392 increment 2).
    */
   registerApiArm(arm: EndpointArmId, adapter: IResilientAdapter): void {
     if (!isEndpointArmId(arm)) {
@@ -382,22 +382,33 @@ export function createUnifiedRegistry(config?: UnifiedRegistryConfig): UnifiedAd
 
 /**
  * Claim the global registry for a process entry point, choosing its logger
- * (#6012). Idempotent and SILENT when the registry already exists — unlike
- * {@link getGlobalRegistry} with a config, which warns.
+ * and initial settings (#6012, #7151). First claim wins; later claims reuse
+ * that configuration. Later non-empty settings are warned about because
+ * they cannot be applied; a logger-only claim remains silent and idempotent.
  *
  * That difference is the point. There is not exactly one composition root: the
  * bundled CLI enters through `cli.ts main()`, and an embedder can start the MCP
- * server directly without it. Both should be able to claim, first-one-wins,
- * without the second producing a warning an operator cannot act on — which is
- * what a config-passing `getGlobalRegistry` call does, and is the noise this
- * whole change removes.
+ * server directly without it. Roots may name a logger without reconfiguration;
+ * explicitly supplied settings must never be silently discarded.
  *
  * This does NOT provide per-caller log attribution: the singleton has one
  * logger. It makes that one logger a deliberate choice rather than a
  * consequence of which module happened to run first.
  */
-export function claimGlobalRegistry(logger: ILogger): UnifiedAdapterRegistry {
-  globalRegistry ??= new UnifiedAdapterRegistry({ logger });
+export function claimGlobalRegistry(
+  logger: ILogger,
+  config?: Omit<UnifiedRegistryConfig, 'logger'>
+): UnifiedAdapterRegistry {
+  if (globalRegistry === undefined) {
+    globalRegistry = new UnifiedAdapterRegistry({ ...config, logger });
+  } else if (config !== undefined && Object.keys(config).length > 0) {
+    logger.warn(
+      'UnifiedAdapterRegistry claim ignored configuration: singleton already initialized',
+      {
+        providedKeys: Object.keys(config),
+      }
+    );
+  }
   return globalRegistry;
 }
 

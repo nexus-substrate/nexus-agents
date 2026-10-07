@@ -15,6 +15,7 @@ import { getFallbackChainForCategory } from './fallback-chains.js';
 import type {
   ICliAdapter,
   CliName,
+  RoutingArmId,
   CliTask,
   CliResponse,
   CliError,
@@ -35,6 +36,7 @@ import {
 import { isCallerInputCliError } from './cli-error-helpers.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
 import { unenforcedAccessModeRefusal } from './access-mode.js';
+import { ModelToCliAdapter } from './model-to-cli-adapter.js';
 
 /** Maps canonical TaskCategory (10 types) to FallbackTaskType (5 types). */
 const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
@@ -52,7 +54,7 @@ const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
 
 /** Configuration for CLI circuit breaker integration. */
 export interface CliCircuitBreakerConfig {
-  readonly perCliConfig?: Partial<Record<CliName, Partial<CircuitBreakerConfig>>>;
+  readonly perCliConfig?: Partial<Record<RoutingArmId, Partial<CircuitBreakerConfig>>>;
   readonly fallbackChain?: ReadonlyArray<CliName>;
   readonly enableFallback?: boolean;
   readonly maxFallbackAttempts?: number;
@@ -61,7 +63,7 @@ export interface CliCircuitBreakerConfig {
 /** Result of a circuit-protected execution with fallback info. */
 export interface CircuitProtectedResult {
   readonly response: CliResponse;
-  readonly executedBy: CliName;
+  readonly executedBy: RoutingArmId;
   readonly usedFallback: boolean;
   readonly fallbackAttempts?: ReadonlyArray<CliName>;
 }
@@ -69,7 +71,7 @@ export interface CircuitProtectedResult {
 /** Health status for all CLIs with circuit state. */
 export interface CliCircuitHealthStatus {
   readonly clis: ReadonlyArray<{
-    readonly name: CliName;
+    readonly name: RoutingArmId;
     readonly healthy: boolean;
     readonly circuitState: 'closed' | 'open' | 'half-open';
     readonly failureCount: number;
@@ -88,8 +90,8 @@ export interface ICliCircuitBreakerIntegration {
     taskCategory?: TaskCategory
   ): Promise<Result<CircuitProtectedResult, CircuitError | CliError>>;
   getHealthStatus(): CliCircuitHealthStatus;
-  getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot>;
-  resetCircuit(cliName: CliName): void;
+  getCircuitSnapshots(): Map<RoutingArmId, CircuitBreakerSnapshot>;
+  resetCircuit(cliName: RoutingArmId): void;
   resetAllCircuits(): void;
   addStateChangeListener(listener: CircuitStateChangeListener): void;
 }
@@ -138,7 +140,7 @@ export function getCliCircuitBreakerSnapshot(cliName: CliName): CircuitBreakerSn
  */
 export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegration {
   private readonly registry: CircuitBreakerRegistry;
-  private readonly adapters: Map<CliName, ICliAdapter> = new Map();
+  private readonly adapters: Map<RoutingArmId, ICliAdapter> = new Map();
   private readonly config: Required<CliCircuitBreakerConfig>;
   private readonly logger: ILogger;
 
@@ -223,15 +225,15 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     };
   }
 
-  getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot> {
-    const snapshots = new Map<CliName, CircuitBreakerSnapshot>();
+  getCircuitSnapshots(): Map<RoutingArmId, CircuitBreakerSnapshot> {
+    const snapshots = new Map<RoutingArmId, CircuitBreakerSnapshot>();
     for (const [name, adapter] of this.adapters) {
       snapshots.set(name, this.breakerFor(adapter).breaker.getSnapshot());
     }
     return snapshots;
   }
 
-  resetCircuit(cliName: CliName): void {
+  resetCircuit(cliName: RoutingArmId): void {
     const adapter = this.adapters.get(cliName);
     this.registry.resetArm(adapter === undefined ? cliName : this.breakerFor(adapter).key);
     this.logger.info('Circuit reset', { cliName });
@@ -259,8 +261,12 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       if (refusal !== undefined) return err(refusal);
       targetResolved = true;
       ({ key, breaker } = this.breakerFor(adapter, task));
-      const canRun = breaker.canExecute();
-      if (!canRun.ok) return canRun;
+      // The endpoint wrapper gates the same shared breaker itself. A second
+      // admission here consumes another half-open probe for one request.
+      if (!this.adapterOwnsAdmission(adapter)) {
+        const canRun = breaker.canExecute();
+        if (!canRun.ok) return canRun;
+      }
       execResult = await adapter.execute(task);
     } catch (error) {
       // A rejected availability probe has not selected a failure domain.
@@ -297,14 +303,25 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     adapter: ICliAdapter,
     breaker: CliCircuitBreaker,
     execResult: Result<CliResponse, CliError>
-  ): Result<CliResponse, CliError> {
+  ): Result<CliResponse, CircuitError | CliError> {
     const recordsOutcome = this.ownsBreakerOutcome(adapter);
     if (!execResult.ok) {
+      // The endpoint owns admission, but its model-to-CLI bridge wraps the
+      // refusal. Restore the original breaker verdict for automatic fallback.
+      if (this.adapterOwnsAdmission(adapter) && execResult.error.cause instanceof CircuitError) {
+        const refusal = execResult.error.cause;
+        this.logger.warn('Adapter circuit admission refused', {
+          armId: refusal.armId,
+          circuitErrorCode: refusal.circuitErrorCode,
+          circuitState: refusal.circuitState,
+        });
+        return err(refusal);
+      }
       // #6613: caller-input errors (e.g. invalid model requested) must not count
       // against the breaker or exhaust half-open probe capacity. #6691: nor
       // must a call its caller cancelled.
       if (isCallerInputCliError(execResult.error) || isCallerCancelled(execResult.error)) {
-        breaker.releaseHalfOpenProbe();
+        if (!this.adapterOwnsAdmission(adapter)) breaker.releaseHalfOpenProbe();
         return err(execResult.error);
       }
       if (recordsOutcome) breaker.recordFailure(mapCliErrorToCategory(execResult.error.code));
@@ -333,16 +350,20 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     };
   }
 
-  /** Marked gateway slots record in the shared registry; private registries own their records. */
+  /** Gateway arms/slots record in the shared registry; private registries own their records. */
   private ownsBreakerOutcome(adapter: ICliAdapter): boolean {
     return (
       this.registry !== defaultCliCircuitBreakerRegistry ||
-      gatewayServedSlotOf(adapter)?.arm === undefined
+      (gatewayServedSlotOf(adapter)?.arm === undefined && !adapter.name.startsWith('api:'))
     );
   }
 
+  private adapterOwnsAdmission(adapter: ICliAdapter): boolean {
+    return adapter instanceof ModelToCliAdapter && adapter.ownsCircuitAdmission(this.registry);
+  }
+
   private getFallbackClis(
-    excludeCli: CliName,
+    excludeCli: RoutingArmId,
     taskCategory?: TaskCategory,
     task?: CliTask
   ): CliName[] {

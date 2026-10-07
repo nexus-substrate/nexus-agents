@@ -1,3 +1,4 @@
+import { isCliName } from '../cli-adapters/types.js';
 /**
  * The `serves` readiness level for `nexus-agents doctor --live` (#4376).
  *
@@ -155,6 +156,8 @@ async function readAuthStates(): Promise<
   const probes = await Promise.all(enabled.map((cli) => probeCli(cli)));
   const states = new Map<CliName, 'authenticated' | 'unknown' | 'not-ok'>();
   for (const probe of probes) {
+    // This report measures local CLI authentication, never endpoint auth.
+    if (!isCliName(probe.cli)) continue;
     if (probe.state === 'authenticated') states.set(probe.cli, 'authenticated');
     else if (probe.state === 'unknown') states.set(probe.cli, 'unknown');
     else states.set(probe.cli, 'not-ok');

@@ -11,8 +11,9 @@
 
 import type { CliTask } from '../cli-adapters/index.js';
 import type { CompositeRoutingDecision } from '../cli-adapters/index.js';
-import { routingArmDisplaySlot } from '../cli-adapters/index.js';
+import { routingArmCliSlot } from '../cli-adapters/types.js';
 import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
+import { budgetCostOfArm } from '../cli-adapters/budget-arm-cost.js';
 import { calculateCost } from '../core/index.js';
 import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
 
@@ -57,11 +58,18 @@ export function buildDryRunReport(task: CliTask, decision: CompositeRoutingDecis
   const estimatedInputTokens = analyzer.estimateTokens(task.content);
   const estimatedOutputTokens = Math.round(estimatedInputTokens * DEFAULT_OUTPUT_RATIO);
 
-  // Registry model lookup is slot-level; collapse an api:* arm to its slot (#3422).
-  const modelId = getCliModelName(getDefaultModelForCli(routingArmDisplaySlot(decision.cliName)));
-  const costUsd = calculateCost(modelId, estimatedInputTokens, estimatedOutputTokens);
-  const inputCostUsd = calculateCost(modelId, estimatedInputTokens, 0);
-  const outputCostUsd = calculateCost(modelId, 0, estimatedOutputTokens);
+  const slot = routingArmCliSlot(decision.cliName);
+  const modelId =
+    slot === undefined
+      ? decision.adapter.getModelInfo().id
+      : getCliModelName(getDefaultModelForCli(slot));
+  const cost = (input: number, output: number): number | undefined =>
+    slot === undefined
+      ? budgetCostOfArm({ arm: decision.cliName, adapter: decision.adapter }, input, output)
+      : calculateCost(modelId, input, output);
+  const costUsd = cost(estimatedInputTokens, estimatedOutputTokens);
+  const inputCostUsd = cost(estimatedInputTokens, 0);
+  const outputCostUsd = cost(0, estimatedOutputTokens);
 
   return {
     analysis: {

@@ -107,7 +107,6 @@ export {
   OpenAIAdapter,
   createOpenAIAdapter,
   OPENAI_MODELS,
-  OPENAI_MODEL_ALIASES,
   type OpenAIAdapterConfig,
 } from './openai-adapter.js';
 

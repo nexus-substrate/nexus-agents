@@ -1,6 +1,6 @@
 /** Pure projections of a composite routing decision into its telemetry sinks. */
 import type { CompositeRoutingDecision } from '../cli-adapters/composite-router-types.js';
-import { routingArmDisplaySlot } from '../cli-adapters/types.js';
+import { routingArmCliSlot, type RoutingArmId } from '../cli-adapters/types.js';
 import type { RoutingDecision as ObserverDecision } from '../agents/observability/orchestration-observer-types.js';
 import type { RoutingDecision, RouterType } from './outcome-feedback-types.js';
 import type { StoredRoutingDecision } from './outcome-storage-types.js';
@@ -12,6 +12,11 @@ interface FeedbackContext {
   readonly routerType: RouterType;
   readonly routerTypeMeasured: boolean;
   readonly query?: string | undefined;
+}
+
+/** Preserve endpoint identity; built-in vendor arms retain their published CLI attribution. */
+function recordedArm(armId: RoutingArmId): RoutingArmId {
+  return routingArmCliSlot(armId) ?? armId;
 }
 
 /** Missing task text uses the public contract's empty-string sentinel. */
@@ -26,13 +31,14 @@ export function mapFeedbackRoutingDecision(
     routerType: context.routerType,
     routerTypeMeasured: context.routerTypeMeasured,
     query: context.query ?? '',
-    selectedModel: routingArmDisplaySlot(decision.cliName),
+    selectedModel: recordedArm(decision.cliName),
     confidence: decision.confidence,
-    selectedTier: decision.preferenceTier,
+    selectedTier:
+      routingArmCliSlot(decision.cliName) === undefined ? undefined : decision.preferenceTier,
   };
 }
 
-/** The observer retains its bounded task description and slot-level model names. */
+/** The observer retains its bounded task description and distinct endpoint identities. */
 export function mapObserverRoutingDecision(
   decision: CompositeRoutingDecision,
   context: { readonly timestamp: string; readonly taskId: string; readonly query: string }
@@ -42,10 +48,10 @@ export function mapObserverRoutingDecision(
     taskId: context.taskId,
     taskDescription:
       context.query.length > 100 ? context.query.substring(0, 100) + '...' : context.query,
-    selectedCli: routingArmDisplaySlot(decision.cliName),
+    selectedCli: recordedArm(decision.cliName),
     confidence: decision.confidence,
     reason: decision.reason,
-    alternatives: decision.alternatives.map(routingArmDisplaySlot),
+    alternatives: decision.alternatives.map(recordedArm),
     stagesExecuted: decision.stagesExecuted,
     decisionTimeMs: decision.decisionTimeMs,
     withinBudget: decision.withinBudget,
@@ -66,8 +72,8 @@ export function mapStoredRoutingDecision(
     timestamp: context.timestamp,
     routerType: context.routerType,
     routerTypeMeasured: context.routerTypeMeasured,
-    selectedModel: routingArmDisplaySlot(decision.cliName),
-    alternativeModels: decision.alternatives.map(routingArmDisplaySlot),
+    selectedModel: recordedArm(decision.cliName),
+    alternativeModels: decision.alternatives.map(recordedArm),
     confidence: decision.confidence,
     reason: decision.reason,
     taskProfile: {

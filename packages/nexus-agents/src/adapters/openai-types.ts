@@ -51,26 +51,10 @@ export const OPENAI_MODELS = {
 } as const;
 
 /**
- * User-friendly OpenAI aliases → dated model identifiers.
- *
- * Identity-only mappings (e.g., `'gpt-5.2-pro' → 'gpt-5.2-pro'`) were
- * removed in #2200 Child 3 — `resolveModelId` already passes unknown ids
- * through unchanged via `?? modelId`. Only entries that translate a
- * shorthand into a dated version remain.
- */
-export const OPENAI_MODEL_ALIASES: Record<string, string> = {
-  'gpt-5.2-instant': OPENAI_MODELS.GPT_5_2_INSTANT,
-  'gpt-4o': OPENAI_MODELS.GPT_4O,
-  'gpt-4o-mini': OPENAI_MODELS.GPT_4O_MINI,
-  'gpt-4-turbo': OPENAI_MODELS.GPT_4_TURBO,
-  'gpt-3.5-turbo': OPENAI_MODELS.GPT_35_TURBO,
-} as const;
-
-/**
  * Configuration specific to OpenAIAdapter.
  */
 export interface OpenAIAdapterConfig {
-  /** Model ID (e.g., 'gpt-4o' or full model identifier) */
+  /** Model ID sent unchanged to the API (e.g., 'gpt-4o-2024-11-20'). */
   modelId: string;
   /** API key for OpenAI API (required) */
   apiKey: string;
@@ -91,10 +75,8 @@ export interface OpenAIAdapterConfig {
   /** Organization ID (optional) */
   organization?: string;
   /**
-   * Send `modelId` exactly as given, skipping {@link OPENAI_MODEL_ALIASES}
-   * (#6605). Set by the OpenAI-compatible gateway path, whose ids come from
-   * the gateway's own listing: rewriting `gpt-4o` to a dated OpenAI snapshot
-   * names a model that gateway may not serve. Default `false`.
+   * Compatibility no-op since 11.0: every model ID is sent unchanged.
+   * Previously opted out of alias rewriting for OpenAI-compatible gateways.
    */
   verbatimModelId?: boolean;
   /**
@@ -142,31 +124,22 @@ export function isFunctionToolCall(toolCall: unknown): toolCall is FunctionToolC
 }
 
 /**
- * Resolves model alias to full model identifier.
- */
-export function resolveModelId(modelId: string): string {
-  return OPENAI_MODEL_ALIASES[modelId] ?? modelId;
-}
-
-/**
  * Determines capabilities based on model ID.
  */
 export function getModelCapabilities(modelId: string): readonly ModelCapability[] {
   const capabilities: ModelCapability[] = [MC.COMPLETION, MC.STREAMING, MC.TOOL_USE];
 
-  const resolvedId = resolveModelId(modelId);
-
   // Vision is available on GPT-4o, GPT-4-turbo, and GPT-5.2 models
   if (
-    resolvedId.includes('gpt-4o') ||
-    resolvedId.includes('gpt-4-turbo') ||
-    resolvedId.includes('gpt-5.2')
+    modelId.includes('gpt-4o') ||
+    modelId.includes('gpt-4-turbo') ||
+    modelId.includes('gpt-5.2')
   ) {
     capabilities.push(MC.VISION);
   }
 
   // Extended thinking is available on GPT-5.2 models
-  if (resolvedId.includes('gpt-5.2')) {
+  if (modelId.includes('gpt-5.2')) {
     capabilities.push(MC.EXTENDED_THINKING);
   }
 

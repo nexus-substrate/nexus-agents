@@ -18,7 +18,7 @@
  */
 import { getErrorMessage, getTimeProvider, type ILogger } from '../core/index.js';
 import type { CliTask, RoutingArmId } from './types.js';
-import { routingArmDisplaySlot } from './types.js';
+import { routingArmCliSlot } from './types.js';
 import type { CompositeRoutingDecision } from './composite-router-types.js';
 import {
   MODEL_SELECTION_SHADOW_SCHEMA_VERSION,
@@ -94,14 +94,13 @@ export class PendingRoutingOutcomes {
     try {
       if (!isRouteModelShadowEnabled() || decision.difficultyTier === undefined) return undefined;
       if (task.model !== undefined) return undefined; // pinned model — not selector evidence
+      // The model-tier shadow compares CLI defaults, never a gateway catalogue.
+      const slot = routingArmCliSlot(decision.cliName);
+      if (slot === undefined) return undefined;
       // Log-once flip-readiness signal (#4197, mirrors #4161's pattern):
       // surfaced alongside shadow enablement, observed, never acted on.
       logModelSelectionReadinessOnce(this.logger);
-      const comparison = computeModelSelectionShadow(
-        routingArmDisplaySlot(decision.cliName),
-        decision.difficultyTier,
-        decision.model
-      );
+      const comparison = computeModelSelectionShadow(slot, decision.difficultyTier, decision.model);
       this.logger.debug('Model-selection shadow computed (#4197)', {
         cli: comparison.cli,
         tier: comparison.tier,

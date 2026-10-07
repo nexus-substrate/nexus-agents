@@ -438,3 +438,28 @@ describe('ModelToCliAdapter provider quota signal (#4602)', () => {
     }
   });
 });
+
+describe('gateway endpoint identity (#7151)', () => {
+  it('keeps its endpoint identity in adapter name and errors', async () => {
+    const complete = vi.fn().mockResolvedValue(err(new ModelError('unavailable')));
+    const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'api:lab' });
+    expect(adapter.name).toBe('api:lab');
+    const result = await adapter.execute({ content: 'test' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.cli).toBe('api:lab');
+    expect((await adapter.authStatus()).cli).toBe('api:lab');
+    const capacity = await adapter.getCapacity();
+    expect(capacity.observed).toBe(false);
+    expect(capacity.remainingTokens).toBe(Infinity);
+  });
+});
+
+describe('endpoint model metadata (#7151)', () => {
+  it('resolves context and capabilities from the actual model rather than a CLI slot', () => {
+    const adapter = createModelToCliAdapter(makeModelAdapter({ modelId: 'gpt-4o-mini' }), {
+      name: 'api:gw-prod',
+    });
+    expect(adapter.capabilities.contextWindow).toBe(128_000);
+    expect(adapter.getModelInfo().contextWindow).toBe(128_000);
+  });
+});

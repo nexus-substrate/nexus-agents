@@ -269,6 +269,8 @@ async function connectToStdioTransport(
  * (Source: Issue #1149 - Unified Adapter Registry)
  */
 function createAdapterRegistry(logger: ILogger): UnifiedAdapterRegistry {
+  // The server default adapter has always used a flat orchestrate timeout.
+  // Global consumers keep their separate per-complexity CLI timeouts.
   return createUnifiedRegistry({
     logger,
     defaultCliTimeoutMs: MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,

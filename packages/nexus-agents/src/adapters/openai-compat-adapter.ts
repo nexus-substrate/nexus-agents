@@ -372,10 +372,8 @@ export function createOpenAICompatAdapter(
   config: OpenAICompatConfig,
   created?: number
 ): GatewayModelAdapter {
-  // Verbatim: the id goes to the gateway exactly as it listed it. The direct
-  // adapter's alias table (`gpt-4o` -> a dated snapshot) names models the
-  // gateway may not serve, and would make `NEXUS_VOTER_MODEL_*` pins miss
-  // (#6605).
+  // Every OpenAIAdapter sends the configured id unchanged since 11.0.
+  // Preserve the gateway's listed id so model pins match (#6605).
   const inner = createOpenAICompatClient(modelId, config);
   const wrapped = withGatewayUsageRecording(
     inner,

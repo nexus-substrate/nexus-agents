@@ -37,6 +37,7 @@ export {
   isEndpointArmId,
   observedArmDisplaySlot,
   routingArmDisplaySlot,
+  routingArmCliSlot,
 } from './types-core.js';
 
 // Capability types

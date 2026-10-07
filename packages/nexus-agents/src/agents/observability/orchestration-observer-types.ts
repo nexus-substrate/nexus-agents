@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import type { CliName, ObservedArmId } from '../../cli-adapters/types.js';
+import type { CliName, ObservedArmId, RoutingArmId } from '../../cli-adapters/types.js';
 import type { ILogger } from '../../core/logger.js';
 
 // ============================================================================
@@ -48,10 +48,10 @@ export interface RoutingDecision {
   readonly timestamp: string;
   readonly taskId: string;
   readonly taskDescription: string;
-  readonly selectedCli: CliName;
+  readonly selectedCli: RoutingArmId;
   readonly confidence: number;
   readonly reason: string;
-  readonly alternatives: readonly CliName[];
+  readonly alternatives: readonly RoutingArmId[];
   readonly stagesExecuted: readonly string[];
   readonly decisionTimeMs: number;
   readonly withinBudget?: boolean | undefined;
@@ -135,8 +135,8 @@ export interface OrchestrationStats {
   successRate: number;
   /** Average task duration in ms */
   avgTaskDurationMs: number;
-  /** Routing decisions per CLI */
-  routingDistribution: Record<CliName, number>;
+  /** Routing decisions per CLI slot or distinct endpoint arm. */
+  routingDistribution: Record<CliName, number> & Partial<Record<RoutingArmId, number>>;
   /** Total tokens used */
   totalTokens: number;
   /** Total cost (estimated) */

@@ -40,8 +40,13 @@ import {
   resolveGatewaySlot,
   setGatewaySlotCatalog,
 } from './adapters/gateway-family-slots.js';
-import { createUnifiedRegistry } from './adapters/unified-registry.js';
+import {
+  createUnifiedRegistry,
+  getGlobalRegistry,
+  resetGlobalRegistry,
+} from './adapters/unified-registry.js';
 import { _resetGatewayDiscovery } from './adapters/gateway-discovery.js';
+import { FAKE_OPENAI_KEY } from './testing/test-secrets.js';
 import type { EndpointArmId } from './cli-adapters/types.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
 
@@ -471,6 +476,8 @@ describe('registerGatewayArm (#4392 inc 2 step 2)', () => {
     const adapters = [makeMockAdapter('gw-a'), makeMockAdapter('gw-b')];
 
     const arm = registerGatewayArm(adapters, 'openai-compat', registry);
+    // wireGateway registers the family catalogue after constructing the arm.
+    setGatewaySlotCatalog(adapters);
 
     expect(arm).toBe('api:openai-compat');
     expect(registry.registerApiArm).toHaveBeenCalledTimes(1);
@@ -524,6 +531,116 @@ describe('wireGateway (#4392 inc 2 step 2 — discovery + arm in one call)', () 
     readOpenAICompatEndpointMock.mockReturnValue('corp-proxy');
     _resetGatewayCatalogs();
     _resetGatewaySlotCatalog();
+  });
+
+  afterEach(() => {
+    resetGlobalRegistry();
+    vi.unstubAllEnvs();
+    setGatewayRediscovery(undefined);
+    resetTimeProvider();
+  });
+
+  it.each(['false', 'true'])(
+    'publishes private-registry endpoint to global only with routing %s',
+    async (flag) => {
+      vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', flag);
+      resetGlobalRegistry();
+      readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw/v1', apiKey: 'sk' });
+      buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('gw-a')]));
+      const registry = createUnifiedRegistry({
+        logger: makeMockLogger(),
+        defaultCliTimeoutMs: 1_800_000,
+      });
+
+      await wireGateway(makeMockLogger(), registry);
+
+      const privateArm = registry.getAdapterForArm('api:corp-proxy');
+      expect(privateArm).toBeDefined();
+      const globalArm = getGlobalRegistry().getAdapterForArm('api:corp-proxy');
+      if (flag === 'true') {
+        expect(globalArm).toBeDefined();
+        expect(globalArm).not.toBe(privateArm);
+        expect(globalArm?.getCircuitBreakerRegistry?.()).toBe(
+          privateArm?.getCircuitBreakerRegistry?.()
+        );
+      } else {
+        expect(globalArm).toBeUndefined();
+      }
+      registry.dispose();
+      resetGlobalRegistry();
+      vi.unstubAllEnvs();
+    }
+  );
+
+  it('publishes a lazily rediscovered private-registry endpoint to global routing', async () => {
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    resetGlobalRegistry();
+    const clock = new FixedTimeProvider(0);
+    setTimeProvider(clock);
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw/v1', apiKey: 'sk' });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(err(new ConfigError('ECONNREFUSED')));
+    const registry = createUnifiedRegistry({
+      logger: makeMockLogger(),
+      defaultCliTimeoutMs: 1_800_000,
+    });
+    const live = await wireGateway(makeMockLogger(), registry);
+    expect(live).toEqual([]);
+    expect(getGlobalRegistry().getAdapterForArm('api:corp-proxy')).toBeUndefined();
+
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('gw-a')]));
+    clock.setTime(61_000);
+    await ensureGatewayDiscovered();
+
+    expect(live).toHaveLength(1);
+    expect(registry.getAdapterForArm('api:corp-proxy')).toBeDefined();
+    expect(getGlobalRegistry().getAdapterForArm('api:corp-proxy')).toBeDefined();
+    registry.dispose();
+  });
+
+  it.each(['server', 'global'] as const)(
+    'retains the shared endpoint catalogue when the %s registry is disposed first',
+    async (first) => {
+      vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+      readOpenAICompatEnvMock.mockReturnValue({
+        baseUrl: 'https://gw/v1',
+        apiKey: FAKE_OPENAI_KEY,
+      });
+      buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('gw-a')]));
+      const server = createUnifiedRegistry({
+        logger: makeMockLogger(),
+        defaultCliTimeoutMs: 1_800_000,
+      });
+      await wireGateway(makeMockLogger(), server);
+      const global = getGlobalRegistry();
+      const [disposed, live] = first === 'server' ? [server, global] : [global, server];
+
+      disposed.dispose();
+
+      expect(live.getAdapterForArm('api:corp-proxy')).toBeDefined();
+      expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-a']);
+      disposed.dispose();
+      expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-a']);
+      live.dispose();
+      expect(getGatewayCatalog('api:corp-proxy')).toBeUndefined();
+    }
+  );
+
+  it('keeps the replacement catalogue until the last endpoint wrapper is disposed', async () => {
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw/v1', apiKey: FAKE_OPENAI_KEY });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('gw-a')]));
+    const server = createUnifiedRegistry({ logger: makeMockLogger() });
+    await wireGateway(makeMockLogger(), server);
+    const global = getGlobalRegistry();
+    const old = server.getAdapterForArm('api:corp-proxy');
+
+    registerGatewayArm([makeMockAdapter('gw-b')], 'corp-proxy', server);
+    old?.dispose();
+    expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-b']);
+    server.dispose();
+    expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-b']);
+    global.dispose();
+    expect(getGatewayCatalog('api:corp-proxy')).toBeUndefined();
   });
 
   it('registers the discovered models as api:<endpoint> and returns them for the tools', async () => {

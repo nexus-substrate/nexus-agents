@@ -1,4 +1,5 @@
 /** CLI diagnostic metadata derived from the adapter's executable (#4389). */
+import { isCliName } from './types.js';
 import type { ICliAdapter, CliName } from './types.js';
 
 /** Packages for CLI arms installed through npm; other binaries use generic hints. */
@@ -20,7 +21,7 @@ export function getCliAdapterDiagnostics(adapter: ICliAdapter): {
     'binaryName' in adapter && typeof adapter.binaryName === 'string'
       ? adapter.binaryName
       : adapter.name;
-  const packageName = CLI_PACKAGES[adapter.name];
+  const packageName = isCliName(adapter.name) ? CLI_PACKAGES[adapter.name] : undefined;
   return {
     binaryName,
     installationHints: {

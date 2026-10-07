@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { NexusError, ErrorCode } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, RoutingArmId } from '../cli-adapters/types.js';
 import type { RouterType, OutcomeClass } from './outcome-feedback-types.js';
 import type { ISQLiteDatabase, ISQLiteStatement } from '../core/types/index.js';
 
@@ -50,8 +50,8 @@ export interface StoredRoutingDecision {
   readonly traceId: string;
   readonly timestamp: string;
   readonly routerType: RouterType;
-  readonly selectedModel: CliName;
-  readonly alternativeModels: readonly CliName[];
+  readonly selectedModel: RoutingArmId;
+  readonly alternativeModels: readonly RoutingArmId[];
   readonly confidence: number;
   readonly reason: string;
   readonly taskProfile: Record<string, unknown>;

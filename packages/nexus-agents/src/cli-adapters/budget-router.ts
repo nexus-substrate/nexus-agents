@@ -26,8 +26,7 @@ import type {
   RoutingArmId,
   ICliAdapter,
 } from './types.js';
-import { DEFAULT_CAPABILITIES, routingArmDisplaySlot } from './types.js';
-import type { CliName } from './types.js';
+import { DEFAULT_CAPABILITIES, routingArmCliSlot } from './types.js';
 import type { BudgetCoverage } from './types-routing.js';
 import { estimateTokens } from './budget-utils.js';
 import { DEFAULT_COST_MODELS } from './budget-router-types.js';
@@ -75,8 +74,10 @@ const DEFAULT_OPTIONS: Required<BudgetRouterOptions> = {
  * than rejected: a latency budget must not silently exclude every model whose
  * profile happens to be missing.
  */
-function latencyOf(slot: CliName): number | undefined {
-  return DEFAULT_COST_MODELS[slot]?.avgLatencyMs;
+function latencyOf(arm: RoutingArmId): number | undefined {
+  const slot = routingArmCliSlot(arm);
+  // Endpoint latency has no measured profile; do not borrow a CLI estimate.
+  return slot === undefined ? undefined : DEFAULT_COST_MODELS[slot]?.avgLatencyMs;
 }
 
 type UnpricedArm = NonNullable<BudgetRoutingResult['unpricedArms']>[number];
@@ -240,8 +241,7 @@ export class BudgetRouter implements IBudgetRouter {
     // `unpricedArms`.
     const estimatedCostUsd = armCostUsd ?? 0;
 
-    const estimatedLatencyMs =
-      selected === null ? undefined : latencyOf(routingArmDisplaySlot(selected.arm));
+    const estimatedLatencyMs = selected === null ? undefined : latencyOf(selected.arm);
 
     // Check budget constraints
     const currentBudget = this.getSessionBudget();
@@ -475,12 +475,11 @@ export class BudgetRouter implements IBudgetRouter {
     budget: BudgetConstraint,
     estimatedTokens: number
   ): BudgetSelection {
-    // Sort adapters by cost efficiency (higher = cheaper). Capabilities and
-    // pricing are slot-level (DEFAULT_CAPABILITIES keyed by CliName); an api:*
-    // arm uses its display slot's profile (#3422).
+    // Vendor arms retain slot profiles; endpoint arms use their own adapter's
+    // resolved model profile. Costs are independently priced by arm below.
     const sortedAdapters = [...this.adapters].sort((a, b) => {
-      const capA = DEFAULT_CAPABILITIES[routingArmDisplaySlot(a[0])];
-      const capB = DEFAULT_CAPABILITIES[routingArmDisplaySlot(b[0])];
+      const capA = this.capabilitiesOf(a[0], a[1]);
+      const capB = this.capabilitiesOf(b[0], b[1]);
       return capB.cost - capA.cost; // Prefer cheaper models
     });
     const unpricedArms: UnpricedArm[] = [];
@@ -497,9 +496,7 @@ export class BudgetRouter implements IBudgetRouter {
         unpricedArms.push({ arm, reason });
         continue;
       }
-      if (
-        this.admitsCandidate(budget, estimatedTokens, routingArmDisplaySlot(arm), estimatedCost)
-      ) {
+      if (this.admitsCandidate(budget, estimatedTokens, { arm, adapter }, estimatedCost)) {
         return { selected: { arm, adapter }, unpricedArms };
       }
     }
@@ -507,14 +504,20 @@ export class BudgetRouter implements IBudgetRouter {
     return { selected: null, unpricedArms };
   }
 
+  /** Slot profiles apply only to vendor arms; endpoints supply their own profile. */
+  private capabilitiesOf(arm: RoutingArmId, adapter: ICliAdapter): ICliAdapter['capabilities'] {
+    const slot = routingArmCliSlot(arm);
+    return slot === undefined ? adapter.capabilities : DEFAULT_CAPABILITIES[slot];
+  }
+
   /** The four per-candidate admission checks of `selectAdapterWithinBudget`. */
   private admitsCandidate(
     budget: BudgetConstraint,
     estimatedTokens: number,
-    slot: CliName,
+    target: { arm: RoutingArmId; adapter: ICliAdapter },
     estimatedCost: number
   ): boolean {
-    const caps = DEFAULT_CAPABILITIES[slot];
+    const caps = this.capabilitiesOf(target.arm, target.adapter);
     const withinTokenBudget = budget.maxTokens === undefined || estimatedTokens <= budget.maxTokens;
     const withinCostBudget = budget.maxCostUsd === undefined || estimatedCost <= budget.maxCostUsd;
     const withinContextWindow = estimatedTokens <= caps.contextWindow;
@@ -522,10 +525,9 @@ export class BudgetRouter implements IBudgetRouter {
     // defaulted and plumbed from routing YAML, but read by nothing, so the
     // `'latency'` violation kind had no producer and no input could make the
     // constraint bind.
+    const latency = latencyOf(target.arm);
     const withinLatencyBudget =
-      budget.maxLatencyMs === undefined ||
-      latencyOf(slot) === undefined ||
-      (latencyOf(slot) as number) <= budget.maxLatencyMs;
+      budget.maxLatencyMs === undefined || latency === undefined || latency <= budget.maxLatencyMs;
     return withinTokenBudget && withinCostBudget && withinContextWindow && withinLatencyBudget;
   }
 

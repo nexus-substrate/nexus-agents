@@ -35,6 +35,7 @@ import { isDirectRun } from './cli-direct-run.js';
 import { formatCommandHelp } from './cli-command-help.js';
 import { catalogCommandNames, formatUnknownCommandMessage } from './cli-command-suggester.js';
 import { buildOptions } from './cli/cli-options-builders.js';
+import { parseBoolEnv } from './config/defaults-env.js';
 
 // Re-export types and constants for external use
 export { EXIT_CODES, type CliCommand, type ParsedCliArgs } from './cli-types.js';
@@ -191,6 +192,19 @@ async function main(): Promise<void> {
     }
     // Fall through to general help if no per-command help exists
     parsedArgs = { ...parsedArgs, command: 'help' };
+  }
+
+  // #7151: standalone commands construct their router during dispatch. Publish
+  // the opted-in endpoint first, through the same bootstrap as the MCP server.
+  // The server owns its bootstrap; help/version require no adapter discovery.
+  if (
+    parsedArgs.command !== 'server' &&
+    parsedArgs.command !== 'help' &&
+    parsedArgs.command !== 'version' &&
+    parseBoolEnv('NEXUS_ROUTE_GATEWAY_ARMS', false)
+  ) {
+    const { wireGateway } = await import('./cli-server-gateway.js');
+    await wireGateway(createLogger({ component: 'nexus-cli' }));
   }
 
   await dispatchCommand(parsedArgs);

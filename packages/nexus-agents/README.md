@@ -281,7 +281,10 @@ import {
 
 // Create individual adapters
 const claude = createClaudeAdapter({ model: 'claude-sonnet-4-6' });
-const openai = createOpenAIAdapter({ model: 'gpt-4o' });
+const openai = createOpenAIAdapter({
+  modelId: 'gpt-4o-2024-11-20',
+  apiKey: process.env.OPENAI_API_KEY!,
+});
 const gemini = createGeminiAdapter({ model: 'gemini-3-pro' });
 const ollama = createOllamaAdapter({ model: 'llama3:8b' });
 

@@ -52,6 +52,18 @@ describe('registerDefaultModelSources (#3404)', () => {
     expect(all.some((m) => m.id === 'qwen/qwen3-coder:free' && m.source === 'opencode')).toBe(true);
   });
 
+  it('keeps endpoint model discoveries separate from opencode', async () => {
+    const cache = new AvailableModelsCache({ sources: [] });
+    const adapters = new Map<string, unknown>([
+      ['opencode', { listModels: () => Promise.resolve([{ id: 'cli-chat' }]) }],
+      ['api:gw-prod', { listModels: () => Promise.resolve([{ id: 'gateway-chat' }]) }],
+    ]);
+    registerDefaultModelSources(cache, adapters, { includeOpenRouter: false });
+    const all = await cache.getAll();
+    expect(all.find((model) => model.id === 'gateway-chat')?.source).toBe('api:gw-prod');
+    expect(all.find((model) => model.id === 'cli-chat')?.source).toBe('opencode');
+  });
+
   it('is fail-open: one adapter throwing does not poison the others', async () => {
     // The isolation is unchanged — it just lives in the cache now rather than
     // in the source wrapper (#5059), which is what lets a failed probe be told

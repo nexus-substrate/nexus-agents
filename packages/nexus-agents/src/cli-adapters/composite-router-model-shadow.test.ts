@@ -164,6 +164,14 @@ describe('PendingRoutingOutcomes', () => {
     expect(pending.take(task)).toBeUndefined();
   });
 
+  it('skips the CLI model shadow for a gateway endpoint (#7151)', () => {
+    process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+    const pending = new PendingRoutingOutcomes(makeSpyLogger());
+    const task: CliTask = { content: 'endpoint task' };
+    pending.track(task, makeDecision({ cliName: 'api:lab', difficultyTier: 'balanced' }));
+    expect(pending.take(task)?.modelShadow).toBeUndefined();
+  });
+
   it('take() is keyed by task identity, not content', () => {
     const pending = new PendingRoutingOutcomes(makeSpyLogger());
     pending.track({ content: 'same' }, makeDecision());

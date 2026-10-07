@@ -6,8 +6,8 @@
  * `ICliAdapter`, so a CompositeRouter — which operates on `Map<_, ICliAdapter>`
  * — can route to API adapters and record their bandit outcomes on a *distinct*
  * arm (epic #3317 step 1, Option C). The routing arm id is the Map key
- * (`api:<vendor>`), kept separate from this adapter's display `name` (a CLI
- * slot), so CLI and API telemetry are never merged.
+ * (`api:<vendor>`). Built-in vendor bridges retain their display CLI slot;
+ * gateway bridges use `api:<endpoint>` as their own name for health/breakers.
  *
  * @module cli-adapters/model-to-cli-adapter
  */
@@ -23,6 +23,7 @@ import type {
   ExecutionAccessMode,
 } from '../core/index.js';
 import { ok, err, ModelError } from '../core/index.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 import { FALLBACK_CONTEXT_WINDOW } from '../config/model-config-helpers.js';
 import {
   isRateLimitText,
@@ -37,6 +38,8 @@ import { withEnforcedAccessMode } from './access-mode.js';
 import { breakerKeys } from './breaker-key.js';
 import { mapModelErrorToCategory } from './circuit-breaker.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
+import { ownsGatewayCircuitAdmission } from '../adapters/gateway-arm-adapter.js';
+import type { CircuitBreakerRegistry } from './circuit-breaker.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -44,7 +47,7 @@ import type {
   CliError,
   CliErrorCode,
   CliModelInfo,
-  CliName,
+  RoutingArmId,
   CliTransport,
   CapabilityProfile,
   ExecutionOptions,
@@ -53,17 +56,15 @@ import type {
   CapacityStatus,
   EndpointArmId,
 } from './types.js';
-import { isEndpointArmId } from './types.js';
+import { isEndpointArmId, routingArmCliSlot } from './types.js';
 
 /** Configuration for {@link ModelToCliAdapter}. */
 export interface ModelToCliAdapterConfig {
   /**
-   * Display CLI slot for attribution/`getModelInfo` (e.g. `claude` for the
-   * Anthropic API). This is NOT the routing arm id — the router indexes arms by
-   * the adapter Map key (`api:<vendor>`), so the display name can be the slot
-   * without merging CLI and API telemetry.
+   * Adapter identity. Gateway endpoints use their `api:<endpoint>` arm id so
+   * health and breaker readers cannot confuse them with a CLI slot.
    */
-  readonly name: CliName;
+  readonly name: RoutingArmId;
   /**
    * Routing capability profile (TOPSIS/preference scoring). Supply the
    * display slot's registry profile; falls back to a neutral mid profile.
@@ -90,7 +91,7 @@ const API_TRANSPORT: CliTransport = 'subprocess';
  * Bridge adapter that wraps `IModelAdapter` to implement `ICliAdapter`.
  */
 export class ModelToCliAdapter implements ICliAdapter {
-  readonly name: CliName;
+  readonly name: RoutingArmId;
   readonly transport: CliTransport = API_TRANSPORT;
   readonly capabilities: CapabilityProfile;
   /**
@@ -121,10 +122,24 @@ export class ModelToCliAdapter implements ICliAdapter {
    */
   private readonly capacityTracker: CapacityTracker;
 
+  /** Exact admission ownership; other API adapters still need the integration's gate. */
+  ownsCircuitAdmission(registry: CircuitBreakerRegistry): boolean {
+    return ownsGatewayCircuitAdmission(this.modelAdapter, this.name, registry);
+  }
+
   constructor(modelAdapter: IModelAdapter, config: ModelToCliAdapterConfig) {
     this.modelAdapter = modelAdapter;
     this.name = config.name;
-    this.capabilities = config.capabilities ?? NEUTRAL_CAPABILITIES;
+    // Dynamic endpoints resolve the model they send, never a CLI display slot.
+    const entry =
+      routingArmCliSlot(config.name) === undefined
+        ? getDefaultRegistry().getEntry(modelAdapter.modelId)
+        : undefined;
+    this.capabilities = config.capabilities ?? {
+      ...NEUTRAL_CAPABILITIES,
+      ...entry?.qualityScores,
+      contextWindow: entry?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+    };
     this.capacityTracker = createCapacityTracker(config.name);
   }
 
@@ -132,6 +147,7 @@ export class ModelToCliAdapter implements ICliAdapter {
   private toCompletionRequest(task: CliTask, options?: ExecutionOptions): CompletionRequest {
     const request: CompletionRequest = {
       messages: [{ role: 'user', content: task.content }],
+      ...(options?.signal !== undefined ? { signal: options.signal } : {}),
     };
     if (task.systemPrompt !== undefined) {
       (request as { systemPrompt: string }).systemPrompt = task.systemPrompt;
@@ -332,7 +348,10 @@ export class ModelToCliAdapter implements ICliAdapter {
     return {
       id: this.modelAdapter.modelId,
       name: this.modelAdapter.modelId,
-      contextWindow: DEFAULT_CONTEXT_WINDOW,
+      contextWindow:
+        routingArmCliSlot(this.name) === undefined
+          ? this.capabilities.contextWindow
+          : DEFAULT_CONTEXT_WINDOW,
     };
   }
 

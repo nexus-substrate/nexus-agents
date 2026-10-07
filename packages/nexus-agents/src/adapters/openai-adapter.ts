@@ -25,7 +25,6 @@ import type { BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
   DEFAULT_MAX_TOKENS,
-  resolveModelId,
   getModelCapabilities,
   type OpenAIAdapterConfig,
 } from './openai-types.js';
@@ -53,7 +52,7 @@ import {
 import { mapResponsesStream } from './openai-responses-stream.js';
 
 // Re-export types and constants for public API
-export { OPENAI_MODELS, OPENAI_MODEL_ALIASES, type OpenAIAdapterConfig } from './openai-types.js';
+export { OPENAI_MODELS, type OpenAIAdapterConfig } from './openai-types.js';
 
 /**
  * OpenAI model adapter.
@@ -64,7 +63,7 @@ export { OPENAI_MODELS, OPENAI_MODEL_ALIASES, type OpenAIAdapterConfig } from '.
  * @example
  * ```typescript
  * const adapter = new OpenAIAdapter({
- *   modelId: 'gpt-4o',
+ *   modelId: 'gpt-4o-2024-11-20',
  *   apiKey: process.env.OPENAI_API_KEY,
  * });
  *
@@ -140,7 +139,6 @@ const MAX_ERROR_BODY_CHARS = 600;
 
 export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
-  private readonly resolvedModelId: string;
   private readonly apiSurface: 'chat' | 'responses';
   private readonly omitDefaultTokenCap: boolean;
   private readonly apiKey: string | undefined;
@@ -154,13 +152,10 @@ export class OpenAIAdapter extends BaseAdapter {
    * @throws {ConfigError} If API key is missing
    */
   constructor(config: OpenAIAdapterConfig) {
-    const resolvedModelId =
-      config.verbatimModelId === true ? config.modelId : resolveModelId(config.modelId);
-
     // Build baseConfig conditionally to satisfy exactOptionalPropertyTypes
     const baseConfig: BaseAdapterConfig = {
       providerId: 'openai',
-      modelId: resolvedModelId,
+      modelId: config.modelId,
       capabilities: getModelCapabilities(config.modelId),
       apiKey: config.apiKey,
       ...(config.logger !== undefined && { logger: config.logger }),
@@ -181,7 +176,6 @@ export class OpenAIAdapter extends BaseAdapter {
 
     this.apiKey = config.apiKey;
     this.headers = config.defaultHeaders;
-    this.resolvedModelId = resolvedModelId;
     this.apiSurface = config.apiSurface ?? 'chat';
     this.omitDefaultTokenCap = config.omitDefaultTokenCap ?? false;
 
@@ -419,7 +413,7 @@ export class OpenAIAdapter extends BaseAdapter {
     const messages = this.buildMessages(request);
 
     const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
-      model: this.resolvedModelId,
+      model: this.modelId,
       messages,
       ...(request.maxTokens !== undefined || !this.omitDefaultTokenCap
         ? { max_completion_tokens: request.maxTokens ?? this.defaultMaxCompletionTokens() }
@@ -465,7 +459,7 @@ export class OpenAIAdapter extends BaseAdapter {
     // default 0.3 does not 400) is centralized in the shared planOptionalParams
     // seam. NOTE: a gateway that injects its OWN default when the field is absent
     // is outside our control — our contract is only to not SEND a rejected value.
-    const plan = planOptionalParams(request, this.resolvedModelId);
+    const plan = planOptionalParams(request, this.modelId);
     if (plan.temperature !== undefined) {
       params.temperature = plan.temperature;
     }
@@ -550,7 +544,7 @@ export class OpenAIAdapter extends BaseAdapter {
    * (o-series, gpt-5, codex); the registry answers first, a regex second.
    */
   private isReasoningFamily(): boolean {
-    return getMaxTokensParamForModel(this.resolvedModelId) === 'max_completion_tokens';
+    return getMaxTokensParamForModel(this.modelId) === 'max_completion_tokens';
   }
 
   /**
@@ -651,7 +645,7 @@ function nonAnswerError(source: string, nonAnswer: NonAnswer, servedModel?: stri
  * @example
  * ```typescript
  * const adapter = createOpenAIAdapter({
- *   modelId: 'gpt-4o',
+ *   modelId: 'gpt-4o-2024-11-20',
  *   apiKey: process.env.OPENAI_API_KEY!,
  * });
  * ```

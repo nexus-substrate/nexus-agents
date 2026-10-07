@@ -1,10 +1,10 @@
 /** Pure grading of existing CLI evidence; admission consumes the block verdict (#7069). */
 import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
-import type { CliName } from './types.js';
+import type { RoutingArmId } from './types.js';
 
 /** State-only callers remain supported; absent provenance never earns a rung. */
 export type AuthEvidenceInput = Pick<AuthProbeResult, 'state'> & {
-  readonly cli?: CliName;
+  readonly cli?: RoutingArmId;
   readonly via?: 'env-var' | 'cli-credentials';
 };
 

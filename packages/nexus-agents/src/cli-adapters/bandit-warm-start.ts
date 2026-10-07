@@ -71,7 +71,7 @@ export function warmStartBandit(
         });
       }
     }
-    bandit.seedPriors(generateSyntheticPriors(), replayed === 0 ? 3 : 1);
+    bandit.seedPriors(generateSyntheticPriors(bandit.getArmNames()), replayed === 0 ? 3 : 1);
     if (replayed === 0) {
       fallbackUsed = true;
       const fallback = options.persist === false ? memoryFallback() : persistedFallback(logger);

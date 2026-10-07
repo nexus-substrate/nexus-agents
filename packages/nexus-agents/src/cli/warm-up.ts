@@ -13,6 +13,7 @@ import { TASK_CATEGORIES } from '../config/task-specialization-types.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { createLogger, type ILogger } from '../core/index.js';
+import { isEndpointArmId, routingArmCliSlot } from '../cli-adapters/types-core.js';
 
 // ============================================================================
 // Constants
@@ -26,6 +27,9 @@ const SECONDARY_REWARD = 0.6;
 
 /** Reward hint for other CLIs (weak/exploratory prior). */
 const OTHER_REWARD = 0.35;
+
+/** No endpoint-specific quality evidence: seed an unbiased midpoint (#7151). */
+const ENDPOINT_REWARD = 0.5;
 
 /** Marker in qualitySignals to identify synthetic outcomes. */
 export const SYNTHETIC_MARKER = 'synthetic:warm-up';
@@ -55,9 +59,14 @@ export interface WarmUpResult {
  * - Secondary CLI gets reward 0.6
  * - Other CLIs get reward 0.35
  *
- * Returns the average reward across all categories per CLI.
+ * Returns the average reward across all categories per CLI. Registered
+ * dynamic endpoint arms receive a neutral prior, reducing maximal cold-start
+ * uncertainty without borrowing any CLI's specialization evidence. Existing
+ * vendor API arms retain their pre-opt-in prior behavior.
  */
-export function generateSyntheticPriors(): ReadonlyMap<string, number> {
+export function generateSyntheticPriors(
+  armNames: readonly string[] = []
+): ReadonlyMap<string, number> {
   const totals = new Map<string, number>();
   for (const cli of CLI_NAMES) {
     totals.set(cli, 0);
@@ -80,6 +89,11 @@ export function generateSyntheticPriors(): ReadonlyMap<string, number> {
   const priors = new Map<string, number>();
   for (const [cli, total] of totals) {
     priors.set(cli, total / count);
+  }
+  for (const arm of armNames.filter(
+    (name) => isEndpointArmId(name) && routingArmCliSlot(name) === undefined
+  )) {
+    priors.set(arm, ENDPOINT_REWARD);
   }
   return priors;
 }
