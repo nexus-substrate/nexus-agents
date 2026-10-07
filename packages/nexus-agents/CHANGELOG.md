@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.2.1
+
+### Patch Changes
+
+- [#7252](https://github.com/nexus-substrate/nexus-agents/pull/7252) [`3f99610`](https://github.com/nexus-substrate/nexus-agents/commit/3f996107a7b99463f02603bbf6ee7aed65bf679d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `run_dev_pipeline` reporting 0% plan approval when the vote crashed or never ran. The approval percentage is now omitted in those cases, while the failure reason or no-vote feedback remains available. Recorded votes that fail to reach quorum retain their measured percentage, and pipeline completion and plan status are unchanged.
+
 ## 11.2.0
 
 ### Minor Changes
