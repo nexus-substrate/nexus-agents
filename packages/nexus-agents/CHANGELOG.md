@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.0.2
+
+### Patch Changes
+
+- [#7185](https://github.com/nexus-substrate/nexus-agents/pull/7185) [`ada9cf4`](https://github.com/nexus-substrate/nexus-agents/commit/ada9cf4f8d9326d5c6689b2591e949a04a04a930) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote panel summaries now report the model that answered, not the one requested ([#7179](https://github.com/nexus-substrate/nexus-agents/issues/7179)). `consensus_vote`'s `panelWarning` and `panelDiversity` (distinct models and families), and the CLI `vote` summary's `Models:` line, use a seat's reported `servedModel` when present and fall back to the requested model otherwise. When the two differ, both are shown, for example `All 7 seats answered on claude-fable-5 → served claude-opus`. A bare served alias such as `opus` is resolved against the CLI that answered, so it counts toward its vendor family instead of being reported as unclassified. Panels whose seats were served the model they requested produce the same output as before.
+
 ## 11.0.1
 
 ### Patch Changes
