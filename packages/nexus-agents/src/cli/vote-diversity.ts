@@ -14,6 +14,8 @@
  * @module cli/vote-diversity
  */
 
+import { CliNameSchema } from '../config/model-capabilities-types.js';
+import { findCanonicalModel } from '../config/model-config-helpers.js';
 import { CLI_TO_MODELSDEV_VENDOR } from '../config/models-dev-by-vendor.js';
 import { countDistinctModels, UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 import type { AgentVoteResult, SeatFallback } from './vote-types.js';
@@ -71,11 +73,84 @@ function answeringSeats(votes: readonly AgentVoteResult[]): AgentVoteResult[] {
   return votes.filter((v) => v.source === 'llm');
 }
 
-/** A seat's model when it resolved one; the placeholder is not a model. */
+/** A model id when it names one; absent, empty and the placeholder are not models. */
+function realModel(id: string | undefined): string | undefined {
+  return id === undefined || id === '' || id === UNRESOLVED_MODEL_ID ? undefined : id;
+}
+
+/** The model the seat REQUESTED — the adapter's construction-time id. */
+function requestedModel(v: Pick<AgentVoteResult, 'model'>): string | undefined {
+  return realModel(v.model);
+}
+
+/**
+ * The model that ANSWERED (#7179): the adapter-reported `servedModel` when it
+ * reported one, else the requested model. Every diversity figure and warning
+ * is computed from this, so the summary names the panel that actually voted —
+ * the same model the ledger and `costSummary.perModel` record.
+ */
 function resolvedModel(v: AgentVoteResult): string | undefined {
-  return v.model === undefined || v.model === '' || v.model === UNRESOLVED_MODEL_ID
-    ? undefined
-    : v.model;
+  const served = realModel(v.servedModel);
+  return served === undefined ? requestedModel(v) : qualifiedServedModel(v, served);
+}
+
+/**
+ * A served id as a canonical model id. The claude transport reports a bare
+ * CLI alias (`opus`), which the identity resolver deliberately leaves
+ * unresolvable (#4390) — so an id that names no vendor on its own is qualified
+ * against the CLI that answered, never globally. A resolvable id, or one no
+ * entry of that CLI claims, is returned unchanged.
+ */
+function qualifiedServedModel(v: AgentVoteResult, served: string): string {
+  if (vendorFamilyOf(served) !== 'unknown') return served;
+  const cli = CliNameSchema.safeParse(v.cli === undefined ? undefined : bareCliName(v.cli));
+  if (!cli.success) return served;
+  return findCanonicalModel(cli.data, served)?.id ?? served;
+}
+
+/** True when the seat was served on a model other than the one it requested. */
+function servedElsewhere(v: AgentVoteResult): boolean {
+  const requested = requestedModel(v);
+  if (requested === undefined || realModel(v.servedModel) === undefined) return false;
+  return countDistinctModels([requested, resolvedModel(v) ?? '']) > 1;
+}
+
+/** A seat served off-request with no recorded fallback: requested and served model. */
+export interface ServedSubstitution {
+  readonly role: AgentVoteResult['role'];
+  readonly requested: string;
+  readonly served: string;
+}
+
+/**
+ * Answering seats whose reported served model differs from the requested one
+ * but carry no {@link SeatFallback} — {@link seatFallbacks} already discloses
+ * the ones that do. Panel order; empty when every seat answered as requested.
+ */
+export function servedSubstitutions(votes: readonly AgentVoteResult[]): ServedSubstitution[] {
+  const out: ServedSubstitution[] = [];
+  for (const v of answeringSeats(votes)) {
+    if (v.fallback !== undefined || !servedElsewhere(v)) continue;
+    out.push({ role: v.role, requested: v.model ?? '', served: resolvedModel(v) ?? '' });
+  }
+  return out;
+}
+
+/**
+ * The single-model warning's model label: the served model, preceded by the
+ * requested models when any seat asked for something else
+ * (`claude-fable-5 → served claude-opus`).
+ */
+function servedModelLabel(answered: readonly AgentVoteResult[], served: string): string {
+  const requested = [
+    ...new Set(
+      answered
+        .filter(servedElsewhere)
+        .map(requestedModel)
+        .filter((m): m is string => m !== undefined)
+    ),
+  ];
+  return requested.length === 0 ? served : `${requested.join(', ')} → served ${served}`;
 }
 
 /** Every answering seat that carries a fallback, in panel order. */
@@ -151,7 +226,7 @@ export function singleModelPanelWarning(votes: readonly AgentVoteResult[]): stri
   const silent = votes.length - answered.length;
   const missing = silent > 0 ? ` (${String(silent)} did not answer)` : '';
   return (
-    `All ${String(answered.length)} seats answered on ${model}${missing}; ` +
+    `All ${String(answered.length)} seats answered on ${servedModelLabel(answered, model)}${missing}; ` +
     'independence is weaker than assigned.'
   );
 }
@@ -180,7 +255,7 @@ export function singleFamilyPanelWarning(votes: readonly AgentVoteResult[]): str
 
 /** The assigned vendor, using the CLI vendor only when its model never resolved. */
 function assignedFallbackFamily(v: AgentVoteResult, fallback: SeatFallback): string {
-  const model = resolvedModel({ ...v, model: fallback.fromModel ?? v.pinnedModel });
+  const model = requestedModel({ model: fallback.fromModel ?? v.pinnedModel });
   return vendorFamilyOf(model ?? CLI_TO_MODELSDEV_VENDOR[fallback.fromCli] ?? '');
 }
 

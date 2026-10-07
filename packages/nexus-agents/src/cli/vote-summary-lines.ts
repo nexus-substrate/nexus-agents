@@ -10,7 +10,12 @@ import { colors } from './ansi-output.js';
 import { formatPercentage } from '../core/index.js';
 import type { AgentVoteResult, VotingResult } from './vote-types.js';
 import { VOTER_ROLES } from './voter-roles.js';
-import { panelDiversityOf, seatFallbacks, type SeatFallbackDetail } from './vote-diversity.js';
+import {
+  panelDiversityOf,
+  seatFallbacks,
+  servedSubstitutions,
+  type SeatFallbackDetail,
+} from './vote-diversity.js';
 import type { ResolvedVoterProject } from './voter-project.js';
 import type {
   ContrarianCheckStatus,
@@ -88,7 +93,12 @@ function seatCount(count: number, label: string): string {
 export function modelsLine(votes: readonly AgentVoteResult[]): string {
   const { distinctModels, distinctFamilies, unclassifiedSeats, unresolvedSeats, fallbacks } =
     panelDiversityOf(votes);
-  const detail = seatFallbacks(votes).map(fallbackLabel).join('; ');
+  // #7179: a seat served off-request without a recorded fallback still shows
+  // both models, so the line never names only the one that did not answer.
+  const detail = [
+    ...seatFallbacks(votes).map(fallbackLabel),
+    ...servedSubstitutions(votes).map((s) => `${s.role}: ${s.requested} → served ${s.served}`),
+  ].join('; ');
   // #6606: the family count, and the seats it could not classify. #6660: and
   // the answering seats whose model never resolved, which no count includes.
   const families = `${String(distinctFamilies)} ${distinctFamilies === 1 ? 'family' : 'families'}`;

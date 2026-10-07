@@ -365,3 +365,98 @@ describe('seat timing line (#6103) — the third panel-shape line', () => {
     expect(seatTimingLine([])).toBe('Seat timing (queued→ran): no seats');
   });
 });
+
+/**
+ * #7179: every Claude seat asked for fable and was served opus. The summaries
+ * named the REQUESTED model while the ledger and cost rollup named the served
+ * one, so the panel a person reads was not the panel that answered.
+ */
+describe('served model, not requested model (#7179)', () => {
+  /** Seven Claude seats: four asked for fable, three for sonnet; all served opus. */
+  function servedFallbackPanel(): AgentVoteResult[] {
+    return SEVEN.map((role, i) =>
+      seat(role, {
+        cli: 'cli-claude',
+        assignedCli: 'claude',
+        model: i < 4 ? 'claude-fable-5' : 'claude-sonnet',
+        servedModel: 'claude-opus',
+      })
+    );
+  }
+
+  it('counts distinct models over the served model', () => {
+    expect(panelDiversityOf(servedFallbackPanel()).distinctModels).toBe(1);
+  });
+
+  it('counts families over the served model', () => {
+    // Requested openai and google; every seat was served by anthropic.
+    const panel = [
+      seat('architect', { model: 'gpt-5.5', servedModel: 'claude-opus' }),
+      seat('security', { model: 'gemini-3.1-pro-preview', servedModel: 'claude-opus' }),
+      seat('scope_steward', { model: 'claude-fable-5', servedModel: 'claude-opus' }),
+    ];
+    const diversity = panelDiversityOf(panel);
+    expect(diversity.distinctFamilies).toBe(1);
+    expect(diversity.distinctModels).toBe(1);
+  });
+
+  it('names the served model in the single-model warning, with the requested ones', () => {
+    expect(singleModelPanelWarning(servedFallbackPanel())).toBe(
+      'All 7 seats answered on claude-fable-5, claude-sonnet → served claude-opus; ' +
+        'independence is weaker than assigned.'
+    );
+  });
+
+  it('shows the in-family substitution target as the served model on the models line', () => {
+    const panel = [
+      seat('pm', {
+        cli: 'cli-claude',
+        assignedCli: 'claude',
+        model: 'claude-fable-5',
+        servedModel: 'opus',
+        fallback: { fromCli: 'claude', fromModel: 'claude-fable-5', reason: 'capacity' },
+      }),
+      seat('devex', {
+        cli: 'cli-claude',
+        assignedCli: 'claude',
+        model: 'claude-fable-5',
+        servedModel: 'opus',
+      }),
+    ];
+    expect(modelsLine(panel)).toBe(
+      'Models: 1 distinct, 1 family, 1 fallbacks (pm: claude-fable-5→claude-opus, capacity; ' +
+        'devex: claude-fable-5 → served claude-opus)'
+    );
+  });
+
+  it('reproduces the 11.0.0 panel: seven fable seats served the bare alias opus', () => {
+    const panel = SEVEN.map((role) =>
+      seat(role, {
+        cli: 'cli-claude',
+        assignedCli: 'claude',
+        model: 'claude-fable-5',
+        servedModel: 'opus',
+        fallback: { fromCli: 'claude', fromModel: 'claude-fable-5', reason: 'capacity' },
+      })
+    );
+    expect(singleModelPanelWarning(panel)).toBe(
+      'All 7 seats answered on claude-fable-5 → served claude-opus; ' +
+        'independence is weaker than assigned.'
+    );
+    expect(panelDiversityOf(panel)).toMatchObject({
+      distinctModels: 1,
+      distinctFamilies: 1,
+      unclassifiedSeats: 0,
+    });
+  });
+
+  it('leaves a no-fallback panel unchanged when the served model matches the request', () => {
+    const panel = diversePanel().map((v) => ({ ...v, servedModel: v.model }));
+    expect(panelDiversityOf(panel)).toEqual(panelDiversityOf(diversePanel()));
+    expect(modelsLine(panel)).toBe('Models: 3 distinct, 3 families, 0 fallbacks');
+    const single = collapsedPanel().map((v) => ({ ...v, servedModel: v.model }));
+    expect(singleModelPanelWarning(single)).toBe(
+      'All 7 seats answered on gemini-3.1-pro-preview; independence is weaker than assigned.'
+    );
+  });
+});
