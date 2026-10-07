@@ -127,11 +127,29 @@ function gitPath(scratch: string, flag: string): string {
   );
 }
 
+/**
+ * A package-manager script (`pnpm run`, `npm run`, `npx`) exports its whole
+ * resolved config as npm_config_* plus its own run context. That is the
+ * launcher's config, flattened, not the operator's: npm treats an env entry like
+ * a CLI flag, so `allow-scripts=…` that npm accepts in ~/.npmrc fails the scratch
+ * `npm ci` with EALLOWSCRIPTS once re-exported (#7137), and pnpm points
+ * npm_config_globalconfig at its own rc. The child installer re-reads the config
+ * files itself, so dropping the flattened layer loses nothing it would honour.
+ */
+function launchedByPackageManagerScript(env: NodeJS.ProcessEnv): boolean {
+  return env['npm_lifecycle_event'] !== undefined || env['npm_execpath'] !== undefined;
+}
+
+const PACKAGE_MANAGER_SCRIPT_ENV = /^(?:npm_|pnpm_|PNPM_SCRIPT_SRC_DIR$|NODE_PATH$)/i;
+
 /** Drop inherited directory redirects before pinning scratch-local install paths. */
 export function dependencyInstallEnv(scratchPath: string): NodeJS.ProcessEnv {
+  const inherited = hermeticGitEnv();
+  const fromLauncher = launchedByPackageManagerScript(inherited);
   const env = Object.fromEntries(
-    Object.entries(hermeticGitEnv()).filter(
+    Object.entries(inherited).filter(
       ([name]) =>
+        !(fromLauncher && PACKAGE_MANAGER_SCRIPT_ENV.test(name)) &&
         !/^npm_config_(?:virtual_store_dir|modules_dir|lockfile_dir|dir|global_dir|prefix)$/i.test(
           name
         )

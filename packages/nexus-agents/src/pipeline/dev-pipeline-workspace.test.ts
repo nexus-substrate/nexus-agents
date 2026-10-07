@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import { isolatePackageManagerEnv } from '../testing/pipeline-workspace-fixture.js';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
@@ -134,6 +135,7 @@ describe('dev pipeline workspace follow-up', () => {
     // The vitest TMPDIR is in-repo on a short checkout path (CI); the fixture
     // and its scratch must not be, or the isolation check rightly refuses the gate.
     tmp = mkdtempOutsideRepo('dev-workspace-test-');
+    isolatePackageManagerEnv(tmp);
     repo = join(tmp, 'repo');
     mkdirSync(repo);
     // A sibling of the fixture repo: a NEXUS_TMPDIR that CONTAINS the repo

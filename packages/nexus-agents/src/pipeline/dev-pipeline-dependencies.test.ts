@@ -4,13 +4,18 @@ import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import { isolatePackageManagerEnv } from '../testing/pipeline-workspace-fixture.js';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
 import type { DevPipelineStages } from './dev-pipeline.js';
 
 function stages(directory: string): DevPipelineStages {
   return {
     implementWorkspace: { directory, accessMode: 'workspace-edit' },
-    withWorkspace: (binding) => stages(binding.directory),
+    withWorkspace: (binding) => {
+      // Fail here, with the installer's reason, before the symlink check hides it.
+      expect(binding.dependencies).toEqual({ status: 'installed', manager: 'npm' });
+      return stages(binding.directory);
+    },
     research: vi.fn(),
     plan: vi.fn(),
     vote: vi.fn(),
@@ -40,6 +45,7 @@ describe('scratch dependency subprocess', () => {
     mkdirSync(repo);
     mkdirSync(join(tmp, 'scratch'));
     vi.stubEnv('NEXUS_TMPDIR', join(tmp, 'scratch'));
+    isolatePackageManagerEnv(tmp);
     git('init', '--quiet');
     git('config', 'user.name', 'Fixture');
     git('config', 'user.email', 'fixture@example.test');
@@ -50,7 +56,7 @@ describe('scratch dependency subprocess', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('installs offline into scratch and resolves edited workspaces without writing source dependencies', async () => {
+  async function installsIntoScratch(): Promise<void> {
     file(
       'package.json',
       JSON.stringify({ name: 'fixture', private: true, workspaces: ['packages/*'] })
@@ -106,5 +112,19 @@ describe('scratch dependency subprocess', () => {
     expect(output.changes?.diff).toContain('+module.exports = "SCRATCH";');
     expect(readFileSync(join(repo, 'node_modules/fixture-local/index.js'))).toEqual(before);
     expect(git('status', '--porcelain')).toBe(status);
+  }
+
+  it('installs offline into scratch and resolves edited workspaces without writing source dependencies', async () => {
+    await installsIntoScratch();
+  });
+
+  it('ignores the config a package-manager launcher exported (#7137)', async () => {
+    // What `pnpm test` exported here from `allow-scripts=…` in ~/.npmrc: npm accepts
+    // that line in the file, but rejects the env form with EALLOWSCRIPTS, as a flag.
+    vi.stubEnv('npm_lifecycle_event', 'test');
+    vi.stubEnv('npm_execpath', '/launcher/pnpm.cjs');
+    vi.stubEnv('npm_config_allow_scripts', 'fixture');
+    vi.stubEnv('npm_config_globalconfig', join(tmp, 'launcher-rc'));
+    await installsIntoScratch();
   });
 });

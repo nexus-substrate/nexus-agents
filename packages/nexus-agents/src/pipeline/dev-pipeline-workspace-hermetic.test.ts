@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import { isolatePackageManagerEnv } from '../testing/pipeline-workspace-fixture.js';
 import type { DevPipelineResult, DevPipelineStages } from './dev-pipeline.js';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
 
@@ -89,6 +90,7 @@ describe('hermetic pipeline subprocesses', () => {
     mocks.creationFailure = false;
     mocks.disposalFailure = false;
     root = mkdtempOutsideRepo('hermetic-pipeline-');
+    isolatePackageManagerEnv(root);
     repo = join(root, 'repo');
     scratchRoot = join(root, 'scratch');
     mkdirSync(repo);
@@ -103,6 +105,7 @@ describe('hermetic pipeline subprocesses', () => {
     git('-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture');
   });
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     const pids = join(root, 'installer-pids');
     if (existsSync(pids)) {
@@ -200,6 +203,35 @@ describe('hermetic pipeline subprocesses', () => {
     }
   );
 
+  it('drops the config a package-manager launcher flattened into the env (#7137)', async () => {
+    vi.stubEnv('npm_lifecycle_event', 'test');
+    vi.stubEnv('npm_config_allow_scripts', 'fixture');
+    vi.stubEnv('npm_config_store_dir', join(root, 'launcher-store'));
+    vi.stubEnv('pnpm_config_verify_deps_before_run', 'false');
+    let received: NodeJS.ProcessEnv | undefined;
+    const install = vi.fn(
+      (_command: string, _args: string[], options: { env: NodeJS.ProcessEnv }) => {
+        received = options.env;
+        return Promise.resolve();
+      }
+    );
+
+    await withDevPipelineWorkspace(stages(repo), edit, install);
+
+    if (received === undefined) throw new Error('Installer was not called');
+    for (const name of [
+      'npm_lifecycle_event',
+      'npm_config_allow_scripts',
+      'npm_config_store_dir',
+      'pnpm_config_verify_deps_before_run',
+    ]) {
+      expect(received).not.toHaveProperty(name);
+    }
+    // The pinned scratch settings are set after the filter, so they survive it.
+    expect(received['npm_config_package_import_method']).toBe('copy');
+    expect(received['npm_config_modules_dir']).toBe('node_modules');
+  });
+
   it('removes repository-local git env from the dependency install environment', async () => {
     vi.stubEnv('GIT_DIR', join(repo, '.git'));
     vi.stubEnv('GIT_CONFIG_COUNT', '1');
@@ -259,12 +291,23 @@ describe('hermetic pipeline subprocesses', () => {
       );
       chmodSync(installer, 0o755);
       vi.stubEnv('PATH', `${root}:${process.env['PATH'] ?? ''}`);
-      const output = await withDevPipelineWorkspace(stages(repo), edit);
+      // The deadline tests termination, not whether three Node processes start
+      // within 300ms: under full-core load they did not (#7137). Fake only the
+      // global timer the installer deadline and kill grace use, and fire it after
+      // the real grandchild exists. node:timers/promises `delay` stays real.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const pending = withDevPipelineWorkspace(stages(repo), edit);
+      const readyBy = Date.now() + 10_000;
+      while (!existsSync(started) && Date.now() < readyBy) await delay(20);
+      expect(existsSync(started)).toBe(true); // Prove the grandchild actually ran.
+      await vi.advanceTimersByTimeAsync(300);
+      const output = await pending;
+      await vi.advanceTimersByTimeAsync(5_000); // SIGTERM -> SIGKILL grace.
+      vi.useRealTimers();
       expect(output.changes?.dependencies).toMatchObject({
         status: 'failed',
         reason: expect.stringMatching(/timed out|killed|Command failed/),
       });
-      expect(existsSync(started)).toBe(true); // Prove the grandchild actually ran.
       expect(output.changes?.worktreeRemoved).toBe(true);
       await delay(1800);
       expect(existsSync(marker)).toBe(false);
