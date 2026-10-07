@@ -86,32 +86,60 @@ export interface FindSourceFilesResult {
   skippedDirs: number;
 }
 
+/** Directory names the walk never descends into, in addition to every dot-directory. */
+const EXCLUDED_DIR_NAMES: ReadonlySet<string> = new Set(['node_modules', 'dist']);
+
+/**
+ * Whether the walk descends into a directory entry. Dot-directories are skipped
+ * as a class (#7178): `.git` and the gitignored `.nexus-agents/worktrees` held
+ * 147k `.ts` files at the repo root, none of them the caller's source. The rule
+ * applies to entries only, so a caller may still root the walk at a dot-dir.
+ */
+function isWalkedDir(name: string): boolean {
+  return !name.startsWith('.') && !EXCLUDED_DIR_NAMES.has(name);
+}
+
 /**
  * Recursively collect TS/JS source files under `dir`, bounded by `maxDepth`,
- * skipping `node_modules`/`dist` and test/declaration files. Exported so the
- * `search_usages` tool (#4265) reuses the exact same source-file set the symbol
- * index walks — keeping the two tools' scopes apples-to-apples (DRY).
+ * skipping dot-directories, `node_modules`/`dist` and test/declaration files.
+ * Exported so the `search_usages` tool (#4265) reuses the exact same
+ * source-file set the symbol index walks — keeping the two tools' scopes
+ * apples-to-apples (DRY).
  */
 export async function findSourceFiles(
   dir: string,
   maxDepth: number
 ): Promise<FindSourceFilesResult> {
-  if (maxDepth <= 0) return { files: [], skippedDirs: 1 };
-  const files: string[] = [];
-  let skippedDirs = 0;
+  const result: FindSourceFilesResult = { files: [], skippedDirs: 0 };
+  await collectSourceFiles(dir, maxDepth, result);
+  return result;
+}
+
+/**
+ * Walk into a shared accumulator. Appending per file, rather than
+ * `files.push(...sub.files)`, keeps the walk safe on large trees: a spread
+ * passes every element as a call argument and throws "Maximum call stack size
+ * exceeded" past roughly 120k entries (#7178).
+ */
+async function collectSourceFiles(
+  dir: string,
+  maxDepth: number,
+  acc: FindSourceFilesResult
+): Promise<void> {
+  if (maxDepth <= 0) {
+    acc.skippedDirs += 1;
+    return;
+  }
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     const fullPath = resolve(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== 'dist') {
-      const sub = await findSourceFiles(fullPath, maxDepth - 1);
-      files.push(...sub.files);
-      skippedDirs += sub.skippedDirs;
+    if (entry.isDirectory() && isWalkedDir(entry.name)) {
+      await collectSourceFiles(fullPath, maxDepth - 1, acc);
     }
     if (entry.isFile() && isSourceFile(entry.name)) {
-      files.push(fullPath);
+      acc.files.push(fullPath);
     }
   }
-  return { files, skippedDirs };
 }
 
 function scoreMatch(symbolName: string, query: string): SearchResult['score'] | null {
