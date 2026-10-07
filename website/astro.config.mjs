@@ -7,6 +7,10 @@ import { createCssVariablesTheme } from 'shiki';
 import mdastRewriteLinks from './src/plugins/mdast-rewrite-links.ts';
 import hastWrapTables from './src/plugins/hast-wrap-tables.ts';
 import hastTaskListStatus from './src/plugins/hast-task-list-status.ts';
+import hastAlerts from './src/plugins/hast-alerts.ts';
+import hastStripRepoBreadcrumb from './src/plugins/hast-strip-repo-breadcrumb.ts';
+import hastSummaryBox from './src/plugins/hast-summary-box.ts';
+import hastProcessList from './src/plugins/hast-process-list.ts';
 
 // Code colors come from remarque's --color-syntax-* palette tokens, so they
 // follow the light/dark toggle. Pass the theme OBJECT, not the
@@ -34,7 +38,17 @@ export default defineConfig({
     // rewriter was ported to a native mdast plugin instead.
     processor: satteri({
       mdastPlugins: [mdastRewriteLinks()],
-      hastPlugins: [hastTaskListStatus(), hastWrapTables()],
+      // Page patterns (#7285): alert callouts, labelled stacking tables, the
+      // repo-breadcrumb strip, the how-to summary box and the tutorial
+      // process list. The last two read the page's frontmatter.
+      hastPlugins: [
+        hastTaskListStatus(),
+        hastWrapTables(),
+        hastAlerts(),
+        hastStripRepoBreadcrumb(),
+        hastSummaryBox(),
+        hastProcessList(),
+      ],
     }),
     shikiConfig: { theme: remarqueShikiTheme },
   },

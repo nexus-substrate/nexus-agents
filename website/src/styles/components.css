@@ -1,0 +1,221 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * Docs page components (#7285): callouts, tables, the how-to summary box and
+ * the tutorial process list. Patterns adapted from USWDS (CC0), written as
+ * semantic HTML on remarque tokens — no USWDS CSS, JS or fonts.
+ *
+ * The markup comes from the Markdown plugins in src/plugins/ (hast-alerts,
+ * hast-wrap-tables, hast-summary-box, hast-process-list) and from
+ * components/Callout.astro. Every colour is a remarque token, so both themes
+ * follow; state colours tint backgrounds and marks only, body text stays
+ * --color-fg (REMARQUE.md "State Colors").
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* ─── Blockquotes ───────────────────────────────────────────────────────────
+ * remarque sets quotations in italic. In these docs a blockquote is almost
+ * never a quotation; long italic passages full of inline code read badly
+ * (design review, finding 8). Alerts become callouts; the rest go upright. */
+.remarque-prose blockquote {
+  font-style: normal;
+}
+
+/* ─── Callouts (alerts) ─────────────────────────────────────────────────── */
+.callout {
+  --callout-bg: var(--color-accent-subtle);
+  --callout-mark: var(--color-accent);
+  margin-block: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  background: var(--callout-bg);
+  color: var(--color-fg);
+  border: var(--border-width) var(--border-style) var(--color-border);
+  border-inline-start: 4px solid var(--callout-mark);
+  border-radius: var(--radius-md);
+  font-style: normal;
+}
+.callout[data-kind='tip'],
+.callout[data-kind='success'] {
+  --callout-bg: var(--color-success-subtle);
+  --callout-mark: var(--color-success);
+}
+.callout[data-kind='warning'] {
+  --callout-bg: var(--color-warning-subtle);
+  --callout-mark: var(--color-warning);
+}
+.callout[data-kind='caution'],
+.callout[data-kind='error'] {
+  --callout-bg: var(--color-error-subtle);
+  --callout-mark: var(--color-error);
+}
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-weight: var(--weight-semibold);
+  color: var(--color-fg);
+}
+.callout-icon {
+  flex: none;
+  width: 1.125em;
+  height: 1.125em;
+  color: var(--callout-mark);
+}
+.callout-body > :first-child {
+  margin-top: 0;
+}
+.callout-body > :last-child {
+  margin-bottom: 0;
+}
+@media (forced-colors: active) {
+  .callout {
+    border-color: CanvasText;
+  }
+  .callout-icon {
+    color: CanvasText;
+  }
+}
+
+/* ─── Tables ────────────────────────────────────────────────────────────────
+ * Reference tables were 17px at 1.75 line-height; the env reference ran to
+ * 17,500px (finding 5). Compact type, upright identifiers that do not break,
+ * zebra rows to track a row across columns, and an edge shadow while there is
+ * more table to scroll to. */
+.remarque-prose .scroll-wrap > table {
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+.remarque-prose .scroll-wrap > table :where(th, td) {
+  vertical-align: top;
+}
+.remarque-prose .scroll-wrap > table td code {
+  white-space: nowrap;
+}
+.remarque-prose .scroll-wrap > table tbody tr:nth-child(even) {
+  /* Translucent, so the scroll shadow behind the rows stays visible. */
+  background: color-mix(in oklch, var(--color-fg) 4%, transparent);
+}
+
+/* Scroll cue: the "scrolling shadows" technique (background-attachment
+   local/scroll). Covers sit on the content and move with it; shadows sit on
+   the box edge. A shadow shows only on a side that has more table to scroll
+   to, needs no JS, and draws nothing when the table fits. */
+.remarque-prose .scroll-wrap {
+  --scroll-shadow: color-mix(in oklch, var(--color-fg) 45%, transparent);
+  background:
+    linear-gradient(to right, var(--color-bg) 30%, transparent) left center / 2.5rem 100% no-repeat
+      local,
+    linear-gradient(to left, var(--color-bg) 30%, transparent) right center / 2.5rem 100% no-repeat
+      local,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left center / 1.25rem
+      100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right center /
+      1.25rem 100% no-repeat scroll;
+}
+@media (forced-colors: active) {
+  .remarque-prose .scroll-wrap {
+    background: none;
+  }
+}
+
+/* Phones (< 30rem): one record per row, each value under its column name
+   (the data-label the table plugin copied from the header). The header row
+   is hidden visually but stays in the document, th scope intact. */
+@media (width < 30rem) {
+  .remarque-prose .scroll-wrap {
+    background: none;
+  }
+  .remarque-prose .scroll-wrap > table,
+  .remarque-prose .scroll-wrap > table :is(tbody, tr, td) {
+    display: block;
+    width: 100%;
+  }
+  .remarque-prose .scroll-wrap > table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .remarque-prose .scroll-wrap > table tr {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 2px solid var(--color-border-bold);
+  }
+  .remarque-prose .scroll-wrap > table td {
+    padding: var(--space-1) 0;
+    border-bottom: none;
+    text-align: start !important; /* overrides GFM column alignment (inline style) */
+  }
+  .remarque-prose .scroll-wrap > table td[data-label]::before {
+    /* Inline, so a short value shares the label's line. */
+    content: attr(data-label);
+    margin-inline-end: var(--space-2);
+    font-family: var(--font-mono);
+    font-weight: var(--weight-semibold);
+    color: var(--color-fg-muted);
+  }
+  .remarque-prose .scroll-wrap > table td code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ─── Summary box ("Before you start", how-to guides) ───────────────────── */
+.summary-box {
+  margin-block: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-bg-subtle);
+  border: var(--border-width) var(--border-style) var(--color-border-bold);
+  border-radius: var(--radius-md);
+}
+.summary-box-heading {
+  margin: 0 0 var(--space-2);
+  font-weight: var(--weight-semibold);
+  color: var(--color-fg);
+}
+.summary-box ul {
+  margin: 0;
+}
+
+/* ─── Process list (tutorial steps) ─────────────────────────────────────────
+ * A numbered counter on a left rule. The number is the step number already
+ * in the heading text, so the outline and anchors are unchanged. */
+.remarque-prose ol.process-list {
+  --process-num-size: 2rem;
+  list-style: none;
+  margin-block: var(--space-6);
+  padding: 0;
+}
+.remarque-prose ol.process-list > li {
+  position: relative;
+  margin: 0 0 0 calc(var(--process-num-size) / 2);
+  padding: 0 0 var(--space-6) calc(var(--process-num-size) / 2 + var(--space-4));
+  border-inline-start: 2px solid var(--color-border-bold);
+}
+.remarque-prose ol.process-list > li:last-child {
+  border-inline-start-color: transparent;
+  padding-bottom: 0;
+}
+.remarque-prose ol.process-list > li > h2:first-child {
+  margin-top: 0;
+}
+.process-list-num {
+  position: absolute;
+  inset-inline-start: calc(var(--process-num-size) / -2 - 1px);
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: var(--process-num-size);
+  height: var(--process-num-size);
+  border-radius: 50%;
+  background: var(--color-fg);
+  color: var(--color-bg);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+@media (forced-colors: active) {
+  .process-list-num {
+    border: 2px solid CanvasText;
+  }
+}

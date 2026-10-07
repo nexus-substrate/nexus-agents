@@ -32,6 +32,29 @@ describe('hastWrapTables', () => {
     expect(html.match(/<table>/g)).toHaveLength(2);
   });
 
+  it('labels every body cell with its column header, for the stacked phone layout', async () => {
+    const html = await render('| Name | `Default` |\n| - | - |\n| a | 1 |\n| b | |\n');
+    expect(html.match(/<td data-label="Name">/g)).toHaveLength(2);
+    expect(html.match(/<td data-label="Default">/g)).toHaveLength(2);
+  });
+
+  it('marks header cells as column headers', async () => {
+    expect((await render(TABLE)).match(/<th scope="col">/g)).toHaveLength(2);
+  });
+
+  it('keeps column alignment while adding the label', async () => {
+    const html = await render('| n |\n| -: |\n| 1 |\n');
+    expect(html).toMatch(
+      /<td (?=[^>]*style="text-align: right")(?=[^>]*data-label="n")[^>]*>1<\/td>/
+    );
+  });
+
+  it('adds no label where the header is empty or the row is wider than the header', async () => {
+    const html = await render('|   | b |\n| - | - |\n| 1 | 2 |\n');
+    expect(html).toContain('<td>1</td>');
+    expect(html).toContain('<td data-label="b">2</td>');
+  });
+
   it('leaves a document with no table unchanged', async () => {
     expect(await render('just *text*\n')).toBe(markdownToHtml('just *text*\n').html);
   });

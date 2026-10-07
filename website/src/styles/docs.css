@@ -22,6 +22,7 @@
 @import 'remarque-tokens/tokens.css';
 @import 'remarque-tokens/essay.css';
 @import 'remarque-tokens/print.css';
+@import './components.css';
 
 /* ─── Shiki css-variables bridge (REMARQUE.md "Astro / Shiki wiring") ──── */
 .astro-code {

@@ -19,6 +19,9 @@ const docSchema = z.looseObject({
   audience: z.enum(AUDIENCES).optional(),
   order: z.number().optional(),
   nav_title: z.string().optional(),
+  // How-to guides: rendered as a "Before you start" summary box after the
+  // title (src/plugins/hast-summary-box.ts, #7285). Plain text; `code` spans.
+  prerequisites: z.array(z.string()).optional(),
 });
 
 const docs = defineCollection({
