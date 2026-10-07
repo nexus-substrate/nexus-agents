@@ -406,17 +406,21 @@ export function sectionListing(nav: readonly NavSection[], key: PrimarySectionKe
   return { pages: guessed, provisional: guessed.length > 0 };
 }
 
-const TYPE_LABELS: Record<Diataxis, string> = {
+const TYPE_LABELS: Record<Exclude<Diataxis, 'none'>, string> = {
   tutorial: 'Tutorial',
   'how-to': 'How-to guide',
   reference: 'Reference',
   explanation: 'Explanation',
-  none: 'Not a Diátaxis type',
 };
 
-/** The "Page type" line in the side rail. Absence is named, not hidden. */
-export function pageTypeLabel(type: Diataxis | undefined): string {
-  return type === undefined ? 'Unclassified' : TYPE_LABELS[type];
+/**
+ * The "Page type" line in the page meta. Absence is named ("Unclassified"),
+ * not hidden; `none` (index pages, section indexes) is a deliberate
+ * non-type, so there is no line to show and the result is undefined.
+ */
+export function pageTypeLabel(type: Diataxis | undefined): string | undefined {
+  if (type === undefined) return 'Unclassified';
+  return type === 'none' ? undefined : TYPE_LABELS[type];
 }
 
 const EDIT_BASE = 'https://github.com/nexus-substrate/nexus-agents/edit/main/';

@@ -88,6 +88,8 @@ const crumbLabel = sectionIndex ? sectionLabel(sectionIndex) : currentSection?.l
 const crumbHref = !sectionIndex && primaryKey ? sectionIndexHref(BASE, primaryKey) : undefined;
 
 const docsHome = docsHref('readme');
+// No "Page type" row on a page that is deliberately no type (indexes).
+const typeLabel = pageTypeLabel(diataxis);
 const toc = tocEntries(headings);
 const tocLimited = toc.length > 0 && toc.length < headings.filter((h) => h.depth === 2 || h.depth === 3).length;
 
@@ -135,7 +137,9 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
       </nav>
 
       <nav class="docs-rail" aria-label="Section navigation">
-        <details open data-collapse-below="64rem">
+        {/* Closed in the markup, so without JS a phone's first screen is the
+            page, not the nav; the script below opens it from 64rem. */}
+        <details data-collapse-below="64rem">
           <summary>Section navigation</summary>
           <div class="docs-rail-sections">
             {railSections.map((s) => (
@@ -184,7 +188,9 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
         // the page; from 64rem it is a column, forced open, and its current
         // link is scrolled into view inside the column (an instant scroll of
         // the column only: no page movement, no animation). Crossing the
-        // breakpoint re-syncs. Without JS the disclosure stays open.
+        // breakpoint re-syncs. Without JS the disclosure stays closed at
+        // every width; from 64rem its summary then stays visible (docs.css)
+        // so the nav can still be opened.
         (function () {
           var nav = document.currentScript && document.currentScript.previousElementSibling;
           var el = nav && nav.querySelector('details[data-collapse-below]');
@@ -240,10 +246,15 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
           <Fragment set:html={afterToc} />
         </article>
 
+        {(typeLabel !== undefined || source) && (
         <aside class="docs-aside" aria-label="About this page" data-pagefind-ignore>
           <dl class="docs-page-meta">
-            <dt>Page type</dt>
-            <dd>{pageTypeLabel(diataxis)}</dd>
+            {typeLabel !== undefined && (
+              <>
+                <dt>Page type</dt>
+                <dd>{typeLabel}</dd>
+              </>
+            )}
             {source && (
               <>
                 <dt>Source</dt>
@@ -256,6 +267,7 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
             )}
           </dl>
         </aside>
+        )}
 
         {(prev || next) && (
           <nav class="docs-pager" aria-label="Previous and next" data-pagefind-ignore>

@@ -44,11 +44,12 @@ const listing = sectionListing(await getSiteNav(), key);
 
 // Collection pattern (#7285, finding 14): each page is a heading link, its
 // description and plain-language tags. An unclassified or `none` page gets
-// no type tag rather than a "Not a Diátaxis type" label.
+// no type tag (pageTypeLabel has none for `none`).
 const AUDIENCE_TAGS = { user: 'For users', project: 'For contributors' } as const;
 function tagsFor(page: NavPage): string[] {
   const tags: string[] = [];
-  if (page.diataxis !== undefined && page.diataxis !== 'none') tags.push(pageTypeLabel(page.diataxis));
+  const typeTag = page.diataxis === undefined ? undefined : pageTypeLabel(page.diataxis);
+  if (typeTag !== undefined) tags.push(typeTag);
   if (page.audience !== undefined) tags.push(AUDIENCE_TAGS[page.audience]);
   return tags;
 }

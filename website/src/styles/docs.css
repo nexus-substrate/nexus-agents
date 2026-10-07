@@ -386,9 +386,11 @@ pre:hover .copy-btn,
      break opportunity and pushed phones into horizontal scroll. */
   overflow-wrap: break-word;
 }
-/* Prose is capped at the reading measure; tables, code and figures may use
-   the whole content track. */
-.docs-body > :where(p, ul, ol, blockquote, dl, h1, h2, h3, h4, h5, h6) {
+/* Prose is capped at the reading measure, and so are the boxes that hold
+   prose (callouts, the how-to summary box), so they share its right edge.
+   Code blocks, tables and figures are deliberately NOT capped: they may use
+   the whole content track, because their lines do not reflow. */
+.docs-body > :where(p, ul, ol, blockquote, dl, h1, h2, h3, h4, h5, h6, .callout, .summary-box) {
   max-width: var(--measure);
 }
 /* Hyphenation: a gap remarque leaves to the consumer (#7199). */
@@ -593,7 +595,9 @@ pre:hover .copy-btn,
     overscroll-behavior: contain;
     padding-block: var(--space-6);
   }
-  .docs-rail > details > summary {
+  /* Forced open by the layout script, so the toggle is hidden. A closed
+     nav here means no JS: keep its summary so it can still be opened. */
+  .docs-rail > details[open] > summary {
     display: none;
   }
   .docs-rail-sections {

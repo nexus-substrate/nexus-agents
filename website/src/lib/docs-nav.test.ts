@@ -127,8 +127,11 @@ describe('pageTypeLabel', () => {
   it('names each type and says plainly when a page is unclassified', () => {
     expect(pageTypeLabel('how-to')).toBe('How-to guide');
     expect(pageTypeLabel('explanation')).toBe('Explanation');
-    expect(pageTypeLabel('none')).toBe('Not a Diátaxis type');
     expect(pageTypeLabel(undefined)).toBe('Unclassified');
+  });
+
+  it('has no label for a page that is deliberately no type (an index), so the row is hidden', () => {
+    expect(pageTypeLabel('none')).toBeUndefined();
   });
 });
 
