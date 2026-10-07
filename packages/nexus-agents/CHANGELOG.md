@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 11.1.3
+
+### Patch Changes
+
+- [#7205](https://github.com/nexus-substrate/nexus-agents/pull/7205) [`cf790aa`](https://github.com/nexus-substrate/nexus-agents/commit/cf790aa5c1d404d475b66bcc14d8c7b893069c94) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct the Claude Code plugin homepage and installation instructions, MCP configuration paths, and voting CLI requirements. The first-task guide now demonstrates the MCP `run` tool, and the newcomer documentation includes the fixture-based `tour` command. Update landing-page links and policy terminology, and clarify which voting strategies have stricter approval thresholds.
+
+- [#7212](https://github.com/nexus-substrate/nexus-agents/pull/7212) [`58e0190`](https://github.com/nexus-substrate/nexus-agents/commit/58e01900d2ecfd80630782812c5bd4b9a7c9d05a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removed the unused `ResilientGeminiParser` and its helpers, which parsed output of the retired standalone `gemini` CLI. They were never part of the public API and no adapter used them; the gemini arm runs `agy` and parses its output with the agy parser.
+
+  `GeminiResponseParser` is now marked `@deprecated`. It parses the retired `gemini` CLI's output and nothing in nexus-agents uses it. It stays exported, together with its `GeminiCliResponse` type, so existing imports keep compiling.
+
 ## 11.1.2
 
 ### Patch Changes
