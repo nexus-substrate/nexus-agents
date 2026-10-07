@@ -31,7 +31,7 @@ This auto-configures the MCP server in your Claude Code settings.
 
 ### Manual MCP Configuration
 
-Add to your MCP config file (`~/.claude/mcp.json` for Claude Code, `.mcp.json` for project-level):
+Add to your MCP config file (`~/.claude.json` for Claude Code user scope, `.mcp.json` for project scope):
 
 ```json
 {

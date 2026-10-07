@@ -27,7 +27,8 @@ If you hit `EACCES` on Linux/macOS, configure a user-local npm prefix instead of
 For Claude Code, you can install as a plugin instead:
 
 ```
-/plugin install nexus-agents
+/plugin marketplace add nexus-substrate/nexus-agents
+/plugin install nexus-agents@nexus-substrate
 ```
 
 ---
@@ -57,7 +58,15 @@ Checking CLI installations...
 ⚠ Gemini CLI    Auth: Not authenticated   Fix: gemini
 ```
 
-Read-only; safe to run any time. If you have **at least one** working CLI (claude / codex / gemini), you can run the next step without setting any API keys — nexus-agents will use whatever CLI is configured.
+Read-only; safe to run any time. To try a walkthrough before configuring CLI authentication:
+
+```bash
+nexus-agents tour
+```
+
+The tour shows illustrative cached fixtures and makes no live model calls. It requires no API keys or authenticated CLI. Add `--non-interactive` to skip the prompts between steps.
+
+For the live vote below, you need **at least one** authenticated Claude Code or Codex CLI. Gemini and OpenCode do not serve voter seats. No separate API keys are required.
 
 ---
 
@@ -67,7 +76,7 @@ Read-only; safe to run any time. If you have **at least one** working CLI (claud
 nexus-agents vote --quick --proposal "Use SQLite over JSON files for the outcome store"
 ```
 
-Three voter roles (`architect`, `security`, `scope_steward`) deliberate via whichever local CLIs you have. Expected output:
+Three voter roles (`architect`, `security`, `scope_steward`) deliberate through your authenticated Claude Code or Codex CLIs. Expected output:
 
 ```
 Nexus Agents Consensus Vote
@@ -114,19 +123,31 @@ Auto-configures nexus-agents as an MCP server in Claude Code, Cursor, OpenCode, 
 
 ## 5. Try a real task
 
+After `setup`, ask your MCP-aware agent:
+
+> Use the nexus-agents `run` tool to decide whether to use SQLite over JSON files for the outcome store, with `requiresConsensus: true` and `execute: true`.
+
+The tool arguments are:
+
+```json
+{
+  "goal": "Should we use SQLite over JSON files for the outcome store?",
+  "requiresConsensus": true,
+  "execute": true
+}
+```
+
+`run` selects the consensus strategy for this goal and executes it, returning the decision and vote details. To inspect only the routing decision and recommended tool, omit `execute` or set it to `false`. `run` is an MCP tool; ask your agent to call it.
+
+For standalone CLI usage:
+
 ```bash
 # Run a real orchestration task (uses an API key if available)
 export ANTHROPIC_API_KEY=your-key
 nexus-agents orchestrate "Explain the architecture of this codebase"
 ```
 
-Or via the MCP tool (after `setup`):
-
-```
-In Claude Code: /orchestrate "Explain the architecture of this codebase"
-```
-
-The multi-stage CompositeRouter picks the right CLI, the right expert persona, and the right model based on task analysis. The trace goes to `<repo>/.nexus-agents/traces/` for later replay (`traces/` is per-repo state — epic #2872).
+The multi-stage CompositeRouter picks the right CLI, the right expert persona, and the right model based on task analysis. The trace goes to `<repo>/.nexus-agents/traces/` for later replay.
 
 nexus-agents writes per-repo state to `<repo>/.nexus-agents/` (auto-gitignored and created on first use) and shared, cross-repo state to `~/.nexus-agents/`. Run `nexus-agents doctor` to see the resolved paths for your environment.
 

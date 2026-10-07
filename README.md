@@ -122,10 +122,11 @@ The control plane is the layer that catches the mistakes data-plane agents would
 npm install -g nexus-agents
 ```
 
-**Or as a Claude Code plugin** (single-command install from the official marketplace):
+**Or as a Claude Code plugin** (add the self-hosted marketplace, then install):
 
 ```
-/plugin install nexus-agents
+/plugin marketplace add nexus-substrate/nexus-agents
+/plugin install nexus-agents@nexus-substrate
 ```
 
 See [docs/getting-started/PLUGIN_INSTALL.md](docs/getting-started/PLUGIN_INSTALL.md) for plugin-specific setup, or [llms-install.md](llms-install.md) for the short install guide an AI agent can follow.
@@ -139,6 +140,14 @@ nexus-agents doctor
 Prints a health table — Node version, configured CLIs (claude / codex / gemini / opencode), API keys missing vs present. Read-only; safe to run any time.
 
 A CLI switched off with `NEXUS_DISABLED_CLIS` is listed as disabled and not probed. On a gateway host, `doctor` also says whether the gateway serves that CLI's slot (`doctor --gateway` prints one line per slot); see [CORPORATE_GATEWAY.md](./docs/guides/CORPORATE_GATEWAY.md).
+
+For a walkthrough before configuring CLI authentication, run:
+
+```bash
+nexus-agents tour
+```
+
+The tour shows illustrative cached fixtures, with no live model calls, API keys, or authenticated CLI required. Add `--non-interactive` to skip the prompts between steps.
 
 ### 3. See what success looks like (60-second smoke task — no API keys needed)
 
@@ -175,7 +184,7 @@ Result: APPROVED
 Completed in ~30s
 ```
 
-Three voter roles deliberate via whichever local CLIs you have (Claude, Codex, Gemini) — no API keys required. Per-voter reasoning is recorded; the terminal prints the verdict. Mixed outcomes (some approve / some reject) and graceful error handling are demonstrated on the [project site hero](https://nexus-substrate.github.io/nexus-agents/) with a real 7-voter run.
+Three voter roles deliberate through authenticated Claude Code or Codex CLIs; at least one must be available. Gemini and OpenCode do not serve voter seats. No separate API keys are required. Per-voter reasoning is recorded; the terminal prints the verdict. Mixed outcomes (some approve / some reject) and graceful error handling are demonstrated on the [project site hero](https://nexus-substrate.github.io/nexus-agents/) with a real 7-voter run.
 
 ### 4. Wire into your editor
 
@@ -191,11 +200,11 @@ By default, `setup` writes/updates up to seven things in your environment. Each 
 
 | Configured                       | Where written                                        | Opt-out flag      |
 | -------------------------------- | ---------------------------------------------------- | ----------------- |
-| MCP server registration (Claude) | `~/.claude/mcp.json` / Claude Desktop config         | `--skip-mcp`      |
+| MCP server registration (Claude) | `~/.claude.json` / Claude Desktop config             | `--skip-mcp`      |
 | Project rules                    | `.cursor/rules/` and/or `.claude/rules/`             | `--skip-rules`    |
 | Session hooks                    | `~/.claude/hooks/` (session-start / pre-tool / etc.) | `--skip-hooks`    |
 | OpenCode MCP config              | `~/.config/opencode/opencode.json`                   | `--skip-opencode` |
-| Gemini MCP config                | `~/.gemini/mcp.json`                                 | `--skip-gemini`   |
+| Gemini MCP config                | `~/.gemini/settings.json`                            | `--skip-gemini`   |
 | Codex MCP config                 | `~/.codex/config.toml`                               | `--skip-codex`    |
 | Project config file              | `./nexus-agents.yaml`                                | `--skip-config`   |
 

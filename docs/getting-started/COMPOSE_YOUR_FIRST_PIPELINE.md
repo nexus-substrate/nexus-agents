@@ -109,7 +109,7 @@ votes:
 
 **Read the verdict, not just the number.** If it's `rejected`, the per-role feedback tells you _why_ — revise the proposal and re-vote. If `approved`, carry the **approved proposal text** forward as the task to build.
 
-> Voting strategies: `simple_majority` (default) for routine calls; `supermajority` or `higher_order` for architecture/security-weighty decisions. Add `"quickMode": true` for a faster 3-agent panel.
+> Voting strategies: `simple_majority` (default) for routine calls; `supermajority` (two-thirds approval) or `unanimous` for a stricter approval threshold. `higher_order` has the same 0.5 threshold as `simple_majority`. Add `"quickMode": true` for a faster 3-agent panel.
 
 ---
 
