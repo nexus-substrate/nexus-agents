@@ -5,7 +5,8 @@
  */
 
 import { createWriteStream } from 'node:fs';
-import { redactCredentialShapes } from './credential-patterns.js';
+import { redactCredentialShapes, redactJsonAssignments } from './credential-patterns.js';
+import { isJsonDocument } from './redaction-boundaries.js';
 import { getTimeProvider } from './time-provider.js';
 
 /** Log levels in order of severity */
@@ -55,10 +56,11 @@ export interface ILogger {
  * `keyword[:=]value` forms. Kept local because the logger redacts the keyword
  * with the value, where `security/output-sanitizer` keeps the keyword and
  * `learning/outcome-storage` also matches `auth=`. Bounded quantifiers
- * prevent ReDoS (#1496).
+ * prevent ReDoS (#1496). In a JSON document the keyword forms keep the key
+ * and replace only the value, so the document still parses (#7315).
  */
-const LOGGER_CONTEXT_PATTERNS: readonly RegExp[] = [
-  /Bearer [a-zA-Z0-9-_.]+/g,
+const BEARER_PATTERN = /Bearer [a-zA-Z0-9-_.]+/g;
+const LOGGER_ASSIGNMENT_PATTERNS: readonly RegExp[] = [
   /password["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
   /api[_-]?key["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
   /secret["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
@@ -140,9 +142,13 @@ function getDefaultLogLevel(): LogLevel {
  * Sanitizes a string by redacting known secret patterns.
  */
 export function sanitize(text: string): string {
-  let result = redactCredentialShapes(text, '[REDACTED]');
-  for (const pattern of LOGGER_CONTEXT_PATTERNS) {
-    result = result.replace(pattern, '[REDACTED]');
+  // The bearer class excludes quotes and backslashes, so it cannot split JSON.
+  let result = redactCredentialShapes(text, '[REDACTED]').replace(BEARER_PATTERN, '[REDACTED]');
+  const json = isJsonDocument(result);
+  for (const pattern of LOGGER_ASSIGNMENT_PATTERNS) {
+    result = json
+      ? redactJsonAssignments(result, pattern, '[REDACTED]')
+      : result.replace(pattern, '[REDACTED]');
   }
   return result;
 }

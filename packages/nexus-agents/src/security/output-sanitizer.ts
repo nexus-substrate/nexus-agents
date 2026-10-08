@@ -9,6 +9,7 @@
  */
 
 import { redactCredentialShapes } from '../core/credential-patterns.js';
+import { isJsonDocument, contextValueEnd } from '../core/redaction-boundaries.js';
 
 /** Placeholder text that replaces redacted keys. */
 export const REDACTED_KEY_PLACEHOLDER = '[REDACTED_KEY]';
@@ -35,39 +36,6 @@ export function sanitizeOutput(
   if (text === '') return text;
 
   return redactCredentialShapes(text, placeholder);
-}
-
-/**
- * Whether `text` is one JSON document. Every context-rule prefix starts with a
- * letter, and in a JSON document letters occur only inside string literals, so
- * this one test places every match inside a JSON string.
- */
-function isJsonDocument(text: string): boolean {
-  if (!/^\s*[[{"]/.test(text)) return false;
-  try {
-    JSON.parse(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * End of a context value. Plain text keeps the pre-#7296 extent: the whole
- * non-whitespace run (`&`-bounded for a query value). Inside a JSON string the
- * value also ends at the unescaped `"` that closes the string, and an escape is
- * consumed as an indivisible pair, so the redaction never splits one (#7296).
- */
-function contextValueEnd(text: string, start: number, query: boolean, json: boolean): number {
-  let end = start;
-  while (end < text.length) {
-    const char = text[end] ?? '';
-    if (/\s/.test(char) || (query && char === '&')) break;
-    if (json && char === '"') break;
-    if (json && char === '\\') end++;
-    end++;
-  }
-  return Math.min(end, text.length);
 }
 
 /** `file:line` straight after a rule id's `secret:`, as `sarif-parser` builds finding ids. */
@@ -142,6 +110,102 @@ const QUERY_RULE: ContextRule = {
 };
 
 /**
+ * Sensitive JSON keys, optionally inside JSON encoded into a string (`\\"key\\":`;
+ * group `esc` is the backslash run, the same before both key quotes). The
+ * secret-named alternatives (`client_secret`, any `*_secret`, `secret_access_key`,
+ * `private_key`, `private_key_id`) were redacted before #7315 only when a broken
+ * shape replacement made an earlier rule greedy. Bounded quantifiers keep the
+ * match linear (#1496).
+ */
+const SENSITIVE_JSON_KEY =
+  /(?<esc>\\{0,15})"(?<key>api[_-]?key|access[_-]?token|token|secret|password|prompt|system_prompt|user_prompt|[a-z0-9_-]{0,64}[_-]secret|(?:[a-z0-9_-]{0,64}[_-])?secret[_-]access[_-]key|private[_-]key(?:[_-]id)?)\k<esc>"\s*:\s*/gi;
+
+/** A complete JSON string literal at `lastIndex` (sticky). */
+const JSON_STRING_LITERAL = /"(?:[^"\\]|\\.)*"/y;
+
+function stringLiteralEnd(text: string, start: number): number {
+  JSON_STRING_LITERAL.lastIndex = start;
+  return start + (JSON_STRING_LITERAL.exec(text)?.[0].length ?? 0);
+}
+
+/**
+ * End (after the closing quote) of a string literal whose quotes are escaped by
+ * a run of `depth` backslashes, starting after its opening quote; `start` when
+ * the literal is not closed before the enclosing JSON string ends. A quote
+ * closes it when its backslash run is `depth` modulo `2 * depth + 2`: a longer
+ * run is a quote escaped one level further in; an even run is unescaped.
+ */
+function nestedStringEnd(text: string, start: number, depth: number): number {
+  let index = start;
+  while (index < text.length) {
+    if (text[index] === '"') return start;
+    if (text[index] !== '\\') {
+      index++;
+      continue;
+    }
+    let run = 0;
+    while (text[index + run] === '\\') run++;
+    if (text[index + run] !== '"') {
+      index += run;
+      continue;
+    }
+    if (run % 2 === 0) return start;
+    if (run % (2 * depth + 2) === depth) return index + run + 1;
+    index += run + 1;
+  }
+  return start;
+}
+
+/** `placeholder` as a string literal whose quotes are escaped by `depth` backslashes. */
+function placeholderLiteral(placeholder: string, depth: number): string {
+  if (depth === 0) return JSON.stringify(placeholder);
+  // Escaped once per enclosing string: the nested literal's own, then each outer one.
+  let content = JSON.stringify(placeholder).slice(1, -1);
+  for (let level = depth; level > 0; level = (level - 1) / 2) {
+    content = JSON.stringify(content).slice(1, -1);
+  }
+  const quote = `${'\\'.repeat(depth)}"`;
+  return `${quote}${content}${quote}`;
+}
+
+/** End of a sensitive key's value; `valueStart` when there is none to replace. */
+function sensitiveValueEnd(text: string, valueStart: number, depth: number, json: boolean): number {
+  if (depth > 0) {
+    const opener = `${'\\'.repeat(depth)}"`;
+    if (!text.startsWith(opener, valueStart)) return valueStart;
+    const end = nestedStringEnd(text, valueStart + opener.length, depth);
+    return end === valueStart + opener.length ? valueStart : end;
+  }
+  return json
+    ? contextValueEnd(text, valueStart, false, true, 'json-field')
+    : stringLiteralEnd(text, valueStart);
+}
+
+/**
+ * Replaces each sensitive key's value with `placeholder`. In a JSON document the
+ * shared field scanner bounds any value type, so the document still parses; in
+ * other text only a complete string literal is replaced, as before #7315. A key
+ * in JSON encoded into a string keeps its escaping, and only its string value
+ * is replaced.
+ */
+function redactSensitiveJsonFields(text: string, placeholder: string, json: boolean): string {
+  let result = '';
+  let copiedUntil = 0;
+  for (const match of text.matchAll(SENSITIVE_JSON_KEY)) {
+    if (match.index < copiedUntil) continue;
+    const esc = match.groups?.['esc'] ?? '';
+    const valueStart = match.index + match[0].length;
+    const end = sensitiveValueEnd(text, valueStart, esc.length, json);
+    if (end <= valueStart) continue;
+    const key = `${esc}"${match.groups?.['key'] ?? ''}${esc}"`;
+    const value = placeholderLiteral(placeholder, esc.length);
+    result += `${text.slice(copiedUntil, match.index)}${key}: ${value}`;
+    copiedUntil = end;
+  }
+  return result + text.slice(copiedUntil);
+}
+
+/**
  * Redacts credentials (API keys, authorization headers, Bearer tokens, URL credentials,
  * and sensitive JSON fields) from error messages and response bodies.
  *
@@ -181,13 +245,8 @@ export function sanitizeErrorDetails(
   // Redact sensitive query parameters in URLs or logs (?api_key=..., &token=..., &prompt=...)
   result = redactContextValues(result, QUERY_RULE, placeholder, json);
 
-  // Redact sensitive JSON keys: "api_key": "...", "token": "...", "prompt": "...", etc.
-  result = result.replace(
-    /"(api[_-]?key|access[_-]?token|token|secret|password|prompt|system_prompt|user_prompt)"\s*:\s*"(?:[^"\\]|\\.)*"/gi,
-    `"$1": "${placeholder}"`
-  );
-
-  return result;
+  // Redact sensitive JSON keys: "api_key": "...", "client_secret": "...", "prompt": "...", etc.
+  return redactSensitiveJsonFields(result, placeholder, json);
 }
 
 /** `value.toJSON()` when it has one (a `Date`), as `JSON.stringify` would; else `value`. */
