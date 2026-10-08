@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 11.5.5
+
+### Patch Changes
+
+- [#7309](https://github.com/nexus-substrate/nexus-agents/pull/7309) [`02ff5f2`](https://github.com/nexus-substrate/nexus-agents/commit/02ff5f226e65885c1d93abdd274861acd0412500) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents setup --dry-run` now has no side effects: it no longer registers MCP servers, creates data directories, edits `.gitignore` (including under `NEXUS_PORTABLE_MODE=1`), or probes gateways. It prints what it would do; the Validation step and Next Steps describe the preview instead of claiming configuration happened. Other commands' `--dry-run` flags are unaffected.
+
+  Startup behavior change: importing the package's modules no longer creates `~/.nexus-agents` or edits a repository `.gitignore` at import time (memory, model-manifest, generated-registry and audit paths are now resolved without those side effects). The data directory is created on first use — every CLI command except `setup --dry-run`, and the MCP server, still create it at startup.
+
 ## 11.5.4
 
 ### Patch Changes
