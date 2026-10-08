@@ -1253,6 +1253,24 @@ describe('SecureHandler', () => {
       expect(result.content[0]?.text).not.toContain('MyS3cretP@ss');
     });
 
+    it('keeps quality-gate finding ids intact and redacted output parseable (#7296)', async () => {
+      const finding = { id: 'semgrep:detected-generic-secret:src/example.ts:1' };
+      const handler: ToolHandler = () =>
+        Promise.resolve({
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ findings: [finding], secret: FAKE_OPENAI_KEY }),
+            },
+          ],
+        });
+      const secureHandler = createSecureHandler(handler, { toolName: 'run_quality_gate' });
+      const result = await secureHandler({ checks: ['security'] });
+      const text = result.content[0]?.text ?? '';
+      expect(text).not.toContain(FAKE_OPENAI_KEY);
+      expect(JSON.parse(text)).toEqual({ findings: [finding], secret: '[REDACTED]' });
+    });
+
     it('redacts ALL occurrences of a repeated secret pattern, not just the first (#3109)', async () => {
       // Two AWS-style keys in one output: the non-global regex bug redacted
       // only the first, leaking the second to the caller.
