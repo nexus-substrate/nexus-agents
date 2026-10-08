@@ -207,8 +207,16 @@ describe('two-sided file-local scanner errors (#7294)', () => {
         complete: false,
         introducedBlockingCount: null,
         unscannedCoverage: [],
-        errors: [`Change touches unscanned file: ${mocks.aliasName}`],
       });
+      // The refusal can come from the pinned-tree lookup ("Change touches
+      // unscanned file") or, where the base path cannot be resolved at all, from
+      // the base-side realpath ("Cannot verify unscanned file"). Either keeps it
+      // unmeasured; what matters is that this path is named and not tolerated.
+      const errors = measured.comparison?.errors ?? [];
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(
+        new RegExp(`(Change touches|Cannot verify) unscanned file:? ${mocks.aliasName}`)
+      );
     } finally {
       rmSync(copy, { force: true });
     }
