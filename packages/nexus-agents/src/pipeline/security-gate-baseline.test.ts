@@ -41,6 +41,8 @@ const gate = (): ReturnType<ReturnType<typeof checkSecurityScan>> =>
 
 describe('pinned baseline comparison (#7238)', () => {
   beforeEach(() => {
+    // Shallow-checkout TMPDIR is in the server repo; use the real OS fallback.
+    vi.stubEnv('TMPDIR', process.env['VITEST_SYSTEM_TMPDIR']);
     vi.clearAllMocks();
     mocks.exec.mockImplementation((_command: string, args: string[]) =>
       Promise.resolve({
@@ -49,6 +51,7 @@ describe('pinned baseline comparison (#7238)', () => {
       })
     );
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   it('keeps a non-baseline gate unmeasured when a target only partially parsed', async () => {
     mocks.scan.mockResolvedValue({

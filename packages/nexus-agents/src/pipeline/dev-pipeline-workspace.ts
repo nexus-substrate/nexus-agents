@@ -1,8 +1,7 @@
 /** Per-run implementation checkout and operator-owned patch handoff (#6794). */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { join, relative } from 'node:path';
 import { createScratchCheckout, type ScratchCheckout } from '../cli/vote-scratch-checkout.js';
 import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
 import { type BwrapIsolation } from '../cli-adapters/codex-sandbox-preflight.js';
@@ -13,7 +12,7 @@ import {
 } from './dev-pipeline-sandbox.js';
 import { execFileTree, type CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
-import { getNexusTmpDir } from '../config/nexus-tmp-dir.js';
+import { pipelineScratchRoot } from './pipeline-scratch-root.js';
 import { createLogger } from '../core/index.js';
 import type {
   DevPipelineDependencies,
@@ -136,28 +135,6 @@ function dirtySourceWarning(repoRoot: string, baseSha: string): string | undefin
     if (/[RC]/.test(records[index]?.slice(0, 2) ?? '')) index++;
   }
   return `The run was based on HEAD ${baseSha}; ${String(paths)} uncommitted paths were not included.`;
-}
-
-/** Whether two canonical paths are equal or one contains the other. */
-function overlaps(a: string, b: string): boolean {
-  const inside = (parent: string, child: string): boolean => {
-    const path = relative(parent, child);
-    return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path));
-  };
-  return inside(a, b) || inside(b, a);
-}
-
-/**
- * The default NEXUS_TMPDIR is `<repo>/.nexus-agents/tmp`, inside the source
- * checkout and usually the server's cwd. A scratch there fails the quality
- * gate's isolation check, so every untrusted gate would be refused; place it
- * under the system temp dir instead. If that overlaps too, the gate still
- * fails closed on the isolation check.
- */
-function scratchRoot(repoRoot: string): string {
-  const preferred = realpathSync(getNexusTmpDir());
-  const occupied = [repoRoot, realpathSync(process.cwd())];
-  return occupied.some((path) => overlaps(preferred, path)) ? tmpdir() : preferred;
 }
 
 /** Logging in finally must never replace an error or discard a successful result. */
@@ -338,7 +315,7 @@ export async function withDevPipelineWorkspace(
     scratch = createScratchCheckout({
       repoRoot,
       sha: baseSha,
-      tmpRoot: scratchRoot(repoRoot),
+      tmpRoot: pipelineScratchRoot([repoRoot, process.cwd()]),
       hermetic: true,
     });
     const prepared = await prepareSandbox(scratch.path, repoRoot, preflight);

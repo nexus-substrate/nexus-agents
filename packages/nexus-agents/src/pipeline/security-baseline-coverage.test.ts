@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compareSecurityBaseline } from './security-baseline.js';
 import type { SecurityScanInput } from '../mcp/tools/security-scan-types.js';
 import type { ScannerParseDiagnostic, SarifParseResult } from '../security/sarif-types.js';
@@ -48,10 +48,13 @@ describe('baseline parse coverage (#7238)', () => {
   });
 
   beforeEach(() => {
+    // Shallow-checkout TMPDIR is in the scanned repo; use the real OS fallback.
+    vi.stubEnv('TMPDIR', process.env['VITEST_SYSTEM_TMPDIR']);
     vi.clearAllMocks();
     mocks.scan.mockReset();
     mocks.changedPath = '';
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   it('reports identical untouched partial parses and the measured scanner version', async () => {
     mocks.scan.mockImplementation((input: SecurityScanInput) =>

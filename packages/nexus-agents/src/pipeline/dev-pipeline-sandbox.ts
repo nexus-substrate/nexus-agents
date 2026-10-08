@@ -200,6 +200,8 @@ export async function createScratchSandbox(
   if (contains(protectedSource, scratchPath) || contains(scratchPath, protectedSource)) {
     throw new Error('Writable scratch path overlaps protected source');
   }
+  // Follow the checkout's selected root (including its documented overlap
+  // exception), keeping writable sandbox temp outside the captured/scanned tree.
   const temp = mkdtempSync(join(dirname(scratchPath), 'sandbox-tmp-'));
   try {
     const paths: SandboxPaths = {
