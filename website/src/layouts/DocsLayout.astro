@@ -3,9 +3,12 @@
 // documentation shell (#7285). At 75rem and wider: side nav | content |
 // in-page nav. From 64rem: side nav | content, with "On this page" as a
 // disclosure right after the H1. Below 64rem: one column — breadcrumb, then
-// the "Section navigation" disclosure, then the page, whose "On this page"
-// disclosure again follows the H1. The in-page nav is spliced in after the
-// H1 on the server, so DOM order is reading order at every width.
+// the page, whose "On this page" disclosure again follows the H1; the side
+// nav is hidden there and opens in the header's Menu drawer, which moves
+// this same <nav> into it (SiteMasthead.astro, #7308). Without JS it stays
+// in the page as the "Section navigation" disclosure. The in-page nav is
+// spliced in after the H1 on the server, so DOM order is reading order at
+// every width.
 //
 // Its own document rather than a BaseLayout child, because the rail and the
 // aside change the page grid. Header, footer, <head> metadata, theme handling

@@ -136,10 +136,14 @@ pre:hover .copy-btn,
 }
 
 /* ─── Masthead ──────────────────────────────────────────────────────────────
- * One row from 64rem: wordmark, Primary nav, search, theme. Below 64rem the
- * Primary nav becomes a horizontally scrolling strip under the row, and
- * below 40rem search is an icon button (SearchBox.svelte), so the row is
- * wordmark + two 48px icon buttons.
+ * One row at every width (#7308). From 64rem: wordmark, Primary nav, search,
+ * theme. Below 64rem: wordmark, search, theme, Menu — the Primary nav and the
+ * side nav open in the Menu drawer (SiteMasthead.astro). Below 40rem search
+ * is an icon button (SearchBox.svelte).
+ *
+ * [data-menu-drawer] on <html> is set by SiteMasthead's inline script, so the
+ * narrow layout depends on JS being there. Without it the Menu button stays
+ * hidden and the Primary nav wraps onto a second row (no scrolling strip).
  */
 .docs-masthead {
   border-bottom: var(--border-width) var(--border-style) var(--color-border);
@@ -175,24 +179,19 @@ pre:hover .copy-btn,
 .docs-primary-nav {
   grid-area: nav;
   min-width: 0;
-  /* A strip below 64rem: scrolls sideways rather than wrapping into rows.
-     The links inside are focusable, so the region is keyboard-scrollable. */
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 .docs-primary-nav ul {
   list-style: none;
   margin: 0;
-  padding: 0 var(--space-6) 0 0;
+  padding: 0;
   display: flex;
-  gap: var(--space-5);
+  gap: 0 var(--space-5);
   white-space: nowrap;
 }
-/* Scroll cue: the strip fades out at its end; the trailing padding lets the
-   last link scroll clear of the fade. */
+/* No-JS fallback below 64rem: the links wrap under the row. */
 @media (max-width: 63.99rem) {
-  .docs-primary-nav {
-    mask-image: linear-gradient(to right, #000 calc(100% - var(--space-6)), transparent);
+  .docs-primary-nav ul {
+    flex-wrap: wrap;
   }
 }
 .docs-primary-nav a {
@@ -213,6 +212,115 @@ pre:hover .copy-btn,
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 0.35em;
+}
+
+/* Menu button: icon plus visible text, a 48px-high target. Hidden until the
+   page is known to have JS, and from 64rem. */
+/* .docs-control sets 44px; these take the full 48px target. */
+.docs-control.docs-menu-button,
+.docs-control.docs-menu-close {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target);
+  cursor: pointer;
+  flex: none;
+}
+.docs-control.docs-menu-button {
+  display: none;
+}
+@media (max-width: 63.99rem) {
+  :root[data-menu-drawer] .docs-control.docs-menu-button {
+    display: inline-flex;
+  }
+  /* The drawer holds these below 64rem; in the page they are hidden. */
+  :root[data-menu-drawer] .docs-masthead-inner > .docs-primary-nav,
+  :root[data-menu-drawer] .docs-page > .docs-rail {
+    display: none;
+  }
+}
+.docs-menu-button:hover,
+.docs-menu-close:hover {
+  border-color: var(--color-fg-muted);
+}
+
+/* ─── Menu drawer (native <dialog>, opened with showModal) ──────────────── */
+.docs-menu {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  padding: 0;
+  inline-size: min(22rem, 100%);
+  max-inline-size: 100%;
+  block-size: 100dvh;
+  max-block-size: 100dvh;
+  border: 0;
+  border-inline-start: var(--border-width) var(--border-style) var(--color-border-bold);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.docs-menu::backdrop {
+  background: color-mix(in oklch, var(--color-fg) 45%, transparent);
+}
+/* The page behind does not scroll while the drawer is open. */
+:root:has(.docs-menu[open]) {
+  overflow: hidden;
+}
+/* Fills the dialog box, so a click on the dialog itself is a backdrop click. */
+.docs-menu-panel {
+  min-block-size: 100%;
+}
+.docs-menu-head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--gutter);
+  background: var(--color-bg);
+  border-bottom: var(--border-width) var(--border-style) var(--color-border);
+}
+.docs-menu-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  line-height: var(--leading-section);
+}
+.docs-menu-body {
+  padding: var(--space-3) var(--gutter) var(--space-6);
+}
+/* Primary nav, moved in: a list of full-width 48px rows. */
+.docs-menu .docs-primary-nav ul {
+  flex-direction: column;
+  gap: 0;
+}
+.docs-menu .docs-primary-nav a {
+  display: flex;
+  min-height: var(--touch-target);
+  font-size: var(--text-body);
+}
+.docs-menu .docs-primary-nav {
+  padding-block-end: var(--space-3);
+  border-bottom: var(--border-width) var(--border-style) var(--color-border);
+}
+/* Side nav, moved in: always open, so its outer toggle is not shown, and
+   every row is a 48px target. */
+.docs-menu .docs-rail > details > summary {
+  display: none;
+}
+.docs-menu .docs-rail summary,
+.docs-menu .docs-rail-subgroup > summary {
+  min-height: var(--touch-target);
+}
+.docs-menu .docs-rail a {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  padding-block: 0;
 }
 
 /* Quiet bordered control, shared by the theme toggle and the search input. */
@@ -545,9 +653,10 @@ pre:hover .copy-btn,
 /* ─── Breakpoints ───────────────────────────────────────────────────────────
  * Values are tokens.css's --bp-* reference values, repeated as literals
  * because media queries cannot read custom properties.
- *   < 40rem  header is one row; search is an icon button.
- *   < 64rem  one column: breadcrumb, "Section navigation" disclosure, then the
- *            page with its "On this page" disclosure after the H1.
+ *   < 40rem  search is an icon button.
+ *   < 64rem  one column: breadcrumb, then the page with its "On this page"
+ *            disclosure after the H1; Primary and side nav in the Menu
+ *            drawer (without JS: the "Section navigation" disclosure).
  *   ≥ 64rem  side nav column (16rem) | content; header one row.
  *   ≥ 75rem  side nav | content | in-page nav column (15rem).
  */
@@ -558,12 +667,8 @@ pre:hover .copy-btn,
     column-gap: var(--space-6);
     padding-block: var(--space-3);
   }
-  .docs-primary-nav {
-    overflow-x: visible;
-  }
   .docs-primary-nav ul {
     gap: var(--space-1) var(--space-5);
-    padding-inline-end: 0;
   }
 
   .docs-page {
