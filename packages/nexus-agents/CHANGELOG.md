@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.5.3
+
+### Patch Changes
+
+- [#7305](https://github.com/nexus-substrate/nexus-agents/pull/7305) [`af1c93d`](https://github.com/nexus-substrate/nexus-agents/commit/af1c93d53ec50502b4b2dff6478f2021c0a97c8b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Setup's manual Claude MCP fallback now includes the requested scope (`-s project` or `-s user`) and a bare server entry. Dry runs show "Would create:" for rules files and data directories in both normal and verbose output.
+
 ## 11.5.2
 
 ### Patch Changes
