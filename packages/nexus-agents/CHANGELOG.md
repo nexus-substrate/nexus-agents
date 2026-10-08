@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.5.4
+
+### Patch Changes
+
+- [#7307](https://github.com/nexus-substrate/nexus-agents/pull/7307) [`a952e9c`](https://github.com/nexus-substrate/nexus-agents/commit/a952e9ca934d21e241c1c01eeac4877c74745663) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Allow the dev pipeline's security baseline comparison to complete when both scans report the same file-local matcher error or per-file timeout on a file whose blob hash and mode match the pinned base. No security rules are excluded. Tolerated files are listed as unscanned with their reason and scanner/rule provenance in the comparison and gate output; completion does not mean full scan coverage. Changed, added, missing, unsafe, unreadable, mode-changed, or one-sided errors and global scanner/output/configuration failures keep introductions unmeasured.
+
 ## 11.5.3
 
 ### Patch Changes
