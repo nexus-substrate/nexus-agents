@@ -16,8 +16,15 @@ import type {
   FindingSeverity,
   SarifParseResult,
   ScannerParseDiagnostic,
+  ScannerFileDiagnostic,
 } from './sarif-types.js';
 import { SARIF_LEVEL_MAP, SEVERITY_ORDER } from './sarif-types.js';
+import {
+  SarifNotificationSchema,
+  checkNotifications,
+  checkConfigurationNotifications,
+  diagnosticFields,
+} from './sarif-diagnostics.js';
 
 // ============================================================================
 // SARIF JSON Shape (minimal subset for parsing)
@@ -145,11 +152,6 @@ const SarifRunSchema = z.object({
   invocations: z.array(z.unknown()).optional(),
 });
 
-const SarifNotificationSchema = z.object({
-  descriptor: z.object({ id: z.string().optional() }).optional(),
-  level: z.string().optional(),
-  message: z.object({ text: z.string().optional() }).optional(),
-});
 const SarifInvocationSchema = z.object({
   executionSuccessful: z.boolean().optional(),
   toolExecutionNotifications: z.array(SarifNotificationSchema).optional(),
@@ -270,6 +272,7 @@ function parseLog(log: SarifLog, maxFindings: number, errors: string[]): SarifPa
 
   let scanner = 'unknown';
   const parseDiagnostics: ScannerParseDiagnostic[] = [];
+  const scannerDiagnostics: ScannerFileDiagnostic[] = [];
   const findings: SecurityFinding[] = [];
   for (const [index, raw] of runs.entries()) {
     const parsedRun = SarifRunSchema.safeParse(raw);
@@ -280,7 +283,13 @@ function parseLog(log: SarifLog, maxFindings: number, errors: string[]): SarifPa
     const driver = describeDriver(parsedRun.data);
     checkRunCoverage(parsedRun.data, errors);
     if (index === 0) scanner = driver.scanner;
-    checkInvocations(parsedRun.data.invocations ?? [], errors, parseDiagnostics);
+    checkInvocations(
+      parsedRun.data.invocations ?? [],
+      errors,
+      parseDiagnostics,
+      scannerDiagnostics,
+      driver.scanner
+    );
     const ruleMap = buildRuleMap(driver.rules, errors);
     findings.push(
       ...collectFindings(parsedRun.data.results ?? [], driver.scanner, ruleMap, errors)
@@ -298,7 +307,7 @@ function parseLog(log: SarifLog, maxFindings: number, errors: string[]): SarifPa
     findings: findings.slice(0, maxFindings),
     errors,
     coverageComplete: errors.length === 0,
-    ...(parseDiagnostics.length > 0 ? { parseDiagnostics } : {}),
+    ...diagnosticFields(parseDiagnostics, scannerDiagnostics),
   };
 }
 
@@ -316,7 +325,9 @@ function checkRunCoverage(run: SarifRun, errors: string[]): void {
 function checkInvocations(
   invocations: readonly unknown[],
   errors: string[],
-  parseDiagnostics: ScannerParseDiagnostic[]
+  parseDiagnostics: ScannerParseDiagnostic[],
+  scannerDiagnostics: ScannerFileDiagnostic[],
+  scanner: string
 ): void {
   for (const raw of invocations) {
     const parsed = SarifInvocationSchema.safeParse(raw);
@@ -325,40 +336,15 @@ function checkInvocations(
       continue;
     }
     if (parsed.data.executionSuccessful === false) errors.push('Scanner invocation failed');
-    const notifications = [
-      ...(parsed.data.toolExecutionNotifications ?? []),
-      ...(parsed.data.toolConfigurationNotifications ?? []),
-    ];
-    checkNotifications(notifications, errors, parseDiagnostics);
+    checkNotifications(
+      parsed.data.toolExecutionNotifications,
+      errors,
+      parseDiagnostics,
+      scannerDiagnostics,
+      parsed.data.executionSuccessful === true ? scanner : 'unknown'
+    );
+    checkConfigurationNotifications(parsed.data.toolConfigurationNotifications, errors);
   }
-}
-
-/** Retain coverage-affecting warnings instead of treating them as a clean scan. */
-function checkNotifications(
-  notifications: z.infer<typeof SarifInvocationSchema>['toolExecutionNotifications'],
-  errors: string[],
-  parseDiagnostics: ScannerParseDiagnostic[]
-): void {
-  for (const notification of notifications ?? []) {
-    const diagnostic = parseNotification(notification);
-    if (diagnostic !== undefined) parseDiagnostics.push(diagnostic);
-    else if (notification.level !== 'note' && notification.level !== 'none')
-      errors.push(`Scanner notification: ${notification.message?.text ?? 'unknown scanner error'}`);
-  }
-}
-
-/** Semgrep SARIF retains a descriptor and message but drops JSON parse tags/spans. */
-function parseNotification(
-  notification: z.infer<typeof SarifNotificationSchema>
-): ScannerParseDiagnostic | undefined {
-  if (!/^(?:Syntax error|Other syntax error)$/.test(notification.descriptor?.id ?? ''))
-    return undefined;
-  const message = notification.message?.text;
-  if (message === undefined) return undefined;
-  const file = /^(?:Syntax error|Other syntax error) at line (.+):(\d+):(?:\n|$| )/.exec(
-    message
-  )?.[1];
-  return file === undefined ? undefined : { file, kind: 'parse', message };
 }
 
 /** Collect and sort findings from SARIF results. */

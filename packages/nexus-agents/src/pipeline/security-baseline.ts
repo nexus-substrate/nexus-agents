@@ -211,6 +211,7 @@ async function assessComparison(input: {
     worktree,
     baseDirectory: input.baseDirectory,
     target,
+    pinnedEntry: async (file) => git(target, ['ls-tree', '-z', sha, '--', file]),
     diff: async (file) =>
       git(target, [
         'diff',

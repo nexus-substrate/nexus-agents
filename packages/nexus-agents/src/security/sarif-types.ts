@@ -68,6 +68,15 @@ export interface ScannerParseDiagnostic {
   readonly message: string;
 }
 
+/** A file-local scanner failure, requiring two-sided identity verification before tolerance. */
+export interface ScannerFileDiagnostic {
+  readonly file: string;
+  readonly kind: 'Internal matching error' | 'Timeout';
+  readonly rule?: string;
+  readonly scanner: string;
+  readonly message: string;
+}
+
 /** Result of parsing a SARIF file. */
 export interface SarifParseResult {
   /** Scanner name extracted from SARIF. */
@@ -78,10 +87,12 @@ export interface SarifParseResult {
   readonly findings: readonly SecurityFinding[];
   /** Parsing errors (non-fatal). */
   readonly errors: readonly string[];
-  /** False for capped/malformed findings or non-parse failures; inspect parseDiagnostics too. */
+  /** False for unusable output or global failures; file diagnostics require coverage comparison. */
   readonly coverageComplete?: boolean;
   /** Attributable parse gaps, distinct from unusable results and non-parse errors. */
   readonly parseDiagnostics?: readonly ScannerParseDiagnostic[];
+  /** Attributable matcher errors/per-file timeouts; never evidence of full scan coverage. */
+  readonly scannerDiagnostics?: readonly ScannerFileDiagnostic[];
   /** Version measured from the scanner executable, when run by security_scan. */
   readonly scannerVersion?: string;
 }

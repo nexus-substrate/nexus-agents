@@ -333,6 +333,10 @@ function scannerInvocationsSuccessful(output: string): boolean {
   }
 }
 
+function hasFileDiagnostics(result: SarifParseResult): boolean {
+  return (result.parseDiagnostics?.length ?? 0) + (result.scannerDiagnostics?.length ?? 0) > 0;
+}
+
 function handleScanFailure(
   error: unknown,
   version: string,
@@ -343,7 +347,7 @@ function handleScanFailure(
   if (result !== undefined && output !== undefined && failureCode(error) === 3) {
     if (
       result.coverageComplete === true &&
-      (result.parseDiagnostics?.length ?? 0) > 0 &&
+      hasFileDiagnostics(result) &&
       scannerInvocationsSuccessful(output)
     ) {
       return { ...result, scannerVersion: version };
@@ -356,7 +360,9 @@ function handleScanFailure(
 
 function failedOutputDetails(result: SarifParseResult | undefined): string {
   if (result === undefined) return '';
-  const files = result.parseDiagnostics?.map((diagnostic) => diagnostic.file) ?? [];
+  const files = [...(result.parseDiagnostics ?? []), ...(result.scannerDiagnostics ?? [])].map(
+    (diagnostic) => diagnostic.file
+  );
   const diagnostics = files.length > 0 ? `; affected files: ${[...new Set(files)].join(', ')}` : '';
   const errors = result.errors.length > 0 ? `; ${result.errors.join('; ')}` : '';
   return diagnostics + errors;

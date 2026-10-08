@@ -25,6 +25,7 @@ import type { GateCheckResult } from '../security/quality-gate-types.js';
 import { executeSecurityScan } from '../mcp/tools/security-scan.js';
 import { runOsvCheck, type OsvCheckResult } from './dependency-gate.js';
 import type { SecurityFinding } from '../security/sarif-types.js';
+import { stripControlCharacters } from '../security/sarif-diagnostics.js';
 import { createLogger } from '../core/index.js';
 import {
   compareSecurityBaseline,
@@ -37,7 +38,7 @@ export interface SecurityGateResult extends GateCheckResult {
   readonly comparison?: SecurityBaselineComparison;
   /** Blocking SAST findings measured by a non-baseline scan. */
   readonly blockingFindings?: readonly SecurityFinding[];
-  /** Dependency coverage the verdict did not reach. Present on any verdict, including a pass. */
+  /** SAST or dependency coverage the verdict did not reach, including on a pass. */
   readonly coverageNote?: string;
 }
 
@@ -116,11 +117,12 @@ export function checkSecurityScan(
     );
     // Incomplete coverage cannot erase a measured SAST or OSV failure.
     if (gateResult.verdict === 'fail') return gateResult;
-    if (result.parseDiagnostics !== undefined && result.parseDiagnostics.length > 0) {
+    const gaps = [...(result.parseDiagnostics ?? []), ...(result.scannerDiagnostics ?? [])];
+    if (gaps.length > 0) {
       return {
         ...gateResult,
         verdict: 'skip',
-        details: `Security scan incomplete: unparsed files ${result.parseDiagnostics.map((d) => d.file).join(', ')}`,
+        details: `Security scan incomplete: unscanned files ${gaps.map((d) => d.file).join(', ')}`,
         durationMs: Date.now() - start,
       };
     }
@@ -140,6 +142,7 @@ async function runBaselineGate(
   const osv = await runOsvCheck(config.dependencyTarget ?? target, config, signal);
   throwIfAborted(signal, 'Security baseline scan aborted');
   const osvFailed = blocksDependencyCheck(osv);
+  const scanNote = unscannedNote(comparison);
   const details = comparison.complete
     ? `Base ${String(comparison.baseCount)}, worktree ${String(comparison.worktreeCount)} findings; ${String(comparison.introducedBlockingCount)} introduced blocking; ${buildScanSummary(comparison.worktreeCount ?? 0, comparison.introducedBlockingCount ?? 0, osv.vulnerabilities.length, osv)}`
     : `Dependency check: ${buildScanSummary(null, 0, osv.vulnerabilities.length, osv)}; Security comparison incomplete: ${comparison.errors.join('; ')}`;
@@ -152,12 +155,9 @@ async function runBaselineGate(
         : comparison.introducedBlockingCount === 0
           ? 'pass'
           : 'fail',
-    details: (osv.manifestError === undefined ? details : `${osv.manifestError}; ${details}`).slice(
-      0,
-      500
-    ),
+    details: `${(osv.manifestError === undefined ? details : `${osv.manifestError}; ${details}`).slice(0, 500)}${scanNote === undefined ? '' : `; ${scanNote}`}`,
     comparison,
-    ...coverageNoteField(osv),
+    ...combinedCoverageNote(osv, scanNote),
     durationMs: Date.now() - start,
   };
 }
@@ -291,6 +291,37 @@ function coverageNoteField(osv: OsvCheckResult): { coverageNote?: string } {
   return gaps.length === 0
     ? {}
     : { coverageNote: `Dependency coverage partial: ${gaps.join('; ')}` };
+}
+
+/** Per-entry and total caps on scanner-authored text in the note (#7294). */
+const UNSCANNED_ENTRY_MAX_CHARS = 200;
+const UNSCANNED_NOTE_MAX_CHARS = 500;
+
+/** Scanner message bodies are untrusted: neutralize controls, then bound. */
+function boundedUnscannedEntry(entry: string): string {
+  const flat = stripControlCharacters(entry).trim();
+  return flat.length <= UNSCANNED_ENTRY_MAX_CHARS
+    ? flat
+    : `${flat.slice(0, UNSCANNED_ENTRY_MAX_CHARS)}…`;
+}
+
+function unscannedNote(comparison: SecurityBaselineComparison): string | undefined {
+  const unscanned = comparison.unscannedCoverage ?? [];
+  if (unscanned.length === 0) return undefined;
+  const note = `SAST coverage partial; unscanned: ${unscanned.map(boundedUnscannedEntry).join('; ')}`;
+  if (note.length <= UNSCANNED_NOTE_MAX_CHARS) return note;
+  const suffix = `… (${String(unscanned.length)} unscanned entries; truncated)`;
+  return `${note.slice(0, UNSCANNED_NOTE_MAX_CHARS - suffix.length)}${suffix}`;
+}
+
+/** Preserve SAST omissions on every verdict, including passes that drop details. */
+function combinedCoverageNote(
+  osv: OsvCheckResult,
+  scanNote: string | undefined
+): { coverageNote?: string } {
+  const dependencyNote = coverageNoteField(osv).coverageNote;
+  const notes = [dependencyNote, scanNote].filter((note) => note !== undefined);
+  return notes.length === 0 ? {} : { coverageNote: notes.join('; ') };
 }
 
 function buildScanSummary(
