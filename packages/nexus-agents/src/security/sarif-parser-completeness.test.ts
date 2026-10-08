@@ -227,3 +227,117 @@ describe('SARIF coverage completeness (#7238)', () => {
     }
   );
 });
+
+describe('file-local Semgrep scanner errors (#7294)', () => {
+  it.each(['Internal matching error', 'Timeout'])(
+    'retains attributable %s as a coverage gap, not clean scan coverage',
+    (kind) => {
+      const message = `${kind} when running security.rule on src/a.yml:\n file-local failure`;
+      const result = parseSarif(
+        JSON.stringify({
+          runs: [
+            run([], {
+              invocations: [
+                {
+                  executionSuccessful: true,
+                  toolExecutionNotifications: [
+                    { descriptor: { id: kind }, level: 'warning', message: { text: message } },
+                  ],
+                },
+              ],
+            }),
+          ],
+        })
+      );
+      expect(result).toMatchObject({
+        scannerDiagnostics: [
+          { file: 'src/a.yml', kind, rule: 'security.rule', scanner: 'semgrep', message },
+        ],
+      });
+      expect(result.errors).toEqual([]);
+    }
+  );
+
+  it.each([
+    ['carriage return', 'src/a.yml\r'],
+    ['escape', 'src/\u001b[2Ka.yml'],
+    ['delete', 'src/a\u007f.yml'],
+  ])('refuses a file-local diagnostic whose path holds a %s control character', (_name, file) => {
+    const kind = 'Internal matching error';
+    const result = parseSarif(
+      JSON.stringify({
+        runs: [
+          run([], {
+            invocations: [
+              {
+                executionSuccessful: true,
+                toolExecutionNotifications: [
+                  {
+                    descriptor: { id: kind },
+                    level: 'warning',
+                    message: { text: `${kind} when running security.rule on ${file}:\n failure` },
+                  },
+                ],
+              },
+            ],
+          }),
+        ],
+      })
+    );
+    expect(result.scannerDiagnostics).toBeUndefined();
+    expect(result.coverageComplete).toBe(false);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it('refuses a parse diagnostic whose path holds a control character', () => {
+    const result = parseSarif(
+      JSON.stringify({
+        runs: [
+          run([], {
+            invocations: [
+              {
+                executionSuccessful: true,
+                toolExecutionNotifications: [
+                  {
+                    descriptor: { id: 'Syntax error' },
+                    level: 'warning',
+                    message: { text: 'Syntax error at line src/\u001ba.yml:1:\n bad' },
+                  },
+                ],
+              },
+            ],
+          }),
+        ],
+      })
+    );
+    expect(result.parseDiagnostics).toBeUndefined();
+    expect(result.coverageComplete).toBe(false);
+  });
+
+  it('keeps a configuration failure fatal even with a file-local matcher-shaped message', () => {
+    const result = parseSarif(
+      JSON.stringify({
+        runs: [
+          run([], {
+            invocations: [
+              {
+                executionSuccessful: true,
+                toolConfigurationNotifications: [
+                  {
+                    descriptor: { id: 'Internal matching error' },
+                    level: 'warning',
+                    message: {
+                      text: 'Internal matching error when running security.rule on src/a.yml:\n bad config',
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        ],
+      })
+    );
+    expect(result.coverageComplete).toBe(false);
+    expect(result.errors).toHaveLength(1);
+  });
+});

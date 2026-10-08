@@ -1022,7 +1022,7 @@ async function runImplSecurityPhase(
   };
 }
 
-/** A failed or skipped scan explains itself; a pass still discloses partial dependency coverage. */
+/** A failed or skipped scan explains itself; a pass still discloses partial SAST or dependency coverage. */
 function securityNoteField(security: Awaited<ReturnType<DevPipelineStages['securityScan']>>): {
   securityNote?: string;
 } {

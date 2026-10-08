@@ -113,6 +113,21 @@ describe('baseline parse coverage (#7238)', () => {
     expect(result.errors.join(';')).toContain('package.json');
   });
 
+  it.each(['package.json\n', 'package.json\r', 'package\u001b.json', 'package\u0085.json'])(
+    'keeps a diagnostic path with control characters outside the scanned tree: %j',
+    async (file) => {
+      mocks.scan.mockImplementation(() =>
+        scan([{ file, kind: 'partial-parse', message: 'syntax' }])
+      );
+      const result = await compare();
+      expect(result.complete).toBe(false);
+      expect(result.errors).toEqual([
+        `Coverage diagnostic path outside scanned tree: ${JSON.stringify(file)}`,
+      ]);
+      expect(result.unscannedCoverage).toEqual([]);
+    }
+  );
+
   it('does not label worktree findings as introductions if the base scan failed', async () => {
     mocks.scan.mockResolvedValueOnce({ error: 'scanner unavailable' }).mockResolvedValueOnce({
       ...scan(),
