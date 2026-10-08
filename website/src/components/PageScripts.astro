@@ -141,6 +141,6 @@
     resetAndRender();
   }
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rethemeMermaid);
-  // Dispatched by ThemeToggle.astro after it changes [data-theme].
+  // Dispatched by ThemeToggle.svelte after [data-theme] changes.
   document.addEventListener('nexus:themechange', rethemeMermaid);
 </script>
