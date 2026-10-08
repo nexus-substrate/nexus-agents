@@ -38,6 +38,110 @@ export function sanitizeOutput(
 }
 
 /**
+ * Whether `text` is one JSON document. Every context-rule prefix starts with a
+ * letter, and in a JSON document letters occur only inside string literals, so
+ * this one test places every match inside a JSON string.
+ */
+function isJsonDocument(text: string): boolean {
+  if (!/^\s*[[{"]/.test(text)) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * End of a context value. Plain text keeps the pre-#7296 extent: the whole
+ * non-whitespace run (`&`-bounded for a query value). Inside a JSON string the
+ * value also ends at the unescaped `"` that closes the string, and an escape is
+ * consumed as an indivisible pair, so the redaction never splits one (#7296).
+ */
+function contextValueEnd(text: string, start: number, query: boolean, json: boolean): number {
+  let end = start;
+  while (end < text.length) {
+    const char = text[end] ?? '';
+    if (/\s/.test(char) || (query && char === '&')) break;
+    if (json && char === '"') break;
+    if (json && char === '\\') end++;
+    end++;
+  }
+  return Math.min(end, text.length);
+}
+
+/** `file:line` straight after a rule id's `secret:`, as `sarif-parser` builds finding ids. */
+const SEMGREP_FINDING_LOCATION = /^[\w./@+-]+:\d+(?![\w.])/;
+
+/**
+ * A semgrep finding id (`semgrep:<rule>generic-secret:<file>:<line>`) rather than a
+ * `generic-secret:` assignment. `start` indexes the `secret` keyword; `valueStart`
+ * the character after its colon. The rule must be dotted/dashed identifier text and
+ * the colon must be followed, without whitespace, by a `file:line` location.
+ */
+function isSemgrepRuleId(text: string, start: number, valueStart: number): boolean {
+  const scannerStart = text.lastIndexOf('semgrep:', start);
+  if (scannerStart < 0) return false;
+  const rule = text.slice(scannerStart, start);
+  if (!/^semgrep:(?:[\w.-]*[._-])?generic-$/i.test(rule)) return false;
+  return SEMGREP_FINDING_LOCATION.test(text.slice(valueStart, valueStart + 4096));
+}
+
+interface ContextRule {
+  /** Matches the key and separator; named group `q` is an optional opening quote. */
+  readonly prefixes: RegExp;
+  readonly minimumLength: number;
+  readonly query?: boolean;
+}
+
+/** Redact only value spans; scanning avoids regex stack growth on large outputs. */
+function redactContextValues(
+  text: string,
+  rule: ContextRule,
+  placeholder: string,
+  json: boolean
+): string {
+  let result = '';
+  let copiedUntil = 0;
+  for (const match of text.matchAll(rule.prefixes)) {
+    if (match.index < copiedUntil) continue;
+    const quote = match.groups?.['q'] ?? '';
+    const keyEnd = match.index + match[0].length - quote.length;
+    if (match[0].toLowerCase() === 'secret:' && isSemgrepRuleId(text, match.index, keyEnd)) {
+      continue;
+    }
+    // Plain text: the quote is part of the value, as before #7296. JSON: an escaped
+    // or single quote opens the value; a bare `"` closes the string and is never taken.
+    const start = json && quote !== '"' ? keyEnd + quote.length : keyEnd;
+    const end = contextValueEnd(text, start, rule.query === true, json);
+    if (end - start < rule.minimumLength) continue;
+    result += text.slice(copiedUntil, start) + placeholder;
+    copiedUntil = end;
+  }
+  return result + text.slice(copiedUntil);
+}
+
+// Bearer and Basic stay separate passes, as before #7296: a value one consumes can hold the other.
+const BEARER_HEADER_RULE: ContextRule = {
+  prefixes: /authorization:\s*bearer\s+(?<q>\\?["'])?/gi,
+  minimumLength: 1,
+};
+const BASIC_HEADER_RULE: ContextRule = {
+  prefixes: /authorization:\s*basic\s+(?<q>\\?["'])?/gi,
+  minimumLength: 1,
+};
+const ASSIGNMENT_RULE: ContextRule = {
+  prefixes: /\b(?:password|passwd|secret)\s*[=:]\s*(?<q>\\?["'])?/gi,
+  minimumLength: 4,
+};
+const QUERY_RULE: ContextRule = {
+  prefixes:
+    /[?&](?:api[_-]?key|token|access[_-]?token|secret|password|prompt|system_prompt|user_prompt)=/gi,
+  minimumLength: 1,
+  query: true,
+};
+
+/**
  * Redacts credentials (API keys, authorization headers, Bearer tokens, URL credentials,
  * and sensitive JSON fields) from error messages and response bodies.
  *
@@ -63,19 +167,19 @@ export function sanitizeErrorDetails(
   // Redact known key patterns and URL credentials (user:pass@ / token@)
   result = sanitizeOutput(result, placeholder);
 
-  // Redact Authorization headers: Bearer and Basic tokens
-  result = result.replace(/(authorization:\s*bearer\s+)\S+/gi, `$1${placeholder}`);
-  result = result.replace(/(authorization:\s*basic\s+)\S+/gi, `$1${placeholder}`);
+  // Plain text keeps the pre-#7296 extents; inside a JSON document a value also
+  // stops at its string's closing quote, so the output still parses (#7296).
+  const json = isJsonDocument(result);
+  result = redactContextValues(result, BEARER_HEADER_RULE, placeholder, json);
+  result = redactContextValues(result, BASIC_HEADER_RULE, placeholder, json);
+  // The token class excludes quotes and backslashes, and `\s` cannot leave a JSON string.
   result = result.replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, `$1${placeholder}`);
 
   // Redact plain text assignments like password=... or secret: ...
-  result = result.replace(/(\b(?:password|passwd|secret)\s*[=:]\s*)\S{4,}/gi, `$1${placeholder}`);
+  result = redactContextValues(result, ASSIGNMENT_RULE, placeholder, json);
 
   // Redact sensitive query parameters in URLs or logs (?api_key=..., &token=..., &prompt=...)
-  result = result.replace(
-    /([?&](?:api[_-]?key|token|access[_-]?token|secret|password|prompt|system_prompt|user_prompt)=)[^&\s]+/gi,
-    `$1${placeholder}`
-  );
+  result = redactContextValues(result, QUERY_RULE, placeholder, json);
 
   // Redact sensitive JSON keys: "api_key": "...", "token": "...", "prompt": "...", etc.
   result = result.replace(
