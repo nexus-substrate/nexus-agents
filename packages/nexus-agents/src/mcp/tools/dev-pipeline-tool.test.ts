@@ -49,6 +49,8 @@ import {
   registerDevPipelineTool,
   runDevPipelineForGoal,
 } from './dev-pipeline-tool.js';
+import { buildStructuredOutput } from './dev-pipeline-output.js';
+import type { DevPipelineResult } from '../../pipeline/dev-pipeline.js';
 import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -115,6 +117,15 @@ function captureHandler(): CtxHandler {
 }
 
 describe('DevPipelineInputSchema', () => {
+  it('documents the quick panel and intentional full-panel escalation (#7297)', () => {
+    const description = DevPipelineInputSchema.shape.quickMode.description;
+    expect(description).toContain('3');
+    expect(description).toContain('architect, security, scope_steward');
+    expect(description).toMatch(/7.*escalat/i);
+    expect(description).toMatch(/posterior/i);
+    expect(description).toMatch(/contrarian/i);
+  });
+
   it('rejects proof_of_learning with retirement and migration guidance (#5234)', () => {
     const input = {
       task: 'Build a login form',
@@ -1118,5 +1129,131 @@ describe('run_dev_pipeline path containment', () => {
     await captureHandler()({ planFile: join(fx.linkIn, 'plan.md') }, STDIO_CTX);
 
     expect(runDevPipelineMock.mock.calls[0]?.[0]).toBe('# plan');
+  });
+});
+
+// #7297: text-only MCP callers need the reason; metadata retains full evidence.
+describe('run_dev_pipeline failure text (#7297)', () => {
+  it.each([
+    {
+      fields: { securityRan: true, securityNote: 'Critical SQL injection' },
+      stage: 'security',
+      reason: 'Critical SQL injection',
+      message: 'Pipeline did not complete: the security gate rejected the change',
+    },
+    {
+      fields: {
+        securityRan: false,
+        taskStatus: 'partial',
+        securityNote: 'Manifest coverage missing',
+      },
+      stage: 'security',
+      reason: 'Manifest coverage missing',
+      message: 'Pipeline did not complete: tasks partial',
+    },
+    {
+      fields: { planStatus: 'no_quorum', planVoteReason: 'Missing security voter' },
+      stage: 'planning',
+      reason: 'Missing security voter',
+      message: 'Pipeline stopped at the planning gate (planStatus: no_quorum)',
+    },
+    {
+      fields: { planStatus: 'unapproved', planVoteFeedback: 'Add retry logic' },
+      stage: 'planning',
+      reason: 'Add retry logic',
+      message: 'Pipeline stopped at the planning gate (planStatus: unapproved)',
+    },
+    {
+      fields: {
+        taskStatus: 'partial',
+        tasks: [
+          {
+            id: 't1',
+            title: 'Feature',
+            description: '',
+            assignedTo: 'coder',
+            status: 'rejected',
+            feedback: 'Quality gate: lint failed',
+          },
+        ],
+      },
+      stage: 'tasks',
+      reason: 'Quality gate: lint failed',
+      message: 'Pipeline did not complete: tasks partial',
+    },
+  ])(
+    'includes $stage and $reason while preserving metadata',
+    async ({ fields, stage, reason, message }) => {
+      const pipelineResult = {
+        ...PIPELINE_RESULT,
+        completed: false,
+        securityPassed: false,
+        ...fields,
+      } as DevPipelineResult;
+      runDevPipelineMock.mockResolvedValueOnce(pipelineResult as never);
+      const result = await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain(stage);
+      expect(result.content[0]?.text).toContain(reason);
+      expect(result._meta).toEqual({
+        [ERROR_ENVELOPE_META_KEY]: {
+          errorCategory: 'business',
+          isRetryable: false,
+          message,
+          detail: buildStructuredOutput(pipelineResult, false),
+        },
+      });
+    }
+  );
+
+  it('includes a warning-only quality gate refusal with no security verdict', async () => {
+    const reason = 'Quality gate refused: unmeasured content tier has no isolated workspace';
+    const pipelineResult = {
+      ...PIPELINE_RESULT,
+      completed: false,
+      securityPassed: false,
+      securityRan: false,
+      taskStatus: 'all_done' as const,
+      warnings: [reason],
+    };
+    runDevPipelineMock.mockResolvedValueOnce(pipelineResult);
+    const result = await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+    expect(result.content[0]?.text).toContain(reason);
+    expect(result._meta).toEqual({
+      [ERROR_ENVELOPE_META_KEY]: {
+        errorCategory: 'business',
+        isRetryable: false,
+        message: 'Pipeline did not complete',
+        detail: buildStructuredOutput(pipelineResult, false),
+      },
+    });
+  });
+
+  it('truncates long text visibly while retaining the full reason in metadata', async () => {
+    const securityNote = 'Security scan unavailable: ' + 'x'.repeat(3000) + 'END';
+    const pipelineResult = {
+      ...PIPELINE_RESULT,
+      completed: false,
+      securityPassed: false,
+      securityRan: false,
+      securityNote,
+    };
+    runDevPipelineMock.mockResolvedValueOnce(pipelineResult);
+    const result = await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+    const text = result.content[0]!.text;
+    expect(text).toContain('Security scan unavailable:');
+    expect(text.length).toBeLessThanOrEqual(2000);
+    expect(text).toMatch(/…$/);
+    expect(result._meta?.[ERROR_ENVELOPE_META_KEY]).toMatchObject({ detail: { securityNote } });
+  });
+
+  it('retains the fallback when no failure evidence was produced', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      ...PIPELINE_RESULT,
+      completed: false,
+      securityPassed: false,
+    });
+    const result = await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+    expect(result.content[0]?.text).toBe('Pipeline did not complete');
   });
 });

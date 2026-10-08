@@ -72,6 +72,7 @@ vi.mock('../mcp/tools/tool-memory.js', () => ({
   }),
 }));
 
+import { getVoterRoles } from '../cli/voter-roles.js';
 import { createAgentStages } from './agent-executor.js';
 import { runDevPipeline } from './dev-pipeline.js';
 import { resetCorrelationTracker } from '../mcp/tools/consensus-vote.js';
@@ -158,6 +159,21 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     expect(stageRows[0]).toMatchObject({ traceId: `pipeline-${sessionId}` });
     expect(stageRows[0]?.id).toMatch(/^pipeline-plan-/);
   });
+
+  it.each([true, false])(
+    'selects the canonical panel with quickMode=%s (#7297)',
+    async (quickMode) => {
+      // Reject to exercise panel selection without the documented approval escalation.
+      voters.decision = 'reject';
+      await createAgentStages({ quickMode, votingStrategy: 'simple_majority' }).vote(
+        'Measured plan',
+        ''
+      );
+      const seats = new DecisionCostStore().all()[0]?.summary.perVoter;
+      expect(seats).toHaveLength(quickMode ? 3 : 7);
+      expect(seats?.map((seat) => seat.role)).toEqual(getVoterRoles(quickMode));
+    }
+  );
 
   it('records a rejected panel as a rejection while seats still count as answered', async () => {
     voters.decision = 'reject';

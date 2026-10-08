@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
+import { truncateText } from '../../utils/text-utils.js';
 import { buildStructuredOutput } from './dev-pipeline-output.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
@@ -127,11 +128,13 @@ export const DevPipelineInputSchema = z.object({
   votingStrategy: VotingStrategySchema.optional().describe(
     'Voting strategy for plan approval (default: higher_order)'
   ),
-  /** Use 3 agents instead of 6 for faster voting. */
+  /** Start with the canonical quick panel; approvals may trigger a full-panel re-vote. */
   quickMode: z
     .boolean()
     .default(false)
-    .describe('Use 3 agents instead of 6 for faster consensus voting'),
+    .describe(
+      'Start with 3 voters (architect, security, scope_steward) instead of 7. An approved quick vote may escalate to the full 7-role panel when the Bayesian posterior is borderline or a separate contrarian check rejects with high confidence, matching CLI --quick'
+    ),
   /**
    * Deadline for EACH stage call in milliseconds (min 30s, max 600s), not a
    * budget for the whole run (#6736). Replaces every stage's default, the
@@ -379,11 +382,13 @@ async function executeDevPipelineBody(
   // fault, and each carries its own marker for exactly this reason. Erroring on
   // them would trade a false success for a false failure.
   if (!result.completed && result.dryRun !== true && result.harnessMode !== true) {
-    return toolStructuredError({
+    const error = toolStructuredError({
       errorCategory: 'business',
       message: describeIncompleteRun(result),
       detail: output,
     });
+    // #7297: enrich the display text without changing the metadata envelope.
+    return { ...error, content: [{ type: 'text', text: describeFailureText(result) }] };
   }
   return structuredToolSuccess(z.record(z.string(), z.unknown()), output);
 }
@@ -406,6 +411,33 @@ function describeIncompleteRun(result: DevPipelineResult): string {
     return 'Pipeline produced no_changes: implement left an empty diff';
   }
   return 'Pipeline did not complete';
+}
+
+/** Include produced failure evidence for callers that only consume text. */
+function describeFailureText(result: DevPipelineResult): string {
+  const details: string[] = [];
+  if (result.planStatus !== undefined) {
+    const reason = result.planVoteReason ?? result.planVoteFeedback;
+    if (reason !== undefined) details.push(`planning: ${reason}`);
+  }
+  if (!result.securityPassed && result.securityNote !== undefined) {
+    details.push(`security: ${result.securityNote}`);
+  }
+  details.push(...unfinishedTaskFeedback(result.tasks));
+  for (const warning of result.warnings ?? []) details.push(`warning: ${warning}`);
+  const text = [describeIncompleteRun(result), ...details].join('\n');
+  return truncateText(text, 2000, '…');
+}
+
+/** Feedback belongs to unfinished tasks, not successful tasks. */
+function unfinishedTaskFeedback(tasks: DevPipelineResult['tasks']): string[] {
+  const details: string[] = [];
+  for (const task of tasks) {
+    if (task.status !== 'done' && task.feedback !== undefined) {
+      details.push(`tasks (${task.id}): ${task.feedback}`);
+    }
+  }
+  return details;
 }
 
 /**
