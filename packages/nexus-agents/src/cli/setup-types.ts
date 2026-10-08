@@ -121,6 +121,10 @@ export interface SetupStep {
  * Extends CommandResult base pattern (Issue #584).
  */
 export interface SetupResult extends CommandResult {
+  /** Requested scope for manual MCP configuration. */
+  readonly scope?: SetupOptions['scope'];
+  /** Whether creation counts and paths describe planned actions. */
+  readonly dryRun?: boolean;
   /** Setup steps executed */
   readonly steps: readonly SetupStep[];
   /** MCP configuration was successful via Claude CLI */
@@ -134,7 +138,7 @@ export interface SetupResult extends CommandResult {
   readonly rulesPath?: string;
   /** Data directory path if initialized (#1249) */
   readonly dataDirPath?: string;
-  /** Number of data directories created (#1249) */
+  /** Number of data directories created, or planned during dry run (#1249). */
   readonly dataDirsCreated?: number;
   readonly warnings: readonly string[];
   readonly errors: readonly string[];

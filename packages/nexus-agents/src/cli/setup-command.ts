@@ -88,7 +88,11 @@ function bareServerEntry(snippet: string): string {
   }
 }
 
-function printMcpResult(mcpResult: McpConfigResult, snippet: string | undefined): void {
+function printMcpResult(
+  mcpResult: McpConfigResult,
+  snippet: string | undefined,
+  scope: SetupOptions['scope']
+): void {
   writeLine(formatHeader('MCP Configuration'));
   writeLine('─'.repeat(40));
   if (mcpResult.success) {
@@ -100,7 +104,11 @@ function printMcpResult(mcpResult: McpConfigResult, snippet: string | undefined)
       writeEmptyLine();
       writeLine('Manual fallback - run:');
       writeEmptyLine();
-      writeLine(formatCodeBlock(`claude mcp add-json nexus-agents '${bareServerEntry(snippet)}'`));
+      writeLine(
+        formatCodeBlock(
+          `claude mcp add-json -s ${scope} nexus-agents '${bareServerEntry(snippet)}'`
+        )
+      );
     }
   }
   writeEmptyLine();
@@ -109,11 +117,11 @@ function printMcpResult(mcpResult: McpConfigResult, snippet: string | undefined)
 /**
  * Prints rules file section.
  */
-function printRulesFile(rulesPath: string): void {
+function printRulesFile(rulesPath: string, dryRun: boolean = false): void {
   writeLine(formatHeader('Rules File'));
   writeLine('─'.repeat(40));
-  writeLine(`Created: ${rulesPath}`);
-  writeLine('Claude will now have context about nexus-agents tools.');
+  writeLine(`${dryRun ? 'Would create' : 'Created'}: ${rulesPath}`);
+  if (!dryRun) writeLine('Claude will now have context about nexus-agents tools.');
   writeEmptyLine();
 }
 
@@ -498,7 +506,7 @@ function runDataDirStep(options: SetupOptions): { step: SetupStep; result: DataD
         : 'failed',
       message: dataDirResult.success
         ? dataDirResult.created.length > 0
-          ? `Created ${String(dataDirResult.created.length)} directories`
+          ? `${options.dryRun ? 'Would create:' : 'Created'} ${String(dataDirResult.created.length)} directories`
           : 'All directories already exist'
         : `Failed: ${dataDirResult.error ?? 'Unknown error'}`,
       durationMs: getTimeProvider().now() - startTime,
@@ -626,6 +634,7 @@ function collectErrors(steps: readonly SetupStep[]): string[] {
 
 /** Result context for building final result. */
 interface SetupResultContext {
+  options: SetupOptions;
   startTime: number;
   steps: SetupStep[];
   warnings: string[];
@@ -648,6 +657,8 @@ function buildSetupResult(ctx: SetupResultContext): SetupResult {
   return {
     success: errors.length === 0,
     steps: ctx.steps,
+    scope: ctx.options.scope,
+    dryRun: ctx.options.dryRun,
     warnings: ctx.warnings,
     errors,
     durationMs: getTimeProvider().now() - ctx.startTime,
@@ -720,6 +731,7 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   steps.push(runValidationStep(steps)); // Step 10: Validation (#1271)
 
   return buildSetupResult({
+    options: parsedOptions,
     startTime,
     steps,
     warnings,
@@ -743,7 +755,7 @@ function printDetailSections(result: SetupResult): void {
             message: 'Added nexus-agents MCP server to Claude Code',
           }
         : { success: false, alreadyConfigured: false, message: 'Manual configuration required' };
-    printMcpResult(mcpResult, result.mcpSnippet);
+    printMcpResult(mcpResult, result.mcpSnippet, result.scope ?? 'user');
   }
   if (result.hookSnippet !== undefined || result.hooksConfigured === true) {
     const hookResult: HookConfigResult =
@@ -756,7 +768,7 @@ function printDetailSections(result: SetupResult): void {
         : { success: false, alreadyConfigured: false, message: 'Manual configuration required' };
     printHooksResult(hookResult, result.hookSnippet);
   }
-  if (result.rulesPath !== undefined) printRulesFile(result.rulesPath);
+  if (result.rulesPath !== undefined) printRulesFile(result.rulesPath, result.dryRun);
   if (result.dataDirPath !== undefined) printDataDirSection(result);
   printPermissionsSuggestion();
 }
@@ -775,7 +787,7 @@ function printDataDirSection(result: SetupResult): void {
   const count = result.dataDirsCreated ?? 0;
   const msg =
     count > 0
-      ? `Created ${String(count)} directories under ${result.dataDirPath ?? ''}`
+      ? `${result.dryRun === true ? 'Would create:' : 'Created'} ${String(count)} directories under ${result.dataDirPath ?? ''}`
       : `All directories already exist at ${result.dataDirPath ?? ''}`;
   writeLine(msg);
   writeEmptyLine();
