@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { runSetup, printSetupResult } from './setup-command.js';
 import { detectCliBinary } from './setup-cli-detection.js';
+import { initDataDirectories } from './setup-data-dir.js';
 
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
@@ -55,6 +56,86 @@ describe('setup scope honesty (#7235)', () => {
       expect(config).toMatchObject({ mcp: { 'nexus-agents': { enabled: true } } });
     }
     expect(existsSync(join(userRoot, '.config', 'opencode', 'opencode.json'))).toBe(false);
+  });
+
+  it.each([
+    ['project', false],
+    ['project', true],
+    ['user', false],
+    ['user', true],
+  ] as const)('prints a bare fallback with requested scope %s (dryRun=%s)', (scope, dryRun) => {
+    vi.mocked(execSync).mockImplementation((command) => {
+      if (command === 'claude --version') return '1.0.0';
+      throw new Error('No existing registration');
+    });
+    vi.mocked(execFileSync).mockImplementation(() => {
+      throw new Error('Claude registration unavailable');
+    });
+    const result = runSetup({
+      ...skipOtherSteps,
+      skipMcp: false,
+      skipOpencode: true,
+      skipCodex: true,
+      scope,
+      dryRun,
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    printSetupResult(result, false);
+
+    const text = output.mock.calls.map(([chunk]) => String(chunk)).join('');
+    const payload = new RegExp(`claude mcp add-json -s ${scope} nexus-agents '([^']+)'`).exec(
+      text
+    )?.[1];
+    expect(payload).toBeDefined();
+    const entry: unknown = JSON.parse(payload ?? 'null');
+    expect(entry).toEqual({
+      command: 'nexus-agents',
+      args: ['--mode=server'],
+    });
+  });
+
+  it.each([
+    ['rules', false],
+    ['rules', true],
+    ['data step', false],
+    ['data step', true],
+    ['data detail', false],
+    ['data detail', true],
+  ] as const)('reports Would create for %s (verbose=%s)', (section, verbose) => {
+    const dataPath = join(userRoot, '.nexus-agents');
+    vi.mocked(initDataDirectories).mockReturnValueOnce({
+      success: true,
+      rootPath: dataPath,
+      created: [join(dataPath, 'auth')],
+      alreadyExisted: [],
+      error: null,
+    });
+    const result = runSetup({
+      dryRun: true,
+      skipMcp: true,
+      skipHooks: true,
+      skipOpencode: true,
+      skipCodex: true,
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    printSetupResult(result, verbose);
+    const text = output.mock.calls.map(([chunk]) => String(chunk)).join('');
+
+    if (section === 'data step') {
+      expect(result.steps.find((step) => step.name === 'Data Directory')?.message).toBe(
+        'Would create: 1 directories'
+      );
+    } else {
+      const expected =
+        section === 'rules'
+          ? `Would create: ${join(projectRoot, '.rules', 'nexus-agents.md')}`
+          : `Would create: 1 directories under ${dataPath}`;
+      expect(text).toContain(expected);
+    }
+    expect(text).not.toMatch(/Created[: ]/);
+    expect(existsSync(join(projectRoot, '.rules', 'nexus-agents.md'))).toBe(false);
+    expect(existsSync(join(projectRoot, '.nexus-agents', 'nexus-agents.yaml'))).toBe(false);
+    expect(existsSync(dataPath)).toBe(false);
   });
 
   it('keeps OpenCode user scope in the user config directory', () => {

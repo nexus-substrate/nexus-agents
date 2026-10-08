@@ -551,7 +551,9 @@ describe('Setup Command', () => {
 
       printSetupResult(result, false);
 
-      const payload = /claude mcp add-json nexus-agents '([^']+)'/.exec(writeCalls.join(''))?.[1];
+      const payload = /claude mcp add-json -s user nexus-agents '([^']+)'/.exec(
+        writeCalls.join('')
+      )?.[1];
       expect(payload).toBeDefined();
       const entry: unknown = JSON.parse(payload ?? 'null');
       expect(entry).toEqual(useNpx ? NEXUS_AGENTS_MCP_NPX_ENTRY : NEXUS_AGENTS_MCP_ENTRY);
