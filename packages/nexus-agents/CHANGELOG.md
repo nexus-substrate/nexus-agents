@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.5.7
+
+### Patch Changes
+
+- [#7326](https://github.com/nexus-substrate/nexus-agents/pull/7326) [`6b972c0`](https://github.com/nexus-substrate/nexus-agents/commit/6b972c04966b761931eeab379eae4263945cb7ed) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve Semgrep version-probe timeout, execution-failure, and empty-output diagnostics instead of reporting every failed probe as a missing installation. Failed probes still prevent scanning.
+
 ## 11.5.6
 
 ### Patch Changes
