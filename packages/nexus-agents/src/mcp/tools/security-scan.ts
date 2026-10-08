@@ -24,14 +24,14 @@ const logger = createLogger({ component: 'security-scan' });
 /** Timeout for scanner execution (5 minutes). */
 const SCAN_TIMEOUT_MS = 300_000;
 
-/** Check if semgrep is available. */
-async function isSemgrepAvailable(
+/** Measure semgrep's version, preserving why a probe could not measure it. */
+async function probeSemgrepVersion(
   signal: AbortSignal | undefined,
   env: NodeJS.ProcessEnv | undefined,
   wrapper: CommandWrapper | undefined,
   binary = 'semgrep',
   cwd?: string
-): Promise<string | undefined> {
+): Promise<string | { error: string }> {
   try {
     const { stdout } = await execFileTree(binary, ['--version'], {
       timeoutMs: 10_000,
@@ -40,10 +40,57 @@ async function isSemgrepAvailable(
       wrapper,
       cwd,
     });
-    return stdout.trim() || undefined;
-  } catch {
-    return undefined;
+    const version = stdout.trim();
+    return version === '' ? { error: 'semgrep version probe returned empty output' } : version;
+  } catch (error: unknown) {
+    if (
+      failureCode(error) === 'ENOENT' &&
+      wrapper === undefined &&
+      (await isSemgrepExecutableMissing(binary, env, cwd))
+    ) {
+      return { error: 'semgrep is not installed. Install with: pip install semgrep' };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      error: `semgrep version probe failed (exit ${String(failureCode(error))}): ${message}`,
+    };
   }
+}
+
+/** Match explicit executable paths and POSIX PATH lookup against the probe cwd. */
+function probeExecutableCandidates(
+  binary: string,
+  env: NodeJS.ProcessEnv | undefined,
+  cwd: string | undefined
+): readonly string[] | undefined {
+  const root = cwd ?? process.cwd();
+  const searchPath = (env ?? process.env)['PATH'];
+  return isAbsolute(binary) || /[/\\]/.test(binary)
+    ? [resolve(root, binary)]
+    : process.platform === 'win32'
+      ? undefined
+      : searchPath?.split(delimiter).map((directory) => resolve(root, directory, binary));
+}
+
+/** ENOENT may name a missing interpreter rather than a missing scanner. */
+async function isSemgrepExecutableMissing(
+  binary: string,
+  env: NodeJS.ProcessEnv | undefined,
+  cwd: string | undefined
+): Promise<boolean> {
+  const candidates = probeExecutableCandidates(binary, env, cwd);
+  // An implicit platform PATH cannot prove absence; retain the execution failure.
+  if (candidates === undefined || candidates.length === 0) return false;
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return false;
+    } catch (error: unknown) {
+      // Inconclusive filesystem failures must not claim the scanner is absent.
+      if (failureCode(error) !== 'ENOENT' && failureCode(error) !== 'ENOTDIR') return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -197,7 +244,7 @@ async function measureScannerVersion(
   options: SecurityScanOptions,
   targetDir: string
 ): Promise<string | { error: string }> {
-  const version = await isSemgrepAvailable(
+  const version = await probeSemgrepVersion(
     options.signal,
     options.env,
     options.wrapper,
@@ -205,8 +252,7 @@ async function measureScannerVersion(
     parse(targetDir).root
   );
   if (options.signal?.aborted === true) return { error: 'Scan aborted before semgrep ran' };
-  if (version === undefined)
-    return { error: 'semgrep is not installed. Install with: pip install semgrep' };
+  if (typeof version !== 'string') return version;
   if (options.preparedScan !== undefined && options.preparedScan.version !== version) {
     return {
       error: `Scanner version changed: expected ${options.preparedScan.version}, got ${version}`,
@@ -223,14 +269,14 @@ export async function prepareSecurityScan(
   try {
     if (rulesets.length === 0) throw new Error('No security rulesets configured');
     const binary = await resolveSemgrep(options.env ?? process.env);
-    const version = await isSemgrepAvailable(
+    const version = await probeSemgrepVersion(
       options.signal,
       options.env,
       options.wrapper,
       binary,
       parse(resolve(options.directory)).root
     );
-    if (version === undefined) throw new Error('Cannot measure semgrep version');
+    if (typeof version !== 'string') throw new Error(version.error);
     const configs: string[] = [];
     for (const [index, ruleset] of rulesets.entries()) {
       const contents = await readRuleset(ruleset, options.signal);
