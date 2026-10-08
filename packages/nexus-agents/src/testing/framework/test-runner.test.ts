@@ -214,6 +214,7 @@ describe('TestRunner', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -314,33 +315,46 @@ describe('TestRunner', () => {
     });
 
     it('should execute tasks in parallel', async () => {
+      vi.useFakeTimers();
       const tasks = Array.from({ length: 5 }, (_, i) =>
         createTestTask({ id: `task-${String(i)}`, name: `Task ${String(i)}` })
       );
       taskRegistry.registerAll(tasks);
 
-      // Use slow adapter to verify parallelism
+      // Keep executions pending on fake timers so overlap is observable.
       const slowAdapter = createMockAdapter('claude', { latencyMs: 5 });
-      adapters.set('claude', slowAdapter);
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const execute = vi.fn<ICliAdapter['execute']>(async (task) => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        try {
+          return await slowAdapter.execute(task);
+        } finally {
+          inFlight--;
+        }
+      });
+      adapters.set('claude', { ...slowAdapter, execute });
 
       const runner = createTestRunner({
         adapters,
         taskRegistry,
         rubricScorer,
         routingScorer,
-        config: { parallelism: 5 },
+        config: { parallelism: 5, retryFailedTasks: false },
       });
 
-      const startTime = Date.now();
-      const result = await runner.runAll();
-      const duration = Date.now() - startTime;
+      const run = runner.runAll();
+      await vi.runAllTimersAsync();
+      const result = await run;
 
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.taskResults.length).toBe(5);
-        // With parallelism=5 and 50ms latency, should complete in ~50-100ms, not 250ms
-        expect(duration).toBeLessThan(200);
       }
+      expect(execute).toHaveBeenCalledTimes(5);
+      expect(maxInFlight).toBeGreaterThan(1);
+      expect(inFlight).toBe(0);
     });
 
     it('should call progress callback', async () => {
