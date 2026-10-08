@@ -6,13 +6,15 @@
  * at a JSON string boundary when the value sits inside a JSON string.
  *
  * Do not edit to track the live implementation: a drifting oracle proves
- * nothing. `sanitizeOutput` (the credential-shape layer) is imported rather
- * than copied because #7296 does not change it.
+ * nothing. The credential-shape layer is the frozen pre-#7315 copy in
+ * `testing/legacy-credential-patterns`, not the live `sanitizeOutput`: #7315
+ * changed that layer, and a live import would move this baseline with it.
  *
  * @module testing/legacy-sanitize-error-details
  */
 
-import { REDACTED_KEY_PLACEHOLDER, sanitizeOutput } from '../security/output-sanitizer.js';
+import { REDACTED_KEY_PLACEHOLDER } from '../security/output-sanitizer.js';
+import { legacyRedactCredentialShapes } from './legacy-credential-patterns.js';
 
 /** `sanitizeErrorDetails` at the commit before #7296, verbatim. */
 export function legacySanitizeErrorDetails(
@@ -27,7 +29,7 @@ export function legacySanitizeErrorDetails(
     result = result.replaceAll(apiKey.trim(), placeholder);
   }
 
-  result = sanitizeOutput(result, placeholder);
+  result = legacyRedactCredentialShapes(result, placeholder);
 
   result = result.replace(/(authorization:\s*bearer\s+)\S+/gi, `$1${placeholder}`);
   result = result.replace(/(authorization:\s*basic\s+)\S+/gi, `$1${placeholder}`);

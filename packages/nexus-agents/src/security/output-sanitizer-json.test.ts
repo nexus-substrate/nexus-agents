@@ -229,6 +229,14 @@ describe('plain-text redaction is never narrower than before #7296', () => {
   });
 });
 
+describe('the frozen pre-#7296 oracle', () => {
+  it('applies the frozen pre-#7315 credential-shape layer, not the live one', () => {
+    const input = JSON.stringify({ aws_session_token: VALUE, keep: 'ok' });
+    // Before #7315 the shape match took the key, its quotes and the value as one span.
+    expect(legacySanitizeErrorDetails(input)).toBe(`{"${REDACTED_KEY_PLACEHOLDER}","keep":"ok"}`);
+  });
+});
+
 describe('differential: the #7296 redactor against the frozen pre-#7296 one', () => {
   it('redacts every secret the old code redacted, and keeps JSON parseable', () => {
     const random = seededRandom(7296);
