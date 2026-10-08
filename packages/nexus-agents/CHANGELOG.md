@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.5.9
+
+### Patch Changes
+
+- [#7331](https://github.com/nexus-substrate/nexus-agents/pull/7331) [`65c4df0`](https://github.com/nexus-substrate/nexus-agents/commit/65c4df06a7d5a92c3e1a6bf8b01b463d5378c610) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Clarify run_dev_pipeline quickMode's three-seat panel and intentional full-panel escalation. Include bounded stage failure reasons in MCP text while preserving metadata.
+
 ## 11.5.8
 
 ### Patch Changes
