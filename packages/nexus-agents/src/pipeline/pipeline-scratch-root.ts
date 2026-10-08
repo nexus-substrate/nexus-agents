@@ -20,8 +20,7 @@ function overlaps(a: string, b: string): boolean {
  * can be inside the source: neither PATCH_PATHS nor COMPLETE_SCAN_FLAGS excludes
  * `.nexus-agents`, and the sandbox/gate refuses overlapping implementation trees.
  * Keep the OS-root exception for that case instead of nesting scratch copies in
- * captured/scanned inputs. Refuse a fallback inside a protected tree. An OS root
- * containing the source is safe: callers allocate fresh, distinct children via
+ * captured/scanned inputs. An OS root containing the source is safe: callers allocate fresh, distinct children via
  * mkdtemp or a UUID-named Git worktree, creating siblings rather than nesting.
  */
 export function pipelineScratchRoot(protectedPaths: readonly string[]): string {
@@ -30,11 +29,9 @@ export function pipelineScratchRoot(protectedPaths: readonly string[]): string {
   const occupied = protectedPaths.map(canonical);
   const preferred = canonical(getNexusTmpDir());
   if (!occupied.some((path) => overlaps(preferred, path))) return preferred;
-  const fallback = canonical(tmpdir());
-  if (occupied.some((path) => contains(path, fallback))) {
-    throw new Error(
-      'No isolated pipeline scratch root: NEXUS_TMPDIR and OS temp overlap protected trees'
-    );
-  }
-  return fallback;
+  // As before #7302: the OS temp root is the fallback even when it lies inside a
+  // protected tree (CI puts TMPDIR inside the package cwd). Callers allocate a
+  // fresh child there, and the quality gate's own isolation check still fails
+  // closed if that child overlaps a scanned tree.
+  return canonical(tmpdir());
 }

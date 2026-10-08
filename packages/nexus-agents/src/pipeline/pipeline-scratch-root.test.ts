@@ -50,10 +50,12 @@ describe('pipeline scratch isolation (#7302)', () => {
     expect(pipelineScratchRoot([source])).toBe(`${source}-scratch`);
   });
 
-  it('refuses allocation when even the system root overlaps a protected tree', () => {
+  it('falls back to the system root even when it overlaps a protected tree (pre-#7302 behaviour)', () => {
+    // CI puts TMPDIR inside the package cwd. The gate's own isolation check, not
+    // this selector, fails closed if the allocated child overlaps a scanned tree.
     vi.stubEnv('NEXUS_TMPDIR', join(source, '.nexus-agents/tmp'));
     vi.stubEnv('TMPDIR', source);
-    expect(() => pipelineScratchRoot([source])).toThrow('No isolated pipeline scratch root');
+    expect(pipelineScratchRoot([source])).toBe(realpathSync(source));
   });
 
   it('allows a fresh sibling allocation when the OS root contains the source', () => {
