@@ -1005,6 +1005,57 @@ That's my vote.`;
       expect(result?.pinnedModel).toBe('assigned-primary');
     });
 
+    it('resolves every lazy assignment in a mixed-fallback panel (#7295)', async () => {
+      const claude = votingAdapter(UNRESOLVED_MODEL_ID, 'cli-claude');
+      vi.mocked(claude.complete).mockImplementation(() => {
+        (claude as { modelId: string }).modelId = 'claude-fable-5';
+        return Promise.resolve({
+          ok: true,
+          value: {
+            content: [
+              {
+                type: 'text',
+                text: '{"decision":"approve","confidence":0.9,"reasoning":"Test vote."}',
+              },
+            ],
+            model: 'claude-opus',
+            fallbackFrom: 'fable',
+            stopReason: 'end_turn',
+          },
+        });
+      });
+      const openai = votingAdapter('gpt-5.5', 'cli-codex');
+      const { logger } = captureWarnings();
+      const results = await collectRealVotes({
+        roles: ['architect', 'security', 'scope_steward'],
+        proposal: 'Mixed capacity fallback',
+        gatewayAdapters: [claude, openai],
+        roleAdapters: new Map([
+          ['architect', claude],
+          ['security', openai],
+          ['scope_steward', claude],
+        ]),
+        interAgentDelayMs: 0,
+        maxRetries: 0,
+        logger,
+      });
+      expect(results.map((vote) => vote.pinnedModel)).toEqual([
+        'claude-fable-5',
+        'gpt-5.5',
+        'claude-fable-5',
+      ]);
+      expect(results.map((vote) => vote.servedModel)).toEqual([
+        'claude-opus',
+        undefined,
+        'claude-opus',
+      ]);
+      expect(results.map((vote) => vote.fallback?.fromModel)).toEqual([
+        'fable',
+        undefined,
+        'fable',
+      ]);
+    });
+
     it('does not warn for a genuinely diverse successful panel', async () => {
       const { logger, warnings } = captureWarnings();
 

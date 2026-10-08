@@ -93,6 +93,7 @@ describe('assignedPanelDiversityOf', () => {
     expect(assignedPanelDiversityOf(panel)).toEqual({
       assignedDistinctModels: 3,
       assignedDistinctFamilies: 3,
+      assignedCoverage: { reported: 3, total: 3 },
     });
     expect(panelDiversityOf(panel)).toMatchObject({ distinctModels: 1, distinctFamilies: 1 });
   });
@@ -102,6 +103,7 @@ describe('assignedPanelDiversityOf', () => {
     expect(assignedPanelDiversityOf(panel)).toEqual({
       assignedDistinctModels: 1,
       assignedDistinctFamilies: 1,
+      assignedCoverage: { reported: 7, total: 7 },
     });
   });
 
@@ -114,16 +116,21 @@ describe('assignedPanelDiversityOf', () => {
     expect(assignedPanelDiversityOf(panel)).toEqual({
       assignedDistinctModels: 2,
       assignedDistinctFamilies: 1,
+      assignedCoverage: { reported: 3, total: 3 },
     });
   });
 
   it('names an empty or unresolved roster as unmeasured, not zero diversity', () => {
-    expect(assignedPanelDiversityOf([])).toEqual({});
-    expect(assignedPanelDiversityOf([seat('pm')])).toEqual({});
-    expect(assignedPanelDiversityOf([seat('pm', { pinnedModel: 'pending-detection' })])).toEqual(
-      {}
+    expect(assignedPanelDiversityOf([])).toEqual({ assignedCoverage: { reported: 0, total: 0 } });
+    // #7295: a known request used to be ignored when its launch-time pin was unresolved.
+    const unmeasured = { assignedCoverage: { reported: 0, total: 1 } };
+    expect(assignedPanelDiversityOf([seat('pm', { model: undefined })])).toEqual(unmeasured);
+    expect(
+      assignedPanelDiversityOf([seat('pm', { model: undefined, pinnedModel: 'pending-detection' })])
+    ).toEqual(unmeasured);
+    expect(assignedPanelDiversityOf([seat('pm', { model: '', pinnedModel: '' })])).toEqual(
+      unmeasured
     );
-    expect(assignedPanelDiversityOf([seat('pm', { pinnedModel: '' })])).toEqual({});
   });
 });
 

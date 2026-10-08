@@ -23,6 +23,7 @@ import type {
   VotingResult,
 } from '../../cli/vote-types.js';
 import {
+  assignedModel,
   assignedPanelDiversityOf,
   crossFamilyFallbackWarning,
   panelDiversityOf,
@@ -566,10 +567,12 @@ export interface ConsensusVoteResponse {
    * panel of 3+ seats.
    */
   panelDiversity: PanelDiversity;
-  /** Distinct assigned models over all seats; absent when no assignment resolved. */
+  /** Distinct resolved assignments; assignedCoverage discloses any missing seats. */
   assignedDistinctModels?: number;
-  /** Recognised families over all assigned models; absent when no assignment resolved. */
+  /** Recognised assigned families; absent when no assignment resolved. */
   assignedDistinctFamilies?: number;
+  /** Resolved assignments out of all seats; zero reported means unmeasured. */
+  assignedCoverage?: { readonly reported: number; readonly total: number };
   /**
    * Per-decision cost rollup (#3855): per-voter / per-model token + USD totals
    * for this governed decision. Rides the existing response — no new MCP tool.
@@ -745,7 +748,7 @@ function modelUsedOf(result: AgentVoteResult): { modelUsed?: string } {
 
 /** Assignment survives execution errors and failover; unresolved ids remain absent. */
 function assignedModelOf(result: AgentVoteResult): { assignedModel?: string } {
-  const model = result.pinnedModel;
+  const model = assignedModel(result);
   if (model === undefined || model === '' || model === UNRESOLVED_MODEL_ID) return {};
   return {
     assignedModel:

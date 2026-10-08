@@ -73,6 +73,83 @@ function extended(votes: readonly AgentVoteResult[]): ExtendedVotingResult {
 const INPUT = { proposal: 'Ratify commit abc', simulateVotes: false, quickMode: false } as const;
 
 describe('consensus_vote response: assigned roster diversity', () => {
+  it('covers every assignment in a mixed-fallback panel (#7295)', () => {
+    const votes = [
+      seat('architect', {
+        cli: 'cli-claude',
+        pinnedModel: 'pending-detection',
+        model: 'claude-fable-5',
+        servedModel: 'opus',
+        fallback: { fromCli: 'claude', fromModel: 'fable', reason: 'capacity' },
+      }),
+      seat('security', { pinnedModel: 'pending-detection', model: 'gpt-5.5' }),
+      seat('scope_steward', {
+        pinnedModel: 'claude-fable-5',
+        model: 'claude-opus',
+        servedModel: 'claude-opus',
+        fallback: { fromCli: 'claude', fromModel: 'fable', reason: 'capacity' },
+      }),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response.votes.map((v) => v.assignedModel)).toEqual([
+      'claude-fable-5',
+      'gpt-5.5',
+      'claude-fable-5',
+    ]);
+    expect(response).toMatchObject({
+      assignedDistinctModels: 2,
+      assignedDistinctFamilies: 2,
+      assignedCoverage: { reported: 3, total: 3 },
+    });
+    expect(response.votes.map((v) => v.modelUsed)).toEqual([
+      'claude-opus',
+      'gpt-5.5',
+      'claude-opus',
+    ]);
+  });
+
+  it('discloses partial assignment coverage without treating a fallback model as assigned', () => {
+    const votes = [
+      seat('architect', { pinnedModel: 'claude-fable-5', servedModel: 'claude-opus' }),
+      seat('security', {
+        pinnedModel: 'pending-detection',
+        model: 'claude-opus',
+        fallback: { fromCli: 'codex', reason: 'unknown' },
+      }),
+      seat('scope_steward', { source: 'error', model: undefined, pinnedModel: '' }),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response).toMatchObject({
+      assignedDistinctModels: 1,
+      assignedDistinctFamilies: 1,
+      assignedCoverage: { reported: 1, total: 3 },
+    });
+    expect(response.votes[1]).not.toHaveProperty('assignedModel');
+    expect(response.votes[2]).not.toHaveProperty('assignedModel');
+  });
+
+  it('qualifies assignment aliases against the original CLI after cross-CLI fallback', () => {
+    const votes = [
+      seat('architect', {
+        assignedCli: 'claude',
+        cli: 'cli-codex',
+        pinnedModel: 'pending-detection',
+        model: 'gpt-5.5',
+        servedModel: 'gpt-5.5',
+        fallback: { fromCli: 'claude', fromModel: 'fable', reason: 'capacity' },
+      }),
+      seat('security', { cli: 'cli-codex', model: 'gpt-5.5' }),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response.votes.map((v) => v.assignedModel)).toEqual(['claude-fable-5', 'gpt-5.5']);
+    expect(response).toMatchObject({
+      assignedDistinctModels: 2,
+      assignedDistinctFamilies: 2,
+      assignedCoverage: { reported: 2, total: 2 },
+    });
+    expect(response.panelDiversity).toMatchObject({ distinctModels: 1, distinctFamilies: 1 });
+  });
+
   it('discloses every assignment when only one of three assigned seats responds', () => {
     const votes = [
       seat('architect', { pinnedModel: 'claude-opus', model: 'claude-opus' }),
@@ -105,10 +182,14 @@ describe('consensus_vote response: assigned roster diversity', () => {
     const response = buildResponse(INPUT, extended([]));
     expect(response).not.toHaveProperty('assignedDistinctModels');
     expect(response).not.toHaveProperty('assignedDistinctFamilies');
-    expect(toAgentVoteSummary(seat('pm'))).not.toHaveProperty('assignedModel');
-    expect(toAgentVoteSummary(seat('pm', { pinnedModel: 'pending-detection' }))).not.toHaveProperty(
+    expect(response).toHaveProperty('assignedCoverage', { reported: 0, total: 0 });
+    // #7295: omit only genuinely unresolved assignments, not a resolved request.
+    expect(toAgentVoteSummary(seat('pm', { model: undefined }))).not.toHaveProperty(
       'assignedModel'
     );
+    expect(
+      toAgentVoteSummary(seat('pm', { model: undefined, pinnedModel: 'pending-detection' }))
+    ).not.toHaveProperty('assignedModel');
   });
 });
 
