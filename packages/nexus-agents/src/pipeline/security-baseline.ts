@@ -1,7 +1,6 @@
 /** Complete, occurrence-aware comparison against a pinned security baseline (#7238). */
 import { createHash } from 'node:crypto';
 import { mkdtemp, rm, readFile, readlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { execFileTree, type ExecFileTreeOptions } from '../cli-adapters/exec-file-tree.js';
 import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
@@ -9,6 +8,7 @@ import { executeSecurityScan, prepareSecurityScan } from '../mcp/tools/security-
 import { SEVERITY_ORDER, type SecurityFinding } from '../security/sarif-types.js';
 import type { SecurityGateConfig } from './security-gate.js';
 import { throwIfAborted } from '../adapters/abort-utils.js';
+import { pipelineScratchRoot } from './pipeline-scratch-root.js';
 import {
   scanErrors,
   normalizedScan,
@@ -136,7 +136,7 @@ export async function compareSecurityBaseline(
       await git(baseline.directory, ['rev-parse', '--verify', `${baseline.sha}^{commit}`])
     ).trim();
     if (!/^[a-f0-9]{40,64}$/.test(sha)) throw new Error('Base did not resolve to a commit SHA');
-    directory = await allocateComparisonDirectory(config, execOptions);
+    directory = await allocateComparisonDirectory(target, config, execOptions);
     const archive = await archiveBaseline({ target, directory, baseline, sha, git, execOptions });
     ({ base, worktree } = await scanTrees({
       target,
@@ -186,10 +186,17 @@ function incomplete(
 }
 
 async function allocateComparisonDirectory(
+  target: string,
   config: SecurityGateConfig,
   options: import('../cli-adapters/exec-file-tree.js').ExecFileTreeOptions
 ): Promise<string> {
-  if (config.wrapper === undefined) return mkdtemp(join(tmpdir(), 'security-baseline-'));
+  if (config.wrapper === undefined) {
+    const root = pipelineScratchRoot([target, config.baseline?.directory ?? target, process.cwd()]);
+    return mkdtemp(join(root, 'security-baseline-'));
+  }
+  // The wrapper pins TMPDIR to its private writable host directory beside the
+  // scratch checkout, outside the scanned tree. Host NEXUS_TMPDIR may be read-only
+  // in bwrap, so allocate through the wrapper instead of bypassing its isolation.
   const path = (await execFileTree('mktemp', ['-d'], options)).stdout.trim();
   if (!isAbsolute(path)) throw new Error('Sandbox did not allocate a comparison directory');
   return path;

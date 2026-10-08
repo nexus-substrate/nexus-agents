@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseSarif } from '../security/sarif-parser.js';
 import type { SecurityScanInput } from '../mcp/tools/security-scan-types.js';
 import { checkSecurityScan } from './security-gate.js';
@@ -121,6 +121,8 @@ function result(
 
 describe('two-sided file-local scanner errors (#7294)', () => {
   beforeEach(() => {
+    // Shallow-checkout TMPDIR is in the scanned repo; use the real OS fallback.
+    vi.stubEnv('TMPDIR', process.env['VITEST_SYSTEM_TMPDIR']);
     vi.clearAllMocks();
     mocks.scan.mockReset();
     mocks.changedPath = '';
@@ -130,6 +132,7 @@ describe('two-sided file-local scanner errors (#7294)', () => {
     mocks.aliasName = '';
     mocks.target = target;
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   it.each(['Internal matching error', 'Timeout'])(
     'completes an unchanged-file %s with unscanned reason and provenance',

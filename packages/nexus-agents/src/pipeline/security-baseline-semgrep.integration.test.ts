@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
 import { checkSecurityScan } from './security-gate.js';
 
@@ -150,10 +150,13 @@ describe.skipIf(scannerAbsent)(suiteName, () => {
   });
 
   beforeEach(async () => {
+    // Shallow-checkout TMPDIR is in the server repo; keep fixtures/archives outside it.
+    vi.stubEnv('TMPDIR', process.env['VITEST_SYSTEM_TMPDIR']);
     fixture = await createFixture();
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(fixture.directory, { recursive: true, force: true });
   });
 
