@@ -162,6 +162,10 @@ jobs:
       - name: Axe on every sitemap URL in both themes
         run: pnpm --dir website a11y --report /tmp/a11y-report.json
 
+      - name: Mobile menu keyboard, focus and inert behaviour
+        if: ${{ !cancelled() }}
+        run: pnpm --dir website menu-check
+
       # This audits the actual remarque palette plus source policy, not CSS
       # cascade contrast. Legacy landing/404 policy findings await redesign;
       # rendered contrast on those pages is blocking in the axe step above.
