@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BAND,
+  BAND_ROOT_MARGIN,
   currentHeadingIndex,
   INITIAL_SPY,
   isScrollKey,
@@ -69,5 +71,12 @@ describe('isScrollKey', () => {
   it('does not treat Tab or Enter (following a link) as one', () => {
     expect(isScrollKey('Tab')).toBe(false);
     expect(isScrollKey('Enter')).toBe(false);
+  });
+});
+
+describe('the band', () => {
+  it('cuts off exactly the part of the viewport below the line', () => {
+    const below = String(Math.round((1 - BAND) * 100));
+    expect(BAND_ROOT_MARGIN).toBe(`0px 0px -${below}% 0px`);
   });
 });

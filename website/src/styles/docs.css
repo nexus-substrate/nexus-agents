@@ -138,10 +138,10 @@ pre:hover .copy-btn,
 /* ─── Masthead ──────────────────────────────────────────────────────────────
  * One row at every width (#7308). From 64rem: wordmark, Primary nav, search,
  * theme. Below 64rem: wordmark, search, theme, Menu — the Primary nav and the
- * side nav open in the Menu drawer (SiteMasthead.astro). Below 40rem search
+ * side nav open in the Menu drawer (MenuDrawer.svelte). Below 40rem search
  * is an icon button (SearchBox.svelte).
  *
- * [data-menu-drawer] on <html> is set by SiteMasthead's inline script, so the
+ * [data-menu-drawer] on <html> is set by ThemeInit's pre-paint script, so the
  * narrow layout depends on JS being there. Without it the Menu button stays
  * hidden and the Primary nav wraps onto a second row (no scrolling strip).
  */

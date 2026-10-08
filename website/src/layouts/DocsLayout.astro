@@ -5,7 +5,7 @@
 // disclosure right after the H1. Below 64rem: one column — breadcrumb, then
 // the page, whose "On this page" disclosure again follows the H1; the side
 // nav is hidden there and opens in the header's Menu drawer, which moves
-// this same <nav> into it (SiteMasthead.astro, #7308). Without JS it stays
+// this same <nav> into it (MenuDrawer.svelte, #7308). Without JS it stays
 // in the page as the "Section navigation" disclosure. The in-page nav is
 // spliced in after the H1 on the server, so DOM order is reading order at
 // every width.
@@ -23,6 +23,7 @@ import PageScripts from '../components/PageScripts.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import SiteMasthead from '../components/SiteMasthead.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import TocSpy from '../components/TocSpy.svelte';
 import {
   API_INDEX_HREF,
   BASE,
@@ -212,24 +213,26 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
         <article class="docs-body remarque-prose">
           <Fragment set:html={beforeToc} />
           {toc.length > 0 && (
-            <nav class="docs-toc remarque-toc-rail" aria-label="On this page" data-toc-spy data-pagefind-ignore>
-              <details open data-collapse-below="75rem">
-                <summary>On this page</summary>
-                {/* The column's label from 75rem, where the summary is hidden:
-                    a summary there was still focusable, so a keyboard could
-                    collapse the column. The nav's aria-label names it for
-                    assistive tech, so this copy is hidden from it. */}
-                <p class="docs-toc-title" aria-hidden="true">On this page</p>
-                <ul>
-                  {toc.map((h) => (
-                    <li class={`depth-${h.depth}`}>
-                      <a href={`#${h.slug}`}>{h.text}</a>
-                    </li>
-                  ))}
-                </ul>
-                {tocLimited && <p class="docs-toc-note">Major sections only.</p>}
-              </details>
-            </nav>
+            <TocSpy client:load>
+              <nav class="docs-toc remarque-toc-rail" aria-label="On this page" data-pagefind-ignore>
+                <details open data-collapse-below="75rem">
+                  <summary>On this page</summary>
+                  {/* The column's label from 75rem, where the summary is hidden:
+                      a summary there was still focusable, so a keyboard could
+                      collapse the column. The nav's aria-label names it for
+                      assistive tech, so this copy is hidden from it. */}
+                  <p class="docs-toc-title" aria-hidden="true">On this page</p>
+                  <ul>
+                    {toc.map((h) => (
+                      <li class={`depth-${h.depth}`}>
+                        <a href={`#${h.slug}`}>{h.text}</a>
+                      </li>
+                    ))}
+                  </ul>
+                  {tocLimited && <p class="docs-toc-note">Major sections only.</p>}
+                </details>
+              </nav>
+            </TocSpy>
           )}
           {toc.length > 0 && (
             <script is:inline>
@@ -237,6 +240,7 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
               // page" is a closed disclosure after the title; from 75rem it
               // is the right-hand column, forced open.
               (function () {
+                // The previous sibling is the TocSpy island around the nav.
                 var nav = document.currentScript && document.currentScript.previousElementSibling;
                 var el = nav && nav.querySelector('details[data-collapse-below]');
                 if (!el) return;
@@ -305,9 +309,6 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
       // named regions (src/lib/scroll-regions.ts). Re-run on resize and once
       // the web fonts settle, since both change which tables overflow.
       import { syncScrollRegions } from '../lib/scroll-regions.ts';
-      import { initTocSpy } from '../lib/toc-spy.ts';
-
-      initTocSpy();
 
       let frame = 0;
       function schedule(): void {
