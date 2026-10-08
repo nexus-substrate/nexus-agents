@@ -387,8 +387,9 @@ async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
  * @param args - Parsed CLI arguments
  */
 export async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
-  // Ensure data directories exist before any command runs (#1398)
-  initDataDirectories();
+  // Ensure data directories exist before any command runs (#1398). A setup
+  // dry run must write nothing (#7304); setup previews these dirs itself.
+  if (!(args.command === 'setup' && args.options.dryRun)) initDataDirectories();
 
   // #3208: proactive first-run hint. Fires for any command except
   // version/help/setup, marker-gated, stderr-only, TTY-only. Purely additive —

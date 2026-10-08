@@ -22,7 +22,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '../core/logger.js';
-import { nexusDataPath } from './nexus-data-dir.js';
+import { previewNexusDataPath } from './nexus-data-dir.js';
 import { resolveModelIdentitySync } from './model-identity.js';
 import { deriveEntry } from './model-derivation.js';
 import type { ModelEntry, ModelPricingProvenance } from './model-registry.js';
@@ -63,7 +63,7 @@ function defaultGeneratedPath(): string {
   // is also often read-only under a global npm install, so the data dir is the
   // only writable target a refresh has.
   try {
-    const dataPath = nexusDataPath('model-registry.generated.json');
+    const dataPath = previewNexusDataPath('model-registry.generated.json');
     if (existsSync(dataPath)) return dataPath;
   } catch {
     // Fall through to the bundled package copy on any data-dir resolution error.

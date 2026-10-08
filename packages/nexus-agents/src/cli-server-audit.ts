@@ -20,9 +20,6 @@ import {
   formatPolicyRolloutMode,
 } from './mcp/middleware/policy-registry.js';
 
-/** Default audit log directory under the resolved nexus data dir (#2302). */
-const DEFAULT_AUDIT_DIR = nexusDataPath('audit');
-
 /**
  * Default file prefix for audit log files (#5120).
  *
@@ -47,7 +44,7 @@ export function initializeAuditLogger(
   }
 
   const auditConfig = securityConfig.audit;
-  const logDir = auditConfig.logDir ?? DEFAULT_AUDIT_DIR;
+  const logDir = auditConfig.logDir ?? nexusDataPath('audit');
   const auditLogger = createAuditLogger(
     {
       logDir,

@@ -141,7 +141,10 @@ export function detectPortableMode(cwd: string = process.cwd()): DetectionResult
  * heuristic triggers — env-opt-in/out doesn't announce because the
  * operator already knows.
  */
-export function applyPortableMode(cwd: string = process.cwd()): void {
+export function applyPortableMode(
+  cwd: string = process.cwd(),
+  options: { readonly dryRun?: boolean } = {}
+): void {
   if (DETECTED) return;
   DETECTED = true;
 
@@ -161,7 +164,13 @@ export function applyPortableMode(cwd: string = process.cwd()): void {
   process.env['NEXUS_DATA_DIR'] = result.dataDir;
 
   if (isInsideGitRepo(cwd)) {
-    ensureGitignored(cwd, '.nexus-agents/');
+    if (options.dryRun === true) {
+      process.stderr.write(
+        `[portable-mode] Would add '.nexus-agents/' to ${join(cwd, '.gitignore')}.\n`
+      );
+    } else {
+      ensureGitignored(cwd, '.nexus-agents/');
+    }
   }
 }
 

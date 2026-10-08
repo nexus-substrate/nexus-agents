@@ -28,9 +28,11 @@
  * To turn the noise back on without `--verbose`, set `NEXUS_LOG_LEVEL=info`.
  */
 
-import { argv, env } from 'node:process';
+import { env } from 'node:process';
+import { parseArgs } from 'node:util';
 import { setGlobalLogLevel } from '../core/logger.js';
 import { applyPortableMode } from '../config/portable-mode.js';
+import { PARSE_ARGS_CONFIG } from '../cli-types.js';
 
 const SERVER_COMMANDS = new Set(['server']);
 const VERBOSE_FLAGS = new Set(['--verbose', '-v', '--debug']);
@@ -69,7 +71,28 @@ export function applyCliLogDefault(args: readonly string[]): void {
   }
 }
 
+/**
+ * Whether argv is `setup --dry-run` (#7304). Only setup promises a zero-write
+ * preview; other commands' `--dry-run` governs their own work, so portable
+ * mode must still gitignore the data dir it is about to populate. Parsed with
+ * the real option table so `--scope user setup` resolves to `setup` and a
+ * flag VALUE spelled "setup" does not.
+ */
+function isSetupDryRun(args: readonly string[]): boolean {
+  try {
+    const { values, positionals } = parseArgs({
+      options: PARSE_ARGS_CONFIG.options,
+      allowPositionals: true,
+      strict: false,
+      args: [...args],
+    });
+    return positionals[0] === 'setup' && values['dry-run'] === true;
+  } catch {
+    return false;
+  }
+}
+
 // Module-load side effects: cli.ts imports this FIRST so both run before
 // any other module reads NEXUS_DATA_DIR or constructs a logger.
-applyCliLogDefault(argv.slice(2));
-applyPortableMode();
+applyCliLogDefault(process.argv.slice(2));
+applyPortableMode(process.cwd(), { dryRun: isSetupDryRun(process.argv.slice(2)) });

@@ -151,6 +151,17 @@ function maybeReportUnknownCommand(parsedArgs: ParsedCliArgs): void {
   process.exit(EXIT_CODES.INVALID_ARGS);
 }
 
+/** Whether this command needs gateway discovery before dispatch. */
+function shouldBootstrapGateway(args: ParsedCliArgs): boolean {
+  return (
+    args.command !== 'server' &&
+    args.command !== 'help' &&
+    args.command !== 'version' &&
+    !(args.command === 'setup' && args.options.dryRun) &&
+    parseBoolEnv('NEXUS_ROUTE_GATEWAY_ARMS', false)
+  );
+}
+
 /**
  * Main entry point for the Nexus Agents CLI.
  * Parses arguments and dispatches to appropriate command handler.
@@ -197,12 +208,7 @@ async function main(): Promise<void> {
   // #7151: standalone commands construct their router during dispatch. Publish
   // the opted-in endpoint first, through the same bootstrap as the MCP server.
   // The server owns its bootstrap; help/version require no adapter discovery.
-  if (
-    parsedArgs.command !== 'server' &&
-    parsedArgs.command !== 'help' &&
-    parsedArgs.command !== 'version' &&
-    parseBoolEnv('NEXUS_ROUTE_GATEWAY_ARMS', false)
-  ) {
+  if (shouldBootstrapGateway(parsedArgs)) {
     const { wireGateway } = await import('./cli-server-gateway.js');
     await wireGateway(createLogger({ component: 'nexus-cli' }));
   }

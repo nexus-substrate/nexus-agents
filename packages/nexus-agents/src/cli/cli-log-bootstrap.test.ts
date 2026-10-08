@@ -10,6 +10,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Mock logger.setGlobalLogLevel so we can assert it was called.
 const setGlobalLogLevelMock = vi.fn();
+const portableModeMock = vi.hoisted(() => vi.fn());
+vi.mock('../config/portable-mode.js', () => ({ applyPortableMode: portableModeMock }));
 vi.mock('../core/logger.js', () => ({
   setGlobalLogLevel: setGlobalLogLevelMock,
   getGlobalLogLevel: vi.fn(() => 'info'),
@@ -89,5 +91,27 @@ describe('applyCliLogDefault (#2443)', () => {
     // nexus-agents --some-flag vote ...
     applyCliLogDefault(['--some-flag', 'vote', '--proposal', 'x']);
     expect(setGlobalLogLevelMock).toHaveBeenCalledWith('warn');
+  });
+
+  // #7304: only `setup --dry-run` promises zero writes. Other commands'
+  // --dry-run flags govern their own work, not portable-mode's gitignore entry.
+  it.each([
+    [true, ['setup', '--dry-run']],
+    [true, ['--scope', 'user', 'setup', '--dry-run', '--non-interactive']],
+    [false, ['init', '--portable', '--dry-run']],
+    [false, ['migrate', '--dry-run']],
+    [false, ['vote', '--proposal', 'setup', '--dry-run']],
+    [false, ['setup', '--non-interactive']],
+  ] as const)('passes dryRun=%s to portable startup (%j)', async (dryRun, args) => {
+    const originalArgv = process.argv;
+    process.argv = [process.execPath, '/test/cli.ts', ...args];
+    portableModeMock.mockClear();
+    vi.resetModules();
+    try {
+      await import('./cli-log-bootstrap.js');
+      expect(portableModeMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), { dryRun });
+    } finally {
+      process.argv = originalArgv;
+    }
   });
 });

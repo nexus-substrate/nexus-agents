@@ -14,7 +14,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { nexusDataPath } from '../../config/nexus-data-dir.js';
+import { previewNexusDataPath } from '../../config/nexus-data-dir.js';
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage, createLogger, getTimeProvider } from '../../core/index.js';
 
@@ -107,7 +107,7 @@ export type { DecayRunStats, DecayAggregateStats } from './memory-decay.js';
 // ============================================================================
 
 /** Default memory directory under the resolved nexus data dir (#2302). */
-const MEMORY_BASE = nexusDataPath('memory');
+const MEMORY_BASE = previewNexusDataPath('memory');
 const DEFAULT_MEMORY_DIR = path.join(MEMORY_BASE, 'sessions');
 const AGENTIC_DB_PATH = path.join(MEMORY_BASE, 'agentic.db');
 const ADAPTIVE_DB_PATH = path.join(MEMORY_BASE, 'adaptive.db');

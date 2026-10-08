@@ -11,7 +11,7 @@
 
 import { mkdirSync, existsSync } from 'node:fs';
 import { DATA_SUBDIRECTORIES } from './doctor.js';
-import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
+import { getNexusDataDir, nexusDataPath, previewNexusDataPath } from '../config/nexus-data-dir.js';
 
 /**
  * Homedir/cross-repo root data directory path.
@@ -69,7 +69,9 @@ export function initDataDirectories(dryRun: boolean = false): DataDirInitResult 
     // subdirs in homedir, and cross-repo subdirs fall back per-repo when
     // homedir is unwritable (#2888). Split on '/' so the routing key is
     // the true first segment (e.g. 'memory/beliefs' → 'memory').
-    const target = nexusDataPath(...subdir.split('/'));
+    const target = dryRun
+      ? previewNexusDataPath(...subdir.split('/'))
+      : nexusDataPath(...subdir.split('/'));
     // Per-subdir failure is non-fatal: one unwritable location must not
     // abort the others. Genuinely-broken environments surface as a
     // non-empty `failures` list rather than a thrown exception.

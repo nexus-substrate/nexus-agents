@@ -91,7 +91,8 @@ function bareServerEntry(snippet: string): string {
 function printMcpResult(
   mcpResult: McpConfigResult,
   snippet: string | undefined,
-  scope: SetupOptions['scope']
+  scope: SetupOptions['scope'],
+  dryRun: boolean = false
 ): void {
   writeLine(formatHeader('MCP Configuration'));
   writeLine('─'.repeat(40));
@@ -99,7 +100,9 @@ function printMcpResult(
     writeLine(mcpResult.message);
     writeLine('Run `/mcp` in Claude Code to verify.');
   } else {
-    writeLine(`Failed: ${mcpResult.message}`);
+    writeLine(
+      dryRun ? 'Would configure nexus-agents MCP in Claude Code' : `Failed: ${mcpResult.message}`
+    );
     if (snippet !== undefined) {
       writeEmptyLine();
       writeLine('Manual fallback - run:');
@@ -174,9 +177,20 @@ function printErrors(errors: readonly string[]): void {
 /**
  * Prints next steps section.
  */
-function printNextSteps(mcpConfigured: boolean, hasMcpSnippet: boolean): void {
+function printNextSteps(
+  mcpConfigured: boolean,
+  hasMcpSnippet: boolean,
+  dryRun: boolean = false
+): void {
   writeLine(formatHeader('Next Steps'));
   writeLine('─'.repeat(40));
+  if (dryRun) {
+    // #7304: a preview configured nothing, so no manual or restart step is owed.
+    writeLine('1. Run: nexus-agents setup (without --dry-run) to apply these changes');
+    writeLine('2. Run: nexus-agents doctor');
+    writeEmptyLine();
+    return;
+  }
   if (hasMcpSnippet && !mcpConfigured) {
     writeLine('1. Configure MCP manually (see above)');
     writeLine('2. Restart Claude Code');
@@ -189,12 +203,12 @@ function printNextSteps(mcpConfigured: boolean, hasMcpSnippet: boolean): void {
 /**
  * Prints steps with status indicators.
  */
-function printSteps(steps: readonly SetupStep[], verbose: boolean): void {
+function printSteps(steps: readonly SetupStep[], verbose: boolean, dryRun: boolean = false): void {
   for (const step of steps) {
     const status = formatStatus(step.status);
     const duration = step.durationMs !== undefined ? ` (${String(step.durationMs)}ms)` : '';
     writeLine(`${status} ${step.name}${verbose ? duration : ''}`);
-    if (step.message !== undefined && (verbose || step.status === 'failed')) {
+    if (step.message !== undefined && (verbose || dryRun || step.status === 'failed')) {
       writeLine(`  ${step.message}`);
     }
   }
@@ -204,8 +218,14 @@ function printSteps(steps: readonly SetupStep[], verbose: boolean): void {
 /**
  * Prints result summary line.
  */
-function printSummary(success: boolean): void {
-  const summary = success ? '✓ Setup completed successfully!' : '✗ Setup completed with errors';
+function printSummary(success: boolean, dryRun: boolean = false): void {
+  const summary = dryRun
+    ? success
+      ? '✓ Setup preview complete — no changes made'
+      : '✗ Setup preview completed with errors — no changes made'
+    : success
+      ? '✓ Setup completed successfully!'
+      : '✗ Setup completed with errors';
   writeLine(success ? `\x1b[32m${summary}\x1b[0m` : `\x1b[31m${summary}\x1b[0m`);
   writeEmptyLine();
 }
@@ -310,6 +330,15 @@ function runMcpConfigStep(env: EnvironmentInfo, options: SetupOptions): McpStepR
 
   const useNpx = !env.claudeCli.installed;
   const snippet = generateMcpSnippet(useNpx);
+
+  if (options.dryRun) {
+    return makeMcpResult(
+      'success',
+      `Would configure nexus-agents MCP in Claude Code (${options.scope})${options.force ? ' — replacing any existing registration' : ''}`,
+      startTime,
+      snippet
+    );
+  }
 
   if (!env.claudeCli.installed) {
     const mcpResult: McpConfigResult = {
@@ -584,10 +613,19 @@ function checkStepStatus(steps: readonly SetupStep[], name: string, label: strin
  * Runs post-setup validation step (#1271).
  * Checks that critical setup outcomes are in place.
  */
-function runValidationStep(steps: readonly SetupStep[]): SetupStep {
+function runValidationStep(steps: readonly SetupStep[], dryRun: boolean = false): SetupStep {
   const startTime = getTimeProvider().now();
 
   const mcpSteps = steps.filter((s) => s.name.includes('MCP'));
+  if (dryRun) {
+    // #7304: nothing was configured, so there is nothing to validate yet.
+    return {
+      name: 'Validation',
+      status: 'skipped',
+      message: `Would validate ${String(mcpSteps.length)} MCP configs, data dirs and config after setup. Run \`nexus-agents doctor\` for full health check`,
+      durationMs: getTimeProvider().now() - startTime,
+    };
+  }
   const mcpFailed = mcpSteps.filter((s) => s.status === 'failed').length;
   const mcpCheck =
     mcpFailed > 0
@@ -728,7 +766,7 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
     codexStep,
     configStep,
   ];
-  steps.push(runValidationStep(steps)); // Step 10: Validation (#1271)
+  steps.push(runValidationStep(steps, parsedOptions.dryRun)); // Step 10: Validation (#1271)
 
   return buildSetupResult({
     options: parsedOptions,
@@ -755,7 +793,7 @@ function printDetailSections(result: SetupResult): void {
             message: 'Added nexus-agents MCP server to Claude Code',
           }
         : { success: false, alreadyConfigured: false, message: 'Manual configuration required' };
-    printMcpResult(mcpResult, result.mcpSnippet, result.scope ?? 'user');
+    printMcpResult(mcpResult, result.mcpSnippet, result.scope ?? 'user', result.dryRun);
   }
   if (result.hookSnippet !== undefined || result.hooksConfigured === true) {
     const hookResult: HookConfigResult =
@@ -802,13 +840,13 @@ export function printSetupResult(result: SetupResult, verbose: boolean): void {
   writeLine('═'.repeat(40));
   writeEmptyLine();
 
-  printSteps(result.steps, verbose);
+  printSteps(result.steps, verbose, result.dryRun);
   printDetailSections(result);
 
   if (result.warnings.length > 0) printWarnings(result.warnings);
   if (result.errors.length > 0) printErrors(result.errors);
-  printNextSteps(result.mcpConfigured === true, result.mcpSnippet !== undefined);
-  printSummary(result.success);
+  printNextSteps(result.mcpConfigured === true, result.mcpSnippet !== undefined, result.dryRun);
+  printSummary(result.success, result.dryRun);
 }
 
 /**

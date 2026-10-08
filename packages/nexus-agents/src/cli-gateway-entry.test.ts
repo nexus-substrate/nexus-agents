@@ -85,6 +85,19 @@ describe('standalone gateway routing through cli.ts (#7151)', () => {
     expect(entry.discover).not.toHaveBeenCalled();
   });
 
+  it('skips opted-in gateway discovery before setup dry-run dispatch', async () => {
+    process.argv = [process.execPath, '/test/cli.ts', 'setup', '--dry-run', '--non-interactive'];
+    await runEntry();
+    expect(entry.discover).not.toHaveBeenCalled();
+    expect(dispatchedArms).toEqual([]);
+    expect(entry.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'setup',
+        options: expect.objectContaining({ dryRun: true }),
+      })
+    );
+  });
+
   it.each(['server', 'help', 'version'])(
     'leaves %s bootstrap to its command handler',
     async (command) => {

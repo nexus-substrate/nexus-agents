@@ -40,6 +40,9 @@ vi.mock('../config/nexus-data-dir.js', () => ({
   nexusDataPath: vi.fn((...segments: string[]) =>
     ['/data-root/.nexus-agents', ...segments].join('/')
   ),
+  previewNexusDataPath: vi.fn((...segments: string[]) =>
+    ['/data-root/.nexus-agents', ...segments].join('/')
+  ),
 }));
 
 import type { VoteRecord } from './vote-record.js';

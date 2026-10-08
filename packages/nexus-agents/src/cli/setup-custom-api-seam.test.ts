@@ -69,6 +69,29 @@ describe('setup custom API parse → build → dispatch seam (#5129)', () => {
     expect(setupCommandAsync).not.toHaveBeenCalled();
   });
 
+  it('previews a custom gateway probe without contacting the gateway during dry-run', async () => {
+    const args = parseCliArgs([
+      'setup',
+      '--custom-api',
+      'https://gateway.example/v1',
+      '--custom-api-key',
+      'TEST_FAKE_API_KEY',
+      '--non-interactive',
+      '--dry-run',
+    ]);
+    await expect(dispatchCommand(args)).rejects.toThrow('setup exit 0');
+    expect(configureCustomApi).toHaveBeenCalledExactlyOnceWith({
+      baseUrl: 'https://gateway.example/v1',
+      apiKey: 'TEST_FAKE_API_KEY',
+      nonInteractive: true,
+      skipProbe: true,
+    });
+    expect(process.stdout.write).toHaveBeenCalledWith('Would probe gateway (GET /models).\n');
+    expect(process.stdout.write).not.toHaveBeenCalledWith(
+      '✓ Probe succeeded (GET /models → 2xx)\n'
+    );
+  });
+
   it('propagates a custom setup error without falling back to the wizard', async () => {
     vi.mocked(configureCustomApi).mockResolvedValueOnce({
       ok: false,

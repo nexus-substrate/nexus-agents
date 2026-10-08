@@ -67,6 +67,26 @@ function readActions(dir: string): string[] {
 }
 
 describe('initializeAuditLogger', () => {
+  it('resolves its default audit directory only when audit logging is enabled', async () => {
+    const resolveDataPath = vi.fn(() => 'test-audit-directory');
+    vi.doMock('./config/nexus-data-dir.js', async () => ({
+      ...(await vi.importActual<typeof import('./config/nexus-data-dir.js')>(
+        './config/nexus-data-dir.js'
+      )),
+      nexusDataPath: resolveDataPath,
+    }));
+    vi.resetModules();
+    try {
+      const auditModule = await import('./cli-server-audit.js');
+      expect(resolveDataPath).not.toHaveBeenCalledWith('audit');
+      expect(auditModule.initializeAuditLogger(undefined, createMockLogger())).toBeNull();
+      expect(resolveDataPath).not.toHaveBeenCalledWith('audit');
+    } finally {
+      vi.doUnmock('./config/nexus-data-dir.js');
+      vi.resetModules();
+    }
+  });
+
   it('should return null when security config is undefined', () => {
     const logger = createMockLogger();
     const result = initializeAuditLogger(undefined, logger);
