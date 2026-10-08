@@ -42,7 +42,7 @@ import { z } from 'zod';
 
 import { createLogger } from '../core/logger.js';
 import type { ILogger } from '../core/index.js';
-import { nexusDataPath } from './nexus-data-dir.js';
+import { previewNexusDataPath } from './nexus-data-dir.js';
 import type { ModelEntry, ToolDefinitionFormat, PromptCachingMode } from './model-registry.js';
 import type { ModelVendor } from './model-identity.js';
 import {
@@ -67,7 +67,7 @@ export const MANIFEST_MAX_BYTES = 1 * 1024 * 1024;
  * Default OPERATOR manifest location: `<NEXUS_DATA_DIR>/models-manifest.yaml`.
  */
 export function defaultManifestPath(): string {
-  return nexusDataPath('models-manifest.yaml');
+  return previewNexusDataPath('models-manifest.yaml');
 }
 
 /**
@@ -75,7 +75,7 @@ export function defaultManifestPath(): string {
  * Lower precedence than the operator manifest; same ManifestSchema shape.
  */
 export function defaultUserManifestPath(): string {
-  return nexusDataPath('models.yaml');
+  return previewNexusDataPath('models.yaml');
 }
 
 /**

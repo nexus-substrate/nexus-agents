@@ -229,11 +229,14 @@ export function _resetActiveWorkspaceRootForTests(): void {
  * `options.mainCheckout` (#6531): when the root found is a linked git
  * worktree, return the `.nexus-agents/` of the MAIN checkout it belongs to
  * (see `resolveMainCheckoutRoot`), so the state outlives the worktree.
+ * `options.readOnly` suppresses gitignore edits and their memo updates.
  *
  * Returns `null` when any precondition fails; callers fall back to
  * `getNexusDataDir()` (homedir).
  */
-export function getNexusRepoDir(options: { readonly mainCheckout?: boolean } = {}): string | null {
+export function getNexusRepoDir(
+  options: { readonly mainCheckout?: boolean; readonly readOnly?: boolean } = {}
+): string | null {
   if (!parseBoolEnv('NEXUS_REPO_PREFERRED', true)) return null;
   const fromEnv = process.env['NEXUS_DATA_DIR']?.trim();
   if (fromEnv !== undefined && fromEnv !== '') return null;
@@ -244,7 +247,7 @@ export function getNexusRepoDir(options: { readonly mainCheckout?: boolean } = {
   if (found === null) return null;
   // #6531: `mainCheckout` maps a linked worktree to the checkout it belongs to.
   const root = options.mainCheckout === true ? resolveMainCheckoutRoot(found) : found;
-  maybeAutoGitignore(root);
+  maybeAutoGitignore(root, options.readOnly);
   return join(root, '.nexus-agents');
 }
 
@@ -254,7 +257,8 @@ export function getNexusRepoDir(options: { readonly mainCheckout?: boolean } = {
  * `NEXUS_GITIGNORE_AUTO=false` (or `0`; default on — #5155). Failures are
  * non-fatal — the helper logs to stderr and continues.
  */
-function maybeAutoGitignore(repoRoot: string): void {
+function maybeAutoGitignore(repoRoot: string, readOnly: boolean = false): void {
+  if (readOnly) return;
   if (!parseBoolEnv('NEXUS_GITIGNORE_AUTO', true)) return;
   if (gitignoredRoots.has(repoRoot)) return;
   gitignoredRoots.add(repoRoot);
@@ -301,6 +305,23 @@ function isHomedirBaseWritable(): boolean {
   return homedirWritable;
 }
 
+/** Check the existing base or nearest parent without creating it or caching a preview. */
+function isHomedirBaseWritableReadOnly(): boolean {
+  let target = getNexusDataDir();
+  try {
+    while (!existsSync(target)) {
+      const parent = dirname(target);
+      if (parent === target) return false;
+      target = parent;
+    }
+    if (!statSync(target).isDirectory()) return false;
+    accessSync(target, fsConstants.W_OK | fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Emit a one-time stderr warning when a cross-repo subdir falls back to
  * the per-repo location. Operators in sandboxes get a clear signal about
@@ -332,11 +353,21 @@ function announceCrossRepoFallback(subdir: string, repoPath: string): void {
  * by the first segment, not by caller-declared intent.
  */
 export function nexusDataPath(...segments: string[]): string {
+  return resolveNexusDataPath(segments, false);
+}
+
+/** Resolve planned data paths without mkdir, gitignore edits, or resolver memo changes. */
+export function previewNexusDataPath(...segments: string[]): string {
+  return resolveNexusDataPath(segments, true);
+}
+
+/** Shared routing keeps setup previews consistent with runtime state placement. */
+function resolveNexusDataPath(segments: string[], readOnly: boolean): string {
   const first = segments[0];
 
   // Tier 1: per-repo subdir + repo-preferred default.
   if (first !== undefined && PER_REPO_SUBDIRS.has(first)) {
-    const repoDir = getNexusRepoDir({ mainCheckout: MAIN_CHECKOUT_SUBDIRS.has(first) });
+    const repoDir = getNexusRepoDir({ mainCheckout: MAIN_CHECKOUT_SUBDIRS.has(first), readOnly });
     if (repoDir !== null) {
       return join(repoDir, ...segments);
     }
@@ -347,11 +378,14 @@ export function nexusDataPath(...segments: string[]): string {
   // working `research/`, `memory/`, etc. without manual env-var setup.
   // Vote #2876 preserved: this only fires when homedir is physically
   // unreachable; normal-machine users see no change.
-  if (first !== undefined && !isHomedirBaseWritable()) {
-    const repoDir = getNexusRepoDir();
+  if (
+    first !== undefined &&
+    !(readOnly ? isHomedirBaseWritableReadOnly() : isHomedirBaseWritable())
+  ) {
+    const repoDir = getNexusRepoDir({ readOnly });
     if (repoDir !== null) {
       const fallbackPath = join(repoDir, ...segments);
-      announceCrossRepoFallback(first, fallbackPath);
+      if (!readOnly) announceCrossRepoFallback(first, fallbackPath);
       return fallbackPath;
     }
     // No repo to fall back to AND homedir unreachable — return the

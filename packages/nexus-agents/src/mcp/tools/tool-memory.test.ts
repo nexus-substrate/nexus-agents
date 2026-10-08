@@ -119,6 +119,24 @@ afterAll(() => {
   shutdownToolMemory();
 });
 
+it('does not invoke the mutating data resolver when importing tool memory', async () => {
+  const resolveDataPath = vi.fn(() => 'test-memory-directory');
+  vi.doMock('../../config/nexus-data-dir.js', async () => ({
+    ...(await vi.importActual<typeof import('../../config/nexus-data-dir.js')>(
+      '../../config/nexus-data-dir.js'
+    )),
+    nexusDataPath: resolveDataPath,
+  }));
+  vi.resetModules();
+  try {
+    await import('./tool-memory.js');
+    expect(resolveDataPath).not.toHaveBeenCalledWith('memory');
+  } finally {
+    vi.doUnmock('../../config/nexus-data-dir.js');
+    vi.resetModules();
+  }
+});
+
 /** Reset all mock return values after vi.clearAllMocks() clears them. */
 function resetMockDefaults(): void {
   mockSessionMemory.startSession.mockReturnValue({ ok: true, value: [] });

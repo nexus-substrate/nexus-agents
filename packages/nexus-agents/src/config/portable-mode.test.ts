@@ -202,6 +202,21 @@ describe('applyPortableMode (#2471)', () => {
     expect(gitignore).toContain('.nexus-agents/');
   });
 
+  it.each([false, true])('preserves gitignore during dry-run (existing=%s)', (existing) => {
+    fs.mkdirSync(join(tmp, '.git'), { recursive: true });
+    const gitignorePath = join(tmp, '.gitignore');
+    if (existing) writeFileSync(gitignorePath, 'node_modules/\n');
+    process.env['NEXUS_PORTABLE_MODE'] = '1';
+
+    applyPortableMode(tmp, { dryRun: true });
+
+    expect(process.env['NEXUS_DATA_DIR']).toBe(join(tmp, '.nexus-agents'));
+    expect(fs.existsSync(join(tmp, '.nexus-agents'))).toBe(false);
+    if (existing) expect(fs.readFileSync(gitignorePath, 'utf-8')).toBe('node_modules/\n');
+    else expect(fs.existsSync(gitignorePath)).toBe(false);
+    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('Would add');
+  });
+
   it('does not duplicate the gitignore entry on repeat calls', () => {
     fs.mkdirSync(join(tmp, '.git'), { recursive: true });
     writeFileSync(join(tmp, '.gitignore'), '.nexus-agents/\n');

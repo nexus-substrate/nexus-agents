@@ -195,6 +195,7 @@ async function runCustomApiSetup(args: ParsedCliArgs): Promise<number> {
   const input: Parameters<typeof configureCustomApi>[0] = {
     baseUrl,
     nonInteractive: args.options.nonInteractive,
+    ...(args.options.dryRun ? { skipProbe: true } : {}),
     ...(args.options.customApiKey !== undefined ? { apiKey: args.options.customApiKey } : {}),
     ...(args.options.customModel !== undefined ? { model: args.options.customModel } : {}),
   };
@@ -208,7 +209,8 @@ async function runCustomApiSetup(args: ParsedCliArgs): Promise<number> {
   // shell fragment below is the one place that has to carry it.
   process.stdout.write(`✓ Gateway validated: ${hostnameOf(canonical)}\n`);
   process.stdout.write(`✓ Model: ${model}\n`);
-  if (probeSucceeded) process.stdout.write(`✓ Probe succeeded (GET /models → 2xx)\n`);
+  if (args.options.dryRun) process.stdout.write('Would probe gateway (GET /models).\n');
+  else if (probeSucceeded) process.stdout.write(`✓ Probe succeeded (GET /models → 2xx)\n`);
   process.stdout.write('\nAdd the following to your shell rc (~/.bashrc, ~/.zshrc, etc.):\n\n');
   process.stdout.write(shellFragment);
   return EXIT_CODES.SUCCESS;

@@ -54,6 +54,9 @@ vi.mock('../../config/nexus-data-dir.js', () => ({
   nexusDataPath: vi.fn((...segments: string[]) =>
     ['/data-root/.nexus-agents', ...segments].join('/')
   ),
+  previewNexusDataPath: vi.fn((...segments: string[]) =>
+    ['/data-root/.nexus-agents', ...segments].join('/')
+  ),
 }));
 
 function vote(decision: Vote['decision'], confidence: number): Vote {
