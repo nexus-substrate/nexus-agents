@@ -3,9 +3,21 @@
 // theme toggle. The four section links go to the generated section index
 // pages (src/pages/docs/[section].astro).
 //
-// Layout (#7285): one row from 64rem. Below that the Primary nav drops to a
-// horizontally scrolling strip under the row; below 40rem search collapses
-// to an icon button, so the row is wordmark, search and theme only.
+// Layout: one row at every width. From 64rem it is wordmark, Primary nav,
+// search and theme (#7285). Below 64rem (#7308) it is wordmark, search,
+// theme and a "Menu" button that opens a navigation drawer; below 40rem
+// search is an icon button.
+//
+// The drawer is a native <dialog> opened with showModal(): the browser makes
+// the rest of the page inert and closes it on Escape. It has no navigation
+// markup of its own. On open the script MOVES the Primary nav and, on docs
+// pages, the side nav (DocsLayout's .docs-rail) into it, and moves them back
+// on close, so there is one nav in the DOM and one source for it.
+//
+// Without JS the Menu button and the drawer stay hidden, the Primary nav
+// wraps under the row, and the side nav keeps its "Section navigation"
+// disclosure. The inline script below marks the page as having JS before
+// the header is parsed, so the narrow layout never flashes the fallback.
 //
 // `current` marks the section the reader is in. On that section's own index
 // page the link IS the page, so it gets aria-current="page"; on a page inside
@@ -36,10 +48,13 @@ const links = PRIMARY_SECTIONS.map((key) => ({
 }));
 ---
 
+<script is:inline>
+  document.documentElement.setAttribute('data-menu-drawer', '');
+</script>
 <header class="docs-masthead">
   <div class="docs-masthead-inner">
     <a class="docs-wordmark" href={`${BASE}/`}>nexus-agents</a>
-    <nav class="docs-primary-nav" aria-label="Primary">
+    <nav class="docs-primary-nav" aria-label="Primary" data-menu-part>
       <ul>
         {links.map((link) => (
           <li>
@@ -54,6 +69,122 @@ const links = PRIMARY_SECTIONS.map((key) => ({
     <div class="docs-masthead-tools">
       <SearchBox base={BASE} client:load />
       <ThemeToggle />
+      <button
+        type="button"
+        class="docs-control docs-menu-button"
+        aria-expanded="false"
+        aria-controls="site-menu"
+        data-menu-open
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        <span>Menu</span>
+      </button>
     </div>
   </div>
+  <dialog id="site-menu" class="docs-menu" aria-labelledby="site-menu-title" data-pagefind-ignore>
+    <div class="docs-menu-panel">
+      <div class="docs-menu-head">
+        <p id="site-menu-title" class="docs-menu-title">Menu</p>
+        <button type="button" class="docs-control docs-menu-close" data-menu-close autofocus>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          <span>Close</span>
+        </button>
+      </div>
+      <div class="docs-menu-body" data-menu-slot></div>
+    </div>
+  </dialog>
 </header>
+
+<script>
+  import { FOCUSABLE_SELECTOR, wrapFocusTarget } from '../lib/menu-drawer.ts';
+
+  const dialog = document.querySelector<HTMLDialogElement>('#site-menu');
+  const opener = document.querySelector<HTMLButtonElement>('[data-menu-open]');
+  const closer = dialog?.querySelector<HTMLButtonElement>('[data-menu-close]');
+  const slot = dialog?.querySelector<HTMLElement>('[data-menu-slot]');
+  // The drawer is for narrow screens only; tokens.css --bp-desktop.
+  const desktop = window.matchMedia('(min-width: 64rem)');
+
+  interface Placement {
+    node: Element;
+    parent: Node;
+    next: Node | null;
+  }
+  let placements: Placement[] = [];
+
+  // The side nav's outer disclosure: forced open inside the drawer, and put
+  // back to its width-driven state (DocsLayout's script) when it returns.
+  function sideNavDisclosure(): HTMLDetailsElement | null {
+    return document.querySelector<HTMLDetailsElement>('.docs-rail > details[data-collapse-below]');
+  }
+
+  function moveIn(target: HTMLElement): void {
+    const parts = [
+      document.querySelector('[data-menu-part]'),
+      document.querySelector('.docs-rail'),
+    ].filter((node): node is Element => node !== null && node.parentNode !== null);
+    placements = parts.map((node) => ({ node, parent: node.parentNode as Node, next: node.nextSibling }));
+    for (const { node } of placements) target.append(node);
+    const disclosure = sideNavDisclosure();
+    if (disclosure) disclosure.open = true;
+  }
+
+  function moveBack(): void {
+    for (const { node, parent, next } of placements.reverse()) parent.insertBefore(node, next);
+    placements = [];
+    const disclosure = sideNavDisclosure();
+    if (disclosure) disclosure.open = desktop.matches;
+  }
+
+  function focusables(root: HTMLElement): HTMLElement[] {
+    // Skip controls that are not rendered, including those inside a closed
+    // disclosure: Chromium hides that content with content-visibility, so
+    // the links still report boxes and only checkVisibility() excludes them.
+    return [...root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter((el) => el.checkVisibility());
+  }
+
+  if (dialog && opener && closer && slot) {
+    opener.addEventListener('click', () => {
+      if (dialog.open) return;
+      moveIn(slot);
+      dialog.showModal();
+      opener.setAttribute('aria-expanded', 'true');
+      closer.focus();
+      // Bring the current page's link into view inside the drawer (an
+      // instant scroll of the drawer only; the page behind is locked).
+      slot.querySelector('.docs-rail a[aria-current]')?.scrollIntoView({ block: 'center' });
+    });
+
+    closer.addEventListener('click', () => dialog.close());
+
+    // A click on the dialog box itself is a click on the backdrop: the panel
+    // fills the box, so every click inside the drawer lands on a descendant.
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+
+    // Escape fires `cancel` and then `close`; every way of closing ends here.
+    dialog.addEventListener('close', () => {
+      moveBack();
+      opener.setAttribute('aria-expanded', 'false');
+      opener.focus();
+    });
+
+    // showModal() makes the page inert but lets Tab leave for the browser
+    // chrome after the last control; wrap it instead.
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const target = wrapFocusTarget(focusables(dialog), active, event.shiftKey);
+      if (target) {
+        event.preventDefault();
+        target.focus();
+      }
+    });
+
+    // Widening past 64rem while open: the navs belong back in the page.
+    desktop.addEventListener('change', () => {
+      if (desktop.matches && dialog.open) dialog.close();
+    });
+  }
+</script>

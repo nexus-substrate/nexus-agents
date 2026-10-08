@@ -10,7 +10,8 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "vitest run && node --test scripts/a11y-check.test.mjs",
-    "a11y": "node scripts/a11y-check.mjs"
+    "a11y": "node scripts/a11y-check.mjs",
+    "menu-check": "node scripts/menu-check.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
