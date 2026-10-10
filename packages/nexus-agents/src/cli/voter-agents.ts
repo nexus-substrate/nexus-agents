@@ -44,6 +44,7 @@ import {
 } from './voter-unverifiable.js';
 import { resolveAttemptCollector, withVoterAttemptTelemetry } from './voter-attempt-events.js';
 import { buildLlmVoteResult, carryAttemptUsage } from './voter-attempt-usage.js';
+import { withResolvedAssignment } from './vote-diversity.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
 export { NoAdapterError } from './voter-adapter-resolve.js';
@@ -627,7 +628,7 @@ export async function collectRealVotes(
   // successful result provenance, not the assigned adapters: a failed primary
   // may have been replaced by a vote from the shared fallback model.
   reportVoteIndependence(results, logger);
-  return results.map(discloseModelPins);
+  return results.map((vote) => discloseModelPins(withResolvedAssignment(vote)));
 }
 
 /**

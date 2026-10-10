@@ -1816,6 +1816,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     panelDiversity: { distinctModels: 1, distinctFamilies: 1, unclassifiedSeats: 0, fallbacks: 1 },
     assignedDistinctModels: 3,
     assignedDistinctFamilies: 3,
+    assignedCoverage: { reported: 3, total: 3 },
     // #6258: present on every live panel; the key-parity guard covers it.
     workspace: '/srv/panel-cwd',
     higherOrderMetadata: {

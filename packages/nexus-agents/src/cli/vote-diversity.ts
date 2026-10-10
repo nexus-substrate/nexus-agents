@@ -21,6 +21,7 @@ import { countDistinctModels, UNRESOLVED_MODEL_ID } from '../config/model-equiva
 import type { AgentVoteResult, SeatFallback } from './vote-types.js';
 import { bareCliName } from './voter-fallback.js';
 import { vendorFamilyOf } from './voter-family-dealing.js';
+import { preserveVoterAttemptTelemetry } from './voter-attempt-events.js';
 
 /**
  * Always present on the response, explicit zeros included: an absent key
@@ -51,12 +52,14 @@ export interface PanelDiversity {
   readonly fallbacks: number;
 }
 
-/** Assigned-roster diversity; absent counts mean no assigned model was measured. */
+/** Assigned-roster diversity; coverage names assignments that remain unmeasured. */
 interface AssignedPanelDiversity {
   /** Distinct assigned models, including seats that errored or abstained. */
   readonly assignedDistinctModels?: number;
   /** Recognised vendor families among all assigned models. */
   readonly assignedDistinctFamilies?: number;
+  /** Resolved assignments out of the entire roster, including non-answering seats. */
+  readonly assignedCoverage?: { readonly reported: number; readonly total: number };
 }
 
 /** A seat that answered elsewhere, with where it landed. */
@@ -84,6 +87,24 @@ function requestedModel(v: Pick<AgentVoteResult, 'model'>): string | undefined {
 }
 
 /**
+ * The primary assignment, even when its launch-time pin preceded lazy detection.
+ * Fallback provenance names the primary; a non-fallback request names itself.
+ * Never infer an assignment from the served model or an untraced fallback.
+ */
+export function assignedModel(v: AgentVoteResult): string | undefined {
+  const pinned = realModel(v.pinnedModel);
+  if (pinned !== undefined) return pinned;
+  const from = realModel(v.fallback?.fromModel);
+  if (from !== undefined) return qualifiedModel(from, v.fallback?.fromCli);
+  return v.fallback === undefined ? requestedModel(v) : undefined;
+}
+
+/** Resolve the launch-time assignment without losing deferred attempt telemetry. */
+export function withResolvedAssignment(vote: AgentVoteResult): AgentVoteResult {
+  return preserveVoterAttemptTelemetry(vote, { ...vote, pinnedModel: assignedModel(vote) });
+}
+
+/**
  * The model that ANSWERED (#7179): the adapter-reported `servedModel` when it
  * reported one, else the requested model. Every diversity figure and warning
  * is computed from this, so the summary names the panel that actually voted —
@@ -91,21 +112,21 @@ function requestedModel(v: Pick<AgentVoteResult, 'model'>): string | undefined {
  */
 export function resolvedModel(v: AgentVoteResult): string | undefined {
   const served = realModel(v.servedModel);
-  return served === undefined ? requestedModel(v) : qualifiedServedModel(v, served);
+  return served === undefined ? requestedModel(v) : qualifiedModel(served, v.cli);
 }
 
 /**
- * A served id as a canonical model id. The claude transport reports a bare
+ * An id as a canonical model id. The claude transport reports a bare
  * CLI alias (`opus`), which the identity resolver deliberately leaves
  * unresolvable (#4390) — so an id that names no vendor on its own is qualified
- * against the CLI that answered, never globally. A resolvable id, or one no
+ * against its originating CLI, never globally. A resolvable id, or one no
  * entry of that CLI claims, is returned unchanged.
  */
-function qualifiedServedModel(v: AgentVoteResult, served: string): string {
-  if (vendorFamilyOf(served) !== 'unknown') return served;
-  const cli = CliNameSchema.safeParse(v.cli === undefined ? undefined : bareCliName(v.cli));
-  if (!cli.success) return served;
-  return findCanonicalModel(cli.data, served)?.id ?? served;
+function qualifiedModel(model: string, cliName: string | undefined): string {
+  if (vendorFamilyOf(model) !== 'unknown') return model;
+  const cli = CliNameSchema.safeParse(cliName === undefined ? undefined : bareCliName(cliName));
+  if (!cli.success) return model;
+  return findCanonicalModel(cli.data, model)?.id ?? model;
 }
 
 /** True when the seat was served on a model other than the one it requested. */
@@ -189,20 +210,20 @@ export function panelDiversityOf(votes: readonly AgentVoteResult[]): PanelDivers
 
 /**
  * Count the assigned roster independently of execution outcomes. An empty
- * roster, or one with no resolved assignments, is unmeasured: omit the counts.
- * Never substitute the executing model, which may be a failover model.
+ * roster, or one with no resolved assignments, is unmeasured: omit the counts
+ * and disclose zero reported assignments. Partial counts carry their coverage.
  */
 export function assignedPanelDiversityOf(
   votes: readonly AgentVoteResult[]
 ): AssignedPanelDiversity {
-  const models = votes
-    .map((v) => v.pinnedModel)
-    .filter((m): m is string => m !== undefined && m !== '' && m !== UNRESOLVED_MODEL_ID);
-  if (models.length === 0) return {};
+  const models = votes.map(assignedModel).filter((m): m is string => m !== undefined);
+  const assignedCoverage = { reported: models.length, total: votes.length };
+  if (models.length === 0) return { assignedCoverage };
   const families = models.map(vendorFamilyOf).filter((family) => family !== 'unknown');
   return {
     assignedDistinctModels: countDistinctModels(models),
     assignedDistinctFamilies: new Set(families).size,
+    assignedCoverage,
   };
 }
 

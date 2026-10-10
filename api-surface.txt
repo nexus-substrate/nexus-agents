@@ -2118,6 +2118,7 @@ InterfaceDeclaration ConsensusVoteRequestedEvent
   readonly topic: "consensus.vote_requested"
 InterfaceDeclaration ConsensusVoteResponse
   approvalPercentage: number
+  assignedCoverage?: undefined | { readonly reported: number; readonly total: number; }
   assignedDistinctFamilies?: number | undefined
   assignedDistinctModels?: number | undefined
   contrarianCheck: "errored" | "ok" | "skipped"
