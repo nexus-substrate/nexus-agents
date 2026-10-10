@@ -20,6 +20,7 @@
     INITIAL_SPY,
     currentHeadingIndex,
     isScrollKey,
+    listenScrollEnd,
     spyReduce,
     type SpyEvent,
   } from '../lib/toc-spy.ts';
@@ -99,6 +100,8 @@
     window.addEventListener('mousedown', onUserScroll);
     window.addEventListener('keydown', onKeydown);
 
+    const unbindScrollEnd = listenScrollEnd(window, update);
+
     const observer = new IntersectionObserver(update, { rootMargin: BAND_ROOT_MARGIN });
     for (const { heading } of pairs) observer.observe(heading);
     update();
@@ -108,6 +111,7 @@
     const container = root;
     return () => {
       observer.disconnect();
+      unbindScrollEnd();
       container.removeEventListener('click', onClick);
       window.removeEventListener('hashchange', onHashChange);
       window.removeEventListener('wheel', onUserScroll);

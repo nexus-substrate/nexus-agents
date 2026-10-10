@@ -69,3 +69,45 @@ const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home
 export function isScrollKey(key: string): boolean {
   return SCROLL_KEYS.has(key);
 }
+
+/**
+ * Options for `listenScrollEnd`.
+ */
+export interface ScrollEndOptions {
+  /**
+   * Override native scrollend detection. Defaults to checking `'onscrollend' in target`.
+   */
+  native?: boolean;
+}
+
+/**
+ * Listens for scroll completion on `target` (e.g. `window`).
+ * Uses native 'scrollend' where supported; otherwise falls back to a
+ * rAF-throttled 'scroll' listener. Returns an unbind cleanup function.
+ */
+export function listenScrollEnd(
+  target: EventTarget,
+  callback: () => void,
+  options?: ScrollEndOptions,
+): () => void {
+  const useNative = options?.native ?? ('onscrollend' in target);
+  if (useNative) {
+    target.addEventListener('scrollend', callback, { passive: true });
+    return () => target.removeEventListener('scrollend', callback);
+  }
+
+  let rafId = 0;
+  const onScroll = (): void => {
+    if (rafId !== 0) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      callback();
+    });
+  };
+  target.addEventListener('scroll', onScroll, { passive: true });
+  return () => {
+    if (rafId !== 0) cancelAnimationFrame(rafId);
+    target.removeEventListener('scroll', onScroll);
+  };
+}
+
