@@ -5,6 +5,7 @@ import {
   currentHeadingIndex,
   INITIAL_SPY,
   isScrollKey,
+  listenScrollEnd,
   spyReduce,
   type SpyState,
 } from './toc-spy.ts';
@@ -80,3 +81,111 @@ describe('the band', () => {
     expect(BAND_ROOT_MARGIN).toBe(`0px 0px -${below}% 0px`);
   });
 });
+
+describe('fast scroll across the band', () => {
+  it('chooses the last heading above the band bottom when multiple headings jump across the band', () => {
+    const bandBottom = 300;
+    // Fast wheel or PageDown jumped H0, H1, H2 above the band; H3 is above the band bottom; H4 is below.
+    expect(currentHeadingIndex([-1200, -700, -200, 150, 500], bandBottom)).toBe(3);
+  });
+
+  it('chooses the last heading when all headings have jumped above the band', () => {
+    const bandBottom = 300;
+    expect(currentHeadingIndex([-1200, -700, -200, -50, 100], bandBottom)).toBe(4);
+  });
+});
+
+describe('listenScrollEnd', () => {
+  class FakeTarget implements EventTarget {
+    private readonly listeners: Record<string, EventListenerOrEventListenerObject[]> = {};
+
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject | null): void {
+      if (!listener) return;
+      (this.listeners[type] ??= []).push(listener);
+    }
+
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null): void {
+      if (!listener) return;
+      this.listeners[type] = (this.listeners[type] ?? []).filter((l) => l !== listener);
+    }
+
+    dispatchEvent(_event: Event): boolean {
+      return true;
+    }
+
+    fire(type: string, event: Event = new Event(type)): void {
+      for (const listener of this.listeners[type] ?? []) {
+        if (typeof listener === 'function') listener(event);
+        else listener.handleEvent(event);
+      }
+    }
+
+    count(type: string): number {
+      return (this.listeners[type] ?? []).length;
+    }
+  }
+
+  it('uses native scrollend when available, and cleans up on unbind', () => {
+    const target = new FakeTarget();
+    let called = 0;
+    const unbind = listenScrollEnd(target, () => { called += 1; }, { native: true });
+
+    expect(target.count('scrollend')).toBe(1);
+    expect(target.count('scroll')).toBe(0);
+
+    target.fire('scrollend');
+    expect(called).toBe(1);
+
+    unbind();
+    expect(target.count('scrollend')).toBe(0);
+    target.fire('scrollend');
+    expect(called).toBe(1);
+  });
+
+  it('falls back to rAF-throttled scroll when native scrollend is unavailable', () => {
+    const target = new FakeTarget();
+    let called = 0;
+    let rafCallbacks: FrameRequestCallback[] = [];
+    let nextId = 1;
+    const originalRaf = globalThis.requestAnimationFrame;
+    const originalCancel = globalThis.cancelAnimationFrame;
+
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
+      const id = nextId++;
+      rafCallbacks.push(cb);
+      return id;
+    };
+    globalThis.cancelAnimationFrame = (_id: number): void => {
+      rafCallbacks = [];
+    };
+
+    try {
+      const unbind = listenScrollEnd(target, () => { called += 1; }, { native: false });
+      expect(target.count('scroll')).toBe(1);
+      expect(target.count('scrollend')).toBe(0);
+
+      // Multiple scroll events before rAF flushes are coalesced
+      target.fire('scroll');
+      target.fire('scroll');
+      target.fire('scroll');
+      expect(called).toBe(0);
+      expect(rafCallbacks.length).toBe(1);
+
+      // Flush the animation frame
+      const cb = rafCallbacks.pop()!;
+      cb(100);
+      expect(called).toBe(1);
+
+      // Unbind removes listener and cancels pending frame
+      target.fire('scroll');
+      expect(rafCallbacks.length).toBe(1);
+      unbind();
+      expect(target.count('scroll')).toBe(0);
+      expect(rafCallbacks.length).toBe(0);
+    } finally {
+      globalThis.requestAnimationFrame = originalRaf;
+      globalThis.cancelAnimationFrame = originalCancel;
+    }
+  });
+});
+

@@ -177,6 +177,83 @@ async function drawerChecks(page, theme, origin) {
   check(`${tag} landing page drawer opens with primary links`, landing.open && landing.primary === PRIMARY_LINK_COUNT);
 }
 
+/**
+ * Fast-scroll checks for the "On this page" TOC island (#7319).
+ * Verifies that single-frame fast scrolls (PageDown and 500px wheel steps)
+ * across the 34% band correctly update the active heading link on scroll end.
+ */
+async function tocSpyChecks(page, theme, width) {
+  const tag = `[${theme} ${width}]`;
+  const activeTocHref = () => page.evaluate(() => {
+    const a = document.querySelector('.docs-toc a[aria-current="location"]');
+    return a ? a.getAttribute('href') : null;
+  });
+
+  const expectedTocHref = () => page.evaluate(() => {
+    const line = window.innerHeight * 0.34;
+    const links = [...document.querySelectorAll('.docs-toc a[href^="#"]')];
+    let expected = null;
+    for (const link of links) {
+      const id = decodeURIComponent(link.hash.slice(1));
+      const heading = id ? document.getElementById(id) : null;
+      if (heading && heading.getBoundingClientRect().top <= line) {
+        expected = link.getAttribute('href');
+      }
+    }
+    return expected;
+  });
+
+  const tocCount = await page.locator('.docs-toc a[href^="#"]').count();
+  if (tocCount === 0) return;
+
+  // 1. Initial state at top of page
+  const initialActive = await activeTocHref();
+  const initialExpected = await expectedTocHref();
+  check(`${tag} TOC initial active heading matches top of page`, initialActive === initialExpected, `active: ${initialActive}`);
+
+  // 2. Fast scroll via PageDown (keyboard scroll across the 34% band in a single frame)
+  await page.keyboard.press('PageDown');
+  await page.evaluate(() => new Promise((resolve) => {
+    if ('onscrollend' in window) {
+      window.addEventListener('scrollend', () => resolve(true), { once: true });
+      setTimeout(resolve, 300);
+    } else {
+      setTimeout(resolve, 150);
+    }
+  }));
+  const pageDownActive = await activeTocHref();
+  const pageDownExpected = await expectedTocHref();
+  check(`${tag} PageDown fast-scroll highlights last heading above band`, pageDownActive === pageDownExpected && pageDownActive !== null, `expected ${pageDownExpected}, got ${pageDownActive}`);
+
+  // 3. Fast scroll via 500px mouse wheel step
+  await page.mouse.wheel(0, 500);
+  await page.evaluate(() => new Promise((resolve) => {
+    if ('onscrollend' in window) {
+      window.addEventListener('scrollend', () => resolve(true), { once: true });
+      setTimeout(resolve, 300);
+    } else {
+      setTimeout(resolve, 150);
+    }
+  }));
+  const wheelActive = await activeTocHref();
+  const wheelExpected = await expectedTocHref();
+  check(`${tag} 500px wheel step highlights last heading above band`, wheelActive === wheelExpected && wheelActive !== null, `expected ${wheelExpected}, got ${wheelActive}`);
+
+  // 4. Multiple 500px wheel steps
+  await page.mouse.wheel(0, 500);
+  await page.evaluate(() => new Promise((resolve) => {
+    if ('onscrollend' in window) {
+      window.addEventListener('scrollend', () => resolve(true), { once: true });
+      setTimeout(resolve, 300);
+    } else {
+      setTimeout(resolve, 150);
+    }
+  }));
+  const secondWheelActive = await activeTocHref();
+  const secondWheelExpected = await expectedTocHref();
+  check(`${tag} second 500px wheel step highlights last heading above band`, secondWheelActive === secondWheelExpected && secondWheelActive !== null, `expected ${secondWheelExpected}, got ${secondWheelActive}`);
+}
+
 async function main() {
   const server = await startStaticServer(dist);
   const browser = await chromium.launch();
@@ -215,7 +292,10 @@ async function main() {
         });
         report.measurements[`${width}-${theme}`] = layout;
         console.log(`layout [${theme} ${width}]: ${JSON.stringify(layout)}`);
-        if (!measureOnly) check(`[${theme} ${width}] Menu button hidden`, !layout.menuVisible);
+        if (!measureOnly) {
+          check(`[${theme} ${width}] Menu button hidden`, !layout.menuVisible);
+          await tocSpyChecks(wide.page, theme, width);
+        }
         if (shots) await wide.page.screenshot({ path: `${shots}/${measureOnly ? 'before-' : ''}menu-${width}-${theme}.png` });
         await wide.context.close();
       }
