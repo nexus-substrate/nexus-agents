@@ -6,61 +6,9 @@ import CodeCopy from './CodeCopy.svelte';
 <!-- Copy buttons (Svelte island #7320) -->
 <CodeCopy client:load />
 
-<!-- Mermaid: ink-on-paper theme, derived from the same tokens as the rest of the site -->
+<!-- Mermaid: ink-on-paper theme, dynamically derived from Remarque tokens (#7231) -->
 <script>
-  import type { MermaidConfig } from 'mermaid';
-
-  const LIGHT_VARS = {
-    primaryColor: '#1c1715',          // ink
-    primaryTextColor: '#fbf6ed',       // paper
-    primaryBorderColor: '#1c1715',
-    secondaryColor: '#efe9dc',         // paper-deep
-    secondaryTextColor: '#1c1715',
-    tertiaryColor: '#fbf6ed',
-    tertiaryTextColor: '#1c1715',
-    lineColor: '#1c1715',
-    textColor: '#1c1715',
-    mainBkg: '#1c1715',
-    secondBkg: '#efe9dc',
-    background: 'transparent',
-    nodeBorder: '#1c1715',
-    clusterBkg: 'rgba(144, 32, 32, 0.06)',
-    clusterBorder: '#902020',          // register red
-    defaultLinkColor: '#3d2e26',
-    edgeLabelBackground: '#fbf6ed',
-    fontSize: '14px',
-  } as const;
-
-  const DARK_VARS = {
-    ...LIGHT_VARS,
-    primaryColor: '#e3dcce',
-    primaryTextColor: '#1c1715',
-    primaryBorderColor: '#e3dcce',
-    secondaryColor: '#2c2521',
-    secondaryTextColor: '#e3dcce',
-    tertiaryColor: '#221d1a',
-    tertiaryTextColor: '#e3dcce',
-    lineColor: '#bfb6a4',
-    textColor: '#e3dcce',
-    mainBkg: '#e3dcce',
-    secondBkg: '#2c2521',
-    nodeBorder: '#e3dcce',
-    clusterBorder: '#cf6464',
-    defaultLinkColor: '#a89c8a',
-    // Flowchart edge labels share the dark text color of the light nodes.
-    edgeLabelBackground: '#e3dcce',
-  } as const;
-
-  function buildTheme(isDark: boolean): MermaidConfig {
-    return {
-      startOnLoad: false,
-      theme: 'base',
-      securityLevel: 'strict',
-      fontFamily: "'Source Sans 3', system-ui, sans-serif",
-      themeVariables: isDark ? DARK_VARS : LIGHT_VARS,
-      flowchart: { curve: 'linear', padding: 16, useMaxWidth: true, htmlLabels: true },
-    };
-  }
+  import { buildMermaidTheme } from '../lib/mermaid-theme.ts';
 
   let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
   // An explicit choice from the docs theme toggle ([data-theme] on <html>)
@@ -72,7 +20,7 @@ import CodeCopy from './CodeCopy.svelte';
   }
   function loadMermaid(): Promise<typeof import('mermaid').default> {
     mermaidPromise ??= import('mermaid').then((m) => {
-      m.default.initialize(buildTheme(currentIsDark()));
+      m.default.initialize(buildMermaidTheme(document.documentElement, currentIsDark()));
       return m.default;
     });
     return mermaidPromise;
@@ -90,7 +38,7 @@ import CodeCopy from './CodeCopy.svelte';
         block.innerHTML = svg;
         block.dataset.mermaidRendered = '1';
       } catch (err) {
-        block.innerHTML = `<pre class="code-block" style="color:#902020;">Diagram render failed: ${String(err)}</pre>`;
+        block.innerHTML = `<pre class="code-block" style="color: var(--color-error);">Diagram render failed: ${String(err)}</pre>`;
       }
     }
   }
