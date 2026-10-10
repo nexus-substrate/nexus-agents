@@ -145,36 +145,50 @@ export function attachCopyButtons(
     btn.setAttribute('aria-label', COPY_LABEL);
     btn.textContent = 'Copy';
 
+    let activeTimer: ReturnType<typeof setTimeout> | undefined;
+
     const onClick = async (): Promise<void> => {
+      if (activeTimer !== undefined) {
+        clearTimeout(activeTimer);
+        activeTimer = undefined;
+      }
+
       const code = pre.querySelector('code');
       const text = extractCodeText(code?.textContent, pre.textContent);
 
       try {
         await navigator.clipboard.writeText(text);
-        btn.textContent = COPIED_LABEL;
-        btn.classList.add('copied');
-        btn.setAttribute('aria-label', COPIED_LABEL);
-        onAnnounce?.(COPIED_ANNOUNCEMENT);
+        const attrs = buttonAttributes('copied');
+        btn.textContent = attrs.text;
+        btn.className = attrs.className;
+        btn.setAttribute('aria-label', attrs['aria-label']);
+        onAnnounce?.(liveAnnouncement('copied'));
 
-        const timer = setTimeout(() => {
-          btn.textContent = 'Copy';
-          btn.classList.remove('copied');
-          btn.setAttribute('aria-label', COPY_LABEL);
-          onAnnounce?.('');
+        activeTimer = setTimeout(() => {
+          const resetAttrs = buttonAttributes('idle');
+          btn.textContent = resetAttrs.text;
+          btn.className = resetAttrs.className;
+          btn.setAttribute('aria-label', resetAttrs['aria-label']);
+          onAnnounce?.(liveAnnouncement('idle'));
+          activeTimer = undefined;
         }, COPIED_RESET_MS);
-        timeouts.push(timer);
+        timeouts.push(activeTimer);
       } catch {
-        btn.textContent = 'Failed';
-        btn.classList.add('error');
-        onAnnounce?.(FAILED_ANNOUNCEMENT);
+        const attrs = buttonAttributes('error');
+        btn.textContent = attrs.text;
+        btn.className = attrs.className;
+        btn.setAttribute('aria-label', attrs['aria-label']);
+        onAnnounce?.(liveAnnouncement('error'));
 
-        const timer = setTimeout(() => {
-          btn.textContent = 'Copy';
-          btn.classList.remove('error');
-          btn.setAttribute('aria-label', COPY_LABEL);
-          onAnnounce?.('');
+        activeTimer = setTimeout(() => {
+          const resetAttrs = buttonAttributes('idle');
+          btn.textContent = resetAttrs.text;
+          btn.className = resetAttrs.className;
+          btn.setAttribute('aria-label', resetAttrs['aria-label']);
+          onAnnounce?.(liveAnnouncement('idle'));
+          activeTimer = undefined;
         }, COPIED_RESET_MS);
-        timeouts.push(timer);
+        timeouts.push(activeTimer);
       }
     };
 

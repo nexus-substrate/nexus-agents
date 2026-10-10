@@ -76,6 +76,7 @@ describe('buttonAttributes', () => {
     expect(attrs.className).toBe('copy-btn');
     expect(attrs['aria-label']).toBe('Copy code');
     expect(attrs.text).toBe('Copy');
+    expect(attrs['aria-label'].toLowerCase()).toContain(attrs.text.toLowerCase());
   });
 
   it('returns copied button attributes with copied class and label', () => {
@@ -84,13 +85,17 @@ describe('buttonAttributes', () => {
     expect(attrs.className).toBe('copy-btn copied');
     expect(attrs['aria-label']).toBe('Copied');
     expect(attrs.text).toBe('Copied');
+    expect(attrs['aria-label'].toLowerCase()).toContain(attrs.text.toLowerCase());
   });
 
-  it('returns error button attributes on failure', () => {
+  it('returns error button attributes satisfying WCAG 2.5.3 Label in Name', () => {
     const attrs = buttonAttributes('error');
     expect(attrs.type).toBe('button');
     expect(attrs.className).toBe('copy-btn error');
+    expect(attrs['aria-label']).toBe('Failed to copy');
     expect(attrs.text).toBe('Failed');
+    // WCAG 2.5.3: Accessible name must contain the visible label text
+    expect(attrs['aria-label'].toLowerCase()).toContain(attrs.text.toLowerCase());
   });
 });
 
