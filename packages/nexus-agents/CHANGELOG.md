@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 11.5.10
+
+### Patch Changes
+
+- [#7334](https://github.com/nexus-substrate/nexus-agents/pull/7334) [`53fe288`](https://github.com/nexus-substrate/nexus-agents/commit/53fe288c23f0f1d0c776555cb28d38a0fdc7565e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Recover every known vote-seat assignment after model fallback and report assignment coverage alongside distinct model and family counts.
+
 ## 11.5.9
 
 ### Patch Changes
