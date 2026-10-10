@@ -76,6 +76,11 @@ a:hover {
   position: absolute;
   top: var(--space-2);
   inset-inline-end: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 48px;
   padding: var(--space-1) var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-meta);
