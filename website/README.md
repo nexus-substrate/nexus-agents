@@ -33,6 +33,7 @@ hydrated with `client:load` (#7313):
 | `ThemeToggle.svelte` | Light/dark toggle (`aria-pressed`, follows the OS until chosen). |
 | `MenuDrawer.svelte`  | "Menu" button and the `<dialog>` navigation drawer below 64rem.  |
 | `TocSpy.svelte`      | Marks the "On this page" link of the section being read.         |
+| `CodeCopy.svelte`    | Manages copy buttons with 48px touch target and live announce.   |
 
 Rules for a new widget:
 
@@ -48,13 +49,17 @@ Rules for a new widget:
   without JS is server-rendered `hidden` and revealed on mount, as
   `SearchBox` and `ThemeToggle` do.
 - **Pure logic lives in `src/lib/`** with a Vitest unit test
-  (`menu-drawer.ts`, `toc-spy.ts`, `theme.ts`); the component is the DOM
+  (`code-copy.ts`, `menu-drawer.ts`, `toc-spy.ts`, `theme.ts`); the component is the DOM
   binding and calls it.
 - **Moving is the exception to slotting.** `MenuDrawer` shows two navs that
   live in different places in the page (the header row and the docs side
   column) and must render there from 64rem and without JS. A slot can only
   place markup inside the island, so the drawer instead moves those two
   elements into the open dialog and back on close. Still one copy.
+- **Single controller island for scattered elements.** `CodeCopy` attaches
+  buttons across all code blocks (`pre.code-block, pre.astro-code, pre[data-copy]`)
+  from a single island per page, avoiding the hydration overhead of dozens of
+  individual islands per document (#7320).
 
 ## Inline scripts are for pre-paint work only
 
@@ -68,7 +73,6 @@ Use one only when something must be right before first paint:
   "On this page" nav set each disclosure's open state for the viewport width,
   so a phone's first screen is the page, not an open nav.
 
-Not yet converted, and so outside this rule today: the copy buttons on code
-blocks (an inline script in `PageScripts.astro`), and Mermaid rendering and
+Not yet converted, and so outside this rule today: Mermaid rendering and
 table scroll regions (bundled module scripts in `PageScripts.astro` and
 `DocsLayout.astro`).

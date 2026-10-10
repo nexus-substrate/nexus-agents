@@ -1,40 +1,10 @@
 ---
 // Copy buttons and Mermaid rendering, shared by BaseLayout and DocsLayout.
+import CodeCopy from './CodeCopy.svelte';
 ---
 
-<!-- Copy buttons -->
-<script is:inline>
-  (function () {
-    function attach() {
-      if (!navigator.clipboard) return;
-      document.querySelectorAll('pre.code-block, pre.astro-code, pre[data-copy]').forEach(function (pre) {
-        if (pre.dataset.copyAttached === '1') return;
-        pre.dataset.copyAttached = '1';
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'copy-btn';
-        btn.setAttribute('aria-label', 'Copy code');
-        btn.textContent = 'Copy';
-        btn.addEventListener('click', function () {
-          var code = pre.querySelector('code');
-          var text = code ? code.textContent : pre.textContent;
-          navigator.clipboard.writeText(text || '').then(function () {
-            btn.textContent = 'Copied';
-            btn.classList.add('copied');
-            setTimeout(function () {
-              btn.textContent = 'Copy';
-              btn.classList.remove('copied');
-            }, 1500);
-          });
-        });
-        pre.style.position = 'relative';
-        pre.appendChild(btn);
-      });
-    }
-    attach();
-    document.addEventListener('astro:page-load', attach);
-  })();
-</script>
+<!-- Copy buttons (Svelte island #7320) -->
+<CodeCopy client:load />
 
 <!-- Mermaid: ink-on-paper theme, derived from the same tokens as the rest of the site -->
 <script>

@@ -85,6 +85,7 @@
   function onClose(): void {
     moveBack();
     expanded = false;
+    opener?.setAttribute('aria-expanded', 'false');
     opener?.focus();
   }
 
@@ -136,6 +137,7 @@
   aria-labelledby={TITLE_ID}
   data-pagefind-ignore
   onclose={onClose}
+  oncancel={onClose}
   onclick={onDialogClick}
   onkeydown={onKeydown}
 >
