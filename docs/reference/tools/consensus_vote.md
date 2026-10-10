@@ -12,7 +12,7 @@ keywords: [mcp, tool, reference, consensus_vote]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async dispatch (dispatch: 'async' returns a jobId to poll via get_job_result). The response separates responding panelDiversity from optional assignedDistinctModels and assignedDistinctFamilies, and votes[].assignedModel shows each resolved assignment, including errored or abstaining seats. Assignment counts are omitted when unmeasured. panelWarning names ignored model pins and includes an artifactPath hint when unverifiable seats had no supplied artifact.
+Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async dispatch (dispatch: 'async' returns a jobId to poll via get_job_result). The response separates responding panelDiversity from optional assignedDistinctModels and assignedDistinctFamilies, and votes[].assignedModel shows each resolved assignment, including errored or abstaining seats. assignedCoverage reports resolved assignments out of all seats; assignment counts are omitted when unmeasured. panelWarning names ignored model pins and includes an artifactPath hint when unverifiable seats had no supplied artifact.
 
 ## Parameters
 
