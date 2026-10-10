@@ -522,10 +522,9 @@ pre:hover .copy-btn,
   text-wrap: balance;
   margin: 0 0 var(--space-5);
 }
-/* H2 at least 26px from mid widths (remarque's --text-section is 23px at
-   1024px); 22px on phones, 32px at 1440. */
+/* H2 uses remarque's --text-section token (issue #7231). */
 .docs-body h2 {
-  font-size: clamp(1.375rem, 1.14rem + 0.952vw, 2rem);
+  font-size: var(--text-section);
 }
 .docs-body h3 {
   line-height: 1.3;

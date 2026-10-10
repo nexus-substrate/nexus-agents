@@ -166,12 +166,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir website menu-check
 
-      # This audits the actual remarque palette plus source policy, not CSS
-      # cascade contrast. Legacy landing/404 policy findings await redesign;
-      # rendered contrast on those pages is blocking in the axe step above.
-      - name: Audit remarque palette and source policy (advisory)
+      # Audits the actual remarque palette plus source policy (blocking gate #7231).
+      - name: Audit remarque palette and source policy
         if: ${{ !cancelled() }}
-        continue-on-error: true
         working-directory: website
         run: npx remarque-audit --palette node_modules/remarque-tokens/tokens-palette.css --src src --json > /tmp/remarque-report.json
 
