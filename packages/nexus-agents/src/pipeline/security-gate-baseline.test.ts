@@ -90,7 +90,9 @@ describe('pinned baseline comparison (#7238)', () => {
       introducedBlockingCount: 0,
       blockingFindings: [],
       complete: true,
+      testFilesExcluded: true,
     });
+    expect(result.details).toContain('test files excluded with disclosure');
     expect(mocks.scan).toHaveBeenCalledTimes(2);
   });
 

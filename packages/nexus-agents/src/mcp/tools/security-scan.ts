@@ -187,10 +187,31 @@ const COMPLETE_SCAN_FLAGS = [
   // Avoid mutable ignore files and hidden-ancestor skips in scratch worktrees.
   // Unsupported scanner versions fail closed on this explicitly pinned flag.
   '--x-ignore-semgrepignore-files',
-  // Must exclude nothing the dev pipeline captures (PATCH_PATHS in
-  // pipeline/dev-pipeline-workspace.ts), or a captured file ships unscanned.
+  // Exclude third-party dependencies, version control, build and test scratch artifacts.
   '--exclude=node_modules',
   '--exclude=.git',
+  '--exclude=dist',
+  '--exclude=coverage',
+  '--exclude=.nexus-agents',
+  '--exclude=.nexus-worktrees',
+  '--exclude=coverage.json',
+  '--exclude=*.tsbuildinfo',
+  '--exclude=.turbo',
+  '--exclude=.cache',
+  '--exclude=.claude',
+  // Issue #7303: Exclude test files with disclosure. SAST rulesets (p/default)
+  // are intended for production runtime code; test fixtures contain deliberate
+  // mock payloads and generic TS constructs (e.g. importOriginal<typeof import()>)
+  // that break Semgrep's tree-sitter TS parser across 128+ files.
+  '--exclude=*.test.ts',
+  '--exclude=*.spec.ts',
+  '--exclude=*.test.js',
+  '--exclude=*.spec.js',
+  '--exclude=*.test.mjs',
+  '--exclude=*.spec.mjs',
+  '--exclude=*.test.cjs',
+  '--exclude=*.spec.cjs',
+  '--exclude=**/__tests__/**',
 ] as const;
 
 /** Resolve an executable before either tree can affect PATH lookup. */

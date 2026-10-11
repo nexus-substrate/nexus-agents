@@ -130,6 +130,33 @@ export function checkSecurityScan(
   };
 }
 
+function formatBaselineDetails(
+  comparison: SecurityBaselineComparison,
+  osv: OsvCheckResult
+): string {
+  if (!comparison.complete) {
+    return `Dependency check: ${buildScanSummary(null, 0, osv.vulnerabilities.length, osv)}; Security comparison incomplete: ${comparison.errors.join('; ')}`;
+  }
+  const summary = buildScanSummary(
+    comparison.worktreeCount ?? 0,
+    comparison.introducedBlockingCount ?? 0,
+    osv.vulnerabilities.length,
+    osv
+  );
+  const testNote =
+    comparison.testFilesExcluded === true ? '; test files excluded with disclosure' : '';
+  return `Base ${String(comparison.baseCount)}, worktree ${String(comparison.worktreeCount)} findings; ${String(comparison.introducedBlockingCount)} introduced blocking; ${summary}${testNote}`;
+}
+
+function resolveBaselineVerdict(
+  comparison: SecurityBaselineComparison,
+  osvFailed: boolean
+): 'pass' | 'fail' | 'skip' {
+  if (osvFailed) return 'fail';
+  if (!comparison.complete) return 'skip';
+  return comparison.introducedBlockingCount === 0 ? 'pass' : 'fail';
+}
+
 /** Preserve dependency checking while comparing only the SAST change. */
 async function runBaselineGate(
   target: string,
@@ -141,20 +168,11 @@ async function runBaselineGate(
   const comparison = await compareSecurityBaseline(target, rulesets, config, signal);
   const osv = await runOsvCheck(config.dependencyTarget ?? target, config, signal);
   throwIfAborted(signal, 'Security baseline scan aborted');
-  const osvFailed = blocksDependencyCheck(osv);
   const scanNote = unscannedNote(comparison);
-  const details = comparison.complete
-    ? `Base ${String(comparison.baseCount)}, worktree ${String(comparison.worktreeCount)} findings; ${String(comparison.introducedBlockingCount)} introduced blocking; ${buildScanSummary(comparison.worktreeCount ?? 0, comparison.introducedBlockingCount ?? 0, osv.vulnerabilities.length, osv)}`
-    : `Dependency check: ${buildScanSummary(null, 0, osv.vulnerabilities.length, osv)}; Security comparison incomplete: ${comparison.errors.join('; ')}`;
+  const details = formatBaselineDetails(comparison, osv);
   return {
     name: 'security_scan',
-    verdict: osvFailed
-      ? 'fail'
-      : !comparison.complete
-        ? 'skip'
-        : comparison.introducedBlockingCount === 0
-          ? 'pass'
-          : 'fail',
+    verdict: resolveBaselineVerdict(comparison, blocksDependencyCheck(osv)),
     details: `${(osv.manifestError === undefined ? details : `${osv.manifestError}; ${details}`).slice(0, 500)}${scanNote === undefined ? '' : `; ${scanNote}`}`,
     comparison,
     ...combinedCoverageNote(osv, scanNote),
