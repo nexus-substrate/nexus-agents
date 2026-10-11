@@ -12,7 +12,13 @@ import { START, END } from '../orchestration/graph/graph-types.js';
 
 import { formatCompileError } from '../orchestration/graph/graph-types.js';
 import type { CompiledGraph, GraphState } from '../orchestration/graph/graph-types.js';
-import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
+import {
+  TaskContractSchema,
+  type PlanContract,
+  type StageSpec,
+  type PolicyGateSpec,
+  type TaskContract,
+} from './task-contract.js';
 import type { IPluginRegistry, StageContext, StageResult } from './plugin-types.js';
 import { enforceGatePolicy, type PolicyEvalResult } from './policy-evaluator.js';
 import type { GatePolicyEnforcement } from './policy-evaluator.js';
@@ -95,6 +101,60 @@ function addPipelineState(builder: GraphBuilder): void {
   builder.addState('currentStage', overwrite(''));
   builder.addState('pipelineStatus', overwrite('running'));
   builder.addState('error', overwrite(''));
+  builder.addState('task', overwrite<Readonly<TaskContract> | undefined>(undefined));
+}
+
+/** Creates a minimal valid TaskContract for fallback/legacy executions. */
+function createFallbackTaskContract(taskId: string): TaskContract {
+  const now = Date.now();
+  return {
+    id: taskId,
+    description: `Pipeline task ${taskId}`,
+    status: 'executing',
+    analysis: {
+      complexity: 'simple',
+      taskType: 'pipeline',
+      ambiguityScore: 0,
+    },
+    constraints: {
+      scope: [],
+    },
+    requiredCapabilities: {
+      tools: [],
+      experts: [],
+    },
+    capabilityGaps: {
+      available: { tools: [], experts: [] },
+      gaps: [],
+      allSatisfied: true,
+      gapsMeasured: false,
+    },
+    artifacts: [],
+    metadata: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/**
+ * Resolves the runtime TaskContract for stage execution (#6910).
+ *
+ * Reads `task` from graph state if provided at execution time. If absent or
+ * partially specified, returns a valid fallback TaskContract tied to plan.taskId.
+ */
+function resolveStageTask(state: Readonly<GraphState>, plan: PlanContract): Readonly<TaskContract> {
+  const candidate = state['task'];
+  if (candidate !== null && typeof candidate === 'object') {
+    const parseResult = TaskContractSchema.safeParse(candidate);
+    if (parseResult.success) {
+      return parseResult.data;
+    }
+    const candidateRecord = candidate as Record<string, unknown>;
+    if (typeof candidateRecord['id'] === 'string') {
+      return createFallbackTaskContract(candidateRecord['id']);
+    }
+  }
+  return createFallbackTaskContract(plan.taskId);
 }
 
 /**
@@ -127,14 +187,13 @@ function createStageHandler(
 ): (state: Readonly<GraphState>) => Promise<Partial<GraphState>> {
   const plugin = registry?.resolve(stage.pluginId);
   if (plugin !== undefined) {
-    return async (_state: Readonly<GraphState>) => {
+    return async (state: Readonly<GraphState>) => {
       const ctx: StageContext = {
         stageId: stage.id,
         pluginId: stage.pluginId,
         pipelineId: plan.taskId,
         signal: AbortSignal.timeout(NETWORK_FETCH_TIMEOUT_MS),
-        // Placeholder until #6910 threads the real TaskContract through execution.
-        task: {} as never,
+        task: resolveStageTask(state, plan),
         config: stage.config,
       };
       const result = await plugin.execute(stage, ctx);

@@ -113,6 +113,7 @@ describe('compilePlan', () => {
             stageId: stage.id,
             pluginId: stage.pluginId,
             pipelineId: plan.taskId,
+            task: expect.objectContaining({ id: plan.taskId }),
           })
         );
       });

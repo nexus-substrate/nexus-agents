@@ -154,7 +154,7 @@ export class PipelineRunner {
 
     try {
       const graphOpts = buildGraphOptions(pipeline, options);
-      const graphResult = await executeGraph(pipeline.graph, {}, graphOpts);
+      const graphResult = await executeGraph(pipeline.graph, { task }, graphOpts);
 
       if (!graphResult.ok) {
         emitPipelineCompleted(trace, task.id, false, Date.now() - startTime);
