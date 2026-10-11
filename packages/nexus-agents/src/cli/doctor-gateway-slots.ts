@@ -67,10 +67,10 @@ export function gatewaySlotServing(
 }
 
 /** The CLI slots capable of serving voter seats (#6962, #7234). */
-export const VOTER_CAPABLE_CLIS: readonly CliName[] = ['claude', 'codex'];
+const VOTER_CAPABLE_CLIS: readonly CliName[] = ['claude', 'codex'];
 
 /** Whether a CLI slot can serve voter seats. */
-export function isVoterCapableCli(name: CliName): boolean {
+function isVoterCapableCli(name: CliName): boolean {
   return (VOTER_CAPABLE_CLIS as readonly string[]).includes(name);
 }
 
