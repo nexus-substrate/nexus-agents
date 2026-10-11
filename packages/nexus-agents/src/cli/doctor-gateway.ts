@@ -360,21 +360,23 @@ export function unservedSlotLines(health: GatewayHealth): string[] {
 
 /**
  * Whether one CLI counts against the verdict. With a passing gateway — one
- * that serves at least one family slot — a CLI that is not installed does
- * not. When its own slot has a gateway model it is excused outright; when it
- * has none (or it is opencode, which never has one) it is a named warning
- * from {@link gatewaySlotWarnings}, not a failure (#6658). A host with zero
- * served slots has a failing gateway, so every missing CLI counts. An
- * installed CLI still has to be authenticated and supported — unless the
- * gateway actually serves its slot (`gatewayCovered`, from
- * `gatewayCoveredClis` in `doctor-gateway-slots.ts`): service is unaffected, so it is a named ⚠, not
- * a failure (#6782). A broken CLI whose slot nothing serves still fails.
+ * that serves at least one family slot — or when at least one voter-capable
+ * CLI is healthy (#7234), a CLI that is not installed does not fail the
+ * verdict. When a voter-capable CLI is healthy, unauthenticated CLIs are
+ * downgraded to warnings (#7234). An installed CLI on an unsupported version
+ * still fails — unless the gateway actually serves its slot (`gatewayCovered`,
+ * from `gatewayCoveredClis` in `doctor-gateway-slots.ts`): service is unaffected,
+ * so it is a named ⚠, not a failure (#6782).
  */
 export function cliFailsVerdict(
   cli: CliCheckResult,
   gateway: GatewayVerdict,
-  gatewayCovered: boolean
+  gatewayCovered: boolean,
+  hasVoterCli = false
 ): boolean {
-  if (!cli.installed) return gateway !== 'pass';
-  return installedCliIsBroken(cli) && !gatewayCovered;
+  if (!cli.installed) return gateway !== 'pass' && !hasVoterCli;
+  if (gatewayCovered) return false;
+  if (cli.versionStatus === 'unsupported') return true;
+  if (hasVoterCli) return false;
+  return installedCliIsBroken(cli);
 }

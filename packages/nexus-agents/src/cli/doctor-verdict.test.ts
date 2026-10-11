@@ -12,7 +12,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { isAllHealthy } from './doctor.js';
-import type { CliCheckResult } from './doctor.js';
+import type { CliCheckResult, DoctorResult } from './doctor.js';
+import { failingVerdictTerms } from './doctor-verdict-terms.js';
 import type { ScratchSpaceCheck, ScratchSpaceSeverity } from './doctor-scratch-space.js';
 
 const healthyCli: CliCheckResult = {
@@ -160,5 +161,100 @@ describe('isAllHealthy with a gateway (#6609)', () => {
     );
     // The pair: the same CLI with its slot unserved still fails.
     expect(isAllHealthy({ ...base, clis, gateway: 'pass', gatewayCoveredClis: [] })).toBe(false);
+  });
+});
+
+describe('single-CLI and unverified auth (#7221, #7234)', () => {
+  const missing = (name: CliCheckResult['name']): CliCheckResult => ({
+    name,
+    installed: false,
+    authenticated: false,
+    authState: 'not-authenticated',
+    routerAdmits: false,
+    version: 'N/A',
+    versionStatus: 'unsupported',
+  });
+
+  const healthyCodex: CliCheckResult = {
+    name: 'codex',
+    installed: true,
+    authenticated: true,
+    authState: 'authenticated',
+    routerAdmits: true,
+    version: '0.160.0',
+    versionStatus: 'supported',
+  };
+
+  const unauthClaude: CliCheckResult = {
+    name: 'claude',
+    installed: true,
+    authenticated: false,
+    authState: 'not-authenticated',
+    routerAdmits: false,
+    version: '2.1.293',
+    versionStatus: 'supported',
+  };
+
+  const unverifiedGemini: CliCheckResult = {
+    name: 'gemini',
+    installed: true,
+    authenticated: false,
+    authState: 'unverified',
+    routerAdmits: true,
+    version: '1.3.2',
+    versionStatus: 'supported',
+  };
+
+  it('passes a host with only Claude Code installed and authenticated (#7234)', () => {
+    const clis = [healthyCli, missing('codex'), missing('gemini'), missing('opencode')];
+    expect(isAllHealthy({ ...base, clis, gateway: 'absent' })).toBe(true);
+  });
+
+  it('passes a host with only Codex installed and authenticated (#7234)', () => {
+    const clis = [missing('claude'), healthyCodex, missing('gemini'), missing('opencode')];
+    expect(isAllHealthy({ ...base, clis, gateway: 'absent' })).toBe(true);
+  });
+
+  it('passes a host with Codex authenticated, Claude unauthenticated, Gemini unverified, and OpenCode missing (#7234, #7221)', () => {
+    const clis = [unauthClaude, healthyCodex, unverifiedGemini, missing('opencode')];
+    expect(isAllHealthy({ ...base, clis, gateway: 'absent' })).toBe(true);
+  });
+
+  it('passes an installed CLI with unverified auth when voter CLI is healthy (#7221)', () => {
+    const clis = [healthyCli, unverifiedGemini];
+    expect(isAllHealthy({ ...base, clis, gateway: 'absent' })).toBe(true);
+  });
+
+  it('fails when no voter-capable CLI is healthy and no gateway is passing', () => {
+    const clis = [unauthClaude, missing('codex'), unverifiedGemini, missing('opencode')];
+    expect(isAllHealthy({ ...base, clis, gateway: 'absent' })).toBe(false);
+  });
+
+  it('failingVerdictTerms reports zero issues on single-CLI install with healthy voter (#7234)', () => {
+    const doctorResult = {
+      ...base,
+      allHealthy: true,
+      mcpClientReady: true,
+      nodeVersion: { version: 'v24.21.0', major: 24, supported: true },
+      apiKeys: [],
+      clis: [healthyCli, missing('codex'), missing('gemini'), missing('opencode')],
+      gateway: { state: 'not_configured' as const },
+    } as unknown as DoctorResult;
+
+    expect(failingVerdictTerms(doctorResult)).toEqual([]);
+  });
+
+  it('failingVerdictTerms reports zero issues on mixed host matching live environment (#7234, #7221)', () => {
+    const doctorResult = {
+      ...base,
+      allHealthy: true,
+      mcpClientReady: true,
+      nodeVersion: { version: 'v24.21.0', major: 24, supported: true },
+      apiKeys: [],
+      clis: [unauthClaude, healthyCodex, unverifiedGemini, missing('opencode')],
+      gateway: { state: 'not_configured' as const },
+    } as unknown as DoctorResult;
+
+    expect(failingVerdictTerms(doctorResult)).toEqual([]);
   });
 });

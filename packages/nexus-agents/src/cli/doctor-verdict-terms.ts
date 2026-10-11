@@ -19,7 +19,7 @@ import * as installFreshness from './doctor-install-freshness.js';
 import type { CliReadiness } from './cli-readiness.js';
 import type { DoctorResult } from './doctor.js';
 import { cliFailsVerdict, gatewayVerdict, type GatewayVerdict } from './doctor-gateway.js';
-import { gatewayCoveredClis } from './doctor-gateway-slots.js';
+import { gatewayCoveredClis, hasHealthyVoterCli } from './doctor-gateway-slots.js';
 
 /**
  * The verdict's failing terms, named.
@@ -73,9 +73,12 @@ function cliVerdictTerms(
   // predicate `isAllHealthy` uses decides both.
   // #6782: a broken CLI whose slot the gateway serves is named, not counted.
   const covered = gatewayCoveredClis(result.gateway, result.clis).map((c) => c.cli);
+  const voterCliHealthy = hasHealthyVoterCli(result.clis);
   for (const c of result.clis) {
     if (measured.has(c.name)) continue;
-    if (cliFailsVerdict(c, gateway, covered.includes(c.name))) terms.push(`CLI ${c.name}`);
+    if (cliFailsVerdict(c, gateway, covered.includes(c.name), voterCliHealthy)) {
+      terms.push(`CLI ${c.name}`);
+    }
   }
   // `isAllHealthy` passes `whenEmpty = false` (#4581) unless a gateway passes:
   // zero detected CLIs is not a healthy install. Without this row an

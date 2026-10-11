@@ -874,7 +874,9 @@ describe('Doctor Command', () => {
 
       const result = await runDoctor();
 
-      expect(result.allHealthy).toBe(false);
+      // #7234: Claude is installed and authenticated, which is sufficient;
+      // missing adapters are downgraded to warnings.
+      expect(result.allHealthy).toBe(true);
       const geminiResult = result.clis.find((c) => c.name === 'gemini');
       expect(geminiResult?.installed).toBe(false);
       expect(geminiResult?.error).toBe('Adapter not available');
