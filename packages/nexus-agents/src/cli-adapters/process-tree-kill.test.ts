@@ -12,9 +12,10 @@
  * @module cli-adapters/process-tree-kill.test
  */
 
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, beforeAll, afterAll, vi } from 'vitest';
+import { build } from 'tsup';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,7 @@ type KnownProcess = ReturnType<typeof signalProcessTree>[number];
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..');
+const MAX_STARTUP_STDERR_CHARS = 4_096;
 
 /**
  * True for a zombie on Linux: dead, but not yet reaped. A container whose
@@ -91,13 +93,13 @@ type ServerMode = 'shutdown' | 'exit' | 'none';
  * hook can. `none` installs no handler, so only a signal the CLI receives
  * itself can.
  */
-function serverScript(pidFile: string, grandchildPidFile: string): string {
+function serverScript(): string {
   const imp = (rel: string): string => JSON.stringify(join(SRC, rel));
   const grandchild = 'setInterval(() => {}, 1000);';
   const cliScript =
     `const g = require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'inherit' });` +
-    `require('fs').writeFileSync(${JSON.stringify(grandchildPidFile)}, String(g.pid));` +
-    `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));` +
+    `require('fs').writeFileSync(process.argv[2], String(g.pid));` +
+    `require('fs').writeFileSync(process.argv[1], String(process.pid));` +
     'setInterval(() => {}, 1000);';
   return `
 import { SubprocessCliAdapter } from ${imp('cli-adapters/subprocess-adapter.ts')};
@@ -111,7 +113,7 @@ class FakeCli extends SubprocessCliAdapter {
   transientRetry = { enabled: false };
   parser = new ClaudeResponseParser();
   getCommand() {
-    return { command: process.execPath, args: ['-e', ${JSON.stringify(cliScript)}] };
+    return { command: process.execPath, args: ['-e', ${JSON.stringify(cliScript)}, process.argv[3], process.argv[4]] };
   }
   initialize() {
     this.initialized = true;
@@ -140,8 +142,34 @@ void new FakeCli().execute({ content: 'x' }, { timeoutMs: 60_000, allowRetry: fa
 
 describe.skipIf(process.platform === 'win32')('CLI process trees at server stop (#6680)', () => {
   let tmpDir: string;
+  let fixtureDir: string;
   let server: ChildProcess | undefined;
   const pids: number[] = [];
+
+  beforeAll(async () => {
+    fixtureDir = mkdtempSync(join(tmpdir(), 'nexus-tree-server-'));
+    const entry = join(fixtureDir, 'server.ts');
+    writeFileSync(entry, serverScript());
+    // Keep external dependencies resolvable from the temporary bundle.
+    symlinkSync(join(SRC, '..', 'node_modules'), join(fixtureDir, 'node_modules'), 'dir');
+    // #7324: tsx repeatedly loaded the MCP/router barrel graph before spawning
+    // the CLI. Build the actual adapter + shutdown code once, sharing the same
+    // process-tree-kill module (and tracked trees) in the resulting bundle.
+    await build({
+      config: false,
+      entry: { server: entry },
+      outDir: fixtureDir,
+      format: ['esm'],
+      outExtension: () => ({ js: '.mjs' }),
+      target: 'node24',
+      removeNodeProtocol: false,
+      silent: true,
+    });
+  });
+
+  afterAll(() => {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  });
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'nexus-tree-kill-'));
@@ -166,20 +194,36 @@ describe.skipIf(process.platform === 'win32')('CLI process trees at server stop 
   ): Promise<{ cli: number; grandchild: number }> {
     const pidFile = join(tmpDir, 'cli.pid');
     const grandchildPidFile = join(tmpDir, 'grandchild.pid');
-    const script = join(tmpDir, 'server.mts');
-    writeFileSync(script, serverScript(pidFile, grandchildPidFile));
+    const script = join(fixtureDir, 'server.mjs');
     // Its own group, standing in for the MCP server's group under the harness.
-    server = spawn(process.execPath, ['--import', 'tsx', script, mode], {
+    const child = spawn(process.execPath, [script, mode, pidFile, grandchildPidFile], {
       cwd: join(SRC, '..'),
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    server = child;
+    let stderr = '';
+    let spawnError: Error | undefined;
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
+      stderr = (stderr + chunk).slice(-MAX_STARTUP_STDERR_CHARS);
+    });
+    child.on('error', (error) => {
+      spawnError = error;
     });
     // The CLI writes its PID after the grandchild's, so both exist once it does.
     await waitFor(
-      () => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '',
+      () => {
+        if (spawnError !== undefined) throw spawnError;
+        if (child.exitCode !== null || child.signalCode !== null) {
+          throw new Error(`server exited before CLI startup: ${stderr}`);
+        }
+        return existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '';
+      },
       'the CLI to start',
       30_000
-    );
+    ).catch((error: unknown) => {
+      throw new Error(`CLI startup failed; server stderr: ${stderr}`, { cause: error });
+    });
     const cli = Number(readFileSync(pidFile, 'utf8'));
     const grandchild = Number(readFileSync(grandchildPidFile, 'utf8'));
     pids.push(cli, grandchild);
