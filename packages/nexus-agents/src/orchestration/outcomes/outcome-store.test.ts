@@ -139,6 +139,14 @@ describe('OutcomeQuerySchema', () => {
     expect(OutcomeQuerySchema.safeParse({ baselineId: '' }).success).toBe(false);
     expect(OutcomeQuerySchema.safeParse({ baselineId: 'x'.repeat(65) }).success).toBe(false);
   });
+
+  // #7082: gatewayArm query filtering.
+  it('accepts valid gatewayArm and rejects malformed values (#7082)', () => {
+    expect(OutcomeQuerySchema.safeParse({ gatewayArm: 'api:anthropic' }).success).toBe(true);
+    expect(OutcomeQuerySchema.safeParse({ gatewayArm: 'api:openrouter' }).success).toBe(true);
+    expect(OutcomeQuerySchema.safeParse({ gatewayArm: 'api:openrouter/auto' }).success).toBe(false);
+    expect(OutcomeQuerySchema.safeParse({ gatewayArm: '' }).success).toBe(false);
+  });
 });
 
 describe('TaskOutcomeSchema baselineId (#2697)', () => {
@@ -886,6 +894,38 @@ describe('OutcomeStore baselineId filter (#2697)', () => {
     store.append(recorded);
     const back = store.query({ baselineId: 'baseline-xyz' });
     expect(back[0]?.baselineId).toBe('baseline-xyz');
+  });
+});
+
+describe('OutcomeStore gatewayArm query and roundtrip (#7082)', () => {
+  let store: OutcomeStore;
+
+  beforeEach(() => {
+    store = new OutcomeStore();
+  });
+
+  it('filters outcomes by gatewayArm', () => {
+    store.append(makeOutcome({ id: 'o-gw-1', gatewayArm: 'api:anthropic' }));
+    store.append(makeOutcome({ id: 'o-gw-2', gatewayArm: 'api:custom-openai' }));
+    store.append(makeOutcome({ id: 'o-local-1' }));
+
+    const anthropicOnly = store.query({ gatewayArm: 'api:anthropic' });
+    expect(anthropicOnly).toHaveLength(1);
+    expect(anthropicOnly[0]?.id).toBe('o-gw-1');
+
+    const customOnly = store.query({ gatewayArm: 'api:custom-openai' });
+    expect(customOnly).toHaveLength(1);
+    expect(customOnly[0]?.id).toBe('o-gw-2');
+
+    const nonexistent = store.query({ gatewayArm: 'api:google' });
+    expect(nonexistent).toHaveLength(0);
+  });
+
+  it('gatewayArm-tagged outcomes survive the JSONL round-trip when persisted', () => {
+    const recorded = makeOutcome({ id: 'gw-roundtrip', gatewayArm: 'api:anthropic' });
+    store.append(recorded);
+    const back = store.query({ gatewayArm: 'api:anthropic' });
+    expect(back[0]?.gatewayArm).toBe('api:anthropic');
   });
 });
 

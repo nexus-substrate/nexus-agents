@@ -368,8 +368,8 @@ export function getOutcomeSummaryText(limit = 5): string {
 // Helpers
 // ============================================================================
 
-/** Builds predicate functions from an OutcomeQuery filter. */
-function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolean> {
+/** Builds routing and identity predicate functions from an OutcomeQuery filter. */
+function buildRoutingPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolean> {
   const preds: Array<(o: TaskOutcome) => boolean> = [];
   if (filter.cli !== undefined) preds.push((o) => o.cli === filter.cli);
   if (filter.category !== undefined) {
@@ -377,6 +377,14 @@ function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolea
     preds.push((o) => hasMeasuredCategory(o) && o.category === filter.category);
   }
   if (filter.source !== undefined) preds.push((o) => o.source === filter.source);
+  if (filter.baselineId !== undefined) preds.push((o) => o.baselineId === filter.baselineId);
+  if (filter.gatewayArm !== undefined) preds.push((o) => o.gatewayArm === filter.gatewayArm);
+  return preds;
+}
+
+/** Builds quality and time predicate functions from an OutcomeQuery filter. */
+function buildQualityPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolean> {
+  const preds: Array<(o: TaskOutcome) => boolean> = [];
   if (filter.success !== undefined) preds.push((o) => o.success === filter.success);
   if (filter.failureCategory !== undefined) {
     preds.push((o) => o.failureCategory === filter.failureCategory);
@@ -393,10 +401,12 @@ function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolea
       return !signals.some((s) => excluded.has(s));
     });
   }
-  if (filter.baselineId !== undefined) {
-    preds.push((o) => o.baselineId === filter.baselineId);
-  }
   return preds;
+}
+
+/** Builds predicate functions from an OutcomeQuery filter. */
+function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolean> {
+  return [...buildRoutingPredicates(filter), ...buildQualityPredicates(filter)];
 }
 
 function applyFilters(entries: readonly TaskOutcome[], filter: OutcomeQuery): TaskOutcome[] {

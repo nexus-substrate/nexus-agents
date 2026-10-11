@@ -173,6 +173,14 @@ export const TaskOutcomeSchema = z.object({
    * lookup was made because the adapter reported no token usage.
    */
   priceBasis: PriceBasisSchema.optional(),
+  /**
+   * Gateway endpoint arm that served the call (#7082), when a gateway served
+   * it. Carries the arm id (e.g. `api:anthropic`, `api:openrouter`, `api:custom-openai`)
+   * enabling shadow route evaluation (#7071) and LinUCB warm-start attribution.
+   * Absent when the call was served directly by a local CLI or when the
+   * adapter reported no gateway arm.
+   */
+  gatewayArm: EndpointArmIdSchema.optional(),
 });
 
 /** Schema for filtering outcomes. */
@@ -188,6 +196,8 @@ export const OutcomeQuerySchema = z.object({
   excludeQualitySignals: z.array(z.string()).optional(),
   /** Restrict to outcomes recorded against a specific baseline (#2697). */
   baselineId: z.string().min(1).max(64).optional(),
+  /** Restrict to outcomes served by a specific gateway arm (#7082). */
+  gatewayArm: EndpointArmIdSchema.optional(),
 });
 
 // ============================================================================
