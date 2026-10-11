@@ -374,7 +374,15 @@ describe('doctor-formatting', () => {
     });
 
     it('preserves the local summary without --live', () => {
-      printDoctorResults(localResult());
+      const unauthResult = createDoctorResult({
+        allHealthy: false,
+        clis: [
+          createCliCheckResult('gemini', true, false, 'supported', {
+            authState: 'not-authenticated',
+          }),
+        ],
+      });
+      printDoctorResults(unauthResult);
       expect(getCalls().at(-1)).toContain('1 issue(s) found (CLI gemini)');
       expect(getCalls().at(-1)).not.toContain('Live readiness');
     });

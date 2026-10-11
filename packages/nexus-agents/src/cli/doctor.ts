@@ -93,7 +93,7 @@ import {
   type GatewayHealth,
   type GatewayVerdict,
 } from './doctor-gateway.js';
-import { gatewayCoveredClis } from './doctor-gateway-slots.js';
+import { gatewayCoveredClis, hasHealthyVoterCli } from './doctor-gateway-slots.js';
 
 /** API key environment variable names. */
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
@@ -583,6 +583,10 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
       // Optional catch binding: there is no variable to be unused.
     }
 
+    if (health.reachable === false || authProbe.state === 'not-installed') {
+      return createNotFoundResult(name, health.message ?? 'Not found in PATH', adapter);
+    }
+
     return createHealthyResult(name, health, authProbe, capacity, adapter);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -1043,6 +1047,7 @@ export interface HealthVerdictInput {
  */
 
 export function isAllHealthy(input: HealthVerdictInput): boolean {
+  const voterCliHealthy = hasHealthyVoterCli(input.clis);
   return (
     input.gateway !== 'fail' &&
     input.nodeSupported &&
@@ -1055,7 +1060,13 @@ export function isAllHealthy(input: HealthVerdictInput): boolean {
     // a passing gateway serves the slots (#6609), as on a gateway-only host.
     allOf(
       input.clis,
-      (c) => !cliFailsVerdict(c, input.gateway, input.gatewayCoveredClis.includes(c.name)),
+      (c) =>
+        !cliFailsVerdict(
+          c,
+          input.gateway,
+          input.gatewayCoveredClis.includes(c.name),
+          voterCliHealthy
+        ),
       input.gateway === 'pass'
     )
   );
@@ -1090,7 +1101,7 @@ function claudeModelForDoctor(
   return unprobedClaudeModel(clis.find((c) => c.name === 'claude')?.installed === true);
 }
 
-/** At least one API key configured, one CLI authenticated, or a passing gateway (#6609). */
+/** At least one API key configured, one CLI authenticated, or a passing gateway (#6609, #7221). */
 function hasAnyAuthMethod(
   apiKeys: readonly ApiKeyCheck[],
   clis: readonly CliCheckResult[],
@@ -1098,7 +1109,7 @@ function hasAnyAuthMethod(
 ): boolean {
   return (
     apiKeys.some((k) => k.configured) ||
-    clis.some((c) => c.installed && c.authenticated) ||
+    clis.some((c) => c.installed && (c.authenticated || c.authState === 'unverified')) ||
     gateway === 'pass'
   );
 }

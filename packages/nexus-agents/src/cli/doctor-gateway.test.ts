@@ -19,7 +19,11 @@ import {
 } from './doctor-gateway.js';
 import type { GatewayHealth } from './doctor-gateway.js';
 import { formatGatewayReport } from './doctor-gateway-report.js';
-import { gatewaySlotServing } from './doctor-gateway-slots.js';
+import {
+  gatewaySlotServing,
+  hasHealthyVoterCli,
+  installedCliIsBroken,
+} from './doctor-gateway-slots.js';
 import type { CliCheckResult } from './doctor.js';
 import {
   echoModelScript,
@@ -299,8 +303,99 @@ describe('cliFailsVerdict', () => {
     expect(cliFailsVerdict(unauthenticated, 'pass', false)).toBe(true);
   });
 
-  it('does not count it when the gateway serves its slot (#6782)', () => {
-    expect(cliFailsVerdict(unauthenticated, 'pass', true)).toBe(false);
+  it('does not count a missing CLI when a voter-capable CLI is healthy (#7234)', () => {
+    expect(cliFailsVerdict(missing, 'absent', false, true)).toBe(false);
+  });
+
+  it('does not count an unauthenticated CLI when a voter-capable CLI is healthy (#7234)', () => {
+    expect(cliFailsVerdict(unauthenticated, 'absent', false, true)).toBe(false);
+  });
+
+  it('still counts an unsupported version CLI when a voter-capable CLI is healthy (#7234)', () => {
+    const unsupported: CliCheckResult = {
+      ...unauthenticated,
+      versionStatus: 'unsupported',
+    };
+    expect(cliFailsVerdict(unsupported, 'absent', false, true)).toBe(true);
+  });
+});
+
+describe('installedCliIsBroken (#7221)', () => {
+  const baseCli: CliCheckResult = {
+    name: 'gemini',
+    installed: true,
+    authenticated: false,
+    authState: 'unverified',
+    routerAdmits: true,
+    version: '1.3.2',
+    versionStatus: 'supported',
+  };
+
+  it('does not consider an installed CLI with unverified auth broken (#7221)', () => {
+    expect(installedCliIsBroken(baseCli)).toBe(false);
+  });
+
+  it('considers an installed CLI with not-authenticated broken', () => {
+    expect(installedCliIsBroken({ ...baseCli, authState: 'not-authenticated' })).toBe(true);
+  });
+
+  it('considers an installed CLI with unsupported version broken', () => {
+    expect(
+      installedCliIsBroken({
+        ...baseCli,
+        authenticated: true,
+        authState: 'authenticated',
+        versionStatus: 'unsupported',
+      })
+    ).toBe(true);
+  });
+});
+
+describe('hasHealthyVoterCli (#7234)', () => {
+  const cli = (
+    name: CliCheckResult['name'],
+    installed: boolean,
+    authenticated: boolean,
+    versionStatus: CliCheckResult['versionStatus'] = 'supported'
+  ): CliCheckResult => ({
+    name,
+    installed,
+    authenticated,
+    authState: authenticated ? 'authenticated' : 'not-authenticated',
+    routerAdmits: authenticated,
+    version: '1.0.0',
+    versionStatus,
+  });
+
+  it('returns true when claude is installed and authenticated', () => {
+    expect(hasHealthyVoterCli([cli('claude', true, true)])).toBe(true);
+  });
+
+  it('returns true when codex is installed and authenticated', () => {
+    expect(hasHealthyVoterCli([cli('codex', true, true)])).toBe(true);
+  });
+
+  it('returns false when voter CLIs are not installed', () => {
+    expect(hasHealthyVoterCli([cli('claude', false, false), cli('codex', false, false)])).toBe(
+      false
+    );
+  });
+
+  it('returns false when voter CLIs are installed but unauthenticated', () => {
+    expect(hasHealthyVoterCli([cli('claude', true, false), cli('codex', true, false)])).toBe(false);
+  });
+
+  it('returns false when voter CLIs are on unsupported versions', () => {
+    expect(
+      hasHealthyVoterCli([
+        cli('claude', true, true, 'unsupported'),
+        cli('codex', true, true, 'unsupported'),
+      ])
+    ).toBe(false);
+  });
+
+  it('returns false when only gemini is installed and authenticated (not voter-capable)', () => {
+    expect(hasHealthyVoterCli([cli('gemini', true, true)])).toBe(false);
   });
 });
 

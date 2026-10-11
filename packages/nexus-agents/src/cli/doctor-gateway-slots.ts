@@ -14,6 +14,7 @@
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { decideSlotServing } from '../cli-adapters/gateway-slot-arm.js';
 import type { GatewayFamily, GatewaySlotMapping } from '../adapters/gateway-family-slots.js';
+import type { CliName } from '../cli-adapters/types.js';
 import type { CliCheckResult } from './doctor.js';
 import type { GatewayHealth } from './doctor-gateway.js';
 
@@ -65,9 +66,33 @@ export function gatewaySlotServing(
   });
 }
 
-/** An installed CLI that fails its own check: unauthenticated or on an unsupported version. */
+/** The CLI slots capable of serving voter seats (#6962, #7234). */
+export const VOTER_CAPABLE_CLIS: readonly CliName[] = ['claude', 'codex'];
+
+/** Whether a CLI slot can serve voter seats. */
+export function isVoterCapableCli(name: CliName): boolean {
+  return (VOTER_CAPABLE_CLIS as readonly string[]).includes(name);
+}
+
+/** Whether at least one voter-capable CLI is installed, authenticated, and supported (#7234). */
+export function hasHealthyVoterCli(clis: readonly CliCheckResult[]): boolean {
+  return clis.some(
+    (c) =>
+      isVoterCapableCli(c.name) &&
+      c.installed &&
+      c.authenticated &&
+      c.versionStatus !== 'unsupported'
+  );
+}
+
+/**
+ * An installed CLI that fails its own check: not authenticated or on an unsupported version (#7221).
+ * An unverified auth state (e.g. agy / gemini with no non-interactive probe) is unmeasured,
+ * not broken, so it is a warning and does not count as a failure.
+ */
 export function installedCliIsBroken(cli: CliCheckResult): boolean {
-  return cli.installed && (!cli.authenticated || cli.versionStatus === 'unsupported');
+  const isUnauthenticated = !cli.authenticated && cli.authState !== 'unverified';
+  return cli.installed && (isUnauthenticated || cli.versionStatus === 'unsupported');
 }
 
 /** An installed, broken CLI whose slot the gateway serves (#6782). */
