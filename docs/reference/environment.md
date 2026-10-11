@@ -88,6 +88,7 @@ or source comments. Custom validation may impose additional restrictions.
 | `NEXUS_REPO_PREFERRED` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_REPUTATION_GATING` | string; custom validation (Must be one of: off, audit, enforce) | Not declared in schema | Lowercased before parsing, so mixed case is genuinely accepted. |
 | `NEXUS_ROUTE_GATEWAY_ARMS` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
+| `NEXUS_ROUTE_GATEWAY_SHADOW` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_ROUTE_MODEL_SELECTION` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_ROUTE_MODEL_SHADOW` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_SANDBOX` | string | Not declared in schema | Not described in schema |

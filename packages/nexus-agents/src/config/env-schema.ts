@@ -199,6 +199,9 @@ const NexusEnvSchema = z.object({
   // Record would-be tier model selections (shadow) + join them with outcomes for
   // the offline flip eval (#4197, isRouteModelShadowEnabled); off by default.
   NEXUS_ROUTE_MODEL_SHADOW: boolLooseStr.optional(),
+  // Record would-be Route=(model,gateway) selections (shadow) + join with outcomes
+  // to compare factored selection against flat-arms baseline (#7071); off by default.
+  NEXUS_ROUTE_GATEWAY_SHADOW: boolLooseStr.optional(),
   // Async job-result reader source (#3090/#3693): `task_state` prefers/unions the
   // Stage-2 task-state log; default (unset) is sidecar-only. Reader half of the
   // sidecar→Stage-2 migration (epic #2631).

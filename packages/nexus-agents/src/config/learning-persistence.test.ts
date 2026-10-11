@@ -8,7 +8,11 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isPersistenceEnabled, isStrategyDistillationEnabled } from './learning-persistence.js';
+import {
+  getRouteGatewayShadowFile,
+  isPersistenceEnabled,
+  isStrategyDistillationEnabled,
+} from './learning-persistence.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -54,5 +58,11 @@ describe('isStrategyDistillationEnabled (#6512 review I1)', () => {
     vi.stubEnv('NEXUS_STRATEGY_DISTILLATION', '0');
     expect(isPersistenceEnabled()).toBe(true);
     expect(isStrategyDistillationEnabled()).toBe(false);
+  });
+});
+
+describe('getRouteGatewayShadowFile (#7071)', () => {
+  it('returns a path ending in route-gateway-shadow.jsonl', () => {
+    expect(getRouteGatewayShadowFile()).toMatch(/route-gateway-shadow\.jsonl$/);
   });
 });
