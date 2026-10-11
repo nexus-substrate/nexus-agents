@@ -307,6 +307,7 @@ The scheduled run is **analysis-only by default** (emits signals, files no issue
 | `NEXUS_REFLECTIVE_MEMORY`     | Reflective memory retrieval (`shadow`/`true`/`false`)             | `shadow` |
 | `NEXUS_BILLING_MODE`          | Cost mode (`plan`=strongest model wins, `api`=cost-aware)         | `plan`   |
 | `NEXUS_TUNE_ENFORCE`          | Self-tuning loop: apply bounded routing demotions                 | `true`   |
+| `NEXUS_ROUTE_GATEWAY_SHADOW`  | Shadow-mode evaluation for Route=(model, gateway) (#7071)         | `false`  |
 
 Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` — this is **cross-repo** state (shared across all your projects) and is not affected by the per-repo data dir (epic #2872). When persistence is enabled, `routingMemory`, `strategyDistillation`, and `preferenceRouting` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
 
