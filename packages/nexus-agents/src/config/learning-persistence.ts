@@ -88,6 +88,18 @@ export function getModelSelectionShadowFile(): string {
   return join(getLearningDir(), 'model-selection-shadow.jsonl');
 }
 
+/**
+ * JSONL file for route-gateway shadow comparisons (#7071, epic #4391).
+ *
+ * Stores ONLY the sanitized comparison — task category/difficulty, live route,
+ * factored Route=(model,gateway) selection vs flat-arms baseline selection,
+ * agree/flip flag, outcome success, and regret delta — never task content,
+ * prompts, or model outputs.
+ */
+export function getRouteGatewayShadowFile(): string {
+  return join(getLearningDir(), 'route-gateway-shadow.jsonl');
+}
+
 // Note: previous LEARNING_DIR / OUTCOMES_FILE / RULES_FILE exports were
 // removed in #2316 — they were evaluated at module import time and ignored
 // `NEXUS_DATA_DIR`. All callers must use the getter functions above.

@@ -122,15 +122,16 @@ One door in: install, verify, run your first task, then learn the full surface (
 
 The scheduler is `run` / MetaOrchestrator: one entry point picks (and optionally runs) the right strategy for a goal. These docs describe how strategies are selected, routed across CLIs, and composed into pipelines.
 
-| Document                                                                          | Description                    | Status    |
-| --------------------------------------------------------------------------------- | ------------------------------ | --------- |
-| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                                 | Agent framework design         | Canonical |
-| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                             | Model routing pipeline         | Canonical |
-| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)             | Claude/Gemini/Codex routing    | Canonical |
-| [ORCHESTRATOR_WORKFLOW_ENGINE.md](./architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md) | Orchestrator vs WorkflowEngine | Canonical |
-| [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                                 | Dynamic sub-agent creation     | Canonical |
-| [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)         | Cross-repo task coordination   | Canonical |
-| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                               | 7-type memory architecture     | Canonical |
+| Document                                                                                | Description                        | Status    |
+| --------------------------------------------------------------------------------------- | ---------------------------------- | --------- |
+| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                                       | Agent framework design             | Canonical |
+| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                                   | Model routing pipeline             | Canonical |
+| [SPIKE_7071_ROUTE_GATEWAY_SHADOW.md](./architecture/SPIKE_7071_ROUTE_GATEWAY_SHADOW.md) | Route=(model,gateway) shadow spike | Canonical |
+| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)                   | Claude/Gemini/Codex routing        | Canonical |
+| [ORCHESTRATOR_WORKFLOW_ENGINE.md](./architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md)       | Orchestrator vs WorkflowEngine     | Canonical |
+| [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                                       | Dynamic sub-agent creation         | Canonical |
+| [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)               | Cross-repo task coordination       | Canonical |
+| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                                     | 7-type memory architecture         | Canonical |
 
 **How-to (composing & routing):**
 
