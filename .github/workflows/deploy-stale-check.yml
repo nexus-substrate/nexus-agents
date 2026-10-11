@@ -101,10 +101,13 @@ jobs:
           TITLE: 'ops(website): published site is behind main'
         run: |
           set -euo pipefail
-          # Dedupe on the exact title so repeated detection updates one issue
-          # rather than filing a new one every 6 hours.
-          existing=$(gh issue list --state open --search "in:title $TITLE" --json number,title \
-            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+          # Dedupe WITHOUT the search index (#5729). `gh issue list --search`
+          # reads GitHub's search API, which returns empty results under
+          # GITHUB_TOKEN in Actions, and breaks on title tokenization. Plain
+          # `gh issue list` reads the repository issue connection and is
+          # strongly consistent.
+          match=$(gh issue list --state all --limit 100 --json number,title,state \
+            --jq "[.[] | select(.title == \"$TITLE\")] | first // empty")
 
           pnpm exec tsx scripts/check-deploy-stale.ts > /tmp/detail.txt 2>&1 || true
           {
@@ -122,11 +125,30 @@ jobs:
             echo "the \`pages\` concurrency group and silently cancels every later deploy."
           } > /tmp/body.md
 
-          if [ -n "$existing" ]; then
-            gh issue edit "$existing" --body-file /tmp/body.md
-          else
+          if [ -z "$match" ]; then
             gh issue create --title "$TITLE" --body-file /tmp/body.md
+          else
+            number=$(printf '%s' "$match" | jq -r '.number')
+            state=$(printf '%s' "$match" | jq -r '.state')
+            gh issue edit "$number" --body-file /tmp/body.md
+            if [ "$state" = "CLOSED" ]; then
+              gh issue reopen "$number"
+            fi
           fi
+
+      - name: Close tracking issue if deploy is healthy
+        if: steps.assess.outcome == 'success' && steps.stuck.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'ops(website): published site is behind main'
+        run: |
+          set -euo pipefail
+          open_issues=$(gh issue list --state open --limit 100 --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")] | .[].number")
+          for num in $open_issues; do
+            echo "Closing resolved tracking issue #$num"
+            gh issue close "$num" --comment "Deploy check passed: published site is current with main and no runs are stuck in the queue."
+          done
 
       - name: Fail the run when the site is behind or a run is wedged
         if: steps.assess.outcome == 'failure' || steps.stuck.outcome == 'failure'

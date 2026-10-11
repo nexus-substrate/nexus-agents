@@ -9,12 +9,23 @@ import {
 import type { StalenessInput } from './check-deploy-stale.js';
 
 describe('parseSiteVersion', () => {
-  it('extracts a semver from the real page markup', () => {
+  it('extracts a semver from the real page markup (legacy hero-version)', () => {
     // Markup copied from the live site, not invented — the first version of
     // this parser matched a different artifact's format and silently reported
     // a healthy site as unmeasured.
     const real = '="hero-version" data-astro-cid-lcdefpme>v3.4.3</span><span class="';
     expect(parseSiteVersion(real)).toBe('3.4.3');
+  });
+
+  it('extracts a semver from the site-version span', () => {
+    const span = '<p>nexus-agents <span class="site-version">11.5.9</span> · MIT licensed</p>';
+    expect(parseSiteVersion(span)).toBe('11.5.9');
+  });
+
+  it('extracts a semver from the live footer colophon without class', () => {
+    const footer =
+      '<div class="docs-footer-inner"><p>nexus-agents v11.5.9 · MIT licensed · <a href="https://github.com/nexus-substrate/nexus-agents">Source</a>';
+    expect(parseSiteVersion(footer)).toBe('11.5.9');
   });
 
   it('returns undefined when no version is present', () => {

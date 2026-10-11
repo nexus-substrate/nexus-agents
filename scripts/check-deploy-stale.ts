@@ -71,12 +71,15 @@ export interface StalenessVerdict {
  * deployed version. Untrusted input: no eval, no interpolation.
  */
 export function parseSiteVersion(html: string): string | undefined {
-  // Anchored on the site's own `hero-version` element rather than scanning for
-  // any digit triple, so unrelated version-shaped text cannot be mistaken for
-  // the deployed version. The first draft anchored on the TypeDoc HTML title
-  // format instead — a different artifact — and reported `unmeasured` against
-  // a perfectly healthy site. Verified against the real page.
-  const m = /hero-version[^>]*>v?(\d+\.\d+\.\d+)</.exec(html);
+  // Anchored on either:
+  // 1. Explicit site-version element (<span class="site-version">11.5.9</span>)
+  // 2. The live footer colophon ("nexus-agents v11.5.9 · MIT licensed")
+  // 3. The legacy hero-version element for backwards-compatibility
+  // Unrelated version-shaped text outside these anchors is ignored.
+  const m =
+    /(?:class="[^"]*\bsite-version\b[^"]*"[^>]*>|hero-version[^>]*>|nexus-agents\s+)v?(\d+\.\d+\.\d+)/i.exec(
+      html
+    );
   return m?.[1];
 }
 
