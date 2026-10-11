@@ -22,18 +22,12 @@ import type {
   VoteExecutionOverrides,
   VoteExecutionSettings,
 } from './vote-types.js';
-import { captureModelPinWarnings, resolveVoterModelOverrides } from './voter-model-overrides.js';
-import { clisServingVoterSeats } from './voter-cli-access.js';
+import { captureModelPinWarnings } from './voter-model-overrides.js';
 import { VOTER_ROLES } from './voter-roles.js';
 import { createLogger, getTimeProvider, type IModelAdapter, type ILogger } from '../core/index.js';
-import { getGlobalRegistry } from '../adapters/unified-registry.js';
-import { getAvailableClis } from '../cli-adapters/factory.js';
 import { unavailableSeat } from './voter-route-breaker.js';
 import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
-import type { CliName } from '../cli-adapters/types.js';
-import { countDistinctModels } from '../config/model-equivalence.js';
-import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
-import { dealSeatsAcrossFamilies, warnIfSingleFamily } from './voter-family-dealing.js';
+import { reportVoteIndependence } from './panel-independence.js';
 import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
 import { createVoterRetryState } from './voter-retry.js';
 import { resolveAdapterOrFail, warnIfCodexConcurrencyExceeded } from './voter-adapter-resolve.js';
@@ -45,9 +39,11 @@ import {
 import { resolveAttemptCollector, withVoterAttemptTelemetry } from './voter-attempt-events.js';
 import { buildLlmVoteResult, carryAttemptUsage } from './voter-attempt-usage.js';
 import { withResolvedAssignment } from './vote-diversity.js';
+import { assignPanelSeats } from './voter-seat-assignment.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
 export { NoAdapterError } from './voter-adapter-resolve.js';
+export { assignPanelSeats, resolveGatewayRoleAdapters } from './voter-seat-assignment.js';
 export type { VoteExecutionOverrides } from './vote-types.js';
 
 // Re-export prompts for backward compatibility
@@ -308,176 +304,6 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
   readonly roleAdapters?: ReadonlyMap<VoterRole, IModelAdapter> | undefined;
 }
 
-/** Assigns a single adapter to all roles (fallback path). */
-function assignUniformAdapter(
-  roles: readonly VoterRole[],
-  adapter: IModelAdapter
-): Map<VoterRole, IModelAdapter> {
-  return new Map(roles.map((role) => [role, adapter]));
-}
-
-/** Creates CLI-specific adapters for available CLIs via the unified registry. */
-function createCliAdapterMap(clis: readonly CliName[]): Map<CliName, IModelAdapter> {
-  const registry = getGlobalRegistry();
-  const result = new Map<CliName, IModelAdapter>();
-  for (const cli of clis) result.set(cli, registry.getAdapterForCli(cli));
-  return result;
-}
-
-/**
- * Creates diverse per-role adapters using all available CLIs (Issue #845).
- * Distributes roles across CLIs in round-robin fashion for model diversity.
- * Falls back to single adapter if only one CLI is available.
- */
-/**
- * Round-robin assign roles across a labeled adapter list (the shared diversity
- * primitive for both the CLI path and the gateway path #4040). `label` is the
- * model/CLI id surfaced in the assignment log so operators can confirm which
- * model each role used.
- */
-function assignRoundRobinAdapters(
-  roles: readonly VoterRole[],
-  entries: readonly { readonly label: string; readonly adapter: IModelAdapter }[],
-  logger: ILogger,
-  source: string
-): Map<VoterRole, IModelAdapter> {
-  const adapters = new Map<VoterRole, IModelAdapter>();
-  const assignments: Record<string, string> = {};
-  for (let i = 0; i < roles.length; i++) {
-    const role = roles[i];
-    const entry = entries[i % entries.length];
-    if (role === undefined || entry === undefined) continue;
-    adapters.set(role, entry.adapter);
-    assignments[role] = entry.label;
-  }
-  logger.info('Diverse adapters assigned', {
-    source,
-    count: entries.length,
-    roleAssignments: assignments,
-  });
-  return adapters;
-}
-
-/**
- * Gateway path (#4040): assign roles across the in-process per-model gateway
- * adapters. A single model collapses to a uniform panel (warned). With multiple
- * models, per-role operator overrides (#4055) pin chosen roles to a known-good
- * model and the rest are dealt across model FAMILIES first, then across models
- * within a family (#6606) — never in the gateway's listing order.
- */
-export function resolveGatewayRoleAdapters(
-  roles: readonly VoterRole[],
-  gatewayAdapters: readonly IModelAdapter[],
-  fallbackAdapter: IModelAdapter,
-  logger: ILogger
-): Map<VoterRole, IModelAdapter> {
-  if (gatewayAdapters.length === 1) {
-    // Consensus integrity: a multi-role panel on ONE model yields correlated votes
-    // (the higher_order strategy can't down-weight what it can't tell apart). Warn
-    // so operators configure the gateway with more models for a diverse panel.
-    if (roles.length > 1) {
-      logger.warn('Consensus panel collapsed to a single gateway model — votes may correlate', {
-        model: gatewayAdapters[0]?.modelId,
-        roleCount: roles.length,
-      });
-    }
-    return assignUniformAdapter(roles, gatewayAdapters[0] ?? fallbackAdapter);
-  }
-  // #4055: per-role overrides (NEXUS_VOTER_MODEL_<ROLE>) pin a role to a known-good
-  // gateway model; the rest are dealt. An unknown override id warns + falls
-  // through to dealing (handled in the resolver).
-  const overrides = resolveVoterModelOverrides(roles, gatewayAdapters, logger);
-  const dealtRoles = roles.filter((r) => !overrides.has(r));
-  // #6606: deal families first, balancing around the pinned seats. Round-robin
-  // over the listing order seated 5 OpenAI, 2 Anthropic and 0 Google models on
-  // a recorded three-family catalogue.
-  const dealt = dealSeatsAcrossFamilies(dealtRoles.length, gatewayAdapters, {
-    seated: [...overrides.values()].map((a) => a.modelId),
-  });
-  const assigned = assignRoundRobinAdapters(
-    dealtRoles,
-    dealt.map((a) => ({ label: a.modelId, adapter: a })),
-    logger,
-    'gateway'
-  );
-  for (const [role, adapter] of overrides) assigned.set(role, adapter);
-  // Consensus-integrity parity with the single-model path (#4055 review): warn if
-  // the FINAL assignment collapsed every role onto one model — e.g. an operator
-  // pinned all roles to the same override — since correlated votes defeat the panel.
-  // #4390: compare CANONICAL model identity, not the raw strings. The same
-  // weights arrive under different strings from different gateways —
-  // `claude-sonnet-4-6`, `anthropic/claude-sonnet-4-6` and
-  // `custom/claude-sonnet-4-6` are one model — so a raw-string set reported a
-  // collapsed panel as diverse and the warning never fired.
-  const assignedModels = [...assigned.values()].map((a) => a.modelId);
-  if (roles.length > 1 && countDistinctModels(assignedModels) === 1) {
-    logger.warn(
-      'Consensus panel collapsed to a single gateway model via overrides — votes may correlate',
-      { model: assignedModels[0], roleCount: roles.length }
-    );
-  }
-  warnIfSingleFamily(roles.length, assignedModels, logger);
-  return assigned;
-}
-
-async function resolveDiverseAdapters(
-  roles: readonly VoterRole[],
-  logger: ILogger,
-  fallbackAdapter: IModelAdapter,
-  gatewayAdapters?: readonly IModelAdapter[]
-): Promise<Map<VoterRole, IModelAdapter>> {
-  // #4040: gateway path is preferred when configured.
-  if (gatewayAdapters !== undefined && gatewayAdapters.length > 0) {
-    return resolveGatewayRoleAdapters(roles, gatewayAdapters, fallbackAdapter, logger);
-  }
-
-  let availableClis: CliName[];
-  try {
-    availableClis = await getAvailableClis();
-  } catch (e: unknown) {
-    logger.warn('Failed to resolve available CLIs; falling back to single adapter', {
-      error: String(e),
-    });
-    availableClis = [];
-  }
-  // #6962: every seat runs read-only analysis; a CLI that cannot enforce it
-  // would refuse every seat dealt to it, so it is not dealt any.
-  const access = clisServingVoterSeats(availableClis);
-  if (access.refused.length > 0) {
-    logger.info('CLIs excluded from voter seats: cannot enforce read-only analysis', {
-      refused: access.refused,
-    });
-  }
-  availableClis = access.serving;
-
-  if (availableClis.length <= 1) {
-    logger.info('Using single adapter for all roles', { cliCount: availableClis.length });
-    return assignUniformAdapter(roles, fallbackAdapter);
-  }
-
-  const cliAdapters = createCliAdapterMap(availableClis);
-  if (cliAdapters.size <= 1) return assignUniformAdapter(roles, fallbackAdapter);
-
-  // #4390: distinct CLIs do NOT imply distinct models. Two arms can front the
-  // same weights — opencode serving `anthropic/claude-sonnet-4-6` alongside the
-  // claude CLI, for instance — and a panel spread across them is no more
-  // independent than one on a single arm. The gateway path had this check; the
-  // CLI path had none.
-  // #4983: detection is lazy, so at assignment time every adapter still
-  // reports the same `pending-detection` placeholder — which an equality check
-  // reads as "one model" and warns on EVERY vote. Say unmeasured here and make
-  // the real judgement in `warnIfPanelCorrelated`, after the votes have run and
-  // each adapter has resolved.
-  reportPanelIndependence([...cliAdapters.values()], roles.length, 'assignment', logger);
-
-  return assignRoundRobinAdapters(
-    roles,
-    [...cliAdapters.entries()].map(([cli, adapter]) => ({ label: cli, adapter })),
-    logger,
-    'cli'
-  );
-}
-
 /** Options for staggered vote launching. */
 /** Caller-supplied vote execution overrides; unset fields take defaults. */
 
@@ -523,21 +349,6 @@ async function launchStaggeredVotes(
  * available and simulation is not explicitly enabled, throws NoAdapterError.
  * Per Issue #845: Uses diverse CLIs when multiple are available.
  */
-/**
- * The panel's seat → adapter assignment — ONE definition, used by the vote and
- * by anything that must know the panel's models before it runs (#6003). An
- * explicit `adapter` is uniform (Issue #280); pre-resolved `roleAdapters` are
- * used verbatim; else roles spread across gateway models / CLIs (Issue #845).
- */
-export async function assignPanelSeats(
-  fallbackAdapter: IModelAdapter,
-  options: Pick<CollectRealVotesOptions, 'roles' | 'adapter' | 'gatewayAdapters' | 'roleAdapters'>,
-  logger: ILogger
-): Promise<Map<VoterRole, IModelAdapter>> {
-  if (options.adapter !== undefined) return assignUniformAdapter(options.roles, fallbackAdapter);
-  if (options.roleAdapters !== undefined) return new Map(options.roleAdapters);
-  return resolveDiverseAdapters(options.roles, logger, fallbackAdapter, options.gatewayAdapters);
-}
 
 async function collectPanelPasses(
   input: StaggeredVoteInput,
