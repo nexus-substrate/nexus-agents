@@ -48,6 +48,9 @@ import { findCanonicalModel } from './model-config-helpers.js';
  * arms to disambiguate with no consumer asking for them (#4346, 7/0 vote).
  */
 export const AGY_MODEL_SLUGS = [
+  'gemini-3.8-flash-high',
+  'gemini-3.8-flash-medium',
+  'gemini-3.8-flash-low',
   'gemini-3.7-flash-high',
   'gemini-3.7-flash-medium',
   'gemini-3.7-flash-low',

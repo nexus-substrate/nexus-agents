@@ -93,8 +93,9 @@ describe('agy model slugs', () => {
     });
 
     it('returns null for a slug with no registry entry', () => {
-      // agy serves 3.6 Flash at high/medium; the registry only reaches -low.
+      // agy serves 3.6 Flash at high/medium, and 3.8 Flash; the registry only reaches 3.7.
       expect(fromAgyModelSlug('gemini-3.6-flash-high')).toBeNull();
+      expect(fromAgyModelSlug('gemini-3.8-flash-high')).toBeNull();
     });
 
     it('returns null for a string that is not an agy slug at all', () => {
