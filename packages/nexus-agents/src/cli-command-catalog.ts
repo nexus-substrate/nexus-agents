@@ -114,7 +114,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     command: 'expert',
-    description: 'Manage expert agents (list, create, execute)',
+    description: 'Manage expert agents (list)',
     audience: 'essential',
   },
   {

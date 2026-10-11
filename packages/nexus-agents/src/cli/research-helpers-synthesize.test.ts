@@ -409,7 +409,7 @@ describe('alignment summary truncation (#5001)', () => {
   });
 
   /**
-   * The map holds twelve `partial` techniques carrying an improvement hint, so
+   * The map holds eleven `partial` techniques carrying an improvement hint, so
    * one paper per technique overruns the ten-item cap on `topOpportunities`
    * using only real keys — no synthetic inflation.
    */
@@ -420,7 +420,6 @@ describe('alignment summary truncation (#5001)', () => {
     'mem0-memory-architecture',
     'graph-based-memory',
     'history-encoding',
-    'aflow-mcts-workflows',
     'temporal-graph-orchestration',
     'model-based-coordination',
     'trinity-roles',

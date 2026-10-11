@@ -197,14 +197,7 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   ],
 
   // Orchestration techniques
-  [
-    'aflow-mcts-workflows',
-    {
-      status: 'partial',
-      path: 'workflows/aflow/',
-      hint: 'AFlow scaffolding exists but MCTS not implemented',
-    },
-  ],
+  ['aflow-mcts-workflows', { status: 'implemented', path: 'workflows/aflow/mcts-tree.ts' }],
   [
     'dynamic-agent-selection',
     { status: 'implemented', path: 'orchestration/aorchestra/agent-planner.ts' },
