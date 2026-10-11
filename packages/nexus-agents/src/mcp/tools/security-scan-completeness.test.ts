@@ -89,9 +89,18 @@ describe('complete security scan configuration (#7238)', () => {
     expect(result.coverageComplete).toBe(true);
     expect(result.scannerVersion).toBe('1.0.0');
     expect(mockExec.mock.calls[0]?.[2]).toMatchObject({ cwd: '/' });
-    expect(mockExec.mock.calls[1]?.[1]).not.toContain('--strict');
-    expect(mockExec.mock.calls[1]?.[1]).toContain('--disable-nosem');
-    expect(mockExec.mock.calls[1]?.[1]).toContain('--exclude=node_modules');
+    const flags = (mockExec.mock.calls[1]?.[1] as string[] | undefined) ?? [];
+    expect(flags).not.toContain('--strict');
+    expect(flags).toEqual(
+      expect.arrayContaining([
+        '--disable-nosem',
+        '--exclude=node_modules',
+        '--exclude=dist',
+        '--exclude=coverage',
+        '--exclude=.nexus-agents',
+        '--exclude=*.test.ts',
+      ])
+    );
     expect(mockExec.mock.calls[1]?.[2]).toMatchObject({ cwd: '/' });
   });
 

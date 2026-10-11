@@ -37,6 +37,8 @@ export interface SecurityBaselineComparison {
   readonly unscannedCoverage?: readonly string[];
   /** Scanner executable version measured for both sides of the comparison. */
   readonly scannerVersion?: string;
+  /** Discloses whether test files were excluded from the baseline scan (#7303). */
+  readonly testFilesExcluded?: boolean;
 }
 
 const blocking = (finding: SecurityFinding): boolean =>
@@ -179,6 +181,7 @@ function incomplete(
     introducedBlockingCount: null,
     blockingFindings: [],
     unscannedCoverage,
+    testFilesExcluded: true,
     ...scannerVersion(base, worktree),
     complete: false,
     errors,
@@ -245,6 +248,7 @@ async function assessComparison(input: {
     complete: true,
     errors: [],
     unscannedCoverage: coverage.unscannedCoverage,
+    testFilesExcluded: true,
     ...scannerVersion(base, worktree),
   };
 }

@@ -8353,6 +8353,7 @@ InterfaceDeclaration SecurityBaselineComparison
   readonly errors: readonly string[]
   readonly introducedBlockingCount: null | number
   readonly scannerVersion?: string | undefined
+  readonly testFilesExcluded?: boolean | undefined
   readonly unscannedCoverage?: readonly string[] | undefined
   readonly worktreeCount: null | number
 TypeAliasDeclaration SecurityCapability
