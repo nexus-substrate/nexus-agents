@@ -12,6 +12,8 @@
  * @module cli-adapters/route-gateway-shadow
  */
 
+// @export-no-consumer-yet — see #7071. Spike increment awaiting live bandit consumer (Epic #4391 Increment B).
+
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 
