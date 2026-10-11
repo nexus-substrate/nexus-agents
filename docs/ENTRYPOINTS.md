@@ -74,7 +74,7 @@ prints flags and examples for any of them.
 | `orchestrate` | Execute a task via CLI tools (standalone mode)                                      |
 | `vote`        | Run consensus vote on a proposal (7 agents; --quick uses 3)                         |
 | `workflow`    | Manage and run workflow templates (list, run)                                       |
-| `expert`      | Manage expert agents (list, create, execute)                                        |
+| `expert`      | Manage expert agents (list)                                                         |
 | `research`    | Manage research registry (status, add, stats, refresh)                              |
 | `auth`        | Manage authentication: init/show/rotate MCP tokens; status shows per-CLI auth state |
 

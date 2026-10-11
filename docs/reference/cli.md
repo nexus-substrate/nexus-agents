@@ -28,7 +28,7 @@ Run `nexus-agents <command> --help` for command options.
 | `doctor` | essential | Detailed health check; no model completions by default; --live probes models |
 | `e2e-eval` | internal | E2E evaluation scenario runner (dev loop) |
 | `evaluate` | maintainer | Self-evaluation of codebase components |
-| `expert` | essential | Manage expert agents (list, create, execute) |
+| `expert` | essential | Manage expert agents (list) |
 | `fitness-audit` | maintainer | Run CLI orchestration fitness score audit |
 | `health` | maintainer | Swarm health metrics dashboard |
 | `hello` | essential | Show welcome message and quick start (no API keys needed) |
