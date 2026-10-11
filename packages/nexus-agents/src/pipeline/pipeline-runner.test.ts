@@ -13,6 +13,8 @@ import type { PipelineResult } from './pipeline-runner.js';
 import type { NodeResult } from '../orchestration/graph/graph-types.js';
 import { EventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
+import { PluginRegistry } from './plugin-registry.js';
+import type { PipelinePlugin, StageContext } from './plugin-types.js';
 import type { PlanContract, StageSpec, TaskContract, PolicyGateSpec } from './task-contract.js';
 
 // ============================================================================
@@ -102,6 +104,58 @@ describe('PipelineRunner', () => {
       expect(execResult.value.stepsExecuted).toBeGreaterThan(0);
       expect(execResult.value.durationMs).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('threads the runtime TaskContract to plugin StageContext.task (#6910)', async () => {
+    const runner = new PipelineRunner();
+    const registry = new PluginRegistry();
+    let receivedTask: TaskContract | undefined;
+
+    const testPlugin: PipelinePlugin = {
+      manifest: {
+        id: 'test:task-inspector',
+        version: '1.0.0',
+        description: 'Inspects runtime StageContext.task',
+        stages: ['analyze'],
+        requiredCapabilities: [],
+        trustLevel: 'core',
+        experimental: false,
+      },
+      execute: (_stage: StageSpec, ctx: StageContext) => {
+        receivedTask = ctx.task;
+        return Promise.resolve({
+          success: true,
+          outputArtifacts: [],
+          metadata: {},
+        });
+      },
+      validateConfig: () => ({ ok: true, value: undefined }),
+    };
+
+    expect(registry.register(testPlugin).ok).toBe(true);
+
+    const plan = makePlan({
+      taskId: 'plan-task-id',
+      stages: [
+        makeStage({
+          id: 'analyze',
+          pluginId: 'test:task-inspector',
+        }),
+      ],
+    });
+
+    const compileResult = runner.compile(plan, { pluginRegistry: registry });
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    const runtimeTask = makeTask();
+    const execResult = await runner.execute(compileResult.value, runtimeTask);
+    expect(execResult.ok).toBe(true);
+
+    expect(receivedTask).toBeDefined();
+    expect(receivedTask?.id).toBe(runtimeTask.id);
+    expect(receivedTask?.description).toBe(runtimeTask.description);
+    expect(receivedTask?.status).toBe(runtimeTask.status);
   });
 
   it('executes a multi-stage linear pipeline', async () => {
