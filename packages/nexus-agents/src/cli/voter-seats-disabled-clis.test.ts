@@ -102,13 +102,19 @@ describe('voter seat assignment honors NEXUS_DISABLED_CLIS (#6590)', () => {
     expect(new Set(await seatClis())).toEqual(new Set(['claude', 'codex']));
   });
 
-  it('seats no voter on gemini or codex when both are disabled', async () => {
+  it('seats single serving CLI when only one read-only CLI is available (#7349)', async () => {
     process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex';
     const clis = await seatClis();
     expect(clis).not.toContain('gemini');
     expect(clis).not.toContain('codex');
-    // Only claude still serves (opencode refuses read-only, #6970), and a
-    // single serving CLI is not a diverse panel: every seat takes the fallback.
+    // Only claude still serves (opencode refuses read-only, #6970).
+    // #7349: use the single available read-only CLI rather than discarding it for fallback.
+    expect(new Set(clis)).toEqual(new Set(['claude']));
+  });
+
+  it('seats fallback when no read-only CLI is available (#7349)', async () => {
+    process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex,claude,opencode';
+    const clis = await seatClis();
     expect(new Set(clis)).toEqual(new Set(['fallback']));
   });
 });
