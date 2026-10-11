@@ -32,25 +32,32 @@ export interface ServedCall {
 }
 
 /** The outcome fields {@link servedOutcomeFields} sets. */
-type ServedOutcomeFields = Pick<TaskOutcome, 'servedModel' | 'costUsd' | 'priceBasis'>;
+type ServedOutcomeFields = Pick<
+  TaskOutcome,
+  'servedModel' | 'costUsd' | 'priceBasis' | 'gatewayArm'
+>;
 
 /**
- * The `servedModel`, `costUsd` and `priceBasis` fields for an outcome row.
+ * The `servedModel`, `costUsd`, `priceBasis` and `gatewayArm` fields for an outcome row.
  *
  * - No call, or no served model: no fields. There is nothing to attribute.
- * - A served model without both token counts: `servedModel` only. No price is
- *   looked up, so no basis is claimed and the cost stays unknown.
- * - Both token counts: the cost detail. `costUsd` is present only when a
- *   price was found; an unpriced model reads `priceBasis: 'unknown'`.
+ * - A served model without both token counts: `servedModel` (and `gatewayArm` if
+ *   present). No price is looked up, so no basis is claimed and the cost stays unknown.
+ * - Both token counts: the cost detail and `gatewayArm`. `costUsd` is present only
+ *   when a price was found; an unpriced model reads `priceBasis: 'unknown'`.
  */
 export function servedOutcomeFields(call: ServedCall | undefined): ServedOutcomeFields {
   const model = call?.model;
   if (call === undefined || model === undefined || model.length === 0) return {};
-  const { inputTokens, outputTokens } = call;
-  if (inputTokens === undefined || outputTokens === undefined) return { servedModel: model };
-  const detail = servedCostDetail(call.gatewayArm, model, inputTokens, outputTokens);
+  const { inputTokens, outputTokens, gatewayArm } = call;
+  const gatewayArmField = gatewayArm !== undefined ? { gatewayArm } : {};
+  if (inputTokens === undefined || outputTokens === undefined) {
+    return { servedModel: model, ...gatewayArmField };
+  }
+  const detail = servedCostDetail(gatewayArm, model, inputTokens, outputTokens);
   return {
     servedModel: model,
+    ...gatewayArmField,
     priceBasis: priceBasisOf(detail),
     ...(detail.priced && { costUsd: detail.costUsd }),
   };

@@ -53,6 +53,7 @@ describe('servedOutcomeFields (#6624)', () => {
     });
     expect(fields).toEqual({
       servedModel: 'claude-sonnet',
+      gatewayArm: 'api:custom-openai',
       costUsd: 0.005,
       priceBasis: 'declared',
     });
@@ -66,7 +67,12 @@ describe('servedOutcomeFields (#6624)', () => {
       inputTokens: 1_000,
       outputTokens: 2_000,
     });
-    expect(fields).toEqual({ servedModel: 'claude-sonnet', costUsd: 0, priceBasis: 'declared' });
+    expect(fields).toEqual({
+      servedModel: 'claude-sonnet',
+      gatewayArm: 'api:custom-openai',
+      costUsd: 0,
+      priceBasis: 'declared',
+    });
   });
 
   it('records an undeclared gateway as an unknown cost', () => {
@@ -77,7 +83,11 @@ describe('servedOutcomeFields (#6624)', () => {
       inputTokens: 1_000,
       outputTokens: 2_000,
     });
-    expect(fields).toEqual({ servedModel: 'claude-sonnet', priceBasis: 'unknown' });
+    expect(fields).toEqual({
+      servedModel: 'claude-sonnet',
+      gatewayArm: 'api:custom-openai',
+      priceBasis: 'unknown',
+    });
   });
 
   it('claims no price basis when the adapter reported no usage', () => {
@@ -86,6 +96,13 @@ describe('servedOutcomeFields (#6624)', () => {
     });
     expect(servedOutcomeFields({ model: 'claude-sonnet', inputTokens: 10 })).toEqual({
       servedModel: 'claude-sonnet',
+    });
+  });
+
+  it('records gatewayArm even when token usage is not reported (#7082)', () => {
+    expect(servedOutcomeFields({ model: 'claude-sonnet', gatewayArm: 'api:anthropic' })).toEqual({
+      servedModel: 'claude-sonnet',
+      gatewayArm: 'api:anthropic',
     });
   });
 
@@ -112,5 +129,17 @@ describe('servedOutcomeFields (#6624)', () => {
     };
     expect(TaskOutcomeSchema.parse(withServed)).toEqual(withServed);
     expect(TaskOutcomeSchema.parse(base)).toEqual(base);
+
+    const withGateway = {
+      ...base,
+      ...servedOutcomeFields({
+        model: 'claude-sonnet',
+        gatewayArm: 'api:anthropic',
+        inputTokens: 1_000,
+        outputTokens: 2_000,
+      }),
+    };
+    expect(TaskOutcomeSchema.parse(withGateway)).toEqual(withGateway);
+    expect(withGateway.gatewayArm).toBe('api:anthropic');
   });
 });
