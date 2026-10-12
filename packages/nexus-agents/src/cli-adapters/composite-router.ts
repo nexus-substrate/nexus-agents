@@ -129,6 +129,8 @@ import {
   recordOutcomeToMetrics,
   generateTraceId,
 } from './composite-router-metrics.js';
+import { servedCostDetail } from './budget-arm-cost.js';
+import { getDefaultModelForCli } from '../config/model-config-helpers.js';
 
 // Re-export types for consumers
 export {
@@ -173,7 +175,12 @@ export interface ICompositeRouter {
     strongPreferred: boolean,
     quality?: { strong?: number; weak?: number }
   ): void;
-  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number): void;
+  recordDifficultyOutcome(
+    task: CliTask,
+    success: boolean,
+    qualityScore?: number,
+    costUsd?: number
+  ): void;
   getStats(): CompositeRouterStats;
   hasMinimumPreferenceData(): boolean;
   getZeroRouter(): IZeroRouter | undefined;
@@ -542,6 +549,60 @@ export class CompositeRouter implements ICompositeRouter {
     return this.executeDecision(routeResult.value, task, task, options);
   }
 
+  private resolveExplicitCost(response: CliResponse | undefined): number | undefined {
+    if (response === undefined) return undefined;
+    const cost = response.costUsd;
+    if (cost !== undefined && Number.isFinite(cost) && cost >= 0) {
+      return cost;
+    }
+    return undefined;
+  }
+
+  private resolveResponseModel(
+    response: CliResponse | undefined,
+    decision: CompositeRoutingDecision
+  ): string | undefined {
+    if (response?.model !== undefined) return response.model;
+    if (decision.model !== undefined) return decision.model;
+    const slot = routingArmCliSlot(decision.cliName);
+    return slot !== undefined ? getDefaultModelForCli(slot) : undefined;
+  }
+
+  private resolveUsageCost(
+    response: CliResponse | undefined,
+    decision: CompositeRoutingDecision
+  ): number | undefined {
+    const usage = response?.usage;
+    if (usage === undefined) return undefined;
+    if (!Number.isFinite(usage.inputTokens) || !Number.isFinite(usage.outputTokens)) {
+      return undefined;
+    }
+
+    const model = this.resolveResponseModel(response, decision);
+    if (model === undefined) return undefined;
+
+    const detail = servedCostDetail(
+      response?.gatewayArm,
+      model,
+      usage.inputTokens,
+      usage.outputTokens
+    );
+    return detail.priced && detail.costUsd >= 0 ? detail.costUsd : undefined;
+  }
+
+  /**
+   * Resolves the measured execution cost (USD) for a completed CLI response (#4197).
+   * Uses explicit `costUsd` when reported; otherwise calculates cost from token usage
+   * and the serving model/gateway rate via `servedCostDetail`. Returns `undefined`
+   * when unmeasured or unpriced, preserving fail-closed telemetry.
+   */
+  private resolveExecutionCost(
+    response: CliResponse | undefined,
+    decision: CompositeRoutingDecision
+  ): number | undefined {
+    return this.resolveExplicitCost(response) ?? this.resolveUsageCost(response, decision);
+  }
+
   /**
    * Execute a decision `route(task)` returned and auto-record feedback (#6533).
    *
@@ -581,9 +642,13 @@ export class CompositeRouter implements ICompositeRouter {
 
     const durationMs = getTimeProvider().now() - startTime;
     const success = executeResult.ok;
+    const costUsd = this.resolveExecutionCost(
+      executeResult.ok ? executeResult.value : undefined,
+      decision
+    );
 
     // Auto-record feedback for learning systems
-    this.autoRecordFeedback(decision, task, success, durationMs);
+    this.autoRecordFeedback(decision, task, success, durationMs, costUsd);
 
     // #6521: name the arm that ran and time its call alone, on success AND on
     // failure, so an outcome writer records both against the arm routed to.
@@ -603,7 +668,8 @@ export class CompositeRouter implements ICompositeRouter {
     decision: CompositeRoutingDecision,
     task: CliTask,
     success: boolean,
-    durationMs: number
+    durationMs: number,
+    costUsd?: number
   ): void {
     // The bandit and the quality reward read the DISTINCT arm (#6552: the
     // reward uses the arm's own history, falling back to its slot's while it
@@ -618,7 +684,7 @@ export class CompositeRouter implements ICompositeRouter {
     this.recordOutcome(arm, task, reward, success);
 
     // Record difficulty outcome for ZeroRouter learning
-    this.recordExecutedDifficultyOutcome(decision, task, success);
+    this.recordExecutedDifficultyOutcome(decision, task, success, costUsd);
 
     this.logger.debug('Auto-recorded feedback', {
       cli: arm,
@@ -951,15 +1017,21 @@ export class CompositeRouter implements ICompositeRouter {
     recordPreferenceSignal(query, strongModelPreferred, quality, this.getOutcomeDependencies());
   }
 
-  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number): void {
+  recordDifficultyOutcome(
+    task: CliTask,
+    success: boolean,
+    qualityScore?: number,
+    costUsd?: number
+  ): void {
     const pending = this.pendingRoutingOutcomes.take(task);
-    this.finishDifficultyOutcome(task, success, qualityScore, pending);
+    this.finishDifficultyOutcome(task, success, qualityScore, pending, costUsd);
   }
 
   private recordExecutedDifficultyOutcome(
     decision: CompositeRoutingDecision,
     task: CliTask,
-    success: boolean
+    success: boolean,
+    costUsd?: number
   ): void {
     const pending = this.pendingRoutingOutcomes.take(task);
     const difficultyAttribution =
@@ -969,17 +1041,24 @@ export class CompositeRouter implements ICompositeRouter {
             difficulty: decision.difficultyEstimate.aggregateScore,
             selectedCli: decision.cliName,
           };
-    this.finishDifficultyOutcome(task, success, undefined, {
-      difficultyAttribution,
-      modelShadow: pending?.modelShadow,
-    });
+    this.finishDifficultyOutcome(
+      task,
+      success,
+      undefined,
+      {
+        difficultyAttribution,
+        modelShadow: pending?.modelShadow,
+      },
+      costUsd
+    );
   }
 
   private finishDifficultyOutcome(
     task: CliTask,
     success: boolean,
     qualityScore: number | undefined,
-    pending: PendingRoutingOutcome | undefined
+    pending: PendingRoutingOutcome | undefined,
+    costUsd?: number
   ): void {
     recordZeroRouterOutcome(
       task,
@@ -988,7 +1067,7 @@ export class CompositeRouter implements ICompositeRouter {
       this.getOutcomeDependencies(),
       pending?.difficultyAttribution
     );
-    this.pendingRoutingOutcomes.joinModelShadowOutcome(pending?.modelShadow, success);
+    this.pendingRoutingOutcomes.joinModelShadowOutcome(pending?.modelShadow, success, costUsd);
   }
 
   hasMinimumPreferenceData(): boolean {

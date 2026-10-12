@@ -121,14 +121,15 @@ export class PendingRoutingOutcomes {
 
   /**
    * Join a pending model-selection shadow comparison with its task outcome and
-   * persist the completed record (#4197). `costUsd` is deliberately
-   * absent: the routing outcome path measures no per-decision cost today, and
-   * the readiness gate's cost criterion stays fail-closed until it does.
+   * persist the completed record (#4197). When `costUsd` is supplied (from
+   * `CliResponse.costUsd` or token pricing), it is preserved so the readiness
+   * gate's `cost-measured` criterion can evaluate the flip.
    * Exception-guarded — an outcome-join failure never breaks outcome recording.
    */
   joinModelShadowOutcome(
     pending: ModelSelectionShadowComparison | undefined,
-    success: boolean
+    success: boolean,
+    costUsd?: number
   ): void {
     if (pending === undefined) return;
     try {
@@ -141,6 +142,7 @@ export class PendingRoutingOutcomes {
         shadowModel: pending.shadowModel,
         agree: pending.agree,
         success,
+        ...(costUsd !== undefined && Number.isFinite(costUsd) && costUsd >= 0 ? { costUsd } : {}),
       });
     } catch (error: unknown) {
       const failures = recordModelSelectionShadowFailure();
