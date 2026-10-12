@@ -56,11 +56,9 @@ jobs:
       - name: Build + pack nexus-agents
         run: |
           pnpm install --frozen-lockfile
-          # `nexus-memory` is a workspace dep of `nexus-agents` (#2766 Phase 5+).
-          # Build it first so its dist/index.d.ts exists when tsup resolves
-          # `import { ... } from 'nexus-memory'` in nexus-agents.
-          pnpm --filter nexus-memory --fail-if-no-match build
-          pnpm --filter nexus-agents --fail-if-no-match build
+          # Full `pnpm build` (not --filter nexus-agents) so the nexus-memory workspace
+          # dep is built first via turbo topological order (matching ci.yml #443).
+          pnpm build
           # #6481: pack the STAGED package — the one `pnpm release` publishes,
           # with its install-script dependencies bundled. Packing the source
           # directory would verify a tarball nobody installs.

@@ -680,3 +680,54 @@ describe('gemini registry entries (#7101 / #6625)', () => {
     expect(flash?.codeGeneration).toBe(9);
   });
 });
+
+// ============================================================================
+// Drift registry proposals (#7100, #7102, #7103, #7104 / #6625)
+// ============================================================================
+
+describe('drift model registry entries (#7100, #7102, #7103, #7104 / #6625)', () => {
+  it('resolves metadata, pricing, and context window for claude-fable-5.1 (#7104)', () => {
+    expect(getModelDisplayName('claude-fable-5.1')).toBe('Claude Fable 5.1');
+    expect(getModelContextWindow('claude-fable-5.1')).toBe(1_000_000);
+    expect(getModelMaxOutput('claude-fable-5.1')).toBe(128_000);
+    expect(getModelPricing('claude-fable-5.1')).toEqual({ inputPer1M: 10.0, outputPer1M: 50.0 });
+    expect(getCliModelName('claude-fable-5.1')).toBe('claude-fable-5.1');
+    expect(findCanonicalModel('claude', 'claude-fable-5.1')?.id).toBe('claude-fable-5.1');
+    expect(findInTreeByCli('claude').map((e) => e.id)).toContain('claude-fable-5.1');
+  });
+
+  it('resolves metadata, pricing, and context window for claude-opus-5.5 (#7100)', () => {
+    expect(getModelDisplayName('claude-opus-5.5')).toBe('Claude Opus 5.5');
+    expect(getModelContextWindow('claude-opus-5.5')).toBe(1_000_000);
+    expect(getModelMaxOutput('claude-opus-5.5')).toBe(128_000);
+    expect(getModelPricing('claude-opus-5.5')).toEqual({ inputPer1M: 4.0, outputPer1M: 20.0 });
+    expect(getCliModelName('claude-opus-5.5')).toBe('claude-opus-5.5');
+    expect(findCanonicalModel('claude', 'claude-opus-5.5')?.id).toBe('claude-opus-5.5');
+    expect(findInTreeByCli('claude').map((e) => e.id)).toContain('claude-opus-5.5');
+  });
+
+  it('resolves metadata, pricing, and context window for gpt-6.1-sol-pro (#7103)', () => {
+    expect(getModelDisplayName('gpt-6.1-sol-pro')).toBe('GPT-6.1 Sol Pro');
+    expect(getModelContextWindow('gpt-6.1-sol-pro')).toBe(1_050_000);
+    expect(getModelMaxOutput('gpt-6.1-sol-pro')).toBe(65_536);
+    expect(getModelPricing('gpt-6.1-sol-pro')).toEqual({ inputPer1M: 2.0, outputPer1M: 10.0 });
+    expect(getCliModelName('gpt-6.1-sol-pro')).toBe('gpt-6.1-sol-pro');
+    expect(findCanonicalModel('codex', 'gpt-6.1-sol-pro')?.id).toBe('gpt-6.1-sol-pro');
+    expect(findInTreeByCli('codex').map((e) => e.id)).toContain('gpt-6.1-sol-pro');
+  });
+
+  it('resolves metadata, pricing, and context window for nemotron-3.5-lightning (#7102)', () => {
+    expect(getModelDisplayName('nemotron-3.5-lightning')).toBe('NVIDIA Nemotron 3.5 Lightning');
+    expect(getModelContextWindow('nemotron-3.5-lightning')).toBe(262_144);
+    expect(getModelMaxOutput('nemotron-3.5-lightning')).toBe(32_768);
+    expect(getModelPricing('nemotron-3.5-lightning')).toEqual({
+      inputPer1M: 0.07,
+      outputPer1M: 0.2,
+    });
+    expect(getCliModelName('nemotron-3.5-lightning')).toBe('nvidia/nemotron-3.5-lightning');
+    expect(findCanonicalModel('opencode', 'nvidia/nemotron-3.5-lightning')?.id).toBe(
+      'nemotron-3.5-lightning'
+    );
+    expect(findInTreeByCli('opencode').map((e) => e.id)).toContain('nemotron-3.5-lightning');
+  });
+});

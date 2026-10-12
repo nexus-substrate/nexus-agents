@@ -115,7 +115,10 @@ describe('checkCodexModels', () => {
     const result = checkCodexModels(file);
 
     // Keep the historical artifact intact: the new slug was not in this snapshot.
-    expect(result.missing.map((entry) => entry.cliModelName)).toEqual(['gpt-6.1-sol']);
+    expect(result.missing.map((entry) => entry.cliModelName)).toEqual([
+      'gpt-6.1-sol',
+      'gpt-6.1-sol-pro',
+    ]);
     expect(result.status).toBe('warn');
   });
 
@@ -124,6 +127,7 @@ describe('checkCodexModels', () => {
     const file = join(dir, 'models_cache.json');
     const served = [
       'gpt-6.1-sol',
+      'gpt-6.1-sol-pro',
       'gpt-6-astra',
       'gpt-6-sol',
       'gpt-6-luna',
