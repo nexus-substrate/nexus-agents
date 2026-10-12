@@ -5,6 +5,13 @@
  * Individual flags (`NEXUS_V2_DELEGATE`, `NEXUS_V2_ORCHESTRATE`, `NEXUS_V2_POLICY_MODE`)
  * can override the umbrella `NEXUS_V2_MODE` flag.
  *
+ * Deprecation Notice (#925 Phase F):
+ * The V2 pipeline is the default standard execution engine across nexus-agents.
+ * The legacy umbrella mode toggle (`NEXUS_V2_MODE`) and individual override flags
+ * (`NEXUS_V2_DELEGATE`, `NEXUS_V2_ORCHESTRATE`) are deprecated legacy override knobs
+ * slated for removal in a future major release. Callers should rely on the standard
+ * V2 pipeline defaults rather than toggling these legacy flags.
+ *
  * @module pipeline/v2-config
  */
 
@@ -12,16 +19,16 @@
 // Types
 // ============================================================================
 
-/** V2 umbrella mode. */
+/** V2 umbrella mode. Legacy override knob (#925 Phase F); V2 is standard ('full'). */
 export type V2Mode = 'off' | 'partial' | 'full';
 
 /** Resolved V2 configuration. */
 export interface V2Config {
-  /** Overall V2 mode. */
+  /** Overall V2 mode. Legacy umbrella mode; V2 is standard ('full'). */
   readonly mode: V2Mode;
-  /** Whether delegate_to_model uses V2 pipeline. */
+  /** Whether delegate_to_model uses V2 pipeline (legacy override knob; V2 is standard). */
   readonly delegateEnabled: boolean;
-  /** Whether orchestrate uses V2 pipeline. */
+  /** Whether orchestrate uses V2 pipeline (legacy override knob; V2 is standard). */
   readonly orchestrateEnabled: boolean;
   /** Policy enforcement mode. */
   readonly policyMode: 'off' | 'warn' | 'block';
@@ -35,14 +42,14 @@ export interface V2Config {
 // Resolution
 // ============================================================================
 
-/** Reads the umbrella NEXUS_V2_MODE flag. */
+/** Reads the umbrella NEXUS_V2_MODE flag (deprecated legacy override knob, #925 Phase F). */
 function readV2Mode(): V2Mode {
   const env = process.env['NEXUS_V2_MODE'];
   if (env === 'off' || env === 'partial') return env;
   return 'full';
 }
 
-/** Resolves a boolean feature flag with umbrella fallback. */
+/** Resolves a boolean feature flag with umbrella fallback (legacy override knob). */
 function resolveFlag(envKey: string, umbrellaDefault: boolean): boolean {
   const env = process.env[envKey];
   if (env === 'true') return true;
@@ -61,6 +68,11 @@ function resolvePolicyMode(umbrella: V2Mode): 'off' | 'warn' | 'block' {
 
 /**
  * Resolves the full V2 configuration from environment variables.
+ *
+ * Deprecation Notice (#925 Phase F):
+ * The umbrella toggle (`NEXUS_V2_MODE`) and override flags (`NEXUS_V2_DELEGATE`,
+ * `NEXUS_V2_ORCHESTRATE`) are legacy compatibility knobs slated for removal.
+ * V2 pipeline execution is standard across nexus-agents.
  *
  * Priority: individual flag > umbrella flag > defaults.
  *

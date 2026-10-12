@@ -64,6 +64,15 @@ describe('resolveV2Config', () => {
     expect(config.dispatchEnabled).toBe(true);
   });
 
+  it('documents that full V2 execution is standard and default-on (#925 Phase F)', () => {
+    // Legacy umbrella knobs are deprecated; when unset, V2 delegate and orchestrate are standard
+    setEnv({});
+    const config = resolveV2Config();
+    expect(config.mode).toBe('full');
+    expect(config.delegateEnabled).toBe(true);
+    expect(config.orchestrateEnabled).toBe(true);
+  });
+
   it('partial mode: delegate on, orchestrate off, warn policy', () => {
     setEnv({ NEXUS_V2_MODE: 'partial' });
     const config = resolveV2Config();
