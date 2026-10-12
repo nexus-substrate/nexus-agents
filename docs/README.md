@@ -381,27 +381,28 @@ Interface specs, generated references, the research loop's catalog, ADRs, and hi
 
 #### Architecture Decision Records (ADRs)
 
-| ADR                                                      | Title                              | Status     |
-| -------------------------------------------------------- | ---------------------------------- | ---------- |
-| [0001](./adr/0001-adr-template.md)                       | ADR Template                       | Template   |
-| [0002](./adr/0002-orchestrator-interface.md)             | Orchestrator Interface             | Accepted   |
-| [0003](./adr/0003-quorum-validator.md)                   | Quorum Validator                   | Accepted   |
-| [0004](./adr/0004-shared-task-analyzer.md)               | SharedTaskAnalyzer                 | Accepted   |
-| [0005](./adr/0005-router-consolidation.md)               | Router Consolidation               | Accepted   |
-| [0006](./adr/0006-determinism-providers.md)              | Determinism Providers              | Accepted   |
-| [0007](./adr/0007-utility-consolidation.md)              | Utility Consolidation              | Accepted   |
-| [0008](./adr/0008-routing-storage-unification.md)        | Routing Storage                    | Accepted   |
-| [0009](./adr/0009-error-class-hierarchy.md)              | Error Class Hierarchy              | Accepted   |
-| [0010](./adr/0010-memory-helpers-keep-separate.md)       | Memory Helpers Separation          | Superseded |
-| [0011](./adr/0011-orchestrator-interface-defer.md)       | Orchestrator Interface Defer       | Superseded |
-| [0012](./adr/0012-registry-api-unification.md)           | Registry API Unification           | Accepted   |
-| [0013](./adr/0013-memory-helpers-consolidation.md)       | Memory Helpers Consolidation       | Accepted   |
-| [0014](./adr/0014-orchestrator-interface-unification.md) | Orchestrator Interface Unification | Accepted   |
-| [0015](./adr/0015-multi-repo-orchestration.md)           | Multi-Repo Orchestration           | Proposed   |
-| [0016](./adr/0016-multi-round-consensus-voting.md)       | Multi-Round Consensus Voting       | Accepted   |
-| [0017](./adr/0017-authority-ladder.md)                   | Authority Ladder                   | Accepted   |
-| [0018](./adr/0018-org-scope-naming.md)                   | Org/Scope Naming                   | Accepted   |
-| [0019](./adr/0019-governance-record-signing.md)          | Governance-Record Signing          | Accepted   |
+| ADR                                                          | Title                              | Status     |
+| ------------------------------------------------------------ | ---------------------------------- | ---------- |
+| [0001](./adr/0001-adr-template.md)                           | ADR Template                       | Template   |
+| [0002](./adr/0002-orchestrator-interface.md)                 | Orchestrator Interface             | Accepted   |
+| [0003](./adr/0003-quorum-validator.md)                       | Quorum Validator                   | Accepted   |
+| [0004](./adr/0004-shared-task-analyzer.md)                   | SharedTaskAnalyzer                 | Accepted   |
+| [0005](./adr/0005-router-consolidation.md)                   | Router Consolidation               | Accepted   |
+| [0006](./adr/0006-determinism-providers.md)                  | Determinism Providers              | Accepted   |
+| [0007](./adr/0007-utility-consolidation.md)                  | Utility Consolidation              | Accepted   |
+| [0008](./adr/0008-routing-storage-unification.md)            | Routing Storage                    | Accepted   |
+| [0009](./adr/0009-error-class-hierarchy.md)                  | Error Class Hierarchy              | Accepted   |
+| [0010](./adr/0010-memory-helpers-keep-separate.md)           | Memory Helpers Separation          | Superseded |
+| [0011](./adr/0011-orchestrator-interface-defer.md)           | Orchestrator Interface Defer       | Superseded |
+| [0012](./adr/0012-registry-api-unification.md)               | Registry API Unification           | Accepted   |
+| [0013](./adr/0013-memory-helpers-consolidation.md)           | Memory Helpers Consolidation       | Accepted   |
+| [0014](./adr/0014-orchestrator-interface-unification.md)     | Orchestrator Interface Unification | Accepted   |
+| [0015](./adr/0015-multi-repo-orchestration.md)               | Multi-Repo Orchestration           | Proposed   |
+| [0016](./adr/0016-multi-round-consensus-voting.md)           | Multi-Round Consensus Voting       | Accepted   |
+| [0017](./adr/0017-authority-ladder.md)                       | Authority Ladder                   | Accepted   |
+| [0018](./adr/0018-org-scope-naming.md)                       | Org/Scope Naming                   | Accepted   |
+| [0019](./adr/0019-governance-record-signing.md)              | Governance-Record Signing          | Accepted   |
+| [0020](./adr/0020-observability-feedback-loop-boundaries.md) | Observability Feedback Boundaries  | Accepted   |
 
 #### Design Documents (archived V1)
 
