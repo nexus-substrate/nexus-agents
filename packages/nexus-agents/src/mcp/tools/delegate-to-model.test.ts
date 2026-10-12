@@ -240,8 +240,16 @@ describe('delegate_to_model Tool', () => {
 
       // Top-tier models should be selected for reasoning tasks
       expect([
+        'claude-fable-5.1',
         'claude-fable-5',
+        'claude-opus-5.5',
+        'claude-opus-5',
+        'claude-opus-4.8',
         'claude-opus',
+        'gpt-6.1-sol-pro',
+        'gpt-6.1-sol',
+        'gpt-6-luna-pro',
+        'gpt-5.6-sol',
         'gpt-5.5',
         'codex-5.3',
         'codex-5.2',
