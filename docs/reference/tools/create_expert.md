@@ -20,3 +20,4 @@ Create a specialized expert agent for code, architecture, security, documentatio
 | --------- | ---- | -------- | ----------- | ----------- |
 | `role` | enum | yes | one of: code_expert \| architecture_expert \| security_expert \| documentation_expert \| testing_expert \| devops_expert \| research_expert \| pm_expert \| ux_expert \| infrastructure_expert \| qa_expert \| data_visualization_expert | Expert role to create |
 | `modelPreference` | string | no | maxLength 100 | Preferred model (e.g., claude-sonnet-4) |
+| `recoveryPolicy` | object | no | — | Optional transient failure recovery policy (defaults to 1 retry) |

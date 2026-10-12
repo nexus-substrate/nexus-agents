@@ -25,6 +25,7 @@ import {
   ExpertFactory,
   Expert,
   type BuiltInExpertType,
+  ExpertRecoveryPolicySchema,
   type ExpertRecoveryPolicy,
   BUILT_IN_EXPERTS,
 } from '../../agents/index.js';
@@ -40,19 +41,8 @@ import { recordExpertCreated, recordExpertError } from './create-expert-recordin
 
 /**
  * Canonical, single-source list of roles `create_expert` can create.
- *
- * This is the ONE place a creatable role is added or removed. Both the exported
- * {@link CreateExpertInputSchema} and the runtime `toolSchema` registered with
- * the MCP server derive their `role` enum from this list, so the schema MCP
- * clients see can never drift from the exported one (was #3978: the registered
- * enum had silently dropped `data_visualization_expert`). A parity test in
- * `create-expert.test.ts` enforces set-equality across all three.
- *
- * This is a deliberate, curated SUBSET of the full configured expert roster
- * (see `BUILT_IN_EXPERTS` / `EXPERT_TYPE_TO_ROLE` in expert-config.ts). Every
- * entry here MUST be a real configured built-in expert; not every configured
- * expert is necessarily exposed for ad-hoc creation. Each role below maps to a
- * `BuiltInExpertType` via {@link ROLE_TO_EXPERT_TYPE}.
+ * Derived by CreateExpertInputSchema and runtime toolSchema to prevent drift (#3978).
+ * Curated subset of configured expert roster mapping to BuiltInExpertType via ROLE_TO_EXPERT_TYPE.
  */
 export const CREATE_EXPERT_ROLES = [
   'code_expert',
@@ -79,6 +69,9 @@ export const CreateExpertInputSchema = z.object({
     .max(100)
     .optional()
     .describe('Preferred model (e.g., claude-sonnet-4)'),
+  recoveryPolicy: ExpertRecoveryPolicySchema.optional().describe(
+    'Optional transient failure recovery policy (defaults to 1 retry)'
+  ),
 });
 
 /**
@@ -174,7 +167,8 @@ function createExpertFromFactory(
   deps: CreateExpertDeps,
   expertType: BuiltInExpertType,
   modelPreference?: string,
-  role?: string
+  role?: string,
+  recoveryPolicy?: ExpertRecoveryPolicy
 ): { ok: true; value: Expert } | { ok: false; error: string } {
   const logger = deps.logger ?? createLogger({ tool: 'create_expert' });
   const options: Record<string, unknown> = {};
@@ -197,11 +191,9 @@ function createExpertFromFactory(
     options.adapter = adapter;
   }
 
-  // Opt-in execution recovery (#4286): experts run via `execute_expert` get a
-  // conservative 1-retry transient policy (transport 429/5xx/network + recoverable
-  // behavioral archetypes). The rate-limit CLI-fallback (#1532) in execute-expert
-  // remains the OUTER recovery layer, engaged only if this inner retry still fails.
-  options.recoveryPolicy = { maxRetries: 1 };
+  // Opt-in execution recovery (#4286, #4291): experts run via `execute_expert` get a
+  // conservative 1-retry transient policy by default or an explicit recoveryPolicy (#4291).
+  options.recoveryPolicy = recoveryPolicy ?? { maxRetries: 1 };
 
   const factoryOptions = Object.keys(options).length > 0 ? options : undefined;
   const result = deps.expertFactory.createBuiltIn(expertType, factoryOptions);
@@ -221,7 +213,7 @@ async function handleCreateExpert(
   deps: CreateExpertDeps,
   args: CreateExpertInput
 ): Promise<{ ok: true; value: CreateExpertResponse } | { ok: false; error: string }> {
-  const { role, modelPreference } = args;
+  const { role, modelPreference, recoveryPolicy } = args;
 
   // Map role to expert type
   const expertType = getExpertType(role);
@@ -236,7 +228,13 @@ async function handleCreateExpert(
   }
 
   // Create expert (pass role for auto-routing when no modelPreference given)
-  const createResult = createExpertFromFactory(deps, expertType, modelPreference, role);
+  const createResult = createExpertFromFactory(
+    deps,
+    expertType,
+    modelPreference,
+    role,
+    recoveryPolicy
+  );
   if (!createResult.ok) {
     return { ok: false, error: createResult.error };
   }
@@ -329,6 +327,9 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
       .max(100)
       .optional()
       .describe('Preferred model (e.g., claude-sonnet-4)'),
+    recoveryPolicy: ExpertRecoveryPolicySchema.optional().describe(
+      'Optional transient failure recovery policy (defaults to 1 retry)'
+    ),
   };
 
   const description =

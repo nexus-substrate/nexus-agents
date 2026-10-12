@@ -7,9 +7,11 @@
  * without a factory↔recovery import cycle (#4286).
  */
 
+import type { Result, Task, TaskResult, AgentError } from '../../core/index.js';
 import { SimpleAgent } from '../simple-agent.js';
 import type { BaseAgentOptions } from '../base-agent.js';
 import type { ExpertConfig } from './expert-config.js';
+import type { ExpertRecoveryPolicy } from './expert-recovery.js';
 
 /**
  * Expert agent extending SimpleAgent with configuration-based setup.
@@ -20,6 +22,16 @@ export class Expert extends SimpleAgent {
   constructor(options: BaseAgentOptions, config: ExpertConfig) {
     super(options);
     this.expertConfig = config;
+  }
+
+  /**
+   * Execute a task with optional abort signal and recovery policy override (#4291).
+   */
+  override async execute(
+    task: Task,
+    options?: { signal?: AbortSignal; recoveryPolicy?: ExpertRecoveryPolicy }
+  ): Promise<Result<TaskResult, AgentError>> {
+    return super.execute(task, options);
   }
 
   /**
