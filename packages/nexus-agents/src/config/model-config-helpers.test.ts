@@ -731,3 +731,68 @@ describe('drift model registry entries (#7100, #7102, #7103, #7104 / #6625)', ()
     expect(findInTreeByCli('opencode').map((e) => e.id)).toContain('nemotron-3.5-lightning');
   });
 });
+
+// ============================================================================
+// Frontier models registry proposals (#7374, #7375, #7376, #7377, #7378 / #6625)
+// ============================================================================
+
+describe('frontier models registry entries (#7374, #7375, #7376, #7377, #7378 / #6625)', () => {
+  it('resolves metadata, pricing, and context window for claude-opus-5 (#7374)', () => {
+    expect(getModelDisplayName('claude-opus-5')).toBe('Claude Opus 5');
+    expect(getModelContextWindow('claude-opus-5')).toBe(1_000_000);
+    expect(getModelMaxOutput('claude-opus-5')).toBe(128_000);
+    expect(getModelPricing('claude-opus-5')).toEqual({ inputPer1M: 5.0, outputPer1M: 25.0 });
+    expect(getCliModelName('claude-opus-5')).toBe('claude-opus-5');
+    expect(findCanonicalModel('claude', 'claude-opus-5')?.id).toBe('claude-opus-5');
+    expect(findInTreeByCli('claude').map((e) => e.id)).toContain('claude-opus-5');
+  });
+
+  it('resolves metadata, pricing, and context window for gemini-3.7-flash (#7375)', () => {
+    expect(getModelDisplayName('gemini-3.7-flash')).toBe('Gemini 3.7 Flash');
+    expect(getModelContextWindow('gemini-3.7-flash')).toBe(1_048_576);
+    expect(getModelMaxOutput('gemini-3.7-flash')).toBe(65_536);
+    expect(getModelPricing('gemini-3.7-flash')).toEqual({ inputPer1M: 0.75, outputPer1M: 3.75 });
+    expect(getCliModelName('gemini-3.7-flash')).toBe('gemini-3.7-flash');
+    expect(findCanonicalModel('gemini', 'gemini-3.7-flash')?.id).toBe('gemini-3.7-flash');
+    expect(findInTreeByCli('gemini').map((e) => e.id)).toContain('gemini-3.7-flash');
+  });
+
+  it('resolves metadata, pricing, and context window for nemotron-3.5-content-safety (#7376)', () => {
+    expect(getModelDisplayName('nemotron-3.5-content-safety')).toBe(
+      'NVIDIA Nemotron 3.5 Content Safety'
+    );
+    expect(getModelContextWindow('nemotron-3.5-content-safety')).toBe(131_072);
+    expect(getModelMaxOutput('nemotron-3.5-content-safety')).toBe(16_384);
+    expect(getModelPricing('nemotron-3.5-content-safety')).toEqual({
+      inputPer1M: 0.2,
+      outputPer1M: 0.2,
+    });
+    expect(getCliModelName('nemotron-3.5-content-safety')).toBe(
+      'nvidia/nemotron-3.5-content-safety'
+    );
+    expect(findCanonicalModel('opencode', 'nvidia/nemotron-3.5-content-safety')?.id).toBe(
+      'nemotron-3.5-content-safety'
+    );
+    expect(findInTreeByCli('opencode').map((e) => e.id)).toContain('nemotron-3.5-content-safety');
+  });
+
+  it('resolves metadata, pricing, and context window for gpt-6-luna-pro (#7377)', () => {
+    expect(getModelDisplayName('gpt-6-luna-pro')).toBe('GPT-6 Luna Pro');
+    expect(getModelContextWindow('gpt-6-luna-pro')).toBe(1_050_000);
+    expect(getModelMaxOutput('gpt-6-luna-pro')).toBe(65_536);
+    expect(getModelPricing('gpt-6-luna-pro')).toEqual({ inputPer1M: 0.1, outputPer1M: 0.5 });
+    expect(getCliModelName('gpt-6-luna-pro')).toBe('gpt-6-luna-pro');
+    expect(findCanonicalModel('codex', 'gpt-6-luna-pro')?.id).toBe('gpt-6-luna-pro');
+    expect(findInTreeByCli('codex').map((e) => e.id)).toContain('gpt-6-luna-pro');
+  });
+
+  it('resolves metadata, pricing, and context window for claude-opus-4.8 (#7378)', () => {
+    expect(getModelDisplayName('claude-opus-4.8')).toBe('Claude Opus 4.8');
+    expect(getModelContextWindow('claude-opus-4.8')).toBe(1_000_000);
+    expect(getModelMaxOutput('claude-opus-4.8')).toBe(128_000);
+    expect(getModelPricing('claude-opus-4.8')).toEqual({ inputPer1M: 5.0, outputPer1M: 25.0 });
+    expect(getCliModelName('claude-opus-4.8')).toBe('claude-opus-4.8');
+    expect(findCanonicalModel('claude', 'claude-opus-4.8')?.id).toBe('claude-opus-4.8');
+    expect(findInTreeByCli('claude').map((e) => e.id)).toContain('claude-opus-4.8');
+  });
+});
