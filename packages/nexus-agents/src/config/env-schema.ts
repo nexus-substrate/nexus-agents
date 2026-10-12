@@ -117,10 +117,18 @@ const NexusEnvSchema = z.object({
   // --- Circuit Breaker ---
 
   // --- V2 Pipeline ---
+  // @deprecated Legacy umbrella mode for V2 pipeline (#925 Phase F). V2 is standard ('full'); slated for removal.
   NEXUS_V2_MODE: z.enum(['off', 'partial', 'full']).optional(),
+
+  // @deprecated Legacy override for V2 delegate_to_model pipeline (#925 Phase F). V2 is standard. Slated for removal.
   NEXUS_V2_DELEGATE: boolStr.optional(),
+
+  // @deprecated Legacy override for V2 orchestrate pipeline (#925 Phase F). V2 is standard. Slated for removal.
   NEXUS_V2_ORCHESTRATE: boolStr.optional(),
+
+  // Policy enforcement mode ('off' | 'warn' | 'block') for V2 orchestrate execute check (#925).
   NEXUS_V2_POLICY_MODE: z.enum(['off', 'warn', 'block']).optional(),
+
   NEXUS_AORCHESTRA: boolStr.optional(),
   NEXUS_AORCHESTRA_DISPATCH: boolStr.optional(),
   NEXUS_WORKER_MAX_CALLS: positiveIntStr.optional(),

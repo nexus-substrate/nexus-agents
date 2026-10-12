@@ -109,10 +109,10 @@ or source comments. Custom validation may impose additional restrictions.
 | `NEXUS_TIMEOUT_MULTIPLIER` | string; pattern /^\\d+(\\.\\d+)?$/ | Not declared in schema | Not described in schema |
 | `NEXUS_TMPDIR` | string | Not declared in schema | Not described in schema |
 | `NEXUS_TUNE_ENFORCE` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
-| `NEXUS_V2_DELEGATE` | `true` \| `false` | Not declared in schema | Not described in schema |
-| `NEXUS_V2_MODE` | `off` \| `partial` \| `full` | Not declared in schema | Not described in schema |
-| `NEXUS_V2_ORCHESTRATE` | `true` \| `false` | Not declared in schema | Not described in schema |
-| `NEXUS_V2_POLICY_MODE` | `off` \| `warn` \| `block` | Not declared in schema | Not described in schema |
+| `NEXUS_V2_DELEGATE` | `true` \| `false` | Not declared in schema | @deprecated Legacy override for V2 delegate\_to\_model pipeline (#925 Phase F). V2 is standard. Slated for removal. |
+| `NEXUS_V2_MODE` | `off` \| `partial` \| `full` | Not declared in schema | @deprecated Legacy umbrella mode for V2 pipeline (#925 Phase F). V2 is standard ('full'); slated for removal. |
+| `NEXUS_V2_ORCHESTRATE` | `true` \| `false` | Not declared in schema | @deprecated Legacy override for V2 orchestrate pipeline (#925 Phase F). V2 is standard. Slated for removal. |
+| `NEXUS_V2_POLICY_MODE` | `off` \| `warn` \| `block` | Not declared in schema | Policy enforcement mode ('off' \| 'warn' \| 'block') for V2 orchestrate execute check (#925). |
 | `NEXUS_VERSION_CHECK` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_VOTE_RECORDS_PATH` | string | Not declared in schema | Not described in schema |
 | `NEXUS_VOTE_SIGNING_KEY` | string | Not declared in schema | #3927 item 4: the SSH key `scripts/append-ratification-record.ts` signs a committed vote record's hash with (`--signing-key` overrides it). A path; unset ⇒ the agent key at `<dataDir>/auth/vote-record-signing.key` when it exists (#6257), else the record is appended unsigned and the script says so. |
