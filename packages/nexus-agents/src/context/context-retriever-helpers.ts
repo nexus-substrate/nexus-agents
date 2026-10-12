@@ -176,7 +176,24 @@ export function topRankedWithinBudget(
   return { kept, omitted: items.length - kept.length };
 }
 
-/** Disclosure returned beside each fixed legacy context slice. */
+/** Default item count cap per legacy context section (#5497). */
+const DEFAULT_SECTION_MAX_ITEMS = 5;
+
+/**
+ * Default token budget per legacy context section (#5497).
+ * Bounded so that all potential sections stay well within the default 2,500 token budget.
+ */
+const DEFAULT_SECTION_TOKEN_BUDGET = 400;
+
+/** Options for section slicing. */
+interface SliceContextOptions {
+  /** Maximum items to include in this section (default: 5). */
+  readonly maxItems?: number;
+  /** Maximum cumulative tokens for this section (default: 400). */
+  readonly maxTokens?: number;
+}
+
+/** Disclosure returned beside each legacy context slice. */
 interface ContextSlice {
   readonly lines: readonly string[];
   readonly included: number;
@@ -185,30 +202,44 @@ interface ContextSlice {
 }
 
 /**
- * Select five rendered items and disclose how much ranked context was omitted.
+ * Select rendered items by cumulative token budget and item count (#5497).
  *
- * Selection intentionally remains a fixed `slice(0, 5)` until #5497's
- * token-budget half is triggered by default-on context injection (#2795).
- * Every item is estimated once; dropped estimates are summed from that record.
+ * Scans estimated items in priority order. When an item exceeds the remaining
+ * token budget, it is skipped so smaller subsequent items can still be included
+ * within the budget. Discloses included count, dropped count, and dropped tokens.
  */
 function sliceContextLines(
   lines: readonly string[],
-  counter: { readonly estimate: (text: string) => number }
+  counter: { readonly estimate: (text: string) => number },
+  options: SliceContextOptions = {}
 ): ContextSlice {
+  const maxItems = options.maxItems ?? DEFAULT_SECTION_MAX_ITEMS;
+  const maxTokens = options.maxTokens ?? DEFAULT_SECTION_TOKEN_BUDGET;
+
   const estimated = lines.map((line) => ({ line, tokens: counter.estimate(line) }));
-  const selected = estimated.slice(0, 5);
-  const omitted = estimated.slice(5);
-  const droppedTokens =
-    omitted.length === 0 ? 0 : omitted.reduce((sum, item) => sum + item.tokens, 0);
+  const included: string[] = [];
+  const dropped: { line: string; tokens: number }[] = [];
+  let remainingTokens = maxTokens;
+
+  for (const item of estimated) {
+    if (included.length < maxItems && item.tokens <= remainingTokens) {
+      included.push(item.line);
+      remainingTokens -= item.tokens;
+    } else {
+      dropped.push(item);
+    }
+  }
+
+  const droppedTokens = dropped.reduce((sum, item) => sum + item.tokens, 0);
   return {
-    lines: selected.map(({ line }) => line),
-    included: selected.length,
-    dropped: omitted.length,
+    lines: included,
+    included: included.length,
+    dropped: dropped.length,
     droppedTokens,
   };
 }
 
-/** Format a section heading with its fixed-slice disclosure. */
+/** Format a section heading with its slice disclosure. */
 function disclosedHeading(label: string, slice: ContextSlice): string {
   return `${label} (${String(slice.included)} included, ${String(slice.dropped)} dropped, ${String(slice.droppedTokens)} dropped tokens)`;
 }
@@ -222,9 +253,10 @@ function disclosedHeading(label: string, slice: ContextSlice): string {
 export function renderDisclosedSection(
   heading: string,
   lines: readonly string[],
-  counter: { readonly estimate: (text: string) => number }
+  counter: { readonly estimate: (text: string) => number },
+  options: SliceContextOptions = {}
 ): string {
-  const slice = sliceContextLines(lines, counter);
+  const slice = sliceContextLines(lines, counter, options);
   return `${disclosedHeading(heading, slice)}\n${slice.lines.join('\n')}`;
 }
 

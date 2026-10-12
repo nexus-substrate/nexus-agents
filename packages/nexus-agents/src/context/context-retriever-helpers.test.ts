@@ -17,6 +17,7 @@ import { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
 import {
   assembleClampedContext,
   rankMemories,
+  renderDisclosedSection,
   topRankedWithinBudget,
   type RankedMemoryItem,
 } from './context-retriever-helpers.js';
@@ -464,5 +465,57 @@ describe('assembleClampedContext — source attribution (#5588)', () => {
     const result = assembleClampedContext('1234567', 'map', 2, 0);
     expect(result.repoMap).toContain('\n');
     expect(`${result.memory}${result.repoMap}`).toBe(result.text);
+  });
+});
+
+describe('renderDisclosedSection — token-aware budgeting (#5497)', () => {
+  const wordCounter = {
+    estimate: (text: string): number => text.trim().split(/\s+/).length,
+  };
+
+  it('skips a fifth item that exceeds remaining budget in favor of a sixth that fits', () => {
+    // Budget: 20 tokens, maxItems: 5
+    // Items 1-4: 3 tokens each = 12 tokens used, remaining = 8 tokens
+    // Item 5: 15 tokens (exceeds remaining 8 tokens -> skipped)
+    // Item 6: 4 tokens (fits remaining 8 tokens -> included, reaching 5 items)
+    // Item 7: 2 tokens (maxItems reached -> dropped)
+    const lines = [
+      'one two three',
+      'four five six',
+      'seven eight nine',
+      'ten eleven twelve',
+      'thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven',
+      'twenty-eight twenty-nine thirty thirty-one',
+      'thirty-two thirty-three',
+    ];
+
+    const result = renderDisclosedSection('### Test Section', lines, wordCounter, {
+      maxTokens: 20,
+      maxItems: 5,
+    });
+
+    expect(result).toContain('### Test Section (5 included, 2 dropped, 17 dropped tokens)');
+    expect(result).toContain(lines[0]);
+    expect(result).toContain(lines[1]);
+    expect(result).toContain(lines[2]);
+    expect(result).toContain(lines[3]);
+    expect(result).not.toContain(lines[4]);
+    expect(result).toContain(lines[5]);
+    expect(result).not.toContain(lines[6]);
+  });
+
+  it('drops all items when token budget is 0', () => {
+    const lines = ['alpha beta', 'gamma delta'];
+    const result = renderDisclosedSection('### Test Section', lines, wordCounter, { maxTokens: 0 });
+    expect(result).toBe('### Test Section (0 included, 2 dropped, 4 dropped tokens)\n');
+  });
+
+  it('preserves items within default budget (up to 5 items)', () => {
+    const lines = ['line one', 'line two', 'line three'];
+    const result = renderDisclosedSection('### Test Section', lines, wordCounter);
+    expect(result).toContain('### Test Section (3 included, 0 dropped, 0 dropped tokens)');
+    expect(result).toContain(lines[0]);
+    expect(result).toContain(lines[1]);
+    expect(result).toContain(lines[2]);
   });
 });
