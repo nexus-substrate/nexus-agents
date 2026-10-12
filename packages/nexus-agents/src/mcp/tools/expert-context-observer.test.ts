@@ -12,7 +12,6 @@ import {
   resolveExpertContextWindow,
   type ExpertContextObservation,
 } from './expert-context-observer.js';
-import type { ModelId } from '../../config/model-capabilities-types.js';
 
 function makeLogger(): ILogger {
   const logger: Record<string, unknown> = {
@@ -124,7 +123,7 @@ describe('computeExpertContextUtilization', () => {
 
   it('resolves full context window for models.dev catalog models instead of 8K fallback', () => {
     const u = computeExpertContextUtilization({
-      modelId: 'deepseek-v4-flash-0731' as ModelId,
+      modelId: 'deepseek-v4-flash-0731',
       tokensUsed: 50_000,
     });
     expect(u.contextWindow).toBe(1_000_000);
