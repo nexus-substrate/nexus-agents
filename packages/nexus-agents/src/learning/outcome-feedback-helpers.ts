@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { getTimeProvider } from '../core/index.js';
 import type {
-  RoutingDecision,
+  FeedbackRoutingDecision,
   TaskOutcome,
   OutcomeClass,
   RouterType,
@@ -44,7 +44,7 @@ export function countOutcomesByClass(
  * UNMEASURED. Defaulting it to `true` would re-create the defect for every row
  * already on disk.
  */
-export function isRouterTypeMeasured(decision: RoutingDecision): boolean {
+export function isRouterTypeMeasured(decision: FeedbackRoutingDecision): boolean {
   return decision.routerTypeMeasured === true;
 }
 
@@ -54,7 +54,7 @@ export function isRouterTypeMeasured(decision: RoutingDecision): boolean {
  * themselves remain unchanged. Empty input returns zero in every bucket.
  */
 export function countDecisionsByRouter(
-  decisions: readonly RoutingDecision[]
+  decisions: readonly FeedbackRoutingDecision[]
 ): Record<RouterType, number> {
   const byRouter: Record<RouterType, number> = {
     linucb: 0,
@@ -110,17 +110,22 @@ export function generateRewardExplanation(outcome: TaskOutcome, reward: number):
 }
 
 /**
- * Create a routing decision record.
+ * Create a feedback routing decision record.
  */
-export function createRoutingDecision(
-  params: Omit<RoutingDecision, 'id' | 'timestamp'>
-): RoutingDecision {
+export function createFeedbackRoutingDecision(
+  params: Omit<FeedbackRoutingDecision, 'id' | 'timestamp'>
+): FeedbackRoutingDecision {
   return {
     id: randomUUID(),
     timestamp: getTimeProvider().nowIso(),
     ...params,
   };
 }
+
+/**
+ * Legacy alias for `createFeedbackRoutingDecision`. Renamed per #5129.
+ */
+export const createRoutingDecision = createFeedbackRoutingDecision;
 
 /**
  * Create a task outcome record.

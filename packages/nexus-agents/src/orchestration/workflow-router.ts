@@ -23,7 +23,7 @@ import { deriveStructuralSignals } from './workflow-router-signal-derivation.js'
 import type {
   TaskSignals,
   WorkflowPattern,
-  RoutingDecision,
+  WorkflowRoutingDecision,
   WorkflowRouterOptions,
   PatternOutcome,
   PatternMetrics,
@@ -70,7 +70,7 @@ export function createWorkflowRouter(options?: {
   const outcomes: PatternOutcome[] = [];
 
   return {
-    route(signals: TaskSignals, routerOpts?: WorkflowRouterOptions): RoutingDecision {
+    route(signals: TaskSignals, routerOpts?: WorkflowRouterOptions): WorkflowRoutingDecision {
       return routeTask(signals, analyzer, logger, routerOpts);
     },
     recordOutcome(outcome: PatternOutcome): void {
@@ -85,7 +85,7 @@ export function createWorkflowRouter(options?: {
 /** Public interface for the workflow router. */
 export interface IWorkflowRouter {
   /** Routes a task to the optimal workflow pattern. */
-  route(signals: TaskSignals, options?: WorkflowRouterOptions): RoutingDecision;
+  route(signals: TaskSignals, options?: WorkflowRouterOptions): WorkflowRoutingDecision;
   /**
    * Records an execution outcome into this router instance's buffer.
    * Observability only — `route()` never reads it back (#2824).
@@ -117,8 +117,8 @@ interface DecisionInput {
   analysis: TaskAnalysisResult;
 }
 
-function buildDecision(input: DecisionInput): RoutingDecision {
-  const base: RoutingDecision = {
+function buildDecision(input: DecisionInput): WorkflowRoutingDecision {
+  const base: WorkflowRoutingDecision = {
     pattern: input.result.pattern,
     reasoning: input.result.reasoning,
     // NOT a measurement (#5957, same call as #5119): every rule in this file
@@ -150,7 +150,7 @@ function routeTask(
   analyzer: ISharedTaskAnalyzer,
   logger: ILogger,
   _opts?: WorkflowRouterOptions
-): RoutingDecision {
+): WorkflowRoutingDecision {
   const analysis = analyzer.analyze(signals.description);
   // #3989: gap-fill consensus/wave structural signals from the goal text so plain
   // goal strings reach the richer strategy instead of the generic fallback.

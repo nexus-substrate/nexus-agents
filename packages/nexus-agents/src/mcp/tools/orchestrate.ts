@@ -60,6 +60,7 @@ import type { ExecutionPlan } from '../../agents/index.js';
 import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/workflow-router.js';
+import type { WorkflowRoutingDecision } from '../../orchestration/workflow-router-types.js';
 import { recordRoutingGaps } from '../../core/task-analysis/capability-gap-ledger.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
@@ -461,7 +462,7 @@ function routeAndPrepare(
   router?: IWorkflowRouter
 ): {
   workflowRouter: IWorkflowRouter;
-  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  decision: WorkflowRoutingDecision;
   orchestrator: IOrchestrator;
   logger: ILogger;
 } {
@@ -481,9 +482,7 @@ function routeAndPrepare(
 }
 
 /** Builds RoutingInfo from decision + mapped type. */
-function buildRoutingInfo(
-  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision
-): RoutingInfo {
+function buildRoutingInfo(decision: WorkflowRoutingDecision): RoutingInfo {
   return {
     pattern: decision.pattern,
     reasoning: decision.reasoning,
@@ -495,7 +494,7 @@ function buildRoutingInfo(
 /** Records a workflow outcome to the router. */
 function recordRouterOutcome(
   workflowRouter: IWorkflowRouter,
-  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision,
+  decision: WorkflowRoutingDecision,
   success: boolean,
   durationMs: number
 ): void {
@@ -568,7 +567,7 @@ function startHeartbeatTracking(
 /** Fast-path for simple tasks: return structural analysis without LLM call (Issue #1132). */
 function buildSimpleTaskResult(
   taskId: string,
-  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision,
+  decision: WorkflowRoutingDecision,
   durationMs: number
 ): OrchestrateOutput {
   return {
@@ -594,7 +593,7 @@ function buildSimpleTaskResult(
 /** Fast-path: simple tasks skip expensive LLM orchestration (Issue #1132). */
 function trySimpleTaskFastPath(ctx: {
   taskId: string;
-  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  decision: WorkflowRoutingDecision;
   startTime: number;
   logger: ILogger;
 }): Result<OrchestrateOutput, OrchestrationError> | undefined {
@@ -614,7 +613,7 @@ function handleOrchestratorFailure(ctx: {
   error: Error;
   taskId: string;
   task: string;
-  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  decision: WorkflowRoutingDecision;
   workflowRouter: IWorkflowRouter;
   startTime: number;
   logger: ILogger;
@@ -637,7 +636,7 @@ function handleOrchestratorSuccess(ctx: {
   orchResult: import('../../core/types/orchestrator.js').OrchestratorResult;
   taskId: string;
   taskDescription: string;
-  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  decision: WorkflowRoutingDecision;
   workflowRouter: IWorkflowRouter;
   startTime: number;
   logger: ILogger;
@@ -755,7 +754,7 @@ async function runOrchestratorWithStateTracking(params: {
   readonly taskInput: string;
   readonly definition: OrchestratorDefinition;
   readonly orchestrator: IOrchestrator;
-  readonly decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  readonly decision: WorkflowRoutingDecision;
   readonly workflowRouter: IWorkflowRouter;
   readonly startTime: number;
   readonly logger: ILogger;

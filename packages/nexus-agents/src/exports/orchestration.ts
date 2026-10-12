@@ -106,7 +106,7 @@ export type {
   DependencyStructure,
   TimeConstraint,
   TaskSignals,
-  RoutingDecision as WorkflowRoutingDecision,
+  WorkflowRoutingDecision,
   WorkflowRouterOptions,
   PatternOutcome,
   PatternMetrics,

@@ -11,6 +11,7 @@ export type {
   RouterType,
   OutcomeClass,
   QualitySignals,
+  FeedbackRoutingDecision,
   RoutingDecision,
   TaskOutcome,
   ComputedReward,
@@ -24,6 +25,7 @@ export {
   DEFAULT_FEEDBACK_COLLECTOR_CONFIG,
   FeedbackCollectorConfigSchema,
   QualitySignalsSchema,
+  FeedbackRoutingDecisionSchema,
   RoutingDecisionSchema,
   TaskOutcomeSchema,
 } from './outcome-feedback-types.js';

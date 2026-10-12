@@ -12,9 +12,7 @@
 import type { Result } from '../result.js';
 import type { CliName } from '../../cli-adapters/types.js';
 
-// ============================================================================
 // Common Types
-// ============================================================================
 
 /**
  * Timestamp for records.
@@ -31,9 +29,7 @@ export type TaskType = string;
  */
 export type Domain = string;
 
-// ============================================================================
 // Preference Data Types (from preference-router-store)
-// ============================================================================
 
 /**
  * Features extracted from a query for similarity matching.
@@ -78,9 +74,7 @@ export interface PreferenceStats {
   readonly lastUpdatedAt: Date;
 }
 
-// ============================================================================
 // Performance Types (from routing-memory)
-// ============================================================================
 
 /**
  * Performance metrics for a model.
@@ -125,14 +119,12 @@ export interface CachedActionResult {
   readonly timeSavedMs: number;
 }
 
-// ============================================================================
 // Metrics Types (from routing-metrics)
-// ============================================================================
 
 /**
  * Record of a routing decision.
  */
-export interface RoutingDecision {
+export interface RoutingDecisionRecord {
   readonly timestamp: Timestamp;
   readonly traceId: string;
   readonly selectedModel: CliName;
@@ -142,6 +134,12 @@ export interface RoutingDecision {
   readonly contextTokens?: number;
   readonly routingLatencyMs?: number;
 }
+
+/**
+ * Legacy alias for `RoutingDecisionRecord`. Renamed per #5129 to eliminate
+ * namespace collisions with workflow, observer, CLI, and learning routing decisions.
+ */
+export type RoutingDecision = RoutingDecisionRecord;
 
 /**
  * Record of a task outcome.
@@ -185,9 +183,7 @@ export interface RoutingMetricsSummary {
   readonly avgRoutingLatencyMs: number;
 }
 
-// ============================================================================
 // Unified Statistics
-// ============================================================================
 
 /**
  * Comprehensive statistics from the routing context store.
@@ -211,9 +207,7 @@ export interface RoutingContextStats {
   readonly avgReward: number;
 }
 
-// ============================================================================
 // Configuration
-// ============================================================================
 
 /**
  * Configuration for the routing context store.
@@ -241,9 +235,7 @@ export interface RoutingContextStoreConfig {
   readonly actionCacheTtlMs?: number;
 }
 
-// ============================================================================
 // Store Interface
-// ============================================================================
 
 /**
  * Error types for routing context store operations.
@@ -350,7 +342,7 @@ export interface IRoutingContextStore {
   /**
    * Record a routing decision.
    */
-  recordRoutingDecision(decision: RoutingDecision): Result<void, RoutingContextError>;
+  recordRoutingDecision(decision: RoutingDecisionRecord): Result<void, RoutingContextError>;
 
   /**
    * Record a task outcome.
@@ -365,7 +357,7 @@ export interface IRoutingContextStore {
   /**
    * Get raw routing decisions for a time period.
    */
-  getRoutingDecisions(periodHours: number): readonly RoutingDecision[];
+  getRoutingDecisions(periodHours: number): readonly RoutingDecisionRecord[];
 
   /**
    * Get raw task outcomes for a time period.

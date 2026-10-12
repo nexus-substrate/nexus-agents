@@ -13,7 +13,7 @@ import { clamp01 } from '../utils/math-utils.js';
 import { truncateText } from '../utils/text-utils.js';
 import type {
   FeedbackCollectorConfig,
-  RoutingDecision,
+  FeedbackRoutingDecision,
   TaskOutcome,
   ComputedReward,
   FeedbackLoopStats,
@@ -62,9 +62,9 @@ function ratioBonus(target: number, actual: number, weight: number): number {
 
 export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   private readonly config: FeedbackCollectorConfig;
-  private readonly pendingDecisions: Map<TraceId, RoutingDecision> = new Map();
+  private readonly pendingDecisions: Map<TraceId, FeedbackRoutingDecision> = new Map();
   private readonly outcomes: TaskOutcome[] = [];
-  private readonly decisionHistory: RoutingDecision[] = [];
+  private readonly decisionHistory: FeedbackRoutingDecision[] = [];
   private readonly callbacks: Set<OutcomeProcessedCallback> = new Set();
 
   // Optional router references for direct feedback
@@ -109,9 +109,9 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     };
   }
 
-  recordRoutingDecision(decision: RoutingDecision): void {
+  recordRoutingDecision(decision: FeedbackRoutingDecision): void {
     // A direct caller cannot certify an endpoint as a measured CLI preference selection.
-    const recordedDecision: RoutingDecision =
+    const recordedDecision: FeedbackRoutingDecision =
       decision.routerType === 'preference' && !isCliName(decision.selectedModel)
         ? {
             ...decision,
@@ -261,7 +261,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     };
   }
 
-  getPendingDecisions(): readonly RoutingDecision[] {
+  getPendingDecisions(): readonly FeedbackRoutingDecision[] {
     return [...this.pendingDecisions.values()];
   }
 
@@ -305,7 +305,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   }
 
   private feedbackToRouters(
-    decision: RoutingDecision,
+    decision: FeedbackRoutingDecision,
     outcome: TaskOutcome,
     reward: ComputedReward
   ): void {
@@ -315,7 +315,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     this.feedbackToPreferenceRouter(decision, outcome);
   }
 
-  private feedbackToLinUCB(decision: RoutingDecision, reward: ComputedReward): void {
+  private feedbackToLinUCB(decision: FeedbackRoutingDecision, reward: ComputedReward): void {
     if (decision.routerType !== 'linucb' || this.linucbBandit === undefined) return;
     if (decision.armIndex === undefined || decision.banditContext === undefined) return;
 
@@ -327,7 +327,10 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     });
   }
 
-  private feedbackToPreferenceRouter(decision: RoutingDecision, outcome: TaskOutcome): void {
+  private feedbackToPreferenceRouter(
+    decision: FeedbackRoutingDecision,
+    outcome: TaskOutcome
+  ): void {
     if (decision.routerType !== 'preference' || this.preferenceRouter === undefined) return;
     // Missing task text is an empty string in the published RoutingDecision contract.
     // Skip preference training rather than learn from a router explanation or blank task.
@@ -349,7 +352,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   }
 
   private notifyCallbacks(
-    decision: RoutingDecision,
+    decision: FeedbackRoutingDecision,
     outcome: TaskOutcome,
     reward: ComputedReward
   ): void {
@@ -363,7 +366,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     }
   }
 
-  private findDecisionByRoutingId(routingDecisionId: string): RoutingDecision | undefined {
+  private findDecisionByRoutingId(routingDecisionId: string): FeedbackRoutingDecision | undefined {
     const history = this.decisionHistory.find((d) => d.id === routingDecisionId);
     if (history === undefined) return undefined;
 

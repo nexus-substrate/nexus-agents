@@ -25,7 +25,7 @@ import {
   type ManifestSelection,
 } from './strategy-manifest-registry.js';
 import type { TaskClassification } from '../pipeline/adaptive-orchestrator.js';
-import type { RoutingDecision } from './workflow-router-types.js';
+import type { WorkflowRoutingDecision } from './workflow-router-types.js';
 
 /** The chosen strategy plus the transparency fields a decision carries. */
 export interface SelectionCore {
@@ -39,7 +39,7 @@ export interface SelectionCore {
 }
 
 /** Human-readable reasoning for a manifest-driven selection. */
-function reasoningFor(selection: ManifestSelection, routing: RoutingDecision): string {
+function reasoningFor(selection: ManifestSelection, routing: WorkflowRoutingDecision): string {
   const { manifest, rule } = selection;
   const cause =
     rule.pipelineTypes !== undefined && rule.patterns === undefined
@@ -60,7 +60,7 @@ function reasoningFor(selection: ManifestSelection, routing: RoutingDecision): s
  * router still names zero strategies in a structural table.
  */
 export function decideStrategy(
-  routing: RoutingDecision,
+  routing: WorkflowRoutingDecision,
   classification: TaskClassification
 ): SelectionCore {
   const { pattern, analysis } = routing;
@@ -110,7 +110,7 @@ export function decideStrategy(
  */
 export function buildAlternatives(
   chosen: ExecutionStrategy,
-  routing: RoutingDecision,
+  routing: WorkflowRoutingDecision,
   classification: TaskClassification
 ): ExecutionStrategy[] {
   const ranked = rankStrategiesByManifest({

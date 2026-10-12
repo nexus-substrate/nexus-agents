@@ -1,8 +1,8 @@
 /** Pure projections of a composite routing decision into its telemetry sinks. */
 import type { CompositeRoutingDecision } from '../cli-adapters/composite-router-types.js';
 import { routingArmCliSlot, type RoutingArmId } from '../cli-adapters/types.js';
-import type { RoutingDecision as ObserverDecision } from '../agents/observability/orchestration-observer-types.js';
-import type { RoutingDecision, RouterType } from './outcome-feedback-types.js';
+import type { ObserverRoutingDecision } from '../agents/observability/orchestration-observer-types.js';
+import type { FeedbackRoutingDecision, RouterType } from './outcome-feedback-types.js';
 import type { StoredRoutingDecision } from './outcome-storage-types.js';
 
 interface FeedbackContext {
@@ -23,7 +23,7 @@ function recordedArm(armId: RoutingArmId): RoutingArmId {
 export function mapFeedbackRoutingDecision(
   decision: CompositeRoutingDecision,
   context: FeedbackContext
-): RoutingDecision {
+): FeedbackRoutingDecision {
   return {
     id: context.id,
     traceId: context.traceId,
@@ -42,7 +42,7 @@ export function mapFeedbackRoutingDecision(
 export function mapObserverRoutingDecision(
   decision: CompositeRoutingDecision,
   context: { readonly timestamp: string; readonly taskId: string; readonly query: string }
-): ObserverDecision {
+): ObserverRoutingDecision {
   return {
     timestamp: context.timestamp,
     taskId: context.taskId,

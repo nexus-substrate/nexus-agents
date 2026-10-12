@@ -57,9 +57,10 @@ export interface TaskSignals {
 }
 
 /**
- * Routing decision with explanation.
+ * Workflow routing decision with explanation and pattern selection.
+ * (Source: Issue #5129 Item 3, #4440 disambiguation precedent)
  */
-export interface RoutingDecision {
+export interface WorkflowRoutingDecision {
   /** Selected workflow pattern */
   readonly pattern: WorkflowPattern;
   /** Human-readable explanation of why this pattern was selected */
@@ -85,6 +86,11 @@ export interface RoutingDecision {
   /** Capability gap report — what's available vs what's needed (Issue #906) */
   readonly capabilityGaps?: CapabilityGapReport;
 }
+
+/**
+ * Legacy alias for {@link WorkflowRoutingDecision}. Renamed per #5129 Item 3 to prevent naming collisions.
+ */
+export type RoutingDecision = WorkflowRoutingDecision;
 
 /**
  * Options for the workflow router.

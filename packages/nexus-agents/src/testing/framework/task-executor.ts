@@ -16,7 +16,7 @@ import {
 import type { CliName, CliTask, ICliAdapter } from '../../cli-adapters/types.js';
 import { isCliName } from '../../cli-adapters/types.js';
 import type { Task } from '../../core/types/agent.js';
-import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router-types.js';
+import type { ITaskRouter, CliRoutingDecision } from '../../cli-adapters/router-types.js';
 import type {
   EvaluationTask,
   TaskTestResult,
@@ -67,7 +67,7 @@ export function createCliTask(task: EvaluationTask): CliTask {
  * Creates routing decision details from a routing decision.
  */
 export function createRoutingDecisionDetails(
-  decision: RoutingDecision,
+  decision: CliRoutingDecision,
   task: Task
 ): RoutingDecisionDetails {
   // This evaluation schema scores CLI preferences; endpoint arms have no CLI slot.
@@ -215,7 +215,7 @@ export function createErrorResult(
 export async function routeTask(
   router: ITaskRouter,
   agentTask: Task
-): Promise<{ decision: RoutingDecision; details: RoutingDecisionDetails } | null> {
+): Promise<{ decision: CliRoutingDecision; details: RoutingDecisionDetails } | null> {
   const routeResult = await router.routeWithDetails(agentTask);
   if (!routeResult.ok) {
     return null;
