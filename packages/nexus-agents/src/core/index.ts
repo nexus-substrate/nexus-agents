@@ -48,6 +48,16 @@ export { startStepLoggerBridge } from './step-logger-bridge.js';
 export type { BootstrapOptions, NotificationHandles } from './step-notifications.js';
 export { bootstrapStepNotifications, shouldEnableConsoleRenderer } from './step-notifications.js';
 
+// ANSI colors & formatting (Source: Issue #5129 Item 1 — decoupled from cli/ansi-output)
+export {
+  colors,
+  colorsEnabled,
+  createColors,
+  detectColorsEnabled,
+  RAW_ANSI,
+  type ColorName,
+} from './ansi-colors.js';
+
 // Command result pattern (Issue #584 - CLI result consolidation)
 export type { CommandResult } from './command-result.js';
 export {

@@ -21,6 +21,11 @@ import {
   OrchestratorError,
   PruneStrategyName,
   isRegistryItem,
+  colors as coreColors,
+  colorsEnabled as coreColorsEnabled,
+  RAW_ANSI as coreRawAnsi,
+  createColors as coreCreateColors,
+  detectColorsEnabled as coreDetectColorsEnabled,
   type ToolResult,
   type ToolContentBlock,
   type ToolInfo,
@@ -144,6 +149,14 @@ describe('core/index re-exports (#5129 item 6)', () => {
       };
       expect(status.state).toBe('pending');
       expect(decision.shouldPrune).toBe(true);
+    });
+
+    it('exports ANSI color utilities (#5129 item 1)', () => {
+      expect(coreColors).toBeDefined();
+      expect(coreColorsEnabled).toBeDefined();
+      expect(coreRawAnsi).toBeDefined();
+      expect(typeof coreCreateColors).toBe('function');
+      expect(typeof coreDetectColorsEnabled).toBe('function');
     });
   });
 });
