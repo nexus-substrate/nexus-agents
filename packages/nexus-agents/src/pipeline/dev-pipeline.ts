@@ -653,6 +653,9 @@ async function runDevPipelineInner(
  * `stages` callbacks and never instantiates the graph PipelineRunner — so a
  * dev-pipeline run only ever traverses THIS seam, not the graph gates. The two
  * paths are disjoint, so no double-evaluation guard is needed (#3704 cond. 4).
+ * (The downstream execute stage also evaluates the CALLER tier at `startStage`
+ * as a floor (#4694); the two gates evaluate distinct inputs — content tier
+ * vs caller tier — under distinct stage IDs, so both records are preserved.)
  *
  * Reuses the #3177 evaluator (`evaluatePipelinePolicy`) rather than forking a
  * new one. The evaluator emits `policy.evaluated` events on the shared pipeline
