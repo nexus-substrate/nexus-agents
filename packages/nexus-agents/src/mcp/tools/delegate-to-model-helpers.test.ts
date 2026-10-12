@@ -428,10 +428,14 @@ describe('scoreAllModels billing mode', () => {
     expect([
       'gemini-flash',
       'gemini-3.8-flash',
+      'gemini-3.7-flash',
       'gemini-3.5-flash',
       'gemini-3-flash',
       'claude-haiku',
       'codex-5.1-mini',
+      'gpt-6-luna-pro',
+      'nemotron-3.5-lightning',
+      'nemotron-3.5-content-safety',
     ]).toContain(apiRanked[0]!.name);
   });
 });

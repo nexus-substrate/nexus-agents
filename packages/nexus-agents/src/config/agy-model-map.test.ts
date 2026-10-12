@@ -45,8 +45,9 @@ describe('agy model slugs', () => {
     expect(AGY_MODEL_SLUGS.filter((s) => s.startsWith('gemini-3.5'))).toEqual([]);
   });
 
-  it('maps the 3.x flash entries to flash slugs, keeping their effort tier (#7217, #7101)', () => {
+  it('maps the 3.x flash entries to flash slugs, keeping their effort tier (#7217, #7101, #7375)', () => {
     expect(toAgyModelSlug('gemini-3.8-flash')).toBe('gemini-3.8-flash-high');
+    expect(toAgyModelSlug('gemini-3.7-flash')).toBe('gemini-3.7-flash-high');
     expect(toAgyModelSlug('gemini-3.5-flash')).toBe('gemini-3.7-flash-medium');
     expect(toAgyModelSlug('gemini-3-flash')).toBe('gemini-3.7-flash-low');
   });
