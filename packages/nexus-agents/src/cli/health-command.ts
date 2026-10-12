@@ -9,7 +9,7 @@
  */
 
 import type { ConsensusDecisionTokenReport } from '../observability/consensus-decision-tokens.js';
-import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs, HealthCommandArgs } from '../cli-types.js';
 import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { getTuneAdjustmentStore, type TuneDemotionStat } from '../core/index.js';
 import { colors, symbols } from './ansi-output.js';
@@ -255,7 +255,7 @@ function renderJson(health: HealthResult): void {
 /**
  * Handle the `nexus-agents health` CLI command.
  */
-export function handleHealthCommand(args: ParsedCliArgs): CliExitResult {
+export function handleHealthCommand(args: HealthCommandArgs | ParsedCliArgs): CliExitResult {
   const health = collectHealth();
 
   if (args.options.format === 'json') {

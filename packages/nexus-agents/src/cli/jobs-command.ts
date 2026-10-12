@@ -10,7 +10,7 @@
  * @module cli/jobs-command
  */
 
-import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
+import type { CliExitResult, ParsedCliArgs, JobsCommandArgs } from '../cli-types.js';
 import { EXIT_CODES, cliExit, cliExitFromStatus } from '../cli-types.js';
 import { getTimeProvider } from '../core/index.js';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
@@ -57,12 +57,12 @@ function formatCounts(counts: JobPruneCounts, dryRun: boolean): string {
  *
  * @param args - Parsed CLI arguments
  */
-export function handleJobsCommand(args: ParsedCliArgs): CliExitResult {
+export function handleJobsCommand(args: JobsCommandArgs | ParsedCliArgs): CliExitResult {
   if (args.subcommand !== 'prune') {
     printUsage();
     return cliExit(EXIT_CODES.INVALID_ARGS);
   }
-  const dryRun = args.options.dryRun;
+  const dryRun = args.options.dryRun === true;
   const dir = nexusDataPath('jobs');
   write(`Jobs directory: ${dir}`);
   write(`Retention window: ${String(JOB_RECORD_RETENTION_MS)} ms`);
@@ -70,7 +70,7 @@ export function handleJobsCommand(args: ParsedCliArgs): CliExitResult {
     const counts = pruneJobRecords({
       nowMs: getTimeProvider().now(),
       retentionMs: JOB_RECORD_RETENTION_MS,
-      dryRun,
+      ...(dryRun ? { dryRun: true } : {}),
     });
     write(formatCounts(counts, dryRun));
     return cliExit(EXIT_CODES.SUCCESS);

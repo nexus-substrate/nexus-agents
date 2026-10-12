@@ -9,7 +9,7 @@
  * @module cli-commands-handlers-setup
  */
 
-import { setupCommand, setupCommandAsync } from './cli/index.js';
+import { setupCommand, setupCommandAsync, type SetupCommandOptions } from './cli/index.js';
 import { initPortable, formatInitPortableMessage } from './cli/init-portable.js';
 import {
   EXIT_CODES,
@@ -17,8 +17,11 @@ import {
   cliExitFromStatus,
   type CliExitResult,
   type ParsedCliArgs,
+  type SetupCommandArgs,
+  type SetupCliOptions,
 } from './cli-types.js';
 import { hostnameOf } from './adapters/sdk/gateway-env.js';
+import type { CustomApiSetupInput } from './cli/setup-custom-api.js';
 
 /**
  * Validates init flag combinations. Returns a failing {@link CliExitResult}
@@ -134,25 +137,53 @@ async function renderOpencodeValidate(opencodePath: string): Promise<number> {
   return 0;
 }
 
+const SETUP_BOOLEAN_KEYS = [
+  'interactive',
+  'nonInteractive',
+  'force',
+  'skipMcp',
+  'skipRules',
+  'skipHooks',
+  'skipConfig',
+  'skipOpencode',
+  'skipCodex',
+  'dryRun',
+  'verbose',
+] as const;
+
+/** Translates CLI setup options to SetupCommandOptions. */
+function buildSetupCommandOptions(
+  options: SetupCliOptions | ParsedCliArgs['options']
+): SetupCommandOptions {
+  const result: SetupCommandOptions = {
+    scope: options.scope === 'project' ? 'project' : 'user',
+  };
+  const opts = options as unknown as Record<string, unknown>;
+  for (const key of SETUP_BOOLEAN_KEYS) {
+    const val = opts[key];
+    if (typeof val === 'boolean') {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
+/** Determines whether a custom API gateway setup was requested. */
+function isCustomApiRequested(args: SetupCommandArgs | ParsedCliArgs): boolean {
+  if (args.options.customApiConfig !== undefined) {
+    return true;
+  }
+  const customApi = args.options.customApi;
+  return customApi !== undefined && customApi !== '';
+}
+
 /**
  * Handles setup command for Claude CLI integration (sync version).
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
  * (Source: Issue #416 - Setup command hook configuration)
  */
-export function handleSetupCommand(args: ParsedCliArgs): CliExitResult {
-  const exitCode = setupCommand({
-    nonInteractive: args.options.nonInteractive,
-    force: args.options.force,
-    skipMcp: args.options.skipMcp,
-    skipRules: args.options.skipRules,
-    skipHooks: args.options.skipHooks,
-    skipConfig: args.options.skipConfig,
-    skipOpencode: args.options.skipOpencode,
-    skipCodex: args.options.skipCodex,
-    dryRun: args.options.dryRun,
-    verbose: args.options.verbose,
-    scope: args.options.scope === 'project' ? 'project' : 'user',
-  });
+export function handleSetupCommand(args: SetupCommandArgs | ParsedCliArgs): CliExitResult {
+  const exitCode = setupCommand(buildSetupCommandOptions(args.options));
   return cliExitFromStatus(exitCode);
 }
 
@@ -166,52 +197,87 @@ export function handleSetupCommand(args: ParsedCliArgs): CliExitResult {
  * MCP hookup; custom-api is orthogonal — the user has a gateway they
  * want to plug in, not a harness they want to wire up.
  */
-export async function handleSetupCommandAsync(args: ParsedCliArgs): Promise<CliExitResult> {
-  if (args.options.customApi !== undefined && args.options.customApi !== '') {
+export async function handleSetupCommandAsync(
+  args: SetupCommandArgs | ParsedCliArgs
+): Promise<CliExitResult> {
+  if (isCustomApiRequested(args)) {
     return cliExit(await runCustomApiSetup(args));
   }
-  const exitCode = await setupCommandAsync({
-    interactive: args.options.interactive,
-    nonInteractive: args.options.nonInteractive,
-    force: args.options.force,
-    skipMcp: args.options.skipMcp,
-    skipRules: args.options.skipRules,
-    skipHooks: args.options.skipHooks,
-    skipConfig: args.options.skipConfig,
-    skipOpencode: args.options.skipOpencode,
-    skipCodex: args.options.skipCodex,
-    dryRun: args.options.dryRun,
-    verbose: args.options.verbose,
-    scope: args.options.scope === 'project' ? 'project' : 'user',
-  });
+  const exitCode = await setupCommandAsync(buildSetupCommandOptions(args.options));
   return cliExitFromStatus(exitCode);
 }
 
-/** Wrapper for `setup --custom-api` (#2124). */
-async function runCustomApiSetup(args: ParsedCliArgs): Promise<number> {
-  const { configureCustomApi } = await import('./cli/setup-custom-api.js');
-  const baseUrl = args.options.customApi;
-  if (baseUrl === undefined) return EXIT_CODES.SERVER_START_FAILED;
-  const input: Parameters<typeof configureCustomApi>[0] = {
+/** Renders output for a successfully configured custom API gateway. */
+function printCustomApiOutcome(
+  value: { baseUrl: string; model: string; probeSucceeded: boolean; shellFragment: string },
+  dryRun: boolean
+): void {
+  const { baseUrl: canonical, model, probeSucceeded, shellFragment } = value;
+  // Host only (#4392 inc 3): the canonical URL can carry userinfo, and the
+  // shell fragment below is the one place that has to carry it.
+  process.stdout.write(`✓ Gateway validated: ${hostnameOf(canonical)}\n`);
+  process.stdout.write(`✓ Model: ${model}\n`);
+  if (dryRun) {
+    process.stdout.write('Would probe gateway (GET /models).\n');
+  } else if (probeSucceeded) {
+    process.stdout.write('✓ Probe succeeded (GET /models → 2xx)\n');
+  }
+  process.stdout.write('\nAdd the following to your shell rc (~/.bashrc, ~/.zshrc, etc.):\n\n');
+  process.stdout.write(shellFragment);
+}
+
+/** Builds CustomApiSetupInput from validated baseUrl and options. */
+function buildCustomApiSetupInput(
+  args: SetupCommandArgs | ParsedCliArgs,
+  baseUrl: string
+): CustomApiSetupInput {
+  const cfg = args.options.customApiConfig;
+  const apiKey = cfg?.apiKey ?? args.options.customApiKey;
+  const model = cfg?.model ?? args.options.customModel;
+  const input: {
+    baseUrl: string;
+    nonInteractive: boolean;
+    skipProbe?: boolean;
+    apiKey?: string;
+    model?: string;
+  } = {
     baseUrl,
-    nonInteractive: args.options.nonInteractive,
-    ...(args.options.dryRun ? { skipProbe: true } : {}),
-    ...(args.options.customApiKey !== undefined ? { apiKey: args.options.customApiKey } : {}),
-    ...(args.options.customModel !== undefined ? { model: args.options.customModel } : {}),
+    nonInteractive: args.options.nonInteractive === true,
   };
+  if (args.options.dryRun === true) {
+    input.skipProbe = true;
+  }
+  if (apiKey !== undefined && apiKey !== '') {
+    input.apiKey = apiKey;
+  }
+  if (model !== undefined && model !== '') {
+    input.model = model;
+  }
+  return input;
+}
+
+/** Resolves CustomApiSetupInput from command arguments. */
+function resolveCustomApiInput(
+  args: SetupCommandArgs | ParsedCliArgs
+): CustomApiSetupInput | undefined {
+  const cfg = args.options.customApiConfig;
+  const baseUrl = cfg?.baseUrl ?? args.options.customApi;
+  if (baseUrl === undefined || baseUrl === '') {
+    return undefined;
+  }
+  return buildCustomApiSetupInput(args, baseUrl);
+}
+
+/** Wrapper for `setup --custom-api` (#2124). */
+async function runCustomApiSetup(args: SetupCommandArgs | ParsedCliArgs): Promise<number> {
+  const input = resolveCustomApiInput(args);
+  if (input === undefined) return EXIT_CODES.SERVER_START_FAILED;
+  const { configureCustomApi } = await import('./cli/setup-custom-api.js');
   const result = await configureCustomApi(input);
   if (!result.ok) {
     process.stderr.write(`✗ ${result.error.message}\n`);
     return EXIT_CODES.SERVER_START_FAILED;
   }
-  const { baseUrl: canonical, model, probeSucceeded, shellFragment } = result.value;
-  // Host only (#4392 inc 3): the canonical URL can carry userinfo, and the
-  // shell fragment below is the one place that has to carry it.
-  process.stdout.write(`✓ Gateway validated: ${hostnameOf(canonical)}\n`);
-  process.stdout.write(`✓ Model: ${model}\n`);
-  if (args.options.dryRun) process.stdout.write('Would probe gateway (GET /models).\n');
-  else if (probeSucceeded) process.stdout.write(`✓ Probe succeeded (GET /models → 2xx)\n`);
-  process.stdout.write('\nAdd the following to your shell rc (~/.bashrc, ~/.zshrc, etc.):\n\n');
-  process.stdout.write(shellFragment);
+  printCustomApiOutcome(result.value, args.options.dryRun === true);
   return EXIT_CODES.SUCCESS;
 }
