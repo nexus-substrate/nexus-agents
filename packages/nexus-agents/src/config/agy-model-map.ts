@@ -24,8 +24,8 @@
  *
  * Re-checked on v1.3.1 (2026-10-07): agy no longer serves any `gemini-3.5-*`
  * slug and rejects one with status ERROR at exit 0, so those were removed
- * (#7217). It now also lists 3.8 Flash; adopting that is a new-model decision
- * (#6625) and is deliberately not made here.
+ * (#7217). Gemini 3.8 Flash is adopted in the canonical registry (#7101 / #6625)
+ * and mapped to `gemini-3.8-flash-high`.
  *
  * @module config/agy-model-map
  */
@@ -81,6 +81,8 @@ const CANONICAL_TO_AGY: Readonly<Record<string, AgyModelSlug>> = {
   'gemini-3-pro': 'gemini-3.1-pro-high',
   // reasoning 9, 2.5-generation — nearest surviving pro tier
   'gemini-pro': 'gemini-3.1-pro-low',
+  // Next-gen flash entry (#7101 / #6625) takes the top 3.8 flash tier
+  'gemini-3.8-flash': 'gemini-3.8-flash-high',
   // speed 10 / quality 8. agy 1.3.1 dropped every 3.5 slug (#7217); the
   // newest Flash already listed takes over at the same effort tier.
   'gemini-3.5-flash': 'gemini-3.7-flash-medium',

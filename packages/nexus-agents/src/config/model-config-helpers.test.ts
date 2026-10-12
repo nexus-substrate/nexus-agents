@@ -653,3 +653,30 @@ describe('codex registry entries (#5091)', () => {
     }
   });
 });
+
+// ============================================================================
+// Gemini registry entries (#7101 / #6625)
+// ============================================================================
+
+describe('gemini registry entries (#7101 / #6625)', () => {
+  it('resolves metadata, pricing, and context window for gemini-3.8-flash', () => {
+    expect(getModelDisplayName('gemini-3.8-flash')).toBe('Gemini 3.8 Flash');
+    expect(getModelContextWindow('gemini-3.8-flash')).toBe(1_048_576);
+    expect(getModelMaxOutput('gemini-3.8-flash')).toBe(65_536);
+    expect(getModelPricing('gemini-3.8-flash')).toEqual({ inputPer1M: 0.75, outputPer1M: 3.75 });
+    expect(getCliModelName('gemini-3.8-flash')).toBe('gemini-3.8-flash');
+    expect(resolveCliAlias('gemini-3.8-flash')).toBe('gemini-3.8-flash');
+    expect(findCanonicalModel('gemini', 'gemini-3.8-flash')?.id).toBe('gemini-3.8-flash');
+    expect(findInTreeByCli('gemini').map((e) => e.id)).toContain('gemini-3.8-flash');
+  });
+
+  it('positions quality scores in flash tier below pro', () => {
+    const flash = getModelQualityScores('gemini-3.8-flash');
+    const pro = getModelQualityScores('gemini-3-pro');
+    expect(flash).toBeDefined();
+    expect(pro).toBeDefined();
+    expect(flash?.reasoning).toBeLessThan(pro?.reasoning ?? 10);
+    expect(flash?.speed).toBe(10);
+    expect(flash?.codeGeneration).toBe(9);
+  });
+});

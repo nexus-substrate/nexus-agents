@@ -45,7 +45,8 @@ describe('agy model slugs', () => {
     expect(AGY_MODEL_SLUGS.filter((s) => s.startsWith('gemini-3.5'))).toEqual([]);
   });
 
-  it('maps the 3.x flash entries to 3.7 Flash, keeping their effort tier (#7217)', () => {
+  it('maps the 3.x flash entries to flash slugs, keeping their effort tier (#7217, #7101)', () => {
+    expect(toAgyModelSlug('gemini-3.8-flash')).toBe('gemini-3.8-flash-high');
     expect(toAgyModelSlug('gemini-3.5-flash')).toBe('gemini-3.7-flash-medium');
     expect(toAgyModelSlug('gemini-3-flash')).toBe('gemini-3.7-flash-low');
   });
@@ -93,9 +94,10 @@ describe('agy model slugs', () => {
     });
 
     it('returns null for a slug with no registry entry', () => {
-      // agy serves 3.6 Flash at high/medium, and 3.8 Flash; the registry only reaches 3.7.
+      // agy serves 3.6 Flash at high/medium, and 3.8 Flash at medium/low; the registry only maps 3.8 Flash high.
       expect(fromAgyModelSlug('gemini-3.6-flash-high')).toBeNull();
-      expect(fromAgyModelSlug('gemini-3.8-flash-high')).toBeNull();
+      expect(fromAgyModelSlug('gemini-3.8-flash-medium')).toBeNull();
+      expect(fromAgyModelSlug('gemini-3.8-flash-low')).toBeNull();
     });
 
     it('returns null for a string that is not an agy slug at all', () => {

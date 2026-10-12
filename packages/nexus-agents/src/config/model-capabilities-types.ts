@@ -113,6 +113,7 @@ export const MODEL_IDS = [
   'claude-haiku',
   'gemini-3-pro',
   'gemini-pro',
+  'gemini-3.8-flash',
   'gemini-3.5-flash',
   'gemini-3-flash',
   'gemini-flash',

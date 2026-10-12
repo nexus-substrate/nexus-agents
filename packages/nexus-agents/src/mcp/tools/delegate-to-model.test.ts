@@ -391,6 +391,7 @@ describe('delegate_to_model Tool', () => {
       // Should select a fast model (gemini-flash or claude-haiku)
       expect([
         'gemini-flash',
+        'gemini-3.8-flash',
         'gemini-3.5-flash',
         'gemini-3-flash',
         'claude-haiku',

@@ -178,6 +178,29 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliModelName: 'gemini-2.5-pro',
     },
     {
+      id: 'gemini-3.8-flash',
+      displayName: 'Gemini 3.8 Flash',
+      provider: 'google',
+      contextWindow: 1_048_576,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'structured_output',
+      ],
+      specialFeatures: ['streaming', 'grounding'],
+      notes:
+        'Next-gen fast Gemini (Issue #7101 / #6625); flash tier; 1M context; models.dev / OpenRouter 2026-09-02',
+      pricing: { inputPer1M: 0.75, outputPer1M: 3.75 },
+      // Flash tier: reasoning stays BELOW gemini-3-pro (10) so pro keeps winning.
+      qualityScores: { reasoning: 8, codeGeneration: 9, speed: 10, cost: 9 },
+      maxOutputTokens: 65_536,
+      cliName: 'gemini',
+      cliModelName: 'gemini-3.8-flash',
+    },
+    {
       id: 'gemini-3.5-flash',
       displayName: 'Gemini 3.5 Flash',
       provider: 'google',
