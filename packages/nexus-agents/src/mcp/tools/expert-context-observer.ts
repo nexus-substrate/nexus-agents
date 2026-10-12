@@ -20,6 +20,7 @@
 import type { ILogger } from '../../core/index.js';
 import { getModelContextWindow } from '../../config/model-config-helpers.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
+import { getDefaultRegistry } from '../../config/model-registry.js';
 
 /** Default utilization threshold for emitting a context warning. */
 export const DEFAULT_CONTEXT_WARN_THRESHOLD = 0.85;
@@ -40,6 +41,21 @@ export function resolveContextWarnThreshold(env: NodeJS.ProcessEnv = process.env
   const parsed = Number.parseFloat(raw);
   if (Number.isFinite(parsed) && parsed > 0 && parsed <= 1) return parsed;
   return DEFAULT_CONTEXT_WARN_THRESHOLD;
+}
+
+/**
+ * Resolve context window for an expert model.
+ *
+ * Inspects {@link ModelRegistry} so models admitted from the models.dev
+ * snapshot or operator overlays are measured against their true window
+ * rather than falling back to the fail-closed 8K unknown default.
+ */
+export function resolveExpertContextWindow(modelId: ModelId): number {
+  const entry = getDefaultRegistry().getEntry(modelId);
+  if (entry.contextWindow !== undefined && entry.contextWindow > 0) {
+    return entry.contextWindow;
+  }
+  return getModelContextWindow(modelId);
 }
 
 /**
@@ -85,7 +101,7 @@ export function computeExpertContextUtilization(
 ): ContextUtilization {
   // No model means no window measurement (#7251), rather than an assumed one.
   const contextWindow =
-    observation.modelId !== undefined ? getModelContextWindow(observation.modelId) : undefined;
+    observation.modelId !== undefined ? resolveExpertContextWindow(observation.modelId) : undefined;
   const utilization =
     contextWindow !== undefined && contextWindow > 0 && observation.tokensMeasured !== false
       ? observation.tokensUsed / contextWindow

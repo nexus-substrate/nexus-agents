@@ -156,6 +156,14 @@ describe('GeminiAdapter', () => {
       });
       expect(adapter.hasCapability(ModelCapability.EXTENDED_THINKING)).toBe(true);
     });
+
+    it('should have extended_thinking for Gemini 3.8 Flash', () => {
+      const adapter = new GeminiAdapter({
+        ...validConfig,
+        modelId: 'gemini-3.8-flash',
+      });
+      expect(adapter.hasCapability(ModelCapability.EXTENDED_THINKING)).toBe(true);
+    });
   });
 
   describe('validateConfig', () => {
