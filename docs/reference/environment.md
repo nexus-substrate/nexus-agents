@@ -60,7 +60,7 @@ or source comments. Custom validation may impose additional restrictions.
 | `NEXUS_IMPROVEMENT_REVIEW_FILE_ISSUES` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_IMPROVEMENT_REVIEW_INTERVAL_MS` | string; pattern /^\\d+$/ | Not declared in schema | Not described in schema |
 | `NEXUS_JOB_MAX_CONCURRENT_TOTAL` | string; pattern /^\\d+$/ | Not declared in schema | `0` is meaningful here — it disables async job dispatch entirely — so this is non-negative, not positive (job-concurrency.ts:106 accepts `>= 0`). |
-| `NEXUS_JOB_RESULT_SOURCE` | `sidecar` \| `task_state` | Not declared in schema | Async job-result reader source (#3090/#3693): `task_state` prefers/unions the Stage-2 task-state log; default (unset) is sidecar-only. Reader half of the sidecar→Stage-2 migration (epic #2631). |
+| `NEXUS_JOB_RESULT_SOURCE` | `sidecar` \| `task_state` | Not declared in schema | Async job-result reader source (#3090/#3693): `task_state` prefers/unions the Stage-2 task-state log (default); `sidecar` selects legacy fallback. Reader half of the sidecar→Stage-2 migration (epic #2631). |
 | `NEXUS_LLM_CLASSIFICATION` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_LOG_LEVEL` | `trace` \| `debug` \| `info` \| `warn` \| `error` \| `fatal` \| `silent` | Not declared in schema | Not described in schema |
 | `NEXUS_MAX_CONCURRENT_EXPERTS` | string; pattern /^\\d+$/ | Not declared in schema | Not described in schema |

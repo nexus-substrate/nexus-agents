@@ -131,31 +131,50 @@ describe('get_job_result producer-version disclosure (#5008)', () => {
   });
 
   it('names the task-state source, whose synthesized record never carries a version', async () => {
-    // Under NEXUS_JOB_RESULT_SOURCE=task_state the record is adapted from the
-    // task-state log, which has no producer version. Reporting only
+    // Under default NEXUS_JOB_RESULT_SOURCE (or task_state) the record is adapted
+    // from the task-state log, which has no producer version. Reporting only
     // `measured: false` would read as "pre-field record" — a third meaning
     // for absence. The source disambiguates.
+    initTaskState({
+      taskId: 'orch-pv-ts',
+      stage: 'planning',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'init' },
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    updateStage('orch-pv-ts', 'complete', '2026-05-01T00:05:00Z');
+    appendResult('orch-pv-ts', { ok: true }, '2026-05-01T00:05:01Z');
+
+    const body = await envelope('orch-pv-ts');
+    const record = body['record'] as Record<string, unknown>;
+
+    expect(body['found']).toBe(true);
+    expect(body['producerVersionSource']).toBe('task_state');
+    expect(body['producerVersionMeasured']).toBe(false);
+    expect(record).not.toHaveProperty('producerVersion');
+  });
+
+  it('prefers sidecar when NEXUS_JOB_RESULT_SOURCE is explicitly set to sidecar', async () => {
     const originalSource = process.env['NEXUS_JOB_RESULT_SOURCE'];
-    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'sidecar';
     try {
       initTaskState({
-        taskId: 'orch-pv-ts',
-        stage: 'planning',
+        taskId: 'orch-pv-sidecar-opt',
+        stage: 'complete',
         decisions: [],
         blockers: [],
         position: { currentStep: 'init' },
         updatedAt: '2026-05-01T00:00:00Z',
       });
-      updateStage('orch-pv-ts', 'complete', '2026-05-01T00:05:00Z');
-      appendResult('orch-pv-ts', { ok: true }, '2026-05-01T00:05:01Z');
+      appendResult('orch-pv-sidecar-opt', { ok: false }, '2026-05-01T00:05:01Z');
+      writeJobComplete('orch-pv-sidecar-opt', 'orchestrate', { ok: true }, FIXTURE_VERSION);
 
-      const body = await envelope('orch-pv-ts');
+      const body = await envelope('orch-pv-sidecar-opt');
       const record = body['record'] as Record<string, unknown>;
 
-      expect(body['found']).toBe(true);
-      expect(body['producerVersionSource']).toBe('task_state');
-      expect(body['producerVersionMeasured']).toBe(false);
-      expect(record).not.toHaveProperty('producerVersion');
+      expect(body['producerVersionSource']).toBe('sidecar');
+      expect(record['producerVersion']).toBe(FIXTURE_VERSION);
     } finally {
       if (originalSource === undefined) delete process.env['NEXUS_JOB_RESULT_SOURCE'];
       else process.env['NEXUS_JOB_RESULT_SOURCE'] = originalSource;

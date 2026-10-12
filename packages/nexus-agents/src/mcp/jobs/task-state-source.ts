@@ -142,13 +142,13 @@ export function readJobResultFromTaskState(jobId: string, customDir?: string): J
 }
 
 /**
- * Read-source toggle for the job-result reader (#3090). Default OFF — the
- * sidecar stays authoritative until the writer half (#3091) lands, so this
- * dual-read is inert in production until explicitly enabled. Set
- * `NEXUS_JOB_RESULT_SOURCE=task_state` to prefer the task-state log.
+ * Read-source toggle for the job-result reader (#3090 / epic #2631). Default ON
+ * (`task_state`) — dual-reads both stores and prefers the Stage-2 task-state log
+ * per the precedence rule. Set `NEXUS_JOB_RESULT_SOURCE=sidecar` to fall back
+ * to the legacy sidecar-only reader.
  */
 export function isTaskStateJobSource(): boolean {
-  return process.env['NEXUS_JOB_RESULT_SOURCE']?.toLowerCase() === 'task_state';
+  return process.env['NEXUS_JOB_RESULT_SOURCE']?.toLowerCase() !== 'sidecar';
 }
 
 /**
@@ -245,9 +245,9 @@ export function preferJobRecord<T extends JobStatusCarrier>(
 
 /**
  * Resolve an async job's result with dual-read semantics, naming the source:
- * - source toggle ON  → read both stores and apply {@link preferJobRecord},
+ * - default (or source toggle ON) → read both stores and apply {@link preferJobRecord},
  *   the rule `list_jobs` shares (#6726).
- * - source toggle OFF → sidecar only (current behavior, unchanged).
+ * - source toggle `sidecar`        → sidecar only (legacy rollback).
  *
  * The source matters to a reader of `producerVersion` (#5008): a task-state
  * record is SYNTHESIZED by {@link jobResultFromTaskState} and never carries
@@ -296,8 +296,8 @@ export function listJobsFromTaskState(customDir?: string): JobSummary[] {
 
 /**
  * List async jobs with dual-read semantics (#3693):
- * - source toggle OFF → the sidecar list only (current behavior, unchanged).
- * - source toggle ON  → the UNION of sidecar + task-state jobs, each jobId
+ * - source toggle `sidecar`        → the sidecar list only (legacy rollback).
+ * - default (or source toggle ON) → the UNION of sidecar + task-state jobs, each jobId
  *   resolved by {@link preferJobRecord} — the same rule `get_job_result` uses,
  *   so the two tools report the same status for the same job (#6726).
  *

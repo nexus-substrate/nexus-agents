@@ -120,9 +120,9 @@ function listJobsHandler(args: unknown): Promise<ToolResult> {
   }
   const { toolName, status, abandoned, limit } = parsed.data;
   // Directory walk first — the store doesn't push the filter logic down
-  // because tools change shape but the store doesn't. #3693: dual-read — with
-  // NEXUS_JOB_RESULT_SOURCE=task_state this unions the Stage-2 task-state log;
-  // sidecar-only by default (unchanged).
+  // because tools change shape but the store doesn't. #3693: dual-read — by
+  // default (#3090) this unions the Stage-2 task-state log;
+  // set NEXUS_JOB_RESULT_SOURCE=sidecar for legacy sidecar-only.
   const listing = resolveJobListing();
   const nowMs = getTimeProvider().now();
   const all = listing.jobs.map((j) => withAbandonedFlag(j, nowMs));
