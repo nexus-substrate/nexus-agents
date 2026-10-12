@@ -187,8 +187,8 @@ const NexusEnvSchema = z.object({
   NEXUS_POLICY_GATE_MODE: z.enum(['off', 'warn', 'block']).optional(),
   // Path to a model-registry overlay manifest (buildDefaultRegistry / #3185 hot-reload).
   NEXUS_MODELS_OVERLAY_PATH: z.string().optional(),
-  // Render the unified cross-ranked memory prefix instead of per-backend sections (#3236); off by default.
-  NEXUS_CONTEXT_RANKED: z.enum(['0', '1']).optional(),
+  // Render the unified cross-ranked memory prefix instead of per-backend sections (#3236); default on, set 0 to opt out.
+  NEXUS_CONTEXT_RANKED: boolLooseStr.optional(),
   // Attach a ranked, budgeted repo-map (module import graph, PageRank-centrality)
   // to context for structural tasks (#4254, getRepoMapForTask); pull-shaped +
   // rank-gated, off by default.

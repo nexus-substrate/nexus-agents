@@ -36,7 +36,7 @@ or source comments. Custom validation may impose additional restrictions.
 | `NEXUS_CONFIG_PATH` | string | Not declared in schema | Not described in schema |
 | `NEXUS_CONSENSUS_ENFORCE` | `off` \| `audit` \| `enforce` | Not declared in schema | Not described in schema |
 | `NEXUS_CONSOLE` | string; custom validation (Must be one of: true, false, 1, 0, on, off) | Not declared in schema | Not described in schema |
-| `NEXUS_CONTEXT_RANKED` | `0` \| `1` | Not declared in schema | Not described in schema |
+| `NEXUS_CONTEXT_RANKED` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_CONTEXT_RETRIEVER_INJECT` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_CONTEXT_WARN_THRESHOLD` | string; pattern /^\\d+(\\.\\d+)?$/ | Not declared in schema | Not described in schema |
 | `NEXUS_CUSTOM_API_ALLOW_PRIVATE` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |

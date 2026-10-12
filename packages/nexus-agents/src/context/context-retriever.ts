@@ -483,11 +483,10 @@ function oneLine(value: string): string {
  * surface accumulated memory at the entry point. Every interpolated free-text
  * field is passed through {@link oneLine} (#3471).
  *
- * When `NEXUS_CONTEXT_RANKED=1` (#3236), the per-backend sections are replaced
- * by a single globally-cross-ranked "Most relevant prior context" block drawn
- * from {@link UnifiedContext.rankedMemories} within a token budget. Flag-off
- * output is byte-identical to the legacy per-section rendering (as long as
- * the result stays under `budgetTokens` — see the budget guard below).
+ * Defaults to the unified cross-ranked "Most relevant prior context" block
+ * drawn from {@link UnifiedContext.rankedMemories} within a token budget (#3236).
+ * Setting `NEXUS_CONTEXT_RANKED=0` opts out to the legacy per-section rendering
+ * (as long as the result stays under `budgetTokens` — see the budget guard below).
  *
  * **Per-call context budget guard (#4253):** the assembled block — on BOTH
  * the ranked and legacy rendering paths — is clamped to `budgetTokens`
@@ -518,7 +517,7 @@ export function summarizeContextForPrompt(
   // false — a prompt prefix is privileged context.
   options: { readonly allowUntrustedMemory?: boolean } = {}
 ): string {
-  const ranked = process.env[CONTEXT_RANKED_FLAG] === '1';
+  const ranked = parseBoolEnv(CONTEXT_RANKED_FLAG, true);
   const visible = options.allowUntrustedMemory === true ? ctx : withoutUntrustedMemory(ctx);
   const memoryBlock = ranked ? summarizeRankedContext(visible) : summarizeLegacyContext(visible);
   const emitted = assembleClampedContext(
@@ -602,7 +601,7 @@ function summarizeLegacyContext(ctx: UnifiedContext): string {
   return sections.length === 0 ? '' : `## Prior Context (Nexus Memory)\n${sections.join('\n\n')}`;
 }
 
-/** Rollout gate for the unified cross-ranked prefix rendering (#3236). Default off. */
+/** Rollout gate for the unified cross-ranked prefix rendering (#3236). Default on; set 0 to opt out. */
 const CONTEXT_RANKED_FLAG = 'NEXUS_CONTEXT_RANKED';
 
 /** Token budget for the ranked prefix block (#3236). Small enough to stay cheap in a system prompt. */
