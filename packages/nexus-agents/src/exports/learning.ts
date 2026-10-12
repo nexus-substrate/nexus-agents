@@ -8,7 +8,7 @@ export {
   type RouterType,
   type OutcomeClass,
   type QualitySignals,
-  type RoutingDecision as FeedbackRoutingDecision,
+  type FeedbackRoutingDecision,
   type TaskOutcome,
   type ComputedReward,
   type FeedbackLoopStats,
@@ -18,7 +18,7 @@ export {
   DEFAULT_FEEDBACK_COLLECTOR_CONFIG,
   FeedbackCollectorConfigSchema,
   QualitySignalsSchema,
-  RoutingDecisionSchema as FeedbackRoutingDecisionSchema,
+  FeedbackRoutingDecisionSchema,
   TaskOutcomeSchema,
   // Outcome Feedback Collector
   OutcomeFeedbackCollector,

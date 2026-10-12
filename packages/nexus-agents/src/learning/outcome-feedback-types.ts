@@ -85,7 +85,7 @@ export const QualitySignalsSchema = z.object({
 /**
  * Recorded routing decision for feedback tracking.
  */
-export interface RoutingDecision {
+export interface FeedbackRoutingDecision {
   /** Unique decision ID */
   readonly id: string;
   /** Timestamp of decision */
@@ -125,9 +125,15 @@ export interface RoutingDecision {
 }
 
 /**
- * Zod schema for routing decision.
+ * Legacy alias for `FeedbackRoutingDecision`. Renamed per #5129 to eliminate
+ * namespace collisions with workflow, observer, CLI, and context-store routing decisions.
  */
-export const RoutingDecisionSchema = z
+export type RoutingDecision = FeedbackRoutingDecision;
+
+/**
+ * Zod schema for feedback routing decision.
+ */
+export const FeedbackRoutingDecisionSchema = z
   .object({
     id: z.uuid(),
     timestamp: z.iso.datetime(),
@@ -143,6 +149,12 @@ export const RoutingDecisionSchema = z
     domain: z.string().optional(),
   })
   .and(StoredRouterAttributionSchema);
+
+/**
+ * Legacy alias for `FeedbackRoutingDecisionSchema`. Renamed per #5129 to eliminate
+ * namespace collisions with workflow, observer, CLI, and context-store routing decisions.
+ */
+export const RoutingDecisionSchema = FeedbackRoutingDecisionSchema;
 
 /**
  * Task outcome for a routing decision.
@@ -295,7 +307,7 @@ export interface IOutcomeFeedback {
   /**
    * Record a routing decision for tracking.
    */
-  recordRoutingDecision(decision: RoutingDecision): void;
+  recordRoutingDecision(decision: FeedbackRoutingDecision): void;
 
   /**
    * Record an outcome for a routing decision.
@@ -320,7 +332,7 @@ export interface IOutcomeFeedback {
   /**
    * Get pending decisions (waiting for outcomes).
    */
-  getPendingDecisions(): readonly RoutingDecision[];
+  getPendingDecisions(): readonly FeedbackRoutingDecision[];
 
   /**
    * Clear expired pending decisions.
@@ -337,7 +349,7 @@ export interface IOutcomeFeedback {
  * Callback for when an outcome is processed.
  */
 export type OutcomeProcessedCallback = (
-  decision: RoutingDecision,
+  decision: FeedbackRoutingDecision,
   outcome: TaskOutcome,
   reward: ComputedReward
 ) => void;

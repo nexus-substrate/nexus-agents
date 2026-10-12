@@ -24,7 +24,7 @@ import type {
   ModelPreference,
   ExperiencePattern,
   CachedActionResult,
-  RoutingDecision,
+  RoutingDecisionRecord,
   TaskOutcome,
   RoutingMetricsSummary,
   Domain,
@@ -130,7 +130,7 @@ export class RoutingContextStore implements IRoutingContextStore {
   private readonly actionCache = new Map<string, CachedActionResult>();
   private cacheHits = 0;
   private cacheMisses = 0;
-  private readonly routingDecisions: RoutingDecision[] = [];
+  private readonly routingDecisions: RoutingDecisionRecord[] = [];
   private readonly taskOutcomes: TaskOutcome[] = [];
 
   constructor(config?: RoutingContextStoreConfig) {
@@ -340,7 +340,7 @@ export class RoutingContextStore implements IRoutingContextStore {
   // Metrics Methods
   // =========================================================================
 
-  recordRoutingDecision(decision: RoutingDecision): Result<void, RoutingContextError> {
+  recordRoutingDecision(decision: RoutingDecisionRecord): Result<void, RoutingContextError> {
     if (this.routingDecisions.length >= this.config.maxRoutingDecisions) {
       this.routingDecisions.shift();
     }
@@ -378,7 +378,7 @@ export class RoutingContextStore implements IRoutingContextStore {
     };
   }
 
-  getRoutingDecisions(periodHours: number): readonly RoutingDecision[] {
+  getRoutingDecisions(periodHours: number): readonly RoutingDecisionRecord[] {
     const cutoff = new Date(getTimeProvider().now() - periodHours * 60 * 60 * 1000).toISOString();
     return this.routingDecisions.filter((d) => d.timestamp >= cutoff);
   }

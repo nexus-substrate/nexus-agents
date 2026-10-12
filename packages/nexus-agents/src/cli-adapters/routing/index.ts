@@ -15,6 +15,7 @@ export type {
   StageTrace,
   StageResult,
   StageError,
+  StageRoutingDecision,
   RoutingDecision,
   RoutingOutcome,
   StageConfig,

@@ -51,6 +51,7 @@ export type {
   ExperiencePattern,
   CachedActionResult,
   // Metrics types
+  RoutingDecisionRecord,
   RoutingDecision,
   TaskOutcome,
   AggregatedModelMetrics,

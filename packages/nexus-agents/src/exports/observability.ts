@@ -135,8 +135,8 @@ export {
   findActiveSession,
   identifySessionsToRemove,
   calculateTokenCost,
-  // Orchestration Observer Types (TypeDoc #1741, #1756)
-  type RoutingDecision as ObserverRoutingDecision, // Renamed: multiple modules define RoutingDecision
+  // Orchestration Observer Types (TypeDoc #1741, #1756, #5129 Item 3)
+  type ObserverRoutingDecision,
   type IOrchestrationObserver,
   type ConsensusStats,
   type SessionMetrics as ObserverSessionMetrics,

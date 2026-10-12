@@ -15,11 +15,11 @@ import type { ExecutionStrategy, MetaDecision, MetaSelectionRecord } from './met
 import { entrypointToolFor, getStrategyManifest } from './strategy-manifest-registry.js';
 import { decideStrategy, buildAlternatives } from './meta-orchestrator-routing.js';
 import type { TaskClassification } from '../pipeline/adaptive-orchestrator.js';
-import type { RoutingDecision } from './workflow-router-types.js';
+import type { WorkflowRoutingDecision } from './workflow-router-types.js';
 
 /** Common sub-signal fields shared by every decision. */
 function subSignals(
-  routing: RoutingDecision,
+  routing: WorkflowRoutingDecision,
   classification: TaskClassification
 ): Pick<MetaDecision, 'pattern' | 'pipelineType' | 'analysis' | 'capabilityGaps'> {
   return {
@@ -49,7 +49,7 @@ function subSignals(
  */
 export function buildForcedDecision(
   forced: ExecutionStrategy,
-  routing: RoutingDecision,
+  routing: WorkflowRoutingDecision,
   classification: TaskClassification
 ): Omit<MetaDecision, 'decisionId'> {
   const manifest = getStrategyManifest(forced);
@@ -71,7 +71,7 @@ export function buildForcedDecision(
 
 /** Builds a selected (auto-routed) decision from the manifest-driven router. */
 export function buildSelectedDecision(
-  routing: RoutingDecision,
+  routing: WorkflowRoutingDecision,
   classification: TaskClassification
 ): Omit<MetaDecision, 'decisionId'> {
   const core = decideStrategy(routing, classification);
