@@ -50,6 +50,7 @@ export function resolveContextWarnThreshold(env: NodeJS.ProcessEnv = process.env
  * snapshot or operator overlays are measured against their true window
  * rather than falling back to the fail-closed 8K unknown default.
  */
+// @export-no-consumer-yet — see #7370. Exported for tests and telemetry consumers.
 export function resolveExpertContextWindow(modelId: ModelId | (string & {})): number {
   const entry = getDefaultRegistry().getEntry(modelId);
   if (entry.contextWindow !== undefined && entry.contextWindow > 0) {
