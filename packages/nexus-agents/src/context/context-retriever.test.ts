@@ -454,6 +454,15 @@ function emptyContext(over: Partial<UnifiedContext> = {}): UnifiedContext {
 }
 
 describe('summarizeContextForPrompt — research insights', () => {
+  const prevRanked = process.env['NEXUS_CONTEXT_RANKED'];
+  beforeEach(() => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
+  });
+  afterEach(() => {
+    if (prevRanked === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
+    else process.env['NEXUS_CONTEXT_RANKED'] = prevRanked;
+  });
+
   it('renders a Prior research section with name, status, and topic', () => {
     const ctx = emptyContext({
       researchInsights: [
@@ -609,13 +618,16 @@ describe('summarizeContextForPrompt — research insights', () => {
 describe('summarizeContextForPrompt — legacy retrieved sources (#5588)', () => {
   const previousRanked = process.env['NEXUS_CONTEXT_RANKED'];
 
+  beforeEach(() => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
+  });
+
   afterEach(() => {
     if (previousRanked === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
     else process.env['NEXUS_CONTEXT_RANKED'] = previousRanked;
   });
 
   it('renders a recent learning when it is the only available context', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
     const recentLearning = {
       entry: {
         key: 'learning-1',
@@ -634,7 +646,6 @@ describe('summarizeContextForPrompt — legacy retrieved sources (#5588)', () =>
   });
 
   it('renders a prior strategy when it is the only available context', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
     const priorStrategy: DistilledRule = {
       id: 'failure-rate:codex:code_generation',
       patternType: 'failure-rate',
@@ -658,7 +669,6 @@ describe('summarizeContextForPrompt — legacy retrieved sources (#5588)', () =>
   });
 
   it('discloses the five-item slice for both retrieved sources', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
     const recentLearnings = Array.from({ length: 6 }, (_, index) => ({
       entry: {
         key: `learning-${String(index)}`,
@@ -698,6 +708,17 @@ describe('summarizeContextForPrompt — legacy retrieved sources (#5588)', () =>
 // ============================================================================
 
 describe('summarizeContextForPrompt — similar work and observed patterns (#5850)', () => {
+  const previousRanked = process.env['NEXUS_CONTEXT_RANKED'];
+
+  beforeEach(() => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
+  });
+
+  afterEach(() => {
+    if (previousRanked === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
+    else process.env['NEXUS_CONTEXT_RANKED'] = previousRanked;
+  });
+
   function makeSimilarMemory(i: number): AgenticMemoryEntry {
     return {
       key: `mem-${String(i)}`,
@@ -793,8 +814,17 @@ describe('summarizeContextForPrompt — ranked mode (#3236)', () => {
     return { ...base, rankedMemories: rankMemories(base, 'authentication token refresh') };
   }
 
-  it('flag-off output is byte-identical to the legacy per-section rendering', () => {
+  it('flag-unset defaults to the cross-ranked top-N block', () => {
     delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = summarizeContextForPrompt(populated());
+    expect(out).toContain('### Most relevant prior context');
+    expect(out).toContain('[belief]');
+    expect(out).toContain('authentication token refresh');
+    expect(out).not.toContain('### Beliefs');
+  });
+
+  it('flag-off (NEXUS_CONTEXT_RANKED=0) output is byte-identical to the legacy per-section rendering', () => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
     const ctx = populated();
     const legacy = summarizeContextForPrompt(ctx);
     // Independently reconstruct the legacy expected string for the single belief.
@@ -803,6 +833,14 @@ describe('summarizeContextForPrompt — ranked mode (#3236)', () => {
       '### Beliefs (1 included, 0 dropped, 0 dropped tokens)\n' +
       '- authentication token refresh requires oauth (confidence: high)';
     expect(legacy).toBe(expected);
+  });
+
+  it('flag-off (NEXUS_CONTEXT_RANKED=false) also opts out to the legacy per-section rendering', () => {
+    process.env['NEXUS_CONTEXT_RANKED'] = 'false';
+    const ctx = populated();
+    const legacy = summarizeContextForPrompt(ctx);
+    expect(legacy).toContain('### Beliefs');
+    expect(legacy).not.toContain('### Most relevant prior context');
   });
 
   it('flag-on renders the cross-ranked top-N block instead of per-section', () => {
@@ -959,7 +997,7 @@ describe('summarizeContextForPrompt — per-call budget guard (#4253)', () => {
   });
 
   it('clamps the legacy (flag-off) path to an explicit small budget and reports the clip', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
     const ctx = bigContext();
     const full = summarizeContextForPrompt(ctx, 5000);
     const clamped = summarizeContextForPrompt(ctx, 5);
@@ -1029,7 +1067,7 @@ describe('summarizeContextForPrompt — token ledger wiring (#4252)', () => {
   }
 
   it('records a memory-backend/legacy ledger entry when the legacy path renders content', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
     const out = summarizeContextForPrompt(withBelief());
     expect(out).not.toBe('');
 
@@ -1042,8 +1080,8 @@ describe('summarizeContextForPrompt — token ledger wiring (#4252)', () => {
     expect(entry?.inputTokens).toBeGreaterThan(0);
   });
 
-  it('records a memory-backend/ranked ledger entry when the ranked path is active', () => {
-    process.env['NEXUS_CONTEXT_RANKED'] = '1';
+  it('records a memory-backend/ranked ledger entry by default (when flag is unset)', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
     summarizeContextForPrompt(withBelief());
 
     const [entry] = getTokenLedger().all();
@@ -1165,7 +1203,7 @@ describe('getContextPromptPrefix — ranked × inject flag matrix (#3236)', () =
   it('inject "true" + ranked-off → renders the block, same as "1" (#5155)', async () => {
     await seedBelief();
     process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = 'true';
-    delete process.env['NEXUS_CONTEXT_RANKED'];
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
     const out = await getContextPromptPrefix('authentication token refresh');
     expect(out).toBeDefined();
     expect(out).toContain('### Beliefs');
@@ -1174,11 +1212,21 @@ describe('getContextPromptPrefix — ranked × inject flag matrix (#3236)', () =
   it('inject-on + ranked-off → renders the legacy per-section block', async () => {
     await seedBelief();
     process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = '1';
-    delete process.env['NEXUS_CONTEXT_RANKED'];
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
     const out = await getContextPromptPrefix('authentication token refresh');
     expect(out).toBeDefined();
     expect(out).toContain('### Beliefs');
     expect(out).not.toContain('### Most relevant prior context');
+  });
+
+  it('inject-on + ranked-unset → defaults to the cross-ranked block', async () => {
+    await seedBelief();
+    process.env['NEXUS_CONTEXT_RETRIEVER_INJECT'] = '1';
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = await getContextPromptPrefix('authentication token refresh');
+    expect(out).toBeDefined();
+    expect(out).toContain('### Most relevant prior context');
+    expect(out).not.toContain('### Beliefs');
   });
 });
 
@@ -1228,6 +1276,13 @@ describe('getContextForTask — repo-map (flag off, byte-unchanged) (#4254)', ()
 });
 
 describe('summarizeContextForPrompt — repo-map section + ledger (#4254)', () => {
+  const previousRanked = process.env['NEXUS_CONTEXT_RANKED'];
+
+  afterEach(() => {
+    if (previousRanked === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
+    else process.env['NEXUS_CONTEXT_RANKED'] = previousRanked;
+  });
+
   function withBelief(): UnifiedContext {
     const belief = {
       beliefId: 'b1',
@@ -1262,10 +1317,19 @@ describe('summarizeContextForPrompt — repo-map section + ledger (#4254)', () =
   });
 
   it('flag on (repoMap present): appends the ranked map with the call-site-aware caveat', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
     const ctx: UnifiedContext = { ...withBelief(), repoMap: REPO_MAP };
     const out = summarizeContextForPrompt(ctx);
     expect(out).toContain('### Beliefs');
+    expect(out).toContain('Repo Map');
+    expect(out).toContain('call-site frequency');
+  });
+
+  it('flag on (repoMap present) with ranked default: appends the repo map to ranked context', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const ctx: UnifiedContext = { ...withBelief(), repoMap: REPO_MAP };
+    const out = summarizeContextForPrompt(ctx);
+    expect(out).toContain('### Most relevant prior context');
     expect(out).toContain('Repo Map');
     expect(out).toContain('call-site frequency');
   });
@@ -1375,6 +1439,10 @@ describe('belief recall for a real task description (#4845)', () => {
 describe('summarizeContextForPrompt — recorded trust tiers (#6751)', () => {
   const previousRanked = process.env['NEXUS_CONTEXT_RANKED'];
 
+  beforeEach(() => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '0';
+  });
+
   afterEach(() => {
     if (previousRanked === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
     else process.env['NEXUS_CONTEXT_RANKED'] = previousRanked;
@@ -1410,7 +1478,6 @@ describe('summarizeContextForPrompt — recorded trust tiers (#6751)', () => {
   }
 
   it('labels lines with their recorded tier and leaves unlabelled entries unlabelled', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
     const out = summarizeContextForPrompt(
       emptyContext({
         beliefs: [belief('caller fact', '1'), belief('legacy fact')],
@@ -1423,7 +1490,6 @@ describe('summarizeContextForPrompt — recorded trust tiers (#6751)', () => {
   });
 
   it('excludes recorded Tier 3+ entries from the prompt prefix by default', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
     const out = summarizeContextForPrompt(
       emptyContext({
         beliefs: [belief('kept fact', '1'), belief('external fact', '3')],
@@ -1436,7 +1502,6 @@ describe('summarizeContextForPrompt — recorded trust tiers (#6751)', () => {
   });
 
   it('includes and labels Tier 3+ entries only when explicitly allowed', () => {
-    delete process.env['NEXUS_CONTEXT_RANKED'];
     const out = summarizeContextForPrompt(
       emptyContext({ beliefs: [belief('external fact', '3')] }),
       undefined,
@@ -1452,5 +1517,16 @@ describe('summarizeContextForPrompt — recorded trust tiers (#6751)', () => {
     );
     expect(out).toContain('[tier 2] topic has_knowledge ranked kept');
     expect(out).not.toContain('ranked external');
+  });
+
+  it('labels lines with their recorded tier on the default ranked path', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = summarizeContextForPrompt(
+      emptyContext({
+        beliefs: [belief('caller fact', '1'), belief('legacy fact')],
+      })
+    );
+    expect(out).toContain('- [belief] [tier 1] topic has_knowledge caller fact');
+    expect(out).toContain('- [belief] topic has_knowledge legacy fact');
   });
 });
