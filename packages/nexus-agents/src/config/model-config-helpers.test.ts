@@ -781,9 +781,9 @@ describe('frontier models registry entries (#7374, #7375, #7376, #7377, #7378 / 
     expect(getModelContextWindow('gpt-6-luna-pro')).toBe(1_050_000);
     expect(getModelMaxOutput('gpt-6-luna-pro')).toBe(65_536);
     expect(getModelPricing('gpt-6-luna-pro')).toEqual({ inputPer1M: 0.1, outputPer1M: 0.5 });
-    expect(getCliModelName('gpt-6-luna-pro')).toBe('gpt-6-luna-pro');
-    expect(findCanonicalModel('codex', 'gpt-6-luna-pro')?.id).toBe('gpt-6-luna-pro');
-    expect(findInTreeByCli('codex').map((e) => e.id)).toContain('gpt-6-luna-pro');
+    expect(getCliModelName('gpt-6-luna-pro')).toBe('openai/gpt-6-luna-pro');
+    expect(findCanonicalModel('opencode', 'openai/gpt-6-luna-pro')?.id).toBe('gpt-6-luna-pro');
+    expect(findInTreeByCli('opencode').map((e) => e.id)).toContain('gpt-6-luna-pro');
   });
 
   it('resolves metadata, pricing, and context window for claude-opus-4.8 (#7378)', () => {
