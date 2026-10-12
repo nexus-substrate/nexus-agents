@@ -9,7 +9,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { getTimeProvider } from './index.js';
+import { getTimeProvider } from './time-provider.js';
 import type { TraceSpan, AggregatedMetrics, Tracer } from './trace.js';
 import {
   type ResolvedVisualizationOptions,
@@ -18,7 +18,7 @@ import {
   renderHeader,
   buildSummaryParts,
 } from './trace-exporter-helpers.js';
-import { colors } from '../cli/ansi-output.js';
+import { colors } from './ansi-colors.js';
 
 // =============================================================================
 // Types

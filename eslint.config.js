@@ -214,6 +214,27 @@ export default defineConfig([
     },
   },
 
+  // Layering invariant: core/ must not import from the presentation layer cli/ (#5129 item 1).
+  {
+    name: 'nexus-agents/no-core-to-cli-imports-5129',
+    files: ['packages/nexus-agents/src/core/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/cli/**', '../cli/**', '**/cli/*.js', '../cli/*.js'],
+              message:
+                'Layering violation: core/ is the foundational substrate layer and must not import from cli/ (#5129 item 1). Move shared presentation or ANSI formatting utilities into core/ or inject them from the caller.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // ROUTER CONSTRUCTION is a second, legitimate operation (#5191, ratified 5/6)
   // — not drift. `createCompositeRouter` takes `Map<RoutingArmId, ICliAdapter>`;
   // the registry offers `IResilientAdapter` (which extends `IModelAdapter`) one

@@ -8,50 +8,19 @@
  */
 
 // ============================================================================
-// NO_COLOR Detection (https://no-color.org/)
+// ANSI Color Codes (Imported and re-exported from core/ansi-colors.js for 100% backward compatibility)
 // ============================================================================
 
-/**
- * Whether color output is enabled.
- * Respects the NO_COLOR env var (any value disables color) and TTY detection.
- */
-export const colorsEnabled = !('NO_COLOR' in process.env) && process.stdout.isTTY;
+import {
+  colors,
+  colorsEnabled,
+  createColors,
+  detectColorsEnabled,
+  RAW_ANSI,
+  type ColorName,
+} from '../core/ansi-colors.js';
 
-// ============================================================================
-// ANSI Color Codes
-// ============================================================================
-
-/**
- * ANSI color codes for terminal output.
- * Returns empty strings when NO_COLOR is set or stdout is not a TTY.
- */
-export const colors = {
-  /** Reset all formatting */
-  reset: colorsEnabled ? '\x1b[0m' : '',
-  /** Green text (success, enabled) */
-  green: colorsEnabled ? '\x1b[32m' : '',
-  /** Yellow text (warning, caution) */
-  yellow: colorsEnabled ? '\x1b[33m' : '',
-  /** Red text (error, disabled) */
-  red: colorsEnabled ? '\x1b[31m' : '',
-  /** Cyan text (info, highlight) */
-  cyan: colorsEnabled ? '\x1b[36m' : '',
-  /** Dim text (secondary info) */
-  dim: colorsEnabled ? '\x1b[2m' : '',
-  /** Bold text (emphasis) */
-  bold: colorsEnabled ? '\x1b[1m' : '',
-  /** Magenta text (special) */
-  magenta: colorsEnabled ? '\x1b[35m' : '',
-  /** Blue text */
-  blue: colorsEnabled ? '\x1b[34m' : '',
-  /** White text */
-  white: colorsEnabled ? '\x1b[37m' : '',
-  /** Gray text (muted) */
-  gray: colorsEnabled ? '\x1b[90m' : '',
-} as const;
-
-/** Type for color names. */
-export type ColorName = keyof typeof colors;
+export { colors, colorsEnabled, createColors, detectColorsEnabled, RAW_ANSI, type ColorName };
 
 // ============================================================================
 // Cross-Platform Symbols
@@ -149,14 +118,7 @@ export function dim(text: string): string {
  * Extended: adds 'success', 'failed', 'skipped', 'pending', 'warning' (setup command compatibility)
  */
 export type StatusType =
-  | 'pass'
-  | 'warn'
-  | 'fail'
-  | 'success'
-  | 'failed'
-  | 'skipped'
-  | 'pending'
-  | 'warning';
+  'pass' | 'warn' | 'fail' | 'success' | 'failed' | 'skipped' | 'pending' | 'warning';
 
 /**
  * Formats a status indicator with appropriate color and symbol.
