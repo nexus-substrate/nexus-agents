@@ -94,8 +94,8 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
       })
     );
   }
-  // #3090: dual-read — prefers the Stage-2 task-state log when
-  // NEXUS_JOB_RESULT_SOURCE=task_state, else the Stage-1 sidecar (default).
+  // #3090: dual-read — prefers the Stage-2 task-state log by default (#3090 / #2631),
+  // falling back to the Stage-1 sidecar unless NEXUS_JOB_RESULT_SOURCE=sidecar.
   const resolved = resolveJobResultWithSource(parsed.data.jobId);
   if (resolved === null) {
     const response: GetJobResultResponse = {

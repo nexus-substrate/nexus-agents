@@ -268,24 +268,25 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     expect(readJobResultFromTaskState('orch-missing')).toBeNull();
   });
 
-  it('isTaskStateJobSource defaults OFF', () => {
+  it('isTaskStateJobSource defaults ON', () => {
+    expect(isTaskStateJobSource()).toBe(true);
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'sidecar';
     expect(isTaskStateJobSource()).toBe(false);
   });
 
-  it('resolveJobResult: flag OFF reads sidecar, ignores task-state', () => {
-    // Task-state log exists, but flag is off → must NOT read it.
+  it('resolveJobResult: defaults to task-state preference', () => {
+    writeCompletedTaskLog('orch-resolve-default', { fromTaskState: true });
+    writeJobComplete('orch-resolve-default', 'orchestrate', { fromSidecar: true });
+    const r = resolveJobResult('orch-resolve-default');
+    expect(r?.result).toEqual({ fromTaskState: true });
+  });
+
+  it('resolveJobResult: explicit sidecar source reads sidecar, ignores task-state', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'sidecar';
     writeCompletedTaskLog('orch-resolve-1', { fromTaskState: true });
     writeJobComplete('orch-resolve-1', 'orchestrate', { fromSidecar: true });
     const r = resolveJobResult('orch-resolve-1');
     expect(r?.result).toEqual({ fromSidecar: true });
-  });
-
-  it('resolveJobResult: flag ON prefers task-state', () => {
-    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
-    writeCompletedTaskLog('orch-resolve-2', { fromTaskState: true });
-    writeJobComplete('orch-resolve-2', 'orchestrate', { fromSidecar: true });
-    const r = resolveJobResult('orch-resolve-2');
-    expect(r?.result).toEqual({ fromTaskState: true });
   });
 
   // #5008 follow-up: a task-state-sourced record is SYNTHESIZED and never
@@ -341,7 +342,8 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     expect(resolved?.source).toBe('task_state');
   });
 
-  it('resolveJobResultWithSource: names sidecar when the flag is OFF', () => {
+  it('resolveJobResultWithSource: names sidecar when source is set to sidecar', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'sidecar';
     writeCompletedTaskLog('orch-src-3', { fromTaskState: true });
     writeJobComplete('orch-src-3', 'orchestrate', { fromSidecar: true });
     expect(resolveJobResultWithSource('orch-src-3')?.source).toBe('sidecar');
@@ -372,12 +374,21 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     expect(one?.hasError).toBe(false);
   });
 
-  it('resolveJobList: flag OFF returns the sidecar list only', () => {
+  it('resolveJobList: explicit sidecar source returns the sidecar list only', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'sidecar';
     writeJobComplete('orch-only-sidecar', 'orchestrate', { fromSidecar: true });
     writeCompletedTaskLog('orch-only-taskstate', { fromTaskState: true });
     const ids = resolveJobList().map((s) => s.jobId);
     expect(ids).toContain('orch-only-sidecar');
     expect(ids).not.toContain('orch-only-taskstate');
+  });
+
+  it('resolveJobList: defaults to unioning both sources', () => {
+    writeJobComplete('orch-default-sidecar', 'orchestrate', { fromSidecar: true });
+    writeCompletedTaskLog('orch-default-taskstate', { fromTaskState: true }, 'async');
+    const ids = resolveJobList().map((s) => s.jobId);
+    expect(ids).toContain('orch-default-sidecar');
+    expect(ids).toContain('orch-default-taskstate');
   });
 
   it('resolveJobList: excludes synchronous and legacy task-state records', () => {

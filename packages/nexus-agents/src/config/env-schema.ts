@@ -203,8 +203,8 @@ const NexusEnvSchema = z.object({
   // to compare factored selection against flat-arms baseline (#7071); off by default.
   NEXUS_ROUTE_GATEWAY_SHADOW: boolLooseStr.optional(),
   // Async job-result reader source (#3090/#3693): `task_state` prefers/unions the
-  // Stage-2 task-state log; default (unset) is sidecar-only. Reader half of the
-  // sidecar→Stage-2 migration (epic #2631).
+  // Stage-2 task-state log (default); set to `sidecar` for legacy fallback.
+  // Reader half of the sidecar→Stage-2 migration (epic #2631).
   NEXUS_JOB_RESULT_SOURCE: z.enum(['sidecar', 'task_state']).optional(),
 
   // --- Hooks & Sessions ---
