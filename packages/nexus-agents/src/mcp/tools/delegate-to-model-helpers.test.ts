@@ -424,9 +424,14 @@ describe('scoreAllModels billing mode', () => {
     const req = makeRequirements();
     const apiRanked = scoreAllModels(req, undefined, 'api');
     expect(apiRanked.length).toBeGreaterThan(0);
-    expect(['gemini-flash', 'gemini-3-flash', 'claude-haiku', 'codex-5.1-mini']).toContain(
-      apiRanked[0]!.name
-    );
+    expect([
+      'gemini-flash',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3-flash',
+      'claude-haiku',
+      'codex-5.1-mini',
+    ]).toContain(apiRanked[0]!.name);
   });
 });
 
