@@ -172,6 +172,8 @@ export interface ModelEntry {
   readonly cliAlias?: string;
   /** Vendor model id the CLI passes upstream (e.g. 'claude-opus-4-6'). */
   readonly cliModelName?: string;
+  /** Gateways or providers known to serve this model (#7072). */
+  readonly gateways?: readonly string[];
 
   // ---- Behaviour (carried from ModelBehaviorProfile) ----
   readonly parallelToolCalls: boolean;

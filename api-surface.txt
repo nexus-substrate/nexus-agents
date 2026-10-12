@@ -5818,6 +5818,7 @@ InterfaceDeclaration ModelEntry
   readonly contextWindow?: number | undefined
   readonly displayName?: string | undefined
   readonly family: string
+  readonly gateways?: readonly string[] | undefined
   readonly id: string
   readonly inputModalities?: readonly ("audio" | "code" | "image" | "pdf" | "text" | "video")[] | undefined
   readonly matchedVia?: MatchedVia | undefined

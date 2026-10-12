@@ -1,5 +1,5 @@
 /**
- * models.dev sync script (#2547 4b).
+ * models.dev sync script (#2547 4b, #7072).
  *
  * Fetches the models.dev catalog as a one-shot snapshot and writes it
  * to `packages/nexus-agents/src/config/models-dev-snapshot.json`. The
@@ -7,209 +7,121 @@
  * chain (lower priority than in-tree authoritative entries; higher
  * priority than derived fallbacks).
  *
- * Run manually whenever you want to refresh the snapshot. The output
- * is deterministic given the same upstream input — re-running with
- * unchanged input produces no diff.
+ * Increment C of Epic #4391 (#7072):
+ *   - SSRF protection on URL fetch
+ *   - Payload size ceiling and strict schema validation
+ *   - Preserves provider × model coverage in snapshot
+ *   - Enforces gateway-reachability admission: admits models only if
+ *     covered by configured gateways or explicit pins (never all 6,250)
  *
  * Usage:
  *   pnpm exec tsx scripts/sync-models-dev.ts          # fetch + write
  *   pnpm exec tsx scripts/sync-models-dev.ts --check  # fail if drift exists
- *
- * Design notes:
- *   - No runtime fetch by design. The runtime reads the committed
- *     snapshot; this script is the only thing that talks to models.dev.
- *   - Vendor mapping is intentionally narrow: only providers whose
- *     models map cleanly to nexus-agents' ModelVendor union are kept.
- *     Everything else is dropped (logged at info).
- *   - We DO NOT inflate the snapshot with behaviour fields — the
- *     registry's vendor-default merge fills those in at load time.
- *     The snapshot stays focused on capability + pricing data, which
- *     is what models.dev actually authors.
  */
 
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './script-paths.js';
 
-import type { ModelEntry } from '../packages/nexus-agents/src/config/model-registry.js';
-import type { ModelVendor } from '../packages/nexus-agents/src/config/model-identity.js';
+import {
+  validateCatalogFetchUrl,
+  validateCatalogPayloadSize,
+  parseModelsDevCatalog,
+  filterAdmittedModels,
+  type ModelsDevCatalog,
+} from '../packages/nexus-agents/src/config/model-catalog-admission.js';
+import type { ModelsDevSnapshot } from '../packages/nexus-agents/src/config/models-dev-snapshot-loader.js';
 
 const MODELS_DEV_URL = 'https://models.dev/api.json';
 const SNAPSHOT_PATH = join(ROOT, 'packages/nexus-agents/src/config/models-dev-snapshot.json');
 const FETCH_TIMEOUT_MS = 20_000;
 
-/**
- * Map models.dev provider keys → nexus-agents `ModelVendor`. Providers
- * not in this map are dropped on purpose — keeping the snapshot narrow
- * avoids overfitting the registry to vendors we don't actually route
- * to. Operators can still add models manually via the manifest overlay
- * (PR #2586) when needed.
- */
-const PROVIDER_TO_VENDOR: Record<string, ModelVendor> = {
-  anthropic: 'anthropic',
-  openai: 'openai',
-  google: 'google',
-  'google-vertex': 'google',
-  meta: 'meta',
-  mistral: 'mistral',
-  cohere: 'cohere',
-  deepseek: 'deepseek',
-  // Alibaba's Qwen surface — multiple provider keys, one vendor bucket.
-  alibaba: 'qwen',
-  qwen: 'qwen',
-  // NVIDIA's NIM surface
-  nvidia: 'nvidia',
-};
+export { type ModelsDevSnapshot };
 
-/**
- * Shape of one model record as returned by models.dev. Captured from
- * `curl https://models.dev/api.json | jq '.anthropic.models[]'` so we
- * pick up only the fields we actually use; new fields don't break us.
- */
-interface ModelsDevRecord {
-  id: string;
-  name?: string;
-  family?: string;
-  tool_call?: boolean;
-  reasoning?: boolean;
-  attachment?: boolean;
-  modalities?: { input?: string[]; output?: string[] };
-  cost?: { input?: number; output?: number; cache_read?: number };
-  limit?: { context?: number; output?: number };
-  release_date?: string;
-  last_updated?: string;
-  open_weights?: boolean;
+function checkContentLengthHeader(headers: Headers): void {
+  const contentLength = headers.get('content-length');
+  if (contentLength === null) return;
+  const parsedBytes = parseInt(contentLength, 10);
+  if (!Number.isFinite(parsedBytes)) return;
+  const sizeCheck = validateCatalogPayloadSize(parsedBytes);
+  if (!sizeCheck.ok) {
+    throw new Error(`Catalog fetch rejected: ${sizeCheck.error}`);
+  }
 }
 
-interface ModelsDevProvider {
-  id?: string;
-  name?: string;
-  models?: Record<string, ModelsDevRecord>;
+function parseRawCatalogJson(text: string): ModelsDevCatalog {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (e: unknown) {
+    throw new Error(
+      `Catalog response is not valid JSON: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+
+  const parsed = parseModelsDevCatalog(raw);
+  if (!parsed.ok) {
+    throw new Error(`Catalog schema validation rejected input: ${parsed.error}`);
+  }
+  return parsed.data;
 }
 
-type ModelsDevCatalog = Record<string, ModelsDevProvider>;
+async function readBoundedResponseBytes(response: Response): Promise<Uint8Array> {
+  const arrayBuffer = await response.arrayBuffer();
+  const sizeCheck = validateCatalogPayloadSize(arrayBuffer.byteLength);
+  if (!sizeCheck.ok) {
+    throw new Error(`Catalog fetch rejected: ${sizeCheck.error}`);
+  }
+  return new Uint8Array(arrayBuffer);
+}
 
 /**
- * Top-level snapshot file format. Versioned so a future format bump
- * doesn't silently mis-parse.
+ * Fetch catalog with SSRF check, payload size limit, and strict schema validation.
  */
-export interface ModelsDevSnapshot {
-  readonly version: 1;
-  readonly fetchedAt: string; // ISO date
-  readonly sourceUrl: string;
-  readonly entries: readonly ModelEntry[];
-}
+export async function fetchCatalog(url: string = MODELS_DEV_URL): Promise<ModelsDevCatalog> {
+  const urlCheck = validateCatalogFetchUrl(url);
+  if (!urlCheck.ok) {
+    throw new Error(`SSRF check refused catalog URL: ${urlCheck.error}`);
+  }
 
-async function fetchCatalog(): Promise<ModelsDevCatalog> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
   }, FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(MODELS_DEV_URL, { signal: controller.signal });
+    const response = await fetch(urlCheck.url.toString(), { signal: controller.signal });
     if (!response.ok) {
       throw new Error(`models.dev returned HTTP ${String(response.status)}`);
     }
-    return (await response.json()) as ModelsDevCatalog;
+
+    checkContentLengthHeader(response.headers);
+    const bytes = await readBoundedResponseBytes(response);
+    const text = new TextDecoder().decode(bytes);
+    return parseRawCatalogJson(text);
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Convert a models.dev record into our `ModelEntry` shape. */
-function mapRecord(raw: ModelsDevRecord, vendor: ModelVendor): ModelEntry | null {
-  if (typeof raw.id !== 'string' || raw.id.length === 0) return null;
-  const family = typeof raw.family === 'string' && raw.family.length > 0 ? raw.family : raw.id;
-  const entry: Record<string, unknown> = {
-    id: raw.id,
-    vendor,
-    family,
-    // Behaviour fields — minimal defaults; the registry's vendor-merge
-    // will fill in the rest based on `vendor`. Setting only what
-    // models.dev actually authors keeps the snapshot small.
-    parallelToolCalls: false,
-    promptCaching: 'none',
-    toolDefinitionFormat: 'openai',
-    maxRecommendedTurnBudget: 10,
-    strictJson: true,
-    quirks: [],
-    profileId: `models-dev-${vendor}`,
-    source: 'models-dev',
-  };
-  attachOptionalFields(entry, raw);
-  // #4558: the entry is assembled field-by-field as a `Record<string, unknown>`
-  // because `attachOptionalFields` mutates it, so TypeScript cannot see that
-  // every required `ModelEntry` field is present. The double cast says that
-  // plainly instead of a single cast the compiler rejects. There is no
-  // `ModelEntry` schema to validate against; if one is ever added, this is the
-  // call site that should use it rather than asserting.
-  return entry as unknown as ModelEntry;
+export function serializeSnapshot(snapshot: ModelsDevSnapshot): string {
+  return JSON.stringify(snapshot, null, 2) + '\n';
 }
 
-function attachOptionalFields(entry: Record<string, unknown>, raw: ModelsDevRecord): void {
-  attachScalarFields(entry, raw);
-  attachModalityFields(entry, raw);
-  if (raw.cost?.input !== undefined && raw.cost.output !== undefined) {
-    entry.pricing = { inputPer1M: raw.cost.input, outputPer1M: raw.cost.output };
-  }
-  // models.dev's `tool_call` is a boolean — present means supported.
-  if (raw.tool_call === true) {
-    entry.toolCapabilities = ['function-calling'];
-  }
-}
-
-function attachScalarFields(entry: Record<string, unknown>, raw: ModelsDevRecord): void {
-  if (raw.name !== undefined && raw.name !== raw.id) entry.displayName = raw.name;
-  if (raw.last_updated !== undefined) entry.verifiedAt = raw.last_updated;
-  if (raw.limit?.context !== undefined) entry.contextWindow = raw.limit.context;
-  if (raw.limit?.output !== undefined) entry.maxOutputTokens = raw.limit.output;
-}
-
-function attachModalityFields(entry: Record<string, unknown>, raw: ModelsDevRecord): void {
-  const inputMods = (raw.modalities?.input ?? []).filter(isKnownInput);
-  if (inputMods.length > 0) entry.inputModalities = inputMods;
-  const outputMods = (raw.modalities?.output ?? []).filter(isKnownOutput);
-  if (outputMods.length > 0) entry.outputModalities = outputMods;
-}
-
-const KNOWN_INPUT_MODS = new Set(['text', 'image', 'audio', 'video', 'pdf']);
-const KNOWN_OUTPUT_MODS = new Set(['text', 'audio', 'image']);
-function isKnownInput(m: string): m is 'text' | 'image' | 'audio' | 'video' | 'pdf' {
-  return KNOWN_INPUT_MODS.has(m);
-}
-function isKnownOutput(m: string): m is 'text' | 'audio' | 'image' {
-  return KNOWN_OUTPUT_MODS.has(m);
-}
-
-/**
- * Build the snapshot entries from the catalog. Sort deterministically
- * (provider, then model id) so re-fetching with unchanged input produces
- * a byte-for-byte identical JSON file.
- */
-function buildSnapshotEntries(catalog: ModelsDevCatalog): ModelEntry[] {
-  const result: ModelEntry[] = [];
-  const providers = Object.keys(catalog).sort();
-  for (const providerKey of providers) {
-    const vendor = PROVIDER_TO_VENDOR[providerKey];
-    if (vendor === undefined) continue;
-    const provider = catalog[providerKey];
-    if (provider?.models === undefined) continue;
-    const modelIds = Object.keys(provider.models).sort();
-    for (const id of modelIds) {
-      const raw = provider.models[id];
-      if (raw === undefined) continue;
-      const entry = mapRecord(raw, vendor);
-      if (entry !== null) result.push(entry);
+function resolveStabilizedSnapshot(next: ModelsDevSnapshot, checkMode: boolean): ModelsDevSnapshot {
+  if (checkMode && existsSync(SNAPSHOT_PATH)) {
+    try {
+      const existing = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf-8')) as ModelsDevSnapshot;
+      if (typeof existing.fetchedAt === 'string') {
+        return {
+          ...next,
+          fetchedAt: existing.fetchedAt,
+        };
+      }
+    } catch {
+      // Drift detection will catch parse errors below
     }
   }
-  return result;
-}
-
-function serializeSnapshot(snapshot: ModelsDevSnapshot): string {
-  // Use 2-space indent + trailing newline; matches Prettier defaults
-  // for JSON files in this repo so the docs-check formatter idempotency
-  // gate doesn't flap on every sync.
-  return JSON.stringify(snapshot, null, 2) + '\n';
+  return next;
 }
 
 async function main(): Promise<void> {
@@ -218,29 +130,21 @@ async function main(): Promise<void> {
 
   console.log(`Fetching ${MODELS_DEV_URL} …`);
   const catalog = await fetchCatalog();
-  const entries = buildSnapshotEntries(catalog);
-  console.log(`Mapped ${String(entries.length)} entries across known vendors.`);
+  const { admittedEntries, gatewaysByModel } = filterAdmittedModels(catalog, {
+    configuredGateways: ['claude', 'codex', 'gemini', 'opencode'],
+  });
+  console.log(`Mapped ${String(admittedEntries.length)} entries across admitted gateways.`);
 
   const fetchedAt = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const snapshot: ModelsDevSnapshot = {
+  const candidateSnapshot: ModelsDevSnapshot = {
     version: 1,
     fetchedAt,
     sourceUrl: MODELS_DEV_URL,
-    entries,
+    entries: admittedEntries,
+    gatewaysByModel,
   };
-  // Stabilize fetchedAt across check-mode runs: when running `--check`,
-  // preserve the existing snapshot's fetchedAt so the diff captures only
-  // schema/entry drift, not the date stamp.
-  if (checkMode && existsSync(SNAPSHOT_PATH)) {
-    try {
-      const existing = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf-8')) as ModelsDevSnapshot;
-      if (typeof existing.fetchedAt === 'string') {
-        (snapshot as { fetchedAt: string }).fetchedAt = existing.fetchedAt;
-      }
-    } catch {
-      // Ignore — drift detection will fire below.
-    }
-  }
+
+  const snapshot = resolveStabilizedSnapshot(candidateSnapshot, checkMode);
   const next = serializeSnapshot(snapshot);
 
   if (checkMode) {
@@ -255,7 +159,7 @@ async function main(): Promise<void> {
   }
 
   writeFileSync(SNAPSHOT_PATH, next, 'utf-8');
-  console.log(`Wrote ${SNAPSHOT_PATH} (${String(entries.length)} entries).`);
+  console.log(`Wrote ${SNAPSHOT_PATH} (${String(admittedEntries.length)} entries).`);
 }
 
 if (process.argv[1]?.endsWith('sync-models-dev.ts') === true) {

@@ -327,7 +327,26 @@ export type { ManifestLoadResult, ManifestRejection } from './manifest-overlay.j
 // scripts/sync-models-dev.ts and flows into the default registry as
 // tier 3 of the resolution chain.
 export { loadModelsDevSnapshot } from './models-dev-snapshot-loader.js';
-export type { ModelsDevSnapshotLoadResult } from './models-dev-snapshot-loader.js';
+export type {
+  ModelsDevSnapshot,
+  ModelsDevSnapshotLoadResult,
+} from './models-dev-snapshot-loader.js';
+
+// (#7072, epic #4391 increment C) Model catalog admission policy and gateway reachability.
+export {
+  validateCatalogFetchUrl,
+  validateCatalogPayloadSize,
+  parseModelsDevCatalog,
+  filterAdmittedModels,
+  whichGatewaysServe,
+  MAX_CATALOG_PAYLOAD_BYTES,
+  PROVIDER_TO_VENDOR,
+  CLI_GATEWAY_TO_PROVIDER,
+  type CatalogAdmissionPolicy,
+  type ModelsDevCatalog,
+  type ModelsDevProvider,
+  type ModelsDevRecord,
+} from './model-catalog-admission.js';
 
 export type {
   AvailableModelsSource,
