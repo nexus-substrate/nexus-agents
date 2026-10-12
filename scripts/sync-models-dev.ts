@@ -23,85 +23,16 @@ import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './script-paths.js';
 
+import { filterAdmittedModels } from '../packages/nexus-agents/src/config/model-catalog-admission.js';
 import {
-  validateCatalogFetchUrl,
-  validateCatalogPayloadSize,
-  parseModelsDevCatalog,
-  filterAdmittedModels,
-  type ModelsDevCatalog,
-} from '../packages/nexus-agents/src/config/model-catalog-admission.js';
+  fetchCatalog,
+  MODELS_DEV_URL,
+} from '../packages/nexus-agents/src/config/models-dev-client.js';
 import type { ModelsDevSnapshot } from '../packages/nexus-agents/src/config/models-dev-snapshot-loader.js';
 
-const MODELS_DEV_URL = 'https://models.dev/api.json';
 const SNAPSHOT_PATH = join(ROOT, 'packages/nexus-agents/src/config/models-dev-snapshot.json');
-const FETCH_TIMEOUT_MS = 20_000;
 
-export { type ModelsDevSnapshot };
-
-function checkContentLengthHeader(headers: Headers): void {
-  const contentLength = headers.get('content-length');
-  if (contentLength === null) return;
-  const parsedBytes = parseInt(contentLength, 10);
-  if (!Number.isFinite(parsedBytes)) return;
-  const sizeCheck = validateCatalogPayloadSize(parsedBytes);
-  if (!sizeCheck.ok) {
-    throw new Error(`Catalog fetch rejected: ${sizeCheck.error}`);
-  }
-}
-
-function parseRawCatalogJson(text: string): ModelsDevCatalog {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch (e: unknown) {
-    throw new Error(
-      `Catalog response is not valid JSON: ${e instanceof Error ? e.message : String(e)}`
-    );
-  }
-
-  const parsed = parseModelsDevCatalog(raw);
-  if (!parsed.ok) {
-    throw new Error(`Catalog schema validation rejected input: ${parsed.error}`);
-  }
-  return parsed.data;
-}
-
-async function readBoundedResponseBytes(response: Response): Promise<Uint8Array> {
-  const arrayBuffer = await response.arrayBuffer();
-  const sizeCheck = validateCatalogPayloadSize(arrayBuffer.byteLength);
-  if (!sizeCheck.ok) {
-    throw new Error(`Catalog fetch rejected: ${sizeCheck.error}`);
-  }
-  return new Uint8Array(arrayBuffer);
-}
-
-/**
- * Fetch catalog with SSRF check, payload size limit, and strict schema validation.
- */
-export async function fetchCatalog(url: string = MODELS_DEV_URL): Promise<ModelsDevCatalog> {
-  const urlCheck = validateCatalogFetchUrl(url);
-  if (!urlCheck.ok) {
-    throw new Error(`SSRF check refused catalog URL: ${urlCheck.error}`);
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(urlCheck.url.toString(), { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`models.dev returned HTTP ${String(response.status)}`);
-    }
-
-    checkContentLengthHeader(response.headers);
-    const bytes = await readBoundedResponseBytes(response);
-    const text = new TextDecoder().decode(bytes);
-    return parseRawCatalogJson(text);
-  } finally {
-    clearTimeout(timer);
-  }
-}
+export { fetchCatalog, type ModelsDevSnapshot };
 
 export function serializeSnapshot(snapshot: ModelsDevSnapshot): string {
   return JSON.stringify(snapshot, null, 2) + '\n';

@@ -164,7 +164,8 @@ function resolveModelAdmission(
 
 function attachScalarMetadata(entry: Record<string, unknown>, raw: ModelsDevRecord): void {
   if (raw.name !== undefined && raw.name !== raw.id) entry['displayName'] = raw.name;
-  if (raw.last_updated !== undefined) entry['verifiedAt'] = raw.last_updated;
+  const date = raw.release_date ?? raw.last_updated;
+  if (date !== undefined) entry['verifiedAt'] = date;
   if (raw.limit?.context !== undefined) entry['contextWindow'] = raw.limit.context;
   if (raw.limit?.output !== undefined) entry['maxOutputTokens'] = raw.limit.output;
 }
