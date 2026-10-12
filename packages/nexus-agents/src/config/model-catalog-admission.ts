@@ -176,6 +176,9 @@ function attachCapabilityMetadata(entry: Record<string, unknown>, raw: ModelsDev
   if (raw.tool_call === true) {
     entry['toolCapabilities'] = ['function_calling'];
   }
+  if (raw.reasoning === true) {
+    entry['specialFeatures'] = ['extended_thinking'];
+  }
 }
 
 function attachModalityMetadata(entry: Record<string, unknown>, raw: ModelsDevRecord): void {

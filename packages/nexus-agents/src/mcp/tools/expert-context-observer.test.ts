@@ -9,6 +9,7 @@ import {
   computeExpertContextUtilization,
   observeExpertContext,
   resolveContextWarnThreshold,
+  resolveExpertContextWindow,
   type ExpertContextObservation,
 } from './expert-context-observer.js';
 
@@ -118,6 +119,31 @@ describe('computeExpertContextUtilization', () => {
     expect(missing.warned).toBe(false);
     expect(zero.utilization).toBe(0);
     expect(zero.warned).toBe(false);
+  });
+
+  it('resolves full context window for models.dev catalog models instead of 8K fallback', () => {
+    const u = computeExpertContextUtilization({
+      modelId: 'deepseek-v4-flash-0731',
+      tokensUsed: 50_000,
+    });
+    expect(u.contextWindow).toBe(1_000_000);
+    expect(u.utilization).toBe(0.05);
+    expect(u.warned).toBe(false);
+  });
+});
+
+describe('resolveExpertContextWindow', () => {
+  it('resolves context window for in-tree models', () => {
+    expect(resolveExpertContextWindow('claude-opus')).toBe(1_000_000);
+    expect(resolveExpertContextWindow('gemini-3.8-flash')).toBe(1_048_576);
+  });
+
+  it('resolves context window for models.dev catalog models', () => {
+    expect(resolveExpertContextWindow('deepseek-v4-flash-0731')).toBe(1_000_000);
+  });
+
+  it('falls back to 8K unknown default for unregistered models', () => {
+    expect(resolveExpertContextWindow('nonexistent-custom-model')).toBe(8_192);
   });
 });
 
