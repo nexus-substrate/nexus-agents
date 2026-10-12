@@ -2568,7 +2568,7 @@ FunctionDeclaration createRealWorkflowEngine
   : (config?: WorkflowEngineFactoryConfig | undefined) => IWorkflowEngine
 FunctionDeclaration createResultAggregator
   : (options?: AggregatorOptions | undefined) => ResultAggregator
-VariableDeclaration createRoutingDecision
+FunctionDeclaration createRoutingDecision
   : (params: Omit<FeedbackRoutingDecision, "id" | "timestamp">) => FeedbackRoutingDecision
 FunctionDeclaration createRoutingMetricsCollector
   : (config?: Partial<RoutingMetricsConfig> | undefined) => RoutingMetricsCollector

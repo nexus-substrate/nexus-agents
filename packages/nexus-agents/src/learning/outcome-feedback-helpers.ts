@@ -110,9 +110,9 @@ export function generateRewardExplanation(outcome: TaskOutcome, reward: number):
 }
 
 /**
- * Create a feedback routing decision record.
+ * Create a routing decision record.
  */
-export function createFeedbackRoutingDecision(
+export function createRoutingDecision(
   params: Omit<FeedbackRoutingDecision, 'id' | 'timestamp'>
 ): FeedbackRoutingDecision {
   return {
@@ -121,11 +121,6 @@ export function createFeedbackRoutingDecision(
     ...params,
   };
 }
-
-/**
- * Legacy alias for `createFeedbackRoutingDecision`. Renamed per #5129.
- */
-export const createRoutingDecision = createFeedbackRoutingDecision;
 
 /**
  * Create a task outcome record.
