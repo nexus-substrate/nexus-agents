@@ -1847,7 +1847,7 @@ ClassDeclaration CompositeRouter
   getZeroRouter() => IZeroRouter | undefined
   hasMinimumPreferenceData() => boolean
   implements ICompositeRouter
-  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number) => void
+  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number, costUsd?: number) => void
   recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean) => void
   recordPreference(query: string, strongModelPreferred: boolean, quality?: { strong?: number; weak?: number; }) => void
   route(task: CliTask) => Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>
@@ -4669,7 +4669,7 @@ InterfaceDeclaration ICompositeRouter
   getStats() => CompositeRouterStats
   getZeroRouter() => IZeroRouter | undefined
   hasMinimumPreferenceData() => boolean
-  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number) => void
+  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number, costUsd?: number) => void
   recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean) => void
   recordPreference(query: string, strongPreferred: boolean, quality?: { strong?: number; weak?: number; }) => void
   route(task: CliTask) => Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>
@@ -6490,7 +6490,7 @@ InterfaceDeclaration PendingRoutingOutcome
   readonly difficultyAttribution: undefined | { readonly difficulty: number; readonly selectedCli: RoutingArmId; }
   readonly modelShadow: ModelSelectionShadowComparison | undefined
 ClassDeclaration PendingRoutingOutcomes
-  joinModelShadowOutcome(pending: ModelSelectionShadowComparison | undefined, success: boolean) => void
+  joinModelShadowOutcome(pending: ModelSelectionShadowComparison | undefined, success: boolean, costUsd?: number) => void
   take(task: CliTask) => PendingRoutingOutcome | undefined
   track(task: CliTask, decision: CompositeRoutingDecision) => void
 InterfaceDeclaration PerformanceMatrixEntry

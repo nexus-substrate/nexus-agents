@@ -208,6 +208,23 @@ describe('PendingRoutingOutcomes', () => {
     expect(records[0]?.cli).toBe(entry?.modelShadow?.cli);
   });
 
+  it('joinModelShadowOutcome() forwards measured costUsd when provided', () => {
+    process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+    const pending = new PendingRoutingOutcomes(makeSpyLogger());
+    const task: CliTask = { content: 'joined-with-cost' };
+    pending.track(task, makeDecision({ difficultyTier: 'balanced' }));
+    const entry = pending.take(task);
+    expect(entry?.modelShadow).toBeDefined();
+
+    pending.joinModelShadowOutcome(entry?.modelShadow, true, 0.042);
+
+    const records = readModelSelectionShadowRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.tier).toBe('balanced');
+    expect(records[0]?.success).toBe(true);
+    expect(records[0]?.costUsd).toBe(0.042);
+  });
+
   it('joinModelShadowOutcome() writes nothing for an undefined comparison', () => {
     process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
     const pending = new PendingRoutingOutcomes(makeSpyLogger());
@@ -398,6 +415,80 @@ describe('CompositeRouter', () => {
         shadowRouter.recordDifficultyOutcome(task, true);
       }).not.toThrow();
       expect(getModelSelectionShadowFailureCount()).toBeGreaterThanOrEqual(1);
+    });
+
+    it('recordDifficultyOutcome forwards explicit costUsd to shadow record (#4197)', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.route(task);
+      expect(result.ok).toBe(true);
+
+      shadowRouter.recordDifficultyOutcome(task, true, undefined, 0.045);
+
+      const records = readModelSelectionShadowRecords();
+      expect(records).toHaveLength(1);
+      expect(records[0]?.costUsd).toBe(0.045);
+      expect(records[0]?.success).toBe(true);
+    });
+
+    it('executeDecision joins explicit costUsd from adapter response (#4197)', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const adapters = createTestAdapters();
+      for (const adapter of adapters.values()) {
+        vi.mocked(adapter.execute).mockResolvedValue({
+          ok: true,
+          value: { text: 'completed task', costUsd: 0.0125 },
+        });
+      }
+      shadowRouter = new CompositeRouter(adapters);
+
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.executeTask(task);
+      expect(result.ok).toBe(true);
+
+      const records = readModelSelectionShadowRecords();
+      expect(records).toHaveLength(1);
+      expect(records[0]?.costUsd).toBe(0.0125);
+      expect(records[0]?.success).toBe(true);
+    });
+
+    it('executeDecision resolves costUsd from token usage and priced model (#4197)', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const adapters = createTestAdapters();
+      for (const adapter of adapters.values()) {
+        vi.mocked(adapter.execute).mockResolvedValue({
+          ok: true,
+          value: {
+            text: 'completed task',
+            model: 'claude-3-5-sonnet',
+            usage: { inputTokens: 1000, outputTokens: 200 },
+          },
+        });
+      }
+      shadowRouter = new CompositeRouter(adapters);
+
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.executeTask(task);
+      expect(result.ok).toBe(true);
+
+      const records = readModelSelectionShadowRecords();
+      expect(records).toHaveLength(1);
+      expect(records[0]?.costUsd).toBeDefined();
+      expect(records[0]?.costUsd).toBeGreaterThan(0);
+      expect(records[0]?.success).toBe(true);
+    });
+
+    it('ignores invalid or negative costUsd values (#4197)', async () => {
+      process.env['NEXUS_ROUTE_MODEL_SHADOW'] = '1';
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await shadowRouter.route(task);
+      expect(result.ok).toBe(true);
+
+      shadowRouter.recordDifficultyOutcome(task, true, undefined, -1);
+
+      const records = readModelSelectionShadowRecords();
+      expect(records).toHaveLength(1);
+      expect(records[0]?.costUsd).toBeUndefined();
     });
   });
 });
