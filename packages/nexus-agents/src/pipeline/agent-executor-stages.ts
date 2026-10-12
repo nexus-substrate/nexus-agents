@@ -230,7 +230,7 @@ export function createImplementStage({
   wrapper,
 }: StageDeps): DevPipelineStages['implement'] {
   return async (task, signal) => {
-    startStage(`impl-${task.id}`);
+    startStage(`impl-${task.id}`, 'execute');
     await postProgress(config, `Code [${task.id}]`, task.title);
     const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
     // #6792: see IMPLEMENT_ACCESS_MODE (panel decision on #6792, option B).

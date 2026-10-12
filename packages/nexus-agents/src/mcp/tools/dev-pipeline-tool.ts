@@ -267,7 +267,8 @@ async function createStages(
   input: DevPipelineInput,
   // The stage record describes caller authentication, independently of input changes.
   trustTier: string | undefined,
-  inputSanitization: ReturnType<typeof measureInputSanitization>
+  inputSanitization: ReturnType<typeof measureInputSanitization>,
+  auditLogger?: IAuditLogger
 ): Promise<ReturnType<typeof createAgentStages>> {
   // Auto-detect tracker backend if set to 'auto' or default
   const backendChoice = input.trackerBackend;
@@ -289,6 +290,7 @@ async function createStages(
     issueNumber: input.issueNumber,
     repo: input.repo,
     tracker,
+    ...(auditLogger !== undefined ? { auditLogger } : {}),
     // #3395: thread the opt-in per-run token ceiling through to the budget guard.
     ...(input.maxBudgetTokens !== undefined && {
       budget: { maxTokens: input.maxBudgetTokens },
@@ -491,7 +493,7 @@ async function runDevPipelineHandler(
     // Sync prelude — fast: input resolution + stage wiring + option build.
     // Only the pipeline BODY backgrounds in async mode (#3726).
     const taskText = await resolveTaskInput(input);
-    const stages = await createStages(input, trustTier, inputSanitization);
+    const stages = await createStages(input, trustTier, inputSanitization, auditLogger);
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const resolvedOptions = hasOptions ? pipelineOptions : undefined;
