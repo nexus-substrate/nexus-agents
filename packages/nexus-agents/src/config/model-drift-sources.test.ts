@@ -16,6 +16,7 @@ function deps(overrides: Partial<DriftSourceDeps> = {}): DriftSourceDeps {
     discoverGateway: () => Promise.resolve(ok([])),
     vendorLister: () => ({ listModels: () => Promise.resolve([]) }),
     openRouterCatalog: () => Promise.resolve([]),
+    modelsDevCatalog: () => Promise.resolve({}),
     ...overrides,
   };
 }
@@ -27,13 +28,14 @@ async function probeByName(d: DriftSourceDeps, name: string): Promise<DriftProbe
 }
 
 describe('buildDriftSources', () => {
-  it('lists the gateway, three vendor APIs and the OpenRouter catalog', () => {
+  it('lists the gateway, three vendor APIs, OpenRouter and models.dev', () => {
     expect(buildDriftSources(deps()).map((s) => s.name)).toEqual([
       'gateway',
       'anthropic-api',
       'openai-api',
       'google-api',
       'openrouter',
+      'models-dev',
     ]);
   });
 
@@ -108,5 +110,47 @@ describe('buildDriftSources', () => {
       status: 'measured',
       models: [{ id: 'vendor/model-x', createdAt: 1, pricing: { inputPer1M: 2, outputPer1M: 8 } }],
     });
+  });
+
+  it('passes models.dev listing metadata through with context window and pricing', async () => {
+    const mockCatalog = {
+      anthropic: {
+        models: {
+          'claude-4-sonnet': {
+            id: 'claude-4-sonnet',
+            name: 'Claude 4 Sonnet',
+            release_date: '2026-05-15',
+            cost: { input: 3, output: 15 },
+            limit: { context: 500_000, output: 64_000 },
+          },
+        },
+      },
+    };
+    const probe = await probeByName(
+      deps({
+        modelsDevCatalog: () => Promise.resolve(mockCatalog),
+      }),
+      'models-dev'
+    );
+    expect(probe).toEqual({
+      status: 'measured',
+      models: [
+        {
+          id: 'claude-4-sonnet',
+          createdAt: Math.floor(Date.parse('2026-05-15') / 1000),
+          contextLength: 500_000,
+          pricing: { inputPer1M: 3, outputPer1M: 15 },
+        },
+      ],
+    });
+  });
+
+  it('throws on failed models.dev fetch so the report records it as failed', async () => {
+    const source = buildDriftSources(
+      deps({
+        modelsDevCatalog: () => Promise.reject(new Error('Network error 503')),
+      })
+    ).find((s) => s.name === 'models-dev');
+    await expect(source?.probe()).rejects.toThrow('Network error 503');
   });
 });

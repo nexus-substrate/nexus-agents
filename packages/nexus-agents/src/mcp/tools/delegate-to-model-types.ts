@@ -46,9 +46,55 @@ export interface CapabilityProfile {
  * Derived from the canonical model registry (Issue #807).
  */
 
-import { buildCapabilityProfiles } from '../../config/model-config-helpers.js';
+import {
+  buildCapabilityProfiles,
+  FALLBACK_CONTEXT_WINDOW,
+} from '../../config/model-config-helpers.js';
+import { getDefaultRegistry, type ModelEntry } from '../../config/model-registry.js';
 
 export const MODEL_CAPABILITIES: Record<string, CapabilityProfile> = buildCapabilityProfiles();
+
+interface ScoreDefaults {
+  readonly reasoning: number;
+  readonly codeGeneration: number;
+  readonly speed: number;
+  readonly cost: number;
+}
+
+const DEFAULT_SCORES: ScoreDefaults = {
+  reasoning: 8,
+  codeGeneration: 8,
+  speed: 7,
+  cost: 6,
+};
+
+function buildProfileFromEntry(entry: ModelEntry): CapabilityProfile {
+  const scores = entry.qualityScores ?? DEFAULT_SCORES;
+  return {
+    reasoning: scores.reasoning,
+    contextWindow: entry.contextWindow ?? FALLBACK_CONTEXT_WINDOW,
+    codeGeneration: scores.codeGeneration,
+    speed: scores.speed,
+    cost: scores.cost,
+  };
+}
+
+/**
+ * Resolve a model's capability profile (#6625).
+ * Inspects static in-tree profiles first, then falls back to the live ModelRegistry
+ * (supporting operator manifests, models.dev snapshot, and catalog-admitted models)
+ * with authentic context window and scores. Returns undefined for truly unknown models.
+ */
+export function resolveCapabilityProfile(modelName: string): CapabilityProfile | undefined {
+  const direct = MODEL_CAPABILITIES[modelName];
+  if (direct !== undefined) return direct;
+
+  const entry = getDefaultRegistry().getEntry(modelName);
+  if (entry.source === 'derived' && entry.contextWindow === undefined) {
+    return undefined;
+  }
+  return buildProfileFromEntry(entry);
+}
 
 /**
  * Input schema for the delegate_to_model tool.
