@@ -40,6 +40,7 @@ import {
   getTimeProvider,
   createLogger,
 } from '../../core/index.js';
+import { z } from 'zod';
 import type { BaseAgentOptions } from '../base-agent.js';
 import {
   withRetry,
@@ -53,6 +54,7 @@ import {
   FailureDetector,
   RecoveryManager,
   DEFAULT_RECOVERY_STRATEGIES,
+  DetectorConfigSchema,
   type DetectorConfig,
   type FailureArchetype,
   type DetectedFailure,
@@ -86,26 +88,43 @@ const EXPERT_RECOVERY_DEFAULT_MAX_RETRIES = 1;
 const MAX_CAUSE_DEPTH = 10;
 
 /**
+ * Zod schema for opt-in recovery policy attached to an expert.
+ * All fields are optional and fall through to default retry knobs
+ * and failure detector defaults (#4291).
+ */
+export const ExpertRecoveryPolicySchema = z.object({
+  maxRetries: z
+    .number()
+    .int()
+    .min(0)
+    .max(10)
+    .optional()
+    .describe('Maximum retries for transient failures (default: 1)'),
+  baseDelayMs: z.number().int().min(0).max(60_000).optional().describe('Base backoff delay in ms'),
+  maxDelayMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(300_000)
+    .optional()
+    .describe('Maximum backoff delay in ms'),
+  jitterFactor: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe('Jitter factor (0-1) for exponential backoff'),
+  detectorConfig: DetectorConfigSchema.partial()
+    .optional()
+    .describe('Override the failure detector configuration'),
+});
+
+/**
  * Opt-in recovery policy attached to an expert at creation time. All fields are
  * optional and fall through to {@link DEFAULT_RETRY_CONFIG} (retry knobs) and
  * this module's detector defaults.
  */
-export interface ExpertRecoveryPolicy {
-  /**
-   * Maximum retries (attempts = maxRetries + 1). Default:
-   * {@link EXPERT_RECOVERY_DEFAULT_MAX_RETRIES} (1 → 2 attempts), NOT
-   * DEFAULT_RETRY_CONFIG.maxRetries (3).
-   */
-  maxRetries?: number;
-  /** Base backoff delay (ms). Default: DEFAULT_RETRY_CONFIG. */
-  baseDelayMs?: number;
-  /** Maximum backoff delay (ms). Default: DEFAULT_RETRY_CONFIG. */
-  maxDelayMs?: number;
-  /** Jitter factor (0-1). Default: DEFAULT_RETRY_CONFIG. */
-  jitterFactor?: number;
-  /** Override the failure detector configuration. */
-  detectorConfig?: Partial<DetectorConfig>;
-}
+export type ExpertRecoveryPolicy = z.infer<typeof ExpertRecoveryPolicySchema>;
 
 /**
  * The outcome of classifying a single failed execution attempt.
@@ -299,6 +318,30 @@ function annotateRecoveryFailure(
   return new AgentError(base?.message ?? getErrorMessage(lastError), opts);
 }
 
+/** Builds a FailureDetector config without undefined properties for exactOptionalPropertyTypes (#4291). */
+function buildDetectorConfig(
+  override?: ExpertRecoveryPolicy['detectorConfig']
+): Partial<DetectorConfig> {
+  const config: {
+    confidenceThreshold: number;
+    enabledArchetypes?: readonly FailureArchetype[];
+    maxHistoryItems?: number;
+    enableHeuristics?: boolean;
+  } = {
+    confidenceThreshold: override?.confidenceThreshold ?? EXPERT_ERROR_TEXT_CONFIDENCE_THRESHOLD,
+  };
+  if (override?.enabledArchetypes !== undefined) {
+    config.enabledArchetypes = override.enabledArchetypes;
+  }
+  if (override?.maxHistoryItems !== undefined) {
+    config.maxHistoryItems = override.maxHistoryItems;
+  }
+  if (override?.enableHeuristics !== undefined) {
+    config.enableHeuristics = override.enableHeuristics;
+  }
+  return config;
+}
+
 /**
  * An {@link Expert} whose `execute()` applies a transient-vs-permanent recovery
  * policy. Wrapping at `execute()` (not `executeTask()`) reuses the base
@@ -315,10 +358,7 @@ export class RecoverableExpert extends Expert {
     // Calibrate the threshold for error-text-only input (spread last so an explicit
     // caller detectorConfig.confidenceThreshold still wins). See
     // EXPERT_ERROR_TEXT_CONFIDENCE_THRESHOLD.
-    this.detector = new FailureDetector({
-      confidenceThreshold: EXPERT_ERROR_TEXT_CONFIDENCE_THRESHOLD,
-      ...policy.detectorConfig,
-    });
+    this.detector = new FailureDetector(buildDetectorConfig(policy.detectorConfig));
     this.recoveryManager = new RecoveryManager();
     this.recoveryConfig = mergeRecoveryConfig(policy);
     this.recoveryLogger =
@@ -327,11 +367,17 @@ export class RecoverableExpert extends Expert {
 
   override async execute(
     task: Task,
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; recoveryPolicy?: ExpertRecoveryPolicy }
   ): Promise<Result<TaskResult, AgentError>> {
     let currentTask = task;
     let lastClassification: FailureClassification | undefined;
     const signal = options?.signal;
+    const policy = options?.recoveryPolicy;
+    const recoveryConfig = policy !== undefined ? mergeRecoveryConfig(policy) : this.recoveryConfig;
+    const detector =
+      policy?.detectorConfig !== undefined
+        ? new FailureDetector(buildDetectorConfig(policy.detectorConfig))
+        : this.detector;
 
     const outcome = await withRetry<TaskResult>(
       async () => {
@@ -341,11 +387,11 @@ export class RecoverableExpert extends Expert {
         return r.value;
       },
       {
-        config: this.recoveryConfig,
+        config: recoveryConfig,
         isRetryable: (error: unknown): boolean => {
           lastClassification = classifyExpertFailure(
             error,
-            this.detector,
+            detector,
             currentTask.description,
             signal
           );

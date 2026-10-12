@@ -33,6 +33,7 @@ import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 import { release, suggestRetryAfterMs, tryAcquire } from '../jobs/job-concurrency.js';
 import { defaultBusyEnvelope } from '../jobs/run-as-job.js';
 import { toolStructuredError, toolSuccess } from './tool-result.js';
+import { ExpertRecoveryPolicySchema } from '../../agents/index.js';
 
 /** The slice of the tool deps this handler reads itself; the rest passes through to `execute`. */
 interface ExpertTaskDeps {
@@ -93,6 +94,9 @@ export const EXECUTE_EXPERT_TOOL_SCHEMA = {
     .max(EXPERT_TIMEOUTS.maxMs)
     .optional()
     .describe('Optional timeout in ms (120s-900s). Overrides auto-detected timeout.'),
+  recoveryPolicy: ExpertRecoveryPolicySchema.optional().describe(
+    'Optional transient failure recovery policy override'
+  ),
 };
 
 /**

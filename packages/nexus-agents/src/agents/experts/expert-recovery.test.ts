@@ -13,6 +13,7 @@ import { createExpert, Expert } from './expert-factory.js';
 import {
   RecoverableExpert,
   classifyExpertFailure,
+  ExpertRecoveryPolicySchema,
   type ExpertRecoveryPolicy,
 } from './expert-recovery.js';
 import { FailureDetector } from '../resilience/index.js';
@@ -387,5 +388,59 @@ describe('createExpert without a recovery policy (default no-op)', () => {
     expect(execResult.ok).toBe(false);
     // No recovery wrapper → no retry: exactly one model call.
     expect(complete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ExpertRecoveryPolicySchema (#4291)', () => {
+  it('accepts empty object (all fields optional)', () => {
+    const parsed = ExpertRecoveryPolicySchema.safeParse({});
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts valid full configuration', () => {
+    const input = {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 10000,
+      jitterFactor: 0.2,
+      detectorConfig: {
+        confidenceThreshold: 0.5,
+        maxHistoryItems: 20,
+        enableHeuristics: true,
+      },
+    };
+    const parsed = ExpertRecoveryPolicySchema.safeParse(input);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects out-of-range values', () => {
+    expect(ExpertRecoveryPolicySchema.safeParse({ maxRetries: -1 }).success).toBe(false);
+    expect(ExpertRecoveryPolicySchema.safeParse({ maxRetries: 11 }).success).toBe(false);
+    expect(ExpertRecoveryPolicySchema.safeParse({ jitterFactor: -0.1 }).success).toBe(false);
+    expect(ExpertRecoveryPolicySchema.safeParse({ jitterFactor: 1.5 }).success).toBe(false);
+  });
+});
+
+describe('RecoverableExpert per-call recoveryPolicy override (#4291)', () => {
+  it('overrides baseline maxRetries for a specific execution', async () => {
+    const complete = vi.fn();
+    complete
+      .mockRejectedValueOnce(Object.assign(new Error('Service Unavailable'), { status: 503 }))
+      .mockRejectedValueOnce(Object.assign(new Error('Service Unavailable'), { status: 503 }))
+      .mockResolvedValueOnce(ok(textResponse('Success on 3rd attempt')));
+
+    // Baseline expert has maxRetries: 1 (would exhaust after 2 attempts)
+    const expert = createRecoverableExpert({ maxRetries: 1, baseDelayMs: 0 }, complete);
+
+    // Call with per-call override maxRetries: 2 (3 attempts)
+    const result = await expert.execute(makeTask(), {
+      recoveryPolicy: { maxRetries: 2, baseDelayMs: 0 },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.output).toBe('Success on 3rd attempt');
+    }
+    expect(complete).toHaveBeenCalledTimes(3);
   });
 });

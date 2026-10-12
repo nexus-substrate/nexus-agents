@@ -87,6 +87,9 @@ function createTestDeps(factory?: IExpertFactory, logger?: ILogger): CreateExper
     expertFactory: factory ?? createMockFactory(),
     expertRegistry: new Map<string, Expert>(),
     rateLimiter: createTestRateLimiter(),
+    cliCache: {
+      get: () => ({ healthy: true }),
+    } as unknown as NonNullable<CreateExpertDeps['cliCache']>,
   };
   if (logger !== undefined) {
     deps.logger = logger;
@@ -190,6 +193,42 @@ describe('CreateExpertInputSchema', () => {
       if (result.success) {
         expect(result.data.modelPreference).toBeUndefined();
       }
+    });
+  });
+
+  describe('recoveryPolicy validation (#4291)', () => {
+    it('should accept valid recoveryPolicy', () => {
+      const input = {
+        role: 'code_expert',
+        recoveryPolicy: {
+          maxRetries: 2,
+          baseDelayMs: 250,
+          maxDelayMs: 2000,
+          jitterFactor: 0.1,
+          detectorConfig: { confidenceThreshold: 0.7 },
+        },
+      };
+      const result = CreateExpertInputSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.recoveryPolicy?.maxRetries).toBe(2);
+      }
+    });
+
+    it('should reject out-of-range recoveryPolicy parameters', () => {
+      expect(
+        CreateExpertInputSchema.safeParse({
+          role: 'code_expert',
+          recoveryPolicy: { maxRetries: 15 },
+        }).success
+      ).toBe(false);
+
+      expect(
+        CreateExpertInputSchema.safeParse({
+          role: 'code_expert',
+          recoveryPolicy: { baseDelayMs: -10 },
+        }).success
+      ).toBe(false);
     });
   });
 });
@@ -512,5 +551,76 @@ describe('modelAdapter wiring (Issue #808)', () => {
     const deps = createTestDeps();
 
     expect(deps.modelAdapter).toBeUndefined();
+  });
+});
+
+describe('recoveryPolicy exposure and forwarding (#4291)', () => {
+  it('registers recoveryPolicy in toolSchema on server registration', () => {
+    let capturedSchema: Record<string, unknown> | undefined;
+    const mockServer = {
+      registerTool: (_name: string, config: { inputSchema: Record<string, unknown> }): void => {
+        capturedSchema = config.inputSchema;
+      },
+    } as unknown as McpServer;
+
+    registerCreateExpertTool(mockServer, createDefaultDeps(createTestRateLimiter()));
+    expect(capturedSchema).toBeDefined();
+    expect(capturedSchema?.['recoveryPolicy']).toBeDefined();
+  });
+
+  it('forwards custom recoveryPolicy to factory upon create_expert invocation', async () => {
+    const factory = createMockFactory();
+    const deps = createTestDeps(factory);
+    let handler: ((args: unknown) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+    const mockServer = {
+      registerTool: (
+        _name: string,
+        _config: unknown,
+        cb: (args: unknown) => Promise<{ content: Array<{ text: string }> }>
+      ): void => {
+        handler = cb;
+      },
+    } as unknown as McpServer;
+
+    registerCreateExpertTool(mockServer, deps);
+    expect(handler).toBeDefined();
+
+    const policy = { maxRetries: 3, baseDelayMs: 100 };
+    const res = await handler!({ role: 'code_expert', recoveryPolicy: policy });
+    expect(res).toBeDefined();
+
+    expect(factory.createBuiltIn).toHaveBeenCalledWith(
+      'code',
+      expect.objectContaining({
+        recoveryPolicy: policy,
+      })
+    );
+  });
+
+  it('defaults recoveryPolicy to { maxRetries: 1 } when omitted', async () => {
+    const factory = createMockFactory();
+    const deps = createTestDeps(factory);
+    let handler: ((args: unknown) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+    const mockServer = {
+      registerTool: (
+        _name: string,
+        _config: unknown,
+        cb: (args: unknown) => Promise<{ content: Array<{ text: string }> }>
+      ): void => {
+        handler = cb;
+      },
+    } as unknown as McpServer;
+
+    registerCreateExpertTool(mockServer, deps);
+    expect(handler).toBeDefined();
+
+    await handler!({ role: 'code_expert' });
+
+    expect(factory.createBuiltIn).toHaveBeenCalledWith(
+      'code',
+      expect.objectContaining({
+        recoveryPolicy: { maxRetries: 1 },
+      })
+    );
   });
 });

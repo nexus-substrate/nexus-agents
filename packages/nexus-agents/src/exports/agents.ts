@@ -76,9 +76,10 @@ export {
   Expert,
   FactoryError,
   type CreateExpertOptions,
-  // Opt-in execution recovery (#4286)
+  // Opt-in execution recovery (#4286, #4291)
   RecoverableExpert,
   classifyExpertFailure,
+  ExpertRecoveryPolicySchema,
   type ExpertRecoveryPolicy,
   type FailureClassification,
   ExpertRegistry,

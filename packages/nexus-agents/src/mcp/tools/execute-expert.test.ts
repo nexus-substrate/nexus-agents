@@ -351,6 +351,37 @@ describe('ExecuteExpertInputSchema', () => {
       if (result.success) expect(result.data.timeoutMs).toBeUndefined();
     });
   });
+
+  describe('recoveryPolicy validation (#4291)', () => {
+    it('should accept valid recoveryPolicy', () => {
+      const input = {
+        expertId: 'test-id',
+        task: 'Review code',
+        recoveryPolicy: {
+          maxRetries: 2,
+          baseDelayMs: 200,
+          maxDelayMs: 3000,
+          jitterFactor: 0.1,
+          detectorConfig: { confidenceThreshold: 0.8 },
+        },
+      };
+      const result = ExecuteExpertInputSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.recoveryPolicy?.maxRetries).toBe(2);
+      }
+    });
+
+    it('should reject invalid recoveryPolicy', () => {
+      const input = {
+        expertId: 'test-id',
+        task: 'Review code',
+        recoveryPolicy: { maxRetries: 20 },
+      };
+      const result = ExecuteExpertInputSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 describe('extractExpertConfidence (#3766)', () => {
@@ -868,5 +899,37 @@ describe('execute_expert recovery policy integration (#4286)', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.output).toBe('Recovered answer');
     expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('forwards per-call recoveryPolicy override to expert.execute (#4291)', async () => {
+    const expert = createMockExpert('code_expert', true);
+    const deps = createTestDeps();
+    deps.expertRegistry.set('test-expert-override', expert);
+    deps.cliCache = {
+      get: () => ({ healthy: true }),
+    } as unknown as NonNullable<ExecuteExpertDeps['cliCache']>;
+
+    const storeTaskResult = vi.fn().mockResolvedValue(undefined);
+    const extra = {
+      taskStore: {
+        createTask: vi.fn().mockResolvedValue({ taskId: 'task-override-1' }),
+        storeTaskResult,
+      },
+    } as unknown as CreateTaskRequestHandlerExtra;
+
+    const policy = { maxRetries: 3, baseDelayMs: 150 };
+    await captureCreateTask(deps)(
+      { expertId: 'test-expert-override', task: 'Run analysis', recoveryPolicy: policy },
+      extra
+    );
+
+    await vi.waitFor(() => {
+      expect(storeTaskResult).toHaveBeenCalled();
+    });
+
+    expect(expert.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringContaining('Run analysis') }),
+      expect.objectContaining({ recoveryPolicy: policy })
+    );
   });
 });

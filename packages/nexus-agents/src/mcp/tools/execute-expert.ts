@@ -21,7 +21,8 @@ import { isRateLimitLikeError } from '../../adapters/rate-limit-detector.js';
 import { createLogger, getTimeProvider, getRandomProvider, withStep } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier } from '../mcp-notifier.js';
-import type { Expert } from '../../agents/index.js';
+import type { Expert, ExpertRecoveryPolicy } from '../../agents/index.js';
+import { ExpertRecoveryPolicySchema } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
 import {
   autoCatalogScan,
@@ -30,7 +31,7 @@ import {
 } from './execute-expert-recording.js';
 import { getExpertFallbackChain, ROLE_TO_TASK_CATEGORY } from './create-expert-routing.js';
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
-import { createExpert } from '../../agents/experts/expert-factory.js';
+import { createExpert, type CreateExpertOptions } from '../../agents/experts/expert-factory.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
 // Per-expert context-budget observer (#2031). Telemetry-only; never
 // influences the call. Emits `context_warning` when utilization crosses
@@ -91,6 +92,9 @@ export const ExecuteExpertInputSchema = z.object({
     .describe(
       'Summary from a previous expert in the chain. Injected into prompt for context continuity.'
     ),
+  recoveryPolicy: ExpertRecoveryPolicySchema.optional().describe(
+    'Optional transient failure recovery policy override'
+  ),
 });
 
 /**
@@ -391,6 +395,26 @@ export function isExpertDegraded(role: string): boolean {
   return consecutive >= DEGRADATION_CONSECUTIVE_THRESHOLD;
 }
 
+interface FallbackTarget {
+  cli: string;
+  adapter: import('../../core/index.js').IModelAdapter | undefined;
+}
+
+/** Resolves the fallback CLI and model adapter for a degraded expert role (#1532). */
+function resolveFallbackTarget(role: string, logger?: ILogger): FallbackTarget | undefined {
+  const roleKey = `${role}_expert`;
+  const category = ROLE_TO_TASK_CATEGORY[roleKey];
+  if (category === undefined) return undefined;
+  const effectiveLogger = logger ?? createLogger({ tool: 'execute_expert' });
+  const registry = getGlobalRegistry();
+  const routing = registry.getRouting(category);
+  const primaryCli = routing?.primaryCli ?? 'unknown';
+  const chain = getExpertFallbackChain(roleKey, primaryCli, effectiveLogger);
+  const fallbackCli = chain[0];
+  if (fallbackCli === undefined) return undefined;
+  return { cli: fallbackCli, adapter: registry.getAdapterForCli(fallbackCli) };
+}
+
 /**
  * Attempts to execute the task with a fallback CLI after a rate-limit failure. (#1532)
  * Creates a temporary expert with the same config but a different adapter.
@@ -399,34 +423,26 @@ export function isExpertDegraded(role: string): boolean {
 async function tryExpertFallback(
   expert: Expert,
   task: Task,
-  logger: ILogger | undefined
+  logger: ILogger | undefined,
+  recoveryPolicy?: ExpertRecoveryPolicy
 ): Promise<ExpertResult | undefined> {
-  const roleKey = `${expert.role}_expert`;
-  const category = ROLE_TO_TASK_CATEGORY[roleKey];
-  if (category === undefined) return undefined;
-  const effectiveLogger = logger ?? createLogger({ tool: 'execute_expert' });
-  const registry = getGlobalRegistry();
-  const routing = registry.getRouting(category);
-  const primaryCli = routing?.primaryCli ?? 'unknown';
-  const chain = getExpertFallbackChain(roleKey, primaryCli, effectiveLogger);
-  if (chain.length === 0) return undefined;
-  const fallbackCli = chain[0];
-  if (fallbackCli === undefined) return undefined;
-  const fallbackAdapter = registry.getAdapterForCli(fallbackCli);
-  logger?.info('Retrying expert with fallback CLI', { role: expert.role, fallbackCli });
+  const target = resolveFallbackTarget(expert.role, logger);
+  if (target === undefined) return undefined;
+  logger?.info('Retrying expert with fallback CLI', { role: expert.role, fallbackCli: target.cli });
 
-  // #4286: the outer CLI-fallback expert (#1532) also gets the conservative
-  // inner transient recovery, so a one-off transient blip on the fallback
-  // adapter doesn't collapse the last recovery layer. The primary expert's own
-  // { maxRetries: 1 } policy is wired at its creation site (create-expert.ts).
-  const fallbackResult = createExpert(expert.expertConfig, {
-    adapter: fallbackAdapter,
-    recoveryPolicy: { maxRetries: 1 },
-  });
+  // #4286, #4291: the outer CLI-fallback expert (#1532) also gets the transient recovery policy,
+  // honoring any per-call override passed via recoveryPolicy, defaulting to { maxRetries: 1 }.
+  const effectivePolicy = recoveryPolicy ?? { maxRetries: 1 };
+  const createOptions: CreateExpertOptions = {
+    recoveryPolicy: effectivePolicy,
+    ...(target.adapter !== undefined ? { adapter: target.adapter } : {}),
+  };
+  const fallbackResult = createExpert(expert.expertConfig, createOptions);
   if (!fallbackResult.ok) return undefined;
 
   const fallbackStart = getTimeProvider().now();
-  const result = await fallbackResult.value.execute(task);
+  const options = recoveryPolicy !== undefined ? { recoveryPolicy } : undefined;
+  const result = await fallbackResult.value.execute(task, options);
   if (!result.ok) return undefined;
   const fallbackDurationMs = getTimeProvider().now() - fallbackStart;
 
@@ -439,7 +455,7 @@ async function tryExpertFallback(
       durationMs: fallbackDurationMs,
       tokensUsed: result.value.metadata.tokensUsed,
       tokensMeasured: result.value.metadata.tokensMeasured,
-      modelUsed: fallbackCli,
+      modelUsed: target.cli,
     }),
   };
 }
@@ -480,7 +496,7 @@ async function classifyExpertResult(opts: ClassifyExpertResultOpts): Promise<Exp
 
   if (!result.ok) {
     if (isRateLimitFailure(result.error.message)) {
-      const fallback = await tryExpertFallback(expert, task, logger);
+      const fallback = await tryExpertFallback(expert, task, logger, args.recoveryPolicy);
       if (fallback !== undefined) return fallback;
     }
     logger?.warn('Expert execution failed', {
@@ -575,7 +591,7 @@ async function runExpertTask(
   // Proactive fallback for degraded experts (#1401)
   if (isExpertDegraded(expert.role)) {
     deps.logger?.warn('Expert role degraded, trying fallback', { role: expert.role });
-    const fallback = await tryExpertFallback(expert, task, deps.logger);
+    const fallback = await tryExpertFallback(expert, task, deps.logger, args.recoveryPolicy);
     if (fallback !== undefined) return fallback;
   }
 
@@ -584,7 +600,9 @@ async function runExpertTask(
     async (ctx) => {
       const startTime = getTimeProvider().now();
       const result = await runExpertUnderHeartbeat(expertId, deps.logger, () =>
-        expert.execute(task)
+        expert.execute(task, {
+          ...(args.recoveryPolicy !== undefined ? { recoveryPolicy: args.recoveryPolicy } : {}),
+        })
       );
       const durationMs = getTimeProvider().now() - startTime;
       observeExpertContextIfOk(result, expert, task, durationMs, deps.logger);

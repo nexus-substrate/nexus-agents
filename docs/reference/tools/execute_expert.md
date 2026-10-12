@@ -23,3 +23,4 @@ Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. Require
 | `context` | object | no | — | Additional context metadata for the task |
 | `timeoutMs` | integer | no | min 120000; max 900000 | Optional timeout in ms (120s-900s). Overrides auto-detected timeout. |
 | `previousExpertSummary` | string | no | maxLength 2000 | Summary from a previous expert in the chain. Injected into prompt for context continuity. |
+| `recoveryPolicy` | object | no | — | Optional transient failure recovery policy override |
