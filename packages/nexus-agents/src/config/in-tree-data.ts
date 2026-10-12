@@ -355,7 +355,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       notes:
         'Frontier OpenAI Sol Pro flagship (Issue #7103 / #6625); 1.05M context; models.dev / OpenRouter 2026-09-29',
       pricing: { inputPer1M: 2.0, outputPer1M: 10.0 },
-      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 7 },
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
       maxOutputTokens: 65_536,
       cliName: 'codex',
       cliModelName: 'gpt-6.1-sol-pro',
