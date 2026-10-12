@@ -45,6 +45,24 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
   models: [
     // ----- Anthropic Claude -----
     {
+      id: 'claude-fable-5.1',
+      displayName: 'Claude Fable 5.1',
+      provider: 'anthropic',
+      contextWindow: 1_000_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: ['mcp', 'function_calling', 'computer_use', 'structured_output'],
+      specialFeatures: ['extended_thinking', 'streaming', 'citations', 'context_caching'],
+      notes:
+        'Next-gen frontier Claude Fable (Issue #7104 / #6625); above Fable 5; 1M context; models.dev / OpenRouter 2026-09-01',
+      pricing: { inputPer1M: 10.0, outputPer1M: 50.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 6, cost: 4 },
+      maxOutputTokens: 128_000,
+      cliName: 'claude',
+      cliModelName: 'claude-fable-5.1',
+      unsupportedParameters: ['temperature'],
+    },
+    {
       id: 'claude-fable-5',
       displayName: 'Claude Fable 5',
       provider: 'anthropic',
@@ -62,6 +80,23 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliModelName: 'claude-fable-5',
       // #4176 belt-and-braces: fable→5.0 regex fallback already rejects temperature.
       unsupportedParameters: ['temperature'],
+    },
+    {
+      id: 'claude-opus-5.5',
+      displayName: 'Claude Opus 5.5',
+      provider: 'anthropic',
+      contextWindow: 1_000_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: ['mcp', 'function_calling', 'computer_use', 'structured_output'],
+      specialFeatures: ['extended_thinking', 'streaming', 'citations', 'context_caching'],
+      notes:
+        'Next-gen flagship Claude Opus (Issue #7100 / #6625); 1M context; models.dev / OpenRouter 2026-09-22',
+      pricing: { inputPer1M: 4.0, outputPer1M: 20.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 9, speed: 6, cost: 6 },
+      maxOutputTokens: 128_000,
+      cliName: 'claude',
+      cliModelName: 'claude-opus-5.5',
     },
     {
       id: 'claude-opus',
@@ -297,6 +332,33 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 128_000,
       cliName: 'codex',
       cliModelName: 'gpt-6.1-sol',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
+    },
+    {
+      id: 'gpt-6.1-sol-pro',
+      displayName: 'GPT-6.1 Sol Pro',
+      provider: 'openai',
+      contextWindow: 1_050_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'audio', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'file_operations',
+        'structured_output',
+        'apply_patch',
+        'computer_use',
+      ],
+      specialFeatures: ['streaming', 'citations'],
+      notes:
+        'Frontier OpenAI Sol Pro flagship (Issue #7103 / #6625); 1.05M context; models.dev / OpenRouter 2026-09-29',
+      pricing: { inputPer1M: 2.0, outputPer1M: 10.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 7 },
+      maxOutputTokens: 65_536,
+      cliName: 'codex',
+      cliModelName: 'gpt-6.1-sol-pro',
       unsupportedParameters: ['temperature'],
       maxTokensParam: 'max_completion_tokens',
     },
@@ -556,6 +618,23 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
 
     // ── OpenRouter Free Models (via OpenAI-compatible API) ────────
+    {
+      id: 'nemotron-3.5-lightning',
+      displayName: 'NVIDIA Nemotron 3.5 Lightning',
+      provider: 'openrouter',
+      contextWindow: 262_144,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'code'],
+      toolCapabilities: ['function_calling', 'structured_output'],
+      specialFeatures: ['streaming'],
+      notes:
+        'Fast agentic reasoning MoE (Issue #7102 / #6625); 262K context; models.dev / OpenRouter 2026-08-11',
+      pricing: { inputPer1M: 0.07, outputPer1M: 0.2 },
+      qualityScores: { reasoning: 8, codeGeneration: 8, speed: 9, cost: 10 },
+      maxOutputTokens: 32_768,
+      cliName: 'opencode',
+      cliModelName: 'nvidia/nemotron-3.5-lightning',
+    },
     {
       id: 'openrouter-nemotron-super',
       displayName: 'NVIDIA Nemotron 3 Super 120B (free)',

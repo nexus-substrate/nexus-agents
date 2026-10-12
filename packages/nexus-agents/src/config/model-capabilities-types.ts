@@ -107,7 +107,9 @@ export const DEFAULT_ROUTING_CONFIDENCE = 0.85;
  * until then.
  */
 export const MODEL_IDS = [
+  'claude-fable-5.1',
   'claude-fable-5',
+  'claude-opus-5.5',
   'claude-opus',
   'claude-sonnet',
   'claude-haiku',
@@ -117,6 +119,7 @@ export const MODEL_IDS = [
   'gemini-3.5-flash',
   'gemini-3-flash',
   'gemini-flash',
+  'gpt-6.1-sol-pro',
   'gpt-6.1-sol',
   'gpt-5.6-sol',
   'gpt-5.5',
@@ -126,6 +129,7 @@ export const MODEL_IDS = [
   'opencode-default',
   'opencode-custom-opus',
   'opencode-custom-sonnet',
+  'nemotron-3.5-lightning',
   'openrouter-nemotron-super',
   'openrouter-qwen-coder',
 ] as const;
