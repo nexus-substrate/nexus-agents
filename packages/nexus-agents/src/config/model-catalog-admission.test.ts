@@ -62,6 +62,8 @@ describe('validateCatalogFetchUrl (SSRF protection)', () => {
       'https://[::1]/api.json',
       'https://[fc00::1]/api.json',
       'https://[fe80::1]/api.json',
+      'https://[::ffff:127.0.0.1]/api.json',
+      'https://[::ffff:10.0.0.1]/api.json',
     ];
     for (const ip of ips) {
       const result = validateCatalogFetchUrl(ip);
@@ -172,6 +174,7 @@ describe('filterAdmittedModels (Admission policy & Provider × Model)', () => {
           name: 'Claude Opus',
           family: 'claude-opus',
           cost: { input: 15, output: 75 },
+          modalities: { input: ['text', 'image'], output: ['text'] },
         },
         'claude-unadmitted-experimental': {
           id: 'claude-unadmitted-experimental',
@@ -211,11 +214,20 @@ describe('filterAdmittedModels (Admission policy & Provider × Model)', () => {
     expect(admittedIds).not.toContain('claude-unadmitted-experimental');
     expect(admittedIds).not.toContain('obscure/random-model-999');
 
+    // Preserves input and output modalities
+    const opusEntry = admittedEntries.find((e) => e.id === 'claude-opus');
+    expect(opusEntry?.inputModalities).toEqual(['text', 'image']);
+    expect(opusEntry?.outputModalities).toEqual(['text']);
+
     // Records provider x model coverage: both anthropic and openrouter serve claude-opus
     const opusGateways = gatewaysByModel['claude-opus'];
     expect(opusGateways).toBeDefined();
     expect(opusGateways).toContain('anthropic');
     expect(opusGateways).toContain('openrouter');
+
+    // Unadmitted models never leak into gatewaysByModel
+    expect(gatewaysByModel['obscure/random-model-999']).toBeUndefined();
+    expect(gatewaysByModel['claude-unadmitted-experimental']).toBeUndefined();
   });
 
   it('admits models covered by configured gateway serves() predicates', () => {

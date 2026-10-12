@@ -17,7 +17,12 @@ import type { ModelEntry } from './model-registry.js';
 import type { ModelVendor } from './model-identity.js';
 import type { ModelsDevSnapshot } from './models-dev-snapshot-loader.js';
 
-export const MAX_CATALOG_PAYLOAD_BYTES = 25 * 1024 * 1024; // 25 MiB
+export {
+  MAX_CATALOG_PAYLOAD_BYTES,
+  validateCatalogFetchUrl,
+  validateCatalogPayloadSize,
+  type UrlValidationResult,
+} from './model-catalog-ssrf.js';
 
 export const PROVIDER_TO_VENDOR: Readonly<Record<string, ModelVendor>> = {
   anthropic: 'anthropic',
@@ -96,79 +101,15 @@ export interface CatalogAdmissionPolicy {
   readonly includeInTreePins?: boolean;
 }
 
-export type UrlValidationResult =
-  { readonly ok: true; readonly url: URL } | { readonly ok: false; readonly error: string };
+const KNOWN_INPUT_MODS = new Set(['text', 'image', 'audio', 'video', 'pdf']);
+const KNOWN_OUTPUT_MODS = new Set(['text', 'audio', 'image']);
 
-const PRIVATE_IPV4_PATTERNS = [
-  /^127\./, // Loopback
-  /^10\./, // Class A
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // Class B
-  /^192\.168\./, // Class C
-  /^169\.254\./, // Link-local
-  /^0\./, // Current network
-];
-
-function isPrivateIpHost(hostname: string): boolean {
-  if (hostname === 'localhost') return true;
-  for (const pattern of PRIVATE_IPV4_PATTERNS) {
-    if (pattern.test(hostname)) return true;
-  }
-  const cleanIpv6 = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  return (
-    cleanIpv6 === '::1' ||
-    cleanIpv6.startsWith('fc') ||
-    cleanIpv6.startsWith('fd') ||
-    cleanIpv6.startsWith('fe80')
-  );
+function isKnownInput(m: string): m is 'text' | 'image' | 'audio' | 'video' | 'pdf' {
+  return KNOWN_INPUT_MODS.has(m);
 }
 
-/** Validate URL for catalog fetching against SSRF risks. */
-export function validateCatalogFetchUrl(
-  inputUrl: string,
-  allowedHostnames: readonly string[] = ['models.dev']
-): UrlValidationResult {
-  let parsed: URL;
-  try {
-    parsed = new URL(inputUrl);
-  } catch {
-    return { ok: false, error: 'Invalid URL string' };
-  }
-
-  if (parsed.protocol !== 'https:') {
-    return { ok: false, error: `Refused non-HTTPS protocol: ${parsed.protocol}` };
-  }
-
-  if (parsed.username !== '' || parsed.password !== '') {
-    return { ok: false, error: 'Refused embedded credentials in catalog URL' };
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (isPrivateIpHost(hostname)) {
-    return { ok: false, error: `Refused private or loopback IP host: ${hostname}` };
-  }
-
-  const isAllowedHost = allowedHostnames.some(
-    (allowed) => hostname === allowed || hostname.endsWith(`.${allowed}`)
-  );
-  if (!isAllowedHost) {
-    return { ok: false, error: `Hostname ${hostname} is not in the allowed host list` };
-  }
-
-  return { ok: true, url: parsed };
-}
-
-/** Validate catalog payload size against payload ceiling. */
-export function validateCatalogPayloadSize(
-  byteLength: number,
-  maxBytes: number = MAX_CATALOG_PAYLOAD_BYTES
-): { readonly ok: true } | { readonly ok: false; readonly error: string } {
-  if (byteLength > maxBytes) {
-    return {
-      ok: false,
-      error: `Oversized catalog payload: ${String(byteLength)} bytes exceeds maximum ${String(maxBytes)} bytes`,
-    };
-  }
-  return { ok: true };
+function isKnownOutput(m: string): m is 'text' | 'audio' | 'image' {
+  return KNOWN_OUTPUT_MODS.has(m);
 }
 
 /** Strictly parse and validate raw models.dev catalog JSON. */
@@ -237,9 +178,17 @@ function attachCapabilityMetadata(entry: Record<string, unknown>, raw: ModelsDev
   }
 }
 
+function attachModalityMetadata(entry: Record<string, unknown>, raw: ModelsDevRecord): void {
+  const inputMods = (raw.modalities?.input ?? []).filter(isKnownInput);
+  if (inputMods.length > 0) entry['inputModalities'] = inputMods;
+  const outputMods = (raw.modalities?.output ?? []).filter(isKnownOutput);
+  if (outputMods.length > 0) entry['outputModalities'] = outputMods;
+}
+
 function attachOptionalMetadata(entry: Record<string, unknown>, raw: ModelsDevRecord): void {
   attachScalarMetadata(entry, raw);
   attachCapabilityMetadata(entry, raw);
+  attachModalityMetadata(entry, raw);
 }
 
 function mapCatalogRecord(
@@ -347,23 +296,28 @@ export function filterAdmittedModels(
   readonly gatewaysByModel: Readonly<Record<string, readonly string[]>>;
 } {
   const { rawGateways, canonicalGateways, rawEntriesByModelId } = indexCatalogProviders(catalog);
-  const gatewaysByModel = buildGatewaysByModel(rawGateways, canonicalGateways);
+  const fullGatewaysByModel = buildGatewaysByModel(rawGateways, canonicalGateways);
   const effectivePins = buildEffectivePins(policy);
   const effectivePolicy: CatalogAdmissionPolicy = { ...policy, explicitPins: effectivePins };
 
   const admittedEntries: ModelEntry[] = [];
-  for (const id of Object.keys(gatewaysByModel).sort()) {
-    const gateways = gatewaysByModel[id] ?? [];
+  const admittedGatewaysByModel: Record<string, readonly string[]> = {};
+
+  for (const id of Object.keys(fullGatewaysByModel).sort()) {
+    const gateways = fullGatewaysByModel[id] ?? [];
     if (!resolveModelAdmission(id, gateways, effectivePolicy)) continue;
 
     const mapped = rawEntriesByModelId.get(id);
     if (mapped !== undefined) {
       const entry = mapCatalogRecord(mapped.raw, mapped.vendor, gateways);
-      if (entry !== null) admittedEntries.push(entry);
+      if (entry !== null) {
+        admittedEntries.push(entry);
+        admittedGatewaysByModel[id] = gateways;
+      }
     }
   }
 
-  return { admittedEntries, gatewaysByModel };
+  return { admittedEntries, gatewaysByModel: admittedGatewaysByModel };
 }
 
 function resolveCanonicalServers(

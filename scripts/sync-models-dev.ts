@@ -66,6 +66,15 @@ function parseRawCatalogJson(text: string): ModelsDevCatalog {
   return parsed.data;
 }
 
+async function readBoundedResponseBytes(response: Response): Promise<Uint8Array> {
+  const arrayBuffer = await response.arrayBuffer();
+  const sizeCheck = validateCatalogPayloadSize(arrayBuffer.byteLength);
+  if (!sizeCheck.ok) {
+    throw new Error(`Catalog fetch rejected: ${sizeCheck.error}`);
+  }
+  return new Uint8Array(arrayBuffer);
+}
+
 /**
  * Fetch catalog with SSRF check, payload size limit, and strict schema validation.
  */
@@ -86,14 +95,8 @@ export async function fetchCatalog(url: string = MODELS_DEV_URL): Promise<Models
     }
 
     checkContentLengthHeader(response.headers);
-
-    const arrayBuffer = await response.arrayBuffer();
-    const sizeCheck = validateCatalogPayloadSize(arrayBuffer.byteLength);
-    if (!sizeCheck.ok) {
-      throw new Error(`Catalog fetch rejected: ${sizeCheck.error}`);
-    }
-
-    const text = new TextDecoder().decode(arrayBuffer);
+    const bytes = await readBoundedResponseBytes(response);
+    const text = new TextDecoder().decode(bytes);
     return parseRawCatalogJson(text);
   } finally {
     clearTimeout(timer);
