@@ -17,6 +17,35 @@ import type { NoQuorumPolicy } from './cli/vote-types.js';
 import type { VoteRecordPrBinding } from './audit/vote-record.js';
 import type { CommandResult } from './core/command-result.js';
 import { VOTE_TIMEOUTS } from './config/timeouts.js';
+import type { CustomApiConfig } from './cli/command-options-types.js';
+
+export type {
+  CustomApiConfig,
+  BaseCliOptions,
+  SetupCliOptions,
+  VoteCliOptions,
+  OrchestrateCliOptions,
+  DoctorCliOptions,
+  InitCliOptions,
+  ImprovementReviewCliOptions,
+  RemediationReviewCliOptions,
+  LearningMetricsCliOptions,
+  ModelDriftCliOptions,
+  HealthCliOptions,
+  JobsCliOptions,
+  CommandArgs,
+  SetupCommandArgs,
+  VoteCommandArgs,
+  OrchestrateCommandArgs,
+  DoctorCommandArgs,
+  InitCommandArgs,
+  ImprovementReviewCommandArgs,
+  RemediationReviewCommandArgs,
+  LearningMetricsCommandArgs,
+  ModelDriftCommandArgs,
+  HealthCommandArgs,
+  JobsCommandArgs,
+} from './cli/command-options-types.js';
 
 // Re-export help text from extracted module for backward compatibility
 export { HELP_TEXT } from './cli-help-text.js';
@@ -257,7 +286,8 @@ export interface ParsedCliArgs {
     skipGemini: boolean;
     skipCodex: boolean;
     scope?: 'user' | 'project';
-    // Setup --custom-api for OpenAI-compatible gateway configuration (#2124)
+    // Setup --custom-api for OpenAI-compatible gateway configuration (#2124, #5129)
+    customApiConfig?: CustomApiConfig;
     customApi?: string;
     customApiKey?: string;
     customModel?: string;

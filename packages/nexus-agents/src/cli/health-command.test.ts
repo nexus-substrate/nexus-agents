@@ -13,7 +13,7 @@ vi.mock('../mcp/tools/weather-report.js', () => ({
 
 import { collectHealth, handleHealthCommand } from './health-command.js';
 import { generateWeatherReport } from '../mcp/tools/weather-report.js';
-import type { ParsedCliArgs } from '../cli-types.js';
+import type { ParsedCliArgs, HealthCommandArgs } from '../cli-types.js';
 
 const mockGenerate = vi.mocked(generateWeatherReport);
 
@@ -124,7 +124,7 @@ describe('health-command', () => {
   describe('handleHealthCommand', () => {
     it('renders table output by default with per-CLI stats', () => {
       const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-      const args = { command: 'health', options: {} } as unknown as ParsedCliArgs;
+      const args: HealthCommandArgs = { command: 'health', options: {}, positionals: [] };
 
       handleHealthCommand(args);
 
@@ -139,10 +139,11 @@ describe('health-command', () => {
 
     it('renders JSON when format=json', () => {
       const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-      const args = {
+      const args: HealthCommandArgs = {
         command: 'health',
         options: { format: 'json' },
-      } as unknown as ParsedCliArgs;
+        positionals: [],
+      };
 
       handleHealthCommand(args);
 
@@ -156,7 +157,7 @@ describe('health-command', () => {
     it('shows no-data message when swarm health unavailable', () => {
       mockGenerate.mockReturnValue(makeBaseReport());
       const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-      const args = { command: 'health', options: {} } as unknown as ParsedCliArgs;
+      const args: HealthCommandArgs = { command: 'health', options: {}, positionals: [] };
 
       handleHealthCommand(args);
 

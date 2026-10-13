@@ -11,22 +11,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { handleJobsCommand } from './jobs-command.js';
-import { EXIT_CODES, type ParsedCliArgs } from '../cli-types.js';
+import { EXIT_CODES, type JobsCommandArgs } from '../cli-types.js';
 import { nexusDataPath, resetNexusDataDirCache } from '../config/nexus-data-dir.js';
 import { JOB_RECORD_RETENTION_MS, readJobResult } from '../mcp/jobs/job-result-store.js';
 
 /**
- * Minimal `ParsedCliArgs` for the handler — the same cast-based fixture shape
- * `cli-commands-handlers-complex.test.ts` uses; the handler reads only
- * `subcommand` and `options.dryRun`.
+ * Typed `JobsCommandArgs` for the handler (#5129 Item 2) — reads `subcommand`
+ * and `options.dryRun` without casting.
  */
-function args(subcommand: string | undefined, dryRun = false): ParsedCliArgs {
+function args(subcommand: string | undefined, dryRun = false): JobsCommandArgs {
   return {
     command: 'jobs',
     ...(subcommand === undefined ? {} : { subcommand }),
     options: { dryRun },
     positionals: ['jobs', ...(subcommand === undefined ? [] : [subcommand])],
-  } as unknown as ParsedCliArgs;
+  };
 }
 
 describe('handleJobsCommand (#6224)', () => {
