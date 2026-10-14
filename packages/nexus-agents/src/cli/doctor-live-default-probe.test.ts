@@ -10,10 +10,10 @@
  * @module cli/doctor-live-default-probe.test
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { detectCliBinaryMock } = vi.hoisted(() => ({
-  detectCliBinaryMock: vi.fn(() => ({ installed: false, version: undefined })),
+  detectCliBinaryMock: vi.fn<(name: string) => { installed: boolean; version: undefined }>(),
 }));
 
 vi.mock('./setup-cli-detection.js', () => ({ detectCliBinary: detectCliBinaryMock }));
@@ -23,6 +23,11 @@ import type { ServesProbeTarget } from './cli-readiness.js';
 import type { CliName } from '../cli-adapters/types.js';
 
 describe('runLiveReadiness default installed probe (#4840)', () => {
+  beforeEach(() => {
+    detectCliBinaryMock.mockReset();
+    detectCliBinaryMock.mockReturnValue({ installed: false, version: undefined });
+  });
+
   it('consults the real binary detector when no override is supplied', async () => {
     const adapters = new Map<CliName, ServesProbeTarget>([
       ['claude', { execute: () => Promise.resolve({ ok: true as const, value: { text: 'ok' } }) }],
@@ -35,5 +40,40 @@ describe('runLiveReadiness default installed probe (#4840)', () => {
 
     expect(detectCliBinaryMock).toHaveBeenCalledWith('claude');
     expect(report[0]?.levels.installed.status).toBe('failed');
+  });
+
+  it('reaches the Gemini serving probe when only its canonical agy binary is installed', async () => {
+    detectCliBinaryMock.mockImplementation((name: string) => ({
+      installed: name === 'agy',
+      version: undefined,
+    }));
+    const execute = vi.fn(() => Promise.resolve({ ok: true as const, value: { text: 'ok' } }));
+    const report = await runLiveReadiness({
+      adapters: new Map([['gemini', { execute }]]),
+      authStates: new Map([['gemini', 'authenticated']]),
+    });
+
+    expect(detectCliBinaryMock).toHaveBeenCalledWith('agy');
+    expect(report[0]?.cli).toBe('gemini');
+    expect(report[0]?.levels.installed.status).toBe('verified');
+    expect(report[0]?.levels.serves.status).toBe('verified');
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it('does not bill a Gemini serving probe when only the retired gemini binary is installed', async () => {
+    detectCliBinaryMock.mockImplementation((name: string) => ({
+      installed: name === 'gemini',
+      version: undefined,
+    }));
+    const execute = vi.fn(() => Promise.resolve({ ok: true as const, value: { text: 'ok' } }));
+    const report = await runLiveReadiness({
+      adapters: new Map([['gemini', { execute }]]),
+      authStates: new Map([['gemini', 'authenticated']]),
+    });
+
+    expect(report[0]?.levels.installed.status).toBe('failed');
+    expect(report[0]?.levels.authenticated.status).toBe('not-attempted');
+    expect(report[0]?.levels.serves.status).toBe('not-attempted');
+    expect(execute).not.toHaveBeenCalled();
   });
 });
