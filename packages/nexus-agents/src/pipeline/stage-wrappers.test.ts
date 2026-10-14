@@ -31,7 +31,8 @@ vi.mock('../context/context-retriever.js', () => ({
 }));
 // #6162: the audit analyze stage reaches GitHub; fail it deterministically so
 // the stage.failed path is exercised without the network.
-vi.mock('../mcp/tools/repo-analyze.js', () => ({
+vi.mock('../mcp/tools/repo-analyze.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../mcp/tools/repo-analyze.js')>()),
   analyzeGitHubRepo: (): Promise<never> => Promise.reject(new Error('offline fixture')),
 }));
 
