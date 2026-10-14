@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 11.6.2
+
+### Patch Changes
+
+- [#7419](https://github.com/nexus-substrate/nexus-agents/pull/7419) [`da0169f`](https://github.com/nexus-substrate/nexus-agents/commit/da0169f0465af417892ac19a67ac517441de1a7f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve the canonical no-quorum cause in pipeline plan-vote diagnostics. Fully returned panels with insufficient absolute approvals now report the approval-floor cause instead of a missing voter. Missing, errored and unverifiable seats retain their own causes, with redacted bounded output and neutral wording when unavailable. Decisions, quorum thresholds and error-void recording remain unchanged.
+
+- [#7421](https://github.com/nexus-substrate/nexus-agents/pull/7421) [`51aea93`](https://github.com/nexus-substrate/nexus-agents/commit/51aea93420ca29eb65aaf36de08f6ae5dc5ce70c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve complete bounded inline caller tasks and worker scopes in AoRchestra prompts while retaining the generic 500-character description cap and existing read-only permissions. Preflight all required scopes and expanded model-context budgets before any worker completion; unsupported input makes zero completion calls. Record raw and sanitized text lengths and digests separately, mark transformed raw-byte review coverage PARTIAL, and leave model inspection unmeasured. File-path metadata remains metadata and does not prove native reader availability.
+
+  Count observable worker adapter completion attempts across retries and keep pre-call refusals separate from requested dispatch intent. Provider and native process calls remain unmeasured; unavailable token estimates do not masquerade as measured timeouts.
+
+- [#7420](https://github.com/nexus-substrate/nexus-agents/pull/7420) [`65a80b1`](https://github.com/nexus-substrate/nexus-agents/commit/65a80b15be31f2004cfaa8fed2e980923afb4771) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Deliver complete bounded UTF-8 development plans to every voter and bind the durable proposal hash to the supplied content. Expanded plans require known capacity from the exact assigned models; invalid or oversized plans and unsupported quick-mode proposals fail before prompt completions. Preserve the public MCP summary limit and informational research bound.
+
+- [#7415](https://github.com/nexus-substrate/nexus-agents/pull/7415) [`32f30ae`](https://github.com/nexus-substrate/nexus-agents/commit/32f30ae06fdbc1432af85131ae90e461cc52605f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Use the Gemini adapter's canonical `agy` executable for live doctor installation checks, so installed adapters reach serving probes and retired `gemini` binaries cannot report readiness.
+
 ## 11.6.1
 
 ### Patch Changes
