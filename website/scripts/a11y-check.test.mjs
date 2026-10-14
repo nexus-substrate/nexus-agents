@@ -47,6 +47,37 @@ test('sitemap discovery follows nested indexes and names the empty case', async 
   await assert.rejects(collectSitemapUrls(server.origin), /outside.*base/i);
 });
 
+test('sitemap discovery decodes XML entities once and preserves reachable literal entity paths', async (t) => {
+  const root = await fixture(t);
+  const cases = [
+    { xml: 'plain', directory: 'plain', path: 'plain' },
+    { xml: 'amp&amp;', directory: 'amp&', path: 'amp&' },
+    { xml: 'lt&lt;', directory: 'lt<', path: 'lt%3C' },
+    { xml: 'gt&gt;', directory: 'gt>', path: 'gt%3E' },
+    { xml: 'quot&quot;', directory: 'quot"', path: 'quot%22' },
+    { xml: 'apos&apos;', directory: "apos'", path: "apos'" },
+    { xml: 'literal&amp;lt;', directory: 'literal&lt;', path: 'literal&lt;' },
+    { xml: 'literal&amp;gt;', directory: 'literal&gt;', path: 'literal&gt;' },
+    { xml: 'literal&amp;quot;', directory: 'literal&quot;', path: 'literal&quot;' },
+    { xml: 'literal&amp;apos;', directory: 'literal&apos;', path: 'literal&apos;' },
+    { xml: 'literal&amp;amp;', directory: 'literal&amp;', path: 'literal&amp;' },
+  ];
+  for (const entry of cases) {
+    await mkdir(join(root, entry.directory));
+    await writeFile(join(root, entry.directory, 'index.html'), accessiblePage);
+  }
+  await writeFile(join(root, 'sitemap-0.xml'), `<urlset>${cases.map((entry) =>
+    `<url><loc>https://example.test/nexus-agents/${entry.xml}/</loc></url>`).join('')}</urlset>`);
+  const server = await startStaticServer(root);
+  t.after(() => server.close());
+  const urls = await collectSitemapUrls(server.origin);
+  assert.deepEqual(urls, cases.map((entry) => `${server.origin}/nexus-agents/${entry.path}/`).sort());
+  for (const url of urls) {
+    assert.equal(new URL(url).origin, server.origin);
+    assert.equal((await fetch(url)).status, 200, url);
+  }
+});
+
 test('real axe audits every URL and 404 in both themes, failing on unlabeled controls', async (t) => {
   const root = await fixture(t, { inaccessible: true });
   const report = await auditSite(root);
