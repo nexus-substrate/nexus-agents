@@ -97,7 +97,7 @@ export interface WorkerResult {
   readonly error?: string;
   /** Discriminated error type — set only when status is 'error'. */
   readonly errorType?: WorkerErrorType;
-  /** CLI that actually executed this worker (for accurate outcome recording, #1527). */
+  /** Adapter CLI identity on a successful response; native/provider execution is unmeasured. */
   readonly resolvedCli?: string;
   /** Triage action taken on failure (#1506). Set only when status is 'error'. */
   readonly triageAction?: TriageAction;
@@ -114,6 +114,12 @@ export interface WorkerResult {
    * an unavailable alternate CLI) or the executor does not state it.
    */
   readonly accessMode?: ExecutionAccessMode;
+  /** Requested CLI when an adapter attempt failed; not proof of native startup. */
+  readonly requestedCli?: string;
+  /** Requested mode when an adapter attempt failed; enforcement is unmeasured. */
+  readonly requestedAccessMode?: ExecutionAccessMode;
+  /** Measured inline prompt delivery, independent of model-review completeness (#7413). */
+  readonly promptEvidence?: import('./compose-worker-prompt.js').WorkerPromptEvidence;
 }
 
 /**

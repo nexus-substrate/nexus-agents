@@ -27,8 +27,20 @@ import {
   type QualityGateFn,
   type ExitTriggerConfig,
 } from '../../orchestration/aorchestra/index.js';
-import { composeWorkerPrompt } from '../../orchestration/aorchestra/compose-worker-prompt.js';
-import type { WorkerLearning } from '../../orchestration/aorchestra/compose-worker-prompt.js';
+import {
+  prepareWorkerPrompt,
+  measureWorkerPromptInput,
+} from '../../orchestration/aorchestra/compose-worker-prompt.js';
+import {
+  checkExpandedPromptBudget,
+  isExpandedWorkerInput,
+  preflightWorkerPrompts,
+  WORKER_OUTPUT_RESERVE_TOKENS,
+} from '../../orchestration/aorchestra/worker-input-preflight.js';
+import type {
+  WorkerLearning,
+  WorkerPromptEvidence,
+} from '../../orchestration/aorchestra/compose-worker-prompt.js';
 import {
   synthesizeResults,
   type SynthesisSource,
@@ -67,7 +79,7 @@ import { isGatewayModelAdapter } from '../../adapters/openai-compat-adapter.js';
 const logger = createLogger({ component: 'orchestrate-dispatch' });
 
 /** Maximum tokens for individual worker LLM responses. */
-const WORKER_MAX_TOKENS = 4000;
+const WORKER_MAX_TOKENS = WORKER_OUTPUT_RESERVE_TOKENS;
 
 /**
  * The access mode every worker call runs under (#6792). A worker's output is
@@ -93,7 +105,7 @@ function resolveMaxWorkerCalls(option?: number): number {
 // Types
 // ============================================================================
 
-/** Default maximum model calls per orchestrate invocation (#1321). */
+/** Default initial worker-slot and later-phase eligibility budget (#1321). */
 const DEFAULT_MAX_WORKER_CALLS = 6;
 
 /** Default exit triggers: skip refinement when all workers done + no retriable errors (#1509). */
@@ -111,7 +123,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly maxConcurrency?: number;
   /** Opt-in: run synthesis LLM call to merge worker outputs (Issue #1309) */
   readonly synthesize?: boolean;
-  /** Max model calls per invocation (default: 6, env: NEXUS_WORKER_MAX_CALLS) (#1321) */
+  /** Initial worker-slot and later-phase eligibility budget (default: 6).
+   * Retries can exceed it; it is not a hard provider-call cap (#1321). */
   readonly maxWorkerCalls?: number;
   /** Opt-in: re-dispatch failed workers if quality is low and budget allows (Issue #1389) */
   readonly refine?: boolean;
@@ -167,10 +180,13 @@ export interface WorkerDispatchResult {
   readonly conflicts: readonly WorkerConflict[];
   /** Unified response from synthesis (only present when synthesize=true) */
   readonly synthesis?: string;
-  /** Total model calls made during this dispatch (#1321). */
+  /** Observed worker adapter.complete attempts plus successful synthesis calls.
+   * Adapter-internal/provider retries and billable/native calls are unmeasured. */
   readonly totalModelCalls: number;
   /** True when a refinement pass was applied (Issue #1389). */
   readonly refined?: boolean;
+  /** No completion was attempted because required inline delivery could not be supported. */
+  readonly unsupportedReason?: string;
 }
 
 // ============================================================================
@@ -213,16 +229,24 @@ function resolveWorkerAdapter(
   return { adapter: resolved, cliName };
 }
 
+/** Private aggregate of observable adapter invocations, independent of result slots. */
+interface WorkerCallCounter {
+  attempts: number;
+}
+
 interface WorkerExecutorConfig {
+  readonly callCounter: WorkerCallCounter;
   readonly taskDescription: string;
   readonly modelAdapter: IModelAdapter;
   readonly logger: ILogger;
   readonly learnings?: readonly WorkerLearning[];
   readonly perWorkerRouting?: boolean;
+  readonly resolvedAdapters?: ReadonlyMap<AgentPlanEntry, ResolvedWorkerAdapter>;
 }
 
 /** Options for executeOnAdapter — bundled to stay within max-params (5). */
 interface AdapterExecutionOptions {
+  readonly callCounter: WorkerCallCounter;
   readonly entry: AgentPlanEntry;
   readonly adapter: IModelAdapter;
   readonly cliName: string;
@@ -238,39 +262,61 @@ interface AdapterExecutionOptions {
   readonly signal?: AbortSignal | undefined;
 }
 
-/**
- * Execute a worker task on a specific adapter, returning a WorkerResult that
- * states the access mode its call was dispatched under (#6792), on success
- * and on failure alike.
- */
+/** Per-invocation evidence prevents concurrent attempts from labeling a refused worker. */
 async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerResult> {
-  logger.debug('Worker call access mode', {
-    role: opts.entry.role,
-    accessMode: WORKER_ACCESS_MODE,
+  const invocation: WorkerCallCounter = { attempts: 0 };
+  const result = await completeOnAdapter(opts, () => {
+    invocation.attempts++;
+    opts.callCounter.attempts++;
   });
-  return { ...(await completeOnAdapter(opts)), accessMode: WORKER_ACCESS_MODE };
+  if (invocation.attempts === 0) return result;
+  if (result.status === 'success') return { ...result, accessMode: WORKER_ACCESS_MODE };
+  return { ...result, requestedCli: opts.cliName, requestedAccessMode: WORKER_ACCESS_MODE };
 }
 
 /** {@link executeOnAdapter}'s model call under {@link WORKER_ACCESS_MODE}. */
-async function completeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerResult> {
-  const {
-    entry,
-    adapter,
-    cliName,
-    taskDescription,
-    learnings,
-    priorWaveResults,
-    workerStartMs,
-    signal,
-  } = opts;
-  const prompt = composeWorkerPrompt({
-    entry,
+async function prepareAdapterPrompt(
+  opts: AdapterExecutionOptions
+): Promise<ReturnType<typeof prepareWorkerPrompt>> {
+  const prepared = prepareWorkerPrompt({
+    entry: opts.entry,
     accessMode: WORKER_ACCESS_MODE,
-    taskDescription,
-    ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
-    ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
+    taskDescription: opts.taskDescription,
+    ...(opts.priorWaveResults !== undefined ? { priorWaveResults: opts.priorWaveResults } : {}),
+    ...(opts.learnings !== undefined && opts.learnings.length > 0
+      ? { learnings: opts.learnings }
+      : {}),
   });
+  if (!prepared.ok) return prepared;
+  if (isExpandedWorkerInput(opts.taskDescription, opts.entry.subTask)) {
+    const reason = await checkExpandedPromptBudget(
+      opts.adapter,
+      prepared.value.prompt,
+      0,
+      opts.signal
+    );
+    if (reason !== undefined) return { ok: false, error: reason };
+  }
+  return prepared;
+}
+
+async function completeOnAdapter(
+  opts: AdapterExecutionOptions,
+  onAttempt: () => void
+): Promise<WorkerResult> {
+  const { entry, adapter, cliName, workerStartMs, signal } = opts;
+  const prepared = await prepareAdapterPrompt(opts);
+  if (!prepared.ok)
+    return {
+      ...makeErrorResult(entry, workerStartMs, prepared.error),
+      promptEvidence: {
+        ...measureWorkerPromptInput({ entry, taskDescription: opts.taskDescription }),
+        rawInputCoverage: 'UNSUPPORTED',
+      },
+    };
+  const { prompt, evidence } = prepared.value;
   try {
+    onAttempt();
     const result = await adapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: WORKER_MAX_TOKENS,
@@ -278,25 +324,42 @@ async function completeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerR
       ...(signal !== undefined ? { signal } : {}),
     });
     if (!result.ok) {
-      return makeErrorResult(entry, workerStartMs, result.error.message, cliName);
+      return {
+        ...makeErrorResult(entry, workerStartMs, result.error.message),
+        promptEvidence: { ...evidence, rawInputCoverage: 'UNSUPPORTED' },
+      };
     }
-    const textContent = result.value.content
-      .filter((b: ContentBlock): b is ContentBlock & { type: 'text' } => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n');
     return {
       role: entry.role,
       subTask: entry.subTask,
-      output: textContent,
+      output: deliveredWorkerOutput(result.value.content, evidence),
       status: 'success',
       durationMs: getTimeProvider().now() - workerStartMs,
       resolvedCli: cliName,
       served: servedCallOf(adapter, result.value),
+      promptEvidence: evidence,
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return makeErrorResult(entry, workerStartMs, message, cliName);
+    return {
+      ...makeErrorResult(entry, workerStartMs, message),
+      promptEvidence: { ...evidence, rawInputCoverage: 'UNSUPPORTED' },
+    };
   }
+}
+
+/** Preserve the partial raw-byte coverage notice in the actual returned text. */
+function deliveredWorkerOutput(
+  content: readonly ContentBlock[],
+  evidence: WorkerPromptEvidence
+): string {
+  const text = content
+    .filter((b): b is ContentBlock & { type: 'text' } => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+  return evidence.rawInputCoverage === 'PARTIAL'
+    ? `[INLINE INPUT COVERAGE: PARTIAL; raw-byte QA unsupported; model inspection unmeasured]\n${text}`
+    : text;
 }
 
 /**
@@ -328,14 +391,17 @@ function createWorkerExecutor(
   const effectiveFallbackCli = modelAdapter.providerId;
   return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
-    const { adapter, cliName } = resolveWorkerAdapter(
-      entry,
-      modelAdapter,
-      effectiveFallbackCli,
-      perWorkerRouting === true,
-      logger
-    );
+    const { adapter, cliName } =
+      config.resolvedAdapters?.get(entry) ??
+      resolveWorkerAdapter(
+        entry,
+        modelAdapter,
+        effectiveFallbackCli,
+        perWorkerRouting === true,
+        logger
+      );
     return executeOnAdapter({
+      callCounter: config.callCounter,
       entry,
       adapter,
       cliName,
@@ -346,6 +412,23 @@ function createWorkerExecutor(
       ...(signal !== undefined ? { signal } : {}),
     });
   };
+}
+
+function refusedInlineDispatch(
+  entries: readonly AgentPlanEntry[],
+  taskDescription: string,
+  reason: string,
+  startMs: number,
+  log: ILogger
+): WorkerDispatchResult {
+  const refused = entries.map((entry) => ({
+    ...makeErrorResult(entry, startMs, reason),
+    promptEvidence: {
+      ...measureWorkerPromptInput({ entry, taskDescription }),
+      rawInputCoverage: 'UNSUPPORTED' as const,
+    },
+  }));
+  return { ...buildDispatchResult(refused, startMs, log, 0), unsupportedReason: reason };
 }
 
 /** Resolve an alt adapter from the fallback chain for a worker role (#1535). */
@@ -388,6 +471,7 @@ function createAltWorkerExecutor(
     }
     log.info('Using alt CLI for retry', { role: entry.role, primaryCli, altCli: alt.cliName });
     return executeOnAdapter({
+      callCounter: config.callCounter,
       entry,
       adapter: alt.adapter,
       cliName: alt.cliName,
@@ -461,6 +545,7 @@ function saveFailedCheckpoints(
 
 /** Intermediate state passed between dispatch phases. */
 interface DispatchPhaseState {
+  readonly callCounter: WorkerCallCounter;
   results: WorkerResult[];
   totalModelCalls: number;
   synthesisValue?: string;
@@ -553,7 +638,9 @@ async function runRefinementPhase(
     remaining,
     checkpoints: checkpointCount,
   });
+  const attemptsBeforeRefinement = state.callCounter.attempts;
   const executor = createWorkerExecutor({
+    callCounter: state.callCounter,
     taskDescription: options.taskDescription,
     modelAdapter: options.modelAdapter,
     logger: options.logger,
@@ -569,7 +656,7 @@ async function runRefinementPhase(
     executionId: `refine-${Date.now().toString(36)}`,
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
-  state.totalModelCalls += refinedResults.length;
+  state.totalModelCalls += state.callCounter.attempts - attemptsBeforeRefinement;
   state.results = mergeRefinedResults(state.results, refinedResults);
   return true;
 }
@@ -578,7 +665,7 @@ async function runRefinementPhase(
 // Public API
 // ============================================================================
 
-/** Enforce call budget and log dispatch start. Returns budget-limited entries. */
+/** Limit initial worker reservations and log dispatch start. */
 function prepareBudgetedEntries(
   plan: AgentPlan,
   maxCalls: number,
@@ -601,11 +688,63 @@ function prepareBudgetedEntries(
   return entries;
 }
 
+function createPinnedExecutorConfig(
+  options: WorkerDispatchExecutionOptions,
+  entries: readonly AgentPlanEntry[]
+): WorkerExecutorConfig {
+  const { taskDescription, modelAdapter, logger } = options;
+  const resolvedAdapters = new Map(
+    entries.map((entry) => [
+      entry,
+      resolveWorkerAdapter(
+        entry,
+        modelAdapter,
+        modelAdapter.providerId,
+        options.perWorkerRouting === true,
+        logger
+      ),
+    ])
+  );
+  return {
+    callCounter: { attempts: 0 },
+    taskDescription,
+    modelAdapter,
+    logger,
+    resolvedAdapters,
+    ...(options.learnings !== undefined ? { learnings: options.learnings } : {}),
+    ...(options.perWorkerRouting !== undefined
+      ? { perWorkerRouting: options.perWorkerRouting }
+      : {}),
+  };
+}
+
+async function prepareDispatchPreflight(options: WorkerDispatchExecutionOptions): Promise<{
+  readonly pinnedConfig: WorkerExecutorConfig;
+  readonly unsupported: string | undefined;
+}> {
+  const entries = options.agentPlan.entries;
+  const pinnedConfig = createPinnedExecutorConfig(options, entries);
+  const unsupported = await preflightWorkerPrompts({
+    entries,
+    taskDescription: options.taskDescription,
+    adapters: new Map(
+      [...(pinnedConfig.resolvedAdapters ?? [])].map(([entry, resolved]) => [
+        entry,
+        resolved.adapter,
+      ])
+    ),
+    learnings: options.learnings,
+    signal: options.signal,
+  });
+  throwIfDispatchCancelled(options.signal, 'inline preflight');
+  return { pinnedConfig, unsupported };
+}
+
 /** Execute worker dispatch for an agent plan. */
 export async function executeWorkerDispatch(
   options: WorkerDispatchExecutionOptions
 ): Promise<WorkerDispatchResult> {
-  const { agentPlan, taskDescription, modelAdapter, logger, maxConcurrency } = options;
+  const { agentPlan, taskDescription, logger, maxConcurrency } = options;
   const maxCalls = resolveMaxWorkerCalls(options.maxWorkerCalls);
   const startMs = getTimeProvider().now();
   const entries = prepareBudgetedEntries(agentPlan, maxCalls, logger);
@@ -613,19 +752,14 @@ export async function executeWorkerDispatch(
   // Quality gate: opt-in via the qualityGate option (#1502); absent means ungated (#6589).
   const qualityGate = options.qualityGate === false ? undefined : options.qualityGate;
 
-  const executorConfig: WorkerExecutorConfig = {
-    taskDescription,
-    modelAdapter,
-    logger,
-    ...(options.learnings !== undefined ? { learnings: options.learnings } : {}),
-    ...(options.perWorkerRouting !== undefined
-      ? { perWorkerRouting: options.perWorkerRouting }
-      : {}),
-  };
+  const { pinnedConfig, unsupported } = await prepareDispatchPreflight(options);
+  if (unsupported !== undefined) {
+    return refusedInlineDispatch(entries, taskDescription, unsupported, startMs, logger);
+  }
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
-    executeWorker: createWorkerExecutor(executorConfig),
-    altExecuteWorker: createAltWorkerExecutor(executorConfig),
+    executeWorker: createWorkerExecutor(pinnedConfig),
+    altExecuteWorker: createAltWorkerExecutor(pinnedConfig),
     eventBus: getPipelineEventBus(),
     executionId: `dispatch-${Date.now().toString(36)}`,
     ...(qualityGate !== undefined ? { qualityGate } : {}),
@@ -637,7 +771,8 @@ export async function executeWorkerDispatch(
 
   const state: DispatchPhaseState = {
     results: [...results],
-    totalModelCalls: results.filter((r) => r.status === 'success' || r.error !== undefined).length,
+    callCounter: pinnedConfig.callCounter,
+    totalModelCalls: pinnedConfig.callCounter.attempts,
     checkpoints,
   };
 
@@ -687,8 +822,9 @@ function buildOptionalFields(r: WorkerResult): Record<string, unknown> {
   if (r.triageAction !== undefined) fields['triageAction'] = r.triageAction;
   // #6792: the mode the worker's call asked for. A model adapter's response
   // does not report what it enforced, so the row says "requested", not more.
-  if (r.accessMode !== undefined) {
-    fields['qualitySignals'] = [accessModeSignal(r.accessMode, 'requested')];
+  const requestedMode = r.accessMode ?? r.requestedAccessMode;
+  if (requestedMode !== undefined) {
+    fields['qualitySignals'] = [accessModeSignal(requestedMode, 'requested')];
   }
   return fields;
 }
