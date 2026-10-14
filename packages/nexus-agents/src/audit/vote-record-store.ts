@@ -53,7 +53,7 @@ import { assertNotSourceCheckoutWrite } from './source-checkout-guard.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
 import { getNexusDataDir, nexusDataPath } from '../config/nexus-data-dir.js';
-import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
+import { voterModelEvidence } from './voter-model-provenance.js';
 
 import type {
   VoteRecord,
@@ -68,13 +68,11 @@ import type { RedactionRecord } from './redaction-record.js';
 import { RedactionRecordSchema } from './redaction-record.js';
 import {
   VoteRecordSchema,
-  VoterSummarySchema,
   clipForRecord,
   computeVoteRecordHash,
   hashProposal,
   projectPrBinding,
   projectRetriedFrom,
-  projectSeatFallback,
 } from './vote-record.js';
 
 /**
@@ -168,31 +166,6 @@ function outcomeToDecision(
   return 'no_quorum';
 }
 
-/**
- * The seat's `servedModel` entry field (#6967): the model the adapter REPORTED
- * serving, copied only when it reported one — never `model`, the one requested.
- * A value the reader would reject is omitted with a warning: written, it would
- * fail the append-time schema check and lose the whole record.
- */
-function servedModelField(
-  v: AgentVoteResult,
-  logger: ILogger | undefined
-): { servedModel?: string } {
-  if (v.servedModel === undefined) return {};
-  if (VoterSummarySchema.shape.servedModel.safeParse(v.servedModel).success) {
-    return { servedModel: v.servedModel };
-  }
-  // The type says string, but the value is adapter output: a null or other
-  // non-string must not throw here and lose the record it was meant to protect.
-  const reported: unknown = v.servedModel;
-  const warnTo = logger ?? createLogger({ component: 'vote-record-store' });
-  warnTo.warn('Omitting a reported servedModel the vote-record reader would reject', {
-    role: v.role,
-    ...(typeof reported === 'string' ? { length: reported.length } : { type: typeof reported }),
-  });
-  return {};
-}
-
 /** Supplementary voter evidence, absent unless the seat actually supplied it. */
 function voterEvidence(
   v: AgentVoteResult
@@ -236,9 +209,6 @@ function toVoterSummaries(
       // recovered seat since it was written and nothing read it, so the record
       // said "7 of 7 answered cleanly" for a panel that needed a retry.
       ...(v.retried === true ? { retried: true as const } : {}),
-      // #6091: the seat's model, so the ledger can say which model answered.
-      // The pending-detection placeholder is not a model and is not recorded.
-      ...(v.model !== undefined && v.model !== UNRESOLVED_MODEL_ID ? { model: v.model } : {}),
       // #6094: a seat that answered without reading the artifact. Its
       // `decision` is abstain; this flag is what keeps it from reading as a
       // considered abstention.
@@ -247,14 +217,13 @@ function toVoterSummaries(
       // the fallback the live result stated. `model` alone showed seven
       // identical values on a panel assigned three ways and could not say so.
       ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
-      ...(v.fallback !== undefined ? { fallback: projectSeatFallback(v.fallback) } : {}),
       // #6246: what the per-role retry replaced, so the record names both the
       // seat's final state and the state it recovered from. The live retry
       // already clipped and de-controlled the cause; this is projection only.
       ...(v.retriedFrom !== undefined ? { retriedFrom: projectRetriedFrom(v.retriedFrom) } : {}),
-      // #6967: the hash projection (`VOTER_SUMMARY_KEYS`) appends it last, so
-      // its position here does not change any hash.
-      ...servedModelField(v, logger),
+      // #7333: configured request, raw report, resolved and assigned identities.
+      // New projection keys are appended, preserving every historical hash.
+      ...voterModelEvidence(v, logger),
       ...voterEvidence(v),
     });
   }
@@ -336,7 +305,7 @@ export interface BuildVoteRecordInput {
    * NOT verified — retained so a reviewer can see the write-time tip (#3927).
    */
   readonly previousHash?: string | undefined;
-  /** Receives the warning for an omitted invalid `servedModel` (#6967). */
+  /** Receives warnings for omitted invalid optional model provenance. */
   readonly logger?: ILogger | undefined;
 }
 

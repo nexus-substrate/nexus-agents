@@ -271,14 +271,17 @@ export const VoterSummarySchema = z
      */
     retried: z.literal(true).optional(),
     /**
-     * Registry model id the seat ran on (#6091, schema 1.8).
+     * Configured/requested adapter model id (#6091, schema 1.8).
+     * This retains its historical meaning and the governor's configured-family
+     * credit ceiling. Use resolvedModel for reported identity with request fallback;
+     * servedModel alone records whether the transport reported a serving identity.
      *
      * The seat→model mapping is round-robin over the available CLIs plus
      * `NEXUS_VOTER_MODEL_<ROLE>` pins, so it is not recoverable from the
      * ledger after the fact: 1844 voter entries across 278 records carried no
      * model. "When an agent's output becomes evidence, its provenance travels
      * with it" — a tally that says `scope_steward: approve` without saying
-     * which model answered cannot be audited for the #6068 failure class.
+     * which adapter model was configured cannot be audited for the #6068 failure class.
      * Present-only, on the `retried` rule; absent when the result carried no
      * model or only the pending-detection placeholder.
      */
@@ -302,8 +305,8 @@ export const VoterSummarySchema = z
     unverifiable: z.literal(true).optional(),
     /**
      * The CLI the round-robin or `NEXUS_VOTER_MODEL_<ROLE>` pin chose for the
-     * seat, as a bare name (#6115, schema 1.9). `model` says where a seat
-     * answered; this says where it was MEANT to. Three consecutive 7-seat
+     * seat, as a bare name (#6115, schema 1.9). `model` names the final adapter
+     * request; this names the primary CLI assignment. Three consecutive 7-seat
      * ratification panels on 2026-09-13 answered every seat on one gemini
      * model while the assignment was three claude, two codex, two gemini,
      * and the 1.8 record showed seven identical `model` values with nothing
@@ -385,6 +388,14 @@ export const VoterSummarySchema = z
       .array(z.string().max(MAX_VOTER_CONDITION_CHARS))
       .max(MAX_VOTER_CONDITIONS)
       .optional(),
+    /**
+     * Canonically qualified serving report, falling back to the requested model
+     * when no usable report exists (#7333). Untruncated and present only when
+     * resolvable; it does not independently prove a transport measurement.
+     */
+    resolvedModel: z.string().min(1).max(200).optional(),
+    /** Primary assigned model, when known, including across fallback (#7333). */
+    assignedModel: z.string().min(1).max(200).optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -470,6 +481,9 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   'optionReask',
   // 1.15 (#7134): conditions join the commitment opening; never folded on 1.15.
   'conditions',
+  // #7333: present-only provenance; never reinterpret model or historical hashes.
+  'resolvedModel',
+  'assignedModel',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
 /** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
