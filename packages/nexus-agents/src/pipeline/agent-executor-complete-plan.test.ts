@@ -229,7 +229,8 @@ describe('complete pipeline plan delivery (#7411)', () => {
       expect(user?.content).toContain(plan);
       expect(request.accessMode).toBe('read-only-analysis');
       expect(request.maxTokens).toBe(4000);
-      // Canonical reserve covers actual role/system/scaffold UTF-8 plus output.
+      // Canonical reserve covers supplied scaffolding and the requested output budget.
+      // This checks request metadata, not native CLI enforcement of that cap.
       const nonPlanBytes =
         requestTextBytes(request) - Buffer.byteLength(buildVoteProposal(plan, research), 'utf8');
       expect(nonPlanBytes / 3.5 + (request.maxTokens ?? 0)).toBeLessThan(
