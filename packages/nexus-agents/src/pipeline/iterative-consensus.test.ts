@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runIterativeConsensus } from './iterative-consensus.js';
 import type { VoteResult } from './dev-pipeline.js';
+import { createLogger } from '../core/index.js';
 import { FAKE_OPENAI_KEY } from '../testing/test-secrets.js';
 
 // Mock consensus-vote module
@@ -249,6 +250,51 @@ describe('runIterativeConsensus', () => {
       expect(result.vote.reason).not.toContain('a voice was missing');
     }
     expect(revisePlan).not.toHaveBeenCalled();
+  });
+
+  it('logs an unmet approval floor without claiming a missing voice during retry (#7412)', async () => {
+    const cause =
+      'no_quorum: absolute quorum not met (4/5 approvals over 7-voter panel, absolute_quorum)';
+    const returned = makeVotingResult('approved', 4, 2);
+    mockExecuteVoting.mockResolvedValue({
+      ...returned,
+      decision: 'no_quorum',
+      decisionReason: cause,
+      result: {
+        ...returned.result,
+        voteCounts: { approve: 4, reject: 2, abstain: 1, error: 0 },
+      },
+      votes: [...returned.votes, { vote: { decision: 'abstain', reasoning: 'Uncertain' } }],
+    });
+    const logger = createLogger({ component: 'iterative-consensus-cause-test' });
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const revisePlan = vi.fn();
+
+    const result = await runIterativeConsensus('The same plan', revisePlan, {
+      maxNoQuorumRetries: 1,
+      logger,
+    });
+
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      'Vote reached no_quorum — re-running the same plan (bounded)',
+      { attempt: 1, maxNoQuorumRetries: 1, reason: cause }
+    );
+    expect(mockExecuteVoting).toHaveBeenCalledTimes(2);
+    expect(mockExecuteVoting).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ proposal: 'The same plan' }),
+      expect.anything()
+    );
+    expect(mockExecuteVoting).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ proposal: 'The same plan' }),
+      expect.anything()
+    );
+    expect(revisePlan).not.toHaveBeenCalled();
+    expect(result.vote.kind).toBe('no_quorum');
+    if (result.vote.kind !== 'no_quorum') throw new Error('Expected a no-quorum result');
+    expect(result.vote.reason).toContain(cause);
+    expect(result.vote.reason).not.toContain('missing voice');
   });
 
   it('redacts and bounds the causal diagnostic before returning it (#7412)', async () => {

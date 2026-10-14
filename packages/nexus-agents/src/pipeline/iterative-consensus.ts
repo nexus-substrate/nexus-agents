@@ -106,7 +106,7 @@ async function voteWithQuorumRecovery(state: ConsensusLoopState): Promise<VoteRe
     () => executeSingleVote(state.plan, state.config, state.log),
     state.maxNoQuorumRetries,
     (attempt, vote) => {
-      state.log.warn('Vote reached no_quorum — re-running the missing voice (bounded)', {
+      state.log.warn('Vote reached no_quorum — re-running the same plan (bounded)', {
         attempt,
         maxNoQuorumRetries: state.maxNoQuorumRetries,
         reason: vote.reason,
