@@ -72,8 +72,8 @@ export interface ComposeWorkerPromptInput {
 const composer = new PromptComposer();
 
 /** Bounds owned by AoRchestra, never selected by caller context metadata (#7413). */
-export const MAX_WORKER_TASK_CHARS = 50_000;
-export const MAX_WORKER_SUBTASK_CHARS = 5_000;
+const MAX_WORKER_TASK_CHARS = 50_000;
+const MAX_WORKER_SUBTASK_CHARS = 5_000;
 export const MAX_WORKER_PROMPT_BYTES = 200_000;
 
 /** Exact text transformation measurements; no raw text is retained in evidence. */
