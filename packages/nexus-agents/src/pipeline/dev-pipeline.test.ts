@@ -29,6 +29,7 @@ import type { AuditLogConfig } from '../audit/audit-types.js';
 import { createVoteStage } from './agent-executor-vote.js';
 import { createBudgetGuard } from './budget-guard.js';
 import { buildStructuredOutput } from '../mcp/tools/dev-pipeline-output.js';
+import { FAKE_ANTHROPIC_KEY, FAKE_PASSWORD } from '../testing/test-secrets.js';
 import * as consensusVote from '../mcp/tools/consensus-vote.js';
 
 // #3472: the dev-pipeline now recalls prior research from the registry on every
@@ -904,6 +905,90 @@ describe('runDevPipeline — quality gate (#3356)', () => {
     expect(result.securityRan).toBe(false);
     // Implementations still happened before the gate.
     expect(result.tasks).toHaveLength(2);
+  });
+
+  it.each([
+    {
+      feedback: 'Typecheck failed: missing return type',
+      expected: 'Typecheck failed: missing return type',
+    },
+    { feedback: 'Lint failed: unused declaration', expected: 'Lint failed: unused declaration' },
+    { feedback: '', expected: 'no diagnostic feedback' },
+    { feedback: ' \n ', expected: 'no diagnostic feedback' },
+  ])(
+    'preserves a measured blocking diagnostic in the result and MCP detail (#7407): $expected',
+    async ({ feedback, expected }) => {
+      const stages = createMockStages({
+        qualityGate: vi.fn().mockResolvedValue({ passed: false, verdict: 'fail', feedback }),
+      });
+      const result = await runDevPipeline('Build feature X', stages, {
+        ...trustedGateOptions,
+        qualityGate: 'blocking',
+      });
+      expect(stages.qualityGate).toHaveBeenCalledTimes(1);
+      expect(stages.securityScan).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        completed: false,
+        securityRan: false,
+        taskStatus: 'all_done',
+      });
+      expect(result.warnings).toEqual([`Quality gate failed: ${expected}`]);
+      expect(buildStructuredOutput(result, false)['warnings']).toEqual(result.warnings);
+    }
+  );
+
+  it('preserves workspace warnings after the measured blocking cause (#7407)', async () => {
+    const stages = createMockStages({
+      qualityGate: vi
+        .fn()
+        .mockResolvedValue({ passed: false, verdict: 'fail', feedback: 'lint failed' }),
+      implementWorkspace: { accessMode: 'workspace-edit', directory: process.cwd() },
+    });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...trustedGateOptions,
+      qualityGate: 'blocking',
+    });
+    expect(result.warnings).toHaveLength(2);
+    expect(result.warnings?.[0]).toBe('Quality gate failed: lint failed');
+    expect(result.warnings?.[1]).toContain('executed by the gate');
+    expect(stages.securityScan).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes measured gate feedback before adding it to structured warnings (#7407)', async () => {
+    const stages = createMockStages({
+      qualityGate: vi.fn().mockResolvedValue({
+        passed: false,
+        verdict: 'fail',
+        feedback: `Lint failed: ${FAKE_ANTHROPIC_KEY}; ${FAKE_PASSWORD}`,
+      }),
+    });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...trustedGateOptions,
+      qualityGate: 'blocking',
+    });
+    const detail = JSON.stringify(buildStructuredOutput(result, false));
+    expect(detail).toContain('Quality gate failed: Lint failed:');
+    expect(detail).toContain('[REDACTED');
+    expect(detail).not.toContain(FAKE_ANTHROPIC_KEY);
+    expect(detail).not.toContain(FAKE_PASSWORD.split('=')[1]);
+  });
+
+  it('retains the unmeasured skip diagnostic without relabeling it as a failed gate (#7407)', async () => {
+    const stages = createMockStages({
+      qualityGate: vi.fn().mockResolvedValue({
+        passed: false,
+        verdict: 'skip',
+        feedback: 'Gate unmeasured: dependency install unavailable',
+      }),
+    });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...trustedGateOptions,
+      qualityGate: 'blocking',
+    });
+    expect(result.warnings).toEqual(['Gate unmeasured: dependency install unavailable']);
+    expect(result.completed).toBe(false);
+    expect(stages.qualityGate).toHaveBeenCalledTimes(1);
+    expect(stages.securityScan).not.toHaveBeenCalled();
   });
 
   it("proceeds to ship on a green gate in 'blocking' mode", async () => {

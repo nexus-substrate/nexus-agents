@@ -1247,6 +1247,68 @@ describe('run_dev_pipeline failure text (#7297)', () => {
     expect(result._meta?.[ERROR_ENVELOPE_META_KEY]).toMatchObject({ detail: { securityNote } });
   });
 
+  it('keeps the measured quality cause visible before long task feedback without changing metadata (#7407)', async () => {
+    const reason = 'Quality gate failed: Typecheck failed with TS2322';
+    const pipelineResult: DevPipelineResult = {
+      ...PIPELINE_RESULT,
+      completed: false,
+      securityPassed: false,
+      securityRan: false,
+      taskStatus: 'partial',
+      warnings: [reason, 'Existing workspace warning'],
+      tasks: [
+        {
+          id: 'long',
+          title: 'Long feedback',
+          description: '',
+          assignedTo: 'coder',
+          status: 'rejected',
+          feedback: 'x'.repeat(3000),
+        },
+      ],
+    };
+    runDevPipelineMock.mockResolvedValueOnce(pipelineResult as never);
+    const result = await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+    const text = result.content[0]!.text;
+    expect(result.isError).toBe(true);
+    expect(text).toContain(reason);
+    expect(text.length).toBeLessThanOrEqual(2000);
+    expect(text).toMatch(/…$/);
+    expect(result._meta).toEqual({
+      [ERROR_ENVELOPE_META_KEY]: {
+        errorCategory: 'business',
+        isRetryable: false,
+        message: 'Pipeline did not complete: tasks partial',
+        detail: buildStructuredOutput(pipelineResult, false),
+      },
+    });
+  });
+
+  it('keeps task feedback ahead of unrelated long warnings (#7407 control)', async () => {
+    const pipelineResult: DevPipelineResult = {
+      ...PIPELINE_RESULT,
+      completed: false,
+      securityPassed: false,
+      securityRan: false,
+      taskStatus: 'partial',
+      warnings: ['Advisory workspace warning: ' + 'x'.repeat(3000)],
+      tasks: [
+        {
+          id: 'review',
+          title: 'Review',
+          description: '',
+          assignedTo: 'coder',
+          status: 'rejected',
+          feedback: 'Missing task error handling',
+        },
+      ],
+    };
+    runDevPipelineMock.mockResolvedValueOnce(pipelineResult as never);
+    const result = await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+    expect(result.content[0]?.text).toContain('Missing task error handling');
+    expect(result.content[0]?.text.length).toBeLessThanOrEqual(2000);
+  });
+
   it('retains the fallback when no failure evidence was produced', async () => {
     runDevPipelineMock.mockResolvedValueOnce({
       ...PIPELINE_RESULT,

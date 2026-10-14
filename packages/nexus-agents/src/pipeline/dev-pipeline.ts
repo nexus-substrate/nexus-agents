@@ -64,6 +64,7 @@ import { DEFAULT_MAX_NO_QUORUM_RETRIES, retryNoQuorumVote } from './iterative-co
 import { allOf, anyOf } from '../utils/verdict-aggregation.js';
 import { DevPipelineCancelledError, guardDevPipelineStages } from './dev-pipeline-deadlines.js';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
+import { sanitizeErrorDetails } from '../security/output-sanitizer.js';
 import type { SecurityBaselineComparison, SecurityBaseline } from './security-gate.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
@@ -999,13 +1000,13 @@ async function runImplSecurityPhase(
   // security finding. In 'advisory' mode we record feedback but never fail.
   const qaGate = await runQualityGateStage(stages, qualityGateMode);
   // #6792: the gate ran scripts where the implement expert edited files.
-  const implRan = implResult.totalIterations > 0;
   const warnings =
     qaGate.verdict === 'skip'
       ? { warnings: [qaGate.feedback] }
-      : gateWorkspaceWarningFields(stages, qualityGateMode, implRan);
+      : gateWorkspaceWarningFields(stages, qualityGateMode, implResult.totalIterations > 0);
   if (qualityGateMode === 'blocking' && !qaGate.passed) {
-    return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, ...warnings });
+    const stopWarnings = { warnings: blockingQualityGateWarnings(qaGate, warnings.warnings) };
+    return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, ...stopWarnings });
   }
 
   const security = await runSecurityScanStage(stages, sid);
@@ -1031,6 +1032,19 @@ function securityNoteField(security: Awaited<ReturnType<DevPipelineStages['secur
 } {
   if (security.verdict !== 'pass') return { securityNote: security.feedback };
   return security.coverageNote !== undefined ? { securityNote: security.coverageNote } : {};
+}
+
+/** Preserve the measured stop cause through the existing result/display warning channel (#7407). */
+function blockingQualityGateWarnings(
+  gate: QualityGateOutcome,
+  warnings: readonly string[] | undefined
+): readonly string[] {
+  if (gate.verdict === 'skip') return warnings ?? [];
+  const diagnostic = sanitizeErrorDetails(gate.feedback).trim();
+  return [
+    `Quality gate failed: ${diagnostic === '' ? 'no diagnostic feedback' : diagnostic}`,
+    ...(warnings ?? []),
+  ];
 }
 
 /** A stopped gate has no security verdict because no scan ran. */

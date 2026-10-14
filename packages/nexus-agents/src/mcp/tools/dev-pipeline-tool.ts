@@ -425,10 +425,23 @@ function describeFailureText(result: DevPipelineResult): string {
   if (!result.securityPassed && result.securityNote !== undefined) {
     details.push(`security: ${result.securityNote}`);
   }
-  details.push(...unfinishedTaskFeedback(result.tasks));
-  for (const warning of result.warnings ?? []) details.push(`warning: ${warning}`);
+  details.push(...taskAndWarningDetails(result));
   const text = [describeIncompleteRun(result), ...details].join('\n');
   return truncateText(text, 2000, '…');
+}
+
+/** Promote the blocking gate cause while retaining other task/warning order (#7407). */
+function taskAndWarningDetails(result: Pick<DevPipelineResult, 'tasks' | 'warnings'>): string[] {
+  const details: string[] = [];
+  const warnings = result.warnings ?? [];
+  const gateWarning = warnings.findIndex((warning) => warning.startsWith('Quality gate failed:'));
+  const gateCause = gateWarning < 0 ? undefined : warnings[gateWarning];
+  if (gateCause !== undefined) details.push(`warning: ${gateCause}`);
+  details.push(...unfinishedTaskFeedback(result.tasks));
+  for (const [index, warning] of warnings.entries()) {
+    if (index !== gateWarning) details.push(`warning: ${warning}`);
+  }
+  return details;
 }
 
 /** Feedback belongs to unfinished tasks, not successful tasks. */
