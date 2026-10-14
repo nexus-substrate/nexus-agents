@@ -510,6 +510,33 @@ describe('governed model-family mapping', () => {
 });
 
 describe('gateway-served model diversity reader (#6951)', () => {
+  it.each([undefined, 'unknownvendor/configured'])(
+    'never grants family credit from resolved/assigned provenance when model is %j',
+    (model) => {
+      const panel = record('provenance-ceiling', ['claude-opus-4-6', model]);
+      const voters = panel.voters.map((v, i) =>
+        i === 1
+          ? { ...v, servedModel: 'gpt-5', resolvedModel: 'gpt-5', assignedModel: 'gemini-2.5-pro' }
+          : v
+      );
+      expect(
+        diversity.modelDiversityEvidence([rehash(panel, { voters })], undefined).failures
+      ).toMatchObject([{ kind: 'insufficient-model-diversity', families: ['anthropic'] }]);
+    }
+  );
+
+  it('does not grant credit from reporting identities on an entirely unconfigured panel', () => {
+    const panel = record('unconfigured-provenance', []);
+    const voters = panel.voters.map((v, i) => ({
+      ...v,
+      resolvedModel: MODELS[i],
+      assignedModel: MODELS[i],
+    }));
+    expect(
+      diversity.modelDiversityEvidence([rehash(panel, { voters })], undefined).failures
+    ).toMatchObject([{ kind: 'unmeasured-model-diversity', families: [] }]);
+  });
+
   it('reads a signed gateway-substituted panel and applies the serving family floor', () => {
     const panel = record('substituted', ['gemini-2.5-pro', 'claude-opus-4-6']);
     const voters = panel.voters.map((v, i) =>
