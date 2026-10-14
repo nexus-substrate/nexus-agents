@@ -1,5 +1,35 @@
 # nexus-agents
 
+## 11.6.1
+
+### Patch Changes
+
+- [#7403](https://github.com/nexus-substrate/nexus-agents/pull/7403) [`9aa6e70`](https://github.com/nexus-substrate/nexus-agents/commit/9aa6e704448784cc6e955eb8a9e87f2507e96a14) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve validated canonical tool error messages in failed async jobs when no root error or message is present. Keep root-only failure classification, structured adapter details, and job-store credential redaction unchanged.
+
+- [#7408](https://github.com/nexus-substrate/nexus-agents/pull/7408) [`ba77dd4`](https://github.com/nexus-substrate/nexus-agents/commit/ba77dd484c3f4974ac5865440e7d27c720e54caf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Select audit repositories only from explicit GitHub URLs, `repo:` / `repository:` markers, or concise `owner/repo` and `audit owner/repo` tasks. Absolute and explicitly relative artifact paths, filenames, and unrelated prose no longer become GitHub repository targets. Invalid, absent, or conflicting targets fail the audit before remote calls and prevent a successful report.
+
+  For longer audit tasks, name the repository with a marker or GitHub URL. Explicit dotted repository names remain supported; the existing bare `.git` and URL normalization behavior is preserved.
+
+- [#7396](https://github.com/nexus-substrate/nexus-agents/pull/7396) [`e0a443d`](https://github.com/nexus-substrate/nexus-agents/commit/e0a443dc0ef262031ef6eda0e43baf00cae5198b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the data-directory initializer's runtime import cycle through doctor and the MCP server by sharing its unchanged directory inventory from the canonical data-directory resolver. Preserve the doctor and CLI exports, directory paths, and permissions.
+
+- [#7409](https://github.com/nexus-substrate/nexus-agents/pull/7409) [`f8435c4`](https://github.com/nexus-substrate/nexus-agents/commit/f8435c4f6be23772d3bf28f1ca298bef9feed0bb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve sanitized blocking quality-gate diagnostics in existing pipeline warnings and caller-facing failure text. Keep the failure cause ahead of long task feedback while retaining workspace warnings, unmeasured skip behavior, display bounds, and canonical metadata messages.
+
+- [#7384](https://github.com/nexus-substrate/nexus-agents/pull/7384) [`d28b8c0`](https://github.com/nexus-substrate/nexus-agents/commit/d28b8c023070bf820a5e8c594fcfd704b031d589) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(mcp): collapse duplicate MCP `ToolResult` declarations onto the canonical type ([#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129) item 6)
+
+  The wildcard half of [#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129) item 6 (`export *` in `core/index.ts`) landed in [#6474](https://github.com/nexus-substrate/nexus-agents/issues/6474). This finishes the duplicate half for the MCP layer:
+
+  - `mcp/middleware/middleware-chain.ts` and `mcp/tools/delegate-to-model-types.ts` now re-export `ToolResult` from `mcp/tools/tool-result.ts` instead of redeclaring it. The delegate copy had already drifted: it lacked the `_meta` error-envelope field ([#2649](https://github.com/nexus-substrate/nexus-agents/issues/2649)). Adopting the canonical type only adds that optional field.
+  - New `tool-result-identity.test.ts` checks type identity at compile time and that no second declaration exists in the source. It was mutation-checked: putting the drifted copy back fails both vitest and `tsc`.
+  - Two definitions stay separate on purpose because they are different shapes in different layers: `core/types/tool.ts` (`ToolContentBlock[]`, `structuredContent: unknown`; `core/` cannot import `mcp/`) and `agents/agentic/types.ts` (the agent loop's `{ content: string }` tool_result).
+
+- [#7369](https://github.com/nexus-substrate/nexus-agents/pull/7369) [`619a51a`](https://github.com/nexus-substrate/nexus-agents/commit/619a51a4767e2a5d8b8a9a5092770c86b13c1f42) Thanks [@github-actions](https://github.com/apps/github-actions)! - Resolve current registry prices when TOPSIS, composite routing, routing audits, quality constraints, and resource cost ranking evaluate CLI defaults. Snapshot refreshes and operator pricing overlays now reach these consumers while bootstrap profiles remain filesystem-free and explicit custom profiles retain their declared prices.
+
+  For cost ceilings with unknown or incomplete token splits, use the higher input/output rate. Complete supplied splits retain their exact rates, including explicitly free components.
+
+- [#7387](https://github.com/nexus-substrate/nexus-agents/pull/7387) [`724731c`](https://github.com/nexus-substrate/nexus-agents/commit/724731c2dfdbb89e705062706682688ed6fb0f24) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update model-provider SDKs, the MCP SDK, native AST parsing and grammar packages, and supporting runtime dependencies to compatible current releases. Keep the native parser and grammar packages aligned.
+
+- [#7397](https://github.com/nexus-substrate/nexus-agents/pull/7397) [`5bafb0d`](https://github.com/nexus-substrate/nexus-agents/commit/5bafb0db7747179686f97d0dc138a08af02114e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist distinct resolved and assigned voter model identities beside the configured/requested `model` and raw adapter-reported `servedModel`. Qualified reports and primary assignments now survive in the authentic vote ledger without truncation; absent reports retain an explicit request fallback rather than claiming a transport measurement. Malformed optional identities are warned and omitted without losing the vote. Historical hashes, commitment versions, and the governor's configured-family credit ceiling remain unchanged.
+
 ## 11.6.0
 
 ### Minor Changes
