@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { TaskRequirements, CapabilityProfile } from './delegate-to-model-types.js';
-import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
+import { MODEL_CAPABILITIES, resolveCapabilityProfile } from './delegate-to-model-types.js';
 import {
   hasKeyword,
   analyzeTask,
@@ -18,6 +18,7 @@ import {
   buildReasons,
   getTradeoff,
   selectModel,
+  buildDelegateOutput,
   errorResult,
   successResult,
   checkRateLimit,
@@ -427,10 +428,14 @@ describe('scoreAllModels billing mode', () => {
     expect([
       'gemini-flash',
       'gemini-3.8-flash',
+      'gemini-3.7-flash',
       'gemini-3.5-flash',
       'gemini-3-flash',
       'claude-haiku',
       'codex-5.1-mini',
+      'gpt-6-luna-pro',
+      'nemotron-3.5-lightning',
+      'nemotron-3.5-content-safety',
     ]).toContain(apiRanked[0]!.name);
   });
 });
@@ -557,5 +562,32 @@ describe('getCliForModel under a manifest overlay (#6866)', () => {
     } finally {
       setDefaultRegistry(undefined);
     }
+  });
+});
+
+describe('selectModel with catalog model hints (#6625)', () => {
+  it('resolves a model_hint for a catalog-admitted model with true context window', () => {
+    const input = {
+      task: 'Analyze long repository code base',
+      model_hint: 'deepseek-v4-flash',
+    };
+    const req = analyzeTask(input.task);
+    const selection = selectModel(input, req);
+    expect(selection.model).toBe('deepseek-v4-flash');
+    expect(selection.reasoning).toContain('deepseek-v4-flash');
+
+    const output = buildDelegateOutput(selection, req);
+    expect(output).not.toBeNull();
+    expect(output?.recommended_model).toBe('deepseek-v4-flash');
+    expect(output?.capabilities.contextWindow).toBe(1_000_000);
+  });
+
+  it('resolves capability profile with in-tree precedence', () => {
+    const opus = resolveCapabilityProfile('claude-opus');
+    expect(opus).toBeDefined();
+    expect(opus?.reasoning).toBe(10);
+
+    const unknown = resolveCapabilityProfile('truly-unknown-nonexistent-model-xyz');
+    expect(unknown).toBeUndefined();
   });
 });

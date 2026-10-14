@@ -29,11 +29,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { loadModelsDevSnapshot } from './models-dev-snapshot-loader.js';
+import { loadModelsDevSnapshot, type ModelsDevSnapshot } from './models-dev-snapshot-loader.js';
 
 let tempDir: string;
 
@@ -114,6 +114,9 @@ describe('snapshot pricing validation (#5328)', () => {
     // all of them would stay green if the real snapshot stopped loading.
     const result = loadModelsDevSnapshot();
     expect(result.status).toBe('loaded');
-    expect(result.entries.filter((e) => e.pricing !== undefined).length).toBeGreaterThan(300);
+    const committed = JSON.parse(readFileSync(result.path, 'utf-8')) as ModelsDevSnapshot;
+    const expected = committed.entries.filter((entry) => entry.pricing !== undefined);
+    expect(expected.length).toBeGreaterThan(0);
+    expect(result.entries.filter((entry) => entry.pricing !== undefined)).toEqual(expected);
   });
 });

@@ -64,7 +64,7 @@ export interface StageResult {
   /** Whether to continue to next stage */
   readonly continuesPipeline: boolean;
   /** Optional early decision (stops pipeline) */
-  readonly decision?: RoutingDecision;
+  readonly decision?: StageRoutingDecision;
 }
 
 /**
@@ -78,9 +78,9 @@ export interface StageError {
 }
 
 /**
- * Final routing decision.
+ * Final routing decision from stage pipeline.
  */
-export interface RoutingDecision {
+export interface StageRoutingDecision {
   /** Selected CLI adapter */
   readonly selectedCli: CliName;
   /** Confidence score (0-1) */
@@ -94,6 +94,12 @@ export interface RoutingDecision {
   /** Execution trace through pipeline */
   readonly trace: readonly StageTrace[];
 }
+
+/**
+ * Legacy alias for `StageRoutingDecision`. Renamed per #5129 to eliminate
+ * namespace collisions with workflow, observer, learning, and context-store routing decisions.
+ */
+export type RoutingDecision = StageRoutingDecision;
 
 /**
  * Outcome for feedback/calibration.
@@ -178,7 +184,7 @@ export interface IRoutingPipeline {
   execute(
     task: string,
     metadata?: Record<string, unknown>
-  ): Promise<Result<RoutingDecision, StageError>>;
+  ): Promise<Result<StageRoutingDecision, StageError>>;
 
   /**
    * Add a stage to the pipeline.

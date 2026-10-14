@@ -21,7 +21,7 @@ import {
   type OrchestrationObserverOptions,
   type TrackedAgent,
   type AgentState,
-  type RoutingDecision,
+  type ObserverRoutingDecision,
   type SessionMetrics,
   type SessionTokenTotals,
   type OrchestrationStats,
@@ -56,7 +56,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
 
   // State tracking
   private readonly agents: Map<string, TrackedAgent> = new Map();
-  private readonly routingHistory: RoutingDecision[] = [];
+  private readonly routingHistory: ObserverRoutingDecision[] = [];
   private readonly sessionMetrics: Map<string, SessionMetrics> = new Map();
   private readonly listeners: Set<OrchestrationObserverListener> = new Set();
 
@@ -371,7 +371,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     return Array.from(this.agents.values());
   }
 
-  getRoutingHistory(limit?: number): readonly RoutingDecision[] {
+  getRoutingHistory(limit?: number): readonly ObserverRoutingDecision[] {
     const maxLimit = limit ?? this.config.maxRoutingHistory;
     return this.routingHistory.slice(-maxLimit);
   }
@@ -416,7 +416,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     };
   }
 
-  recordRoutingDecision(decision: RoutingDecision): void {
+  recordRoutingDecision(decision: ObserverRoutingDecision): void {
     this.routingHistory.push(decision);
 
     if (this.routingHistory.length > this.config.maxRoutingHistory) {

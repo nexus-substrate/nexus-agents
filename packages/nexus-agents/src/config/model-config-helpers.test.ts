@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { getDefaultRegistry } from './model-registry.js';
+import { getDefaultRegistry, peekDefaultRegistry, setDefaultRegistry } from './model-registry.js';
 import { CLI_NAMES } from './model-capabilities-types.js';
 import {
   getModelPricing,
@@ -297,6 +297,17 @@ describe('buildCliCapabilityProfiles', () => {
 });
 
 describe('buildTopsisProfiles', () => {
+  it('builds static fallback profiles without constructing the registry', () => {
+    const previous = peekDefaultRegistry();
+    setDefaultRegistry(undefined);
+    try {
+      expect(buildTopsisProfiles()).toHaveLength(CLI_NAMES.length);
+      expect(peekDefaultRegistry()).toBeUndefined();
+    } finally {
+      setDefaultRegistry(previous);
+    }
+  });
+
   it('returns profiles for all CLIs', () => {
     const profiles = buildTopsisProfiles();
     expect(profiles.length).toBe(CLI_NAMES.length);
@@ -384,20 +395,31 @@ describe('resolveCliCostPer1M', () => {
       e.id === 'gpt-5.5' ? { ...e, pricing: { inputPer1M: 50, outputPer1M: 100 } } : e
     );
     const spy = vi.spyOn(registry, 'allEntries').mockReturnValue(raised);
+    const getEntry = registry.getEntry.bind(registry);
+    const priceSpy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+      const entry = { ...getEntry(id) };
+      if (id === 'gpt-6.1-sol') delete entry.pricing;
+      return entry;
+    });
     try {
       expect(resolveCliCostPer1M('codex')).toEqual({ input: 50, output: 100 });
     } finally {
       spy.mockRestore();
+      priceSpy.mockRestore();
     }
   });
 
   it('maps each CLI to default registry pricing or the unpriced fallback (per-1M)', () => {
-    // claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
-    // codex→unpriced gpt-6.1-sol uses codex's highest known rates, gpt-5.5's
-    // $5/$30 (#6866), never a figure below a priced sibling.
-    expect(resolveCliCostPer1M('claude')).toEqual({ input: 10.0, output: 50.0 });
-    expect(resolveCliCostPer1M('gemini')).toEqual({ input: 2.0, output: 12.0 });
-    expect(resolveCliCostPer1M('codex')).toEqual({ input: 5.0, output: 30.0 });
+    // Snapshot refreshes may price a previously unpriced default. Follow the
+    // canonical registry rather than pinning codex to an obsolete fallback.
+    for (const cli of ['claude', 'gemini', 'codex'] as const) {
+      const pricing = getModelPricing(getDefaultModelForCli(cli));
+      const expected =
+        pricing === undefined
+          ? unpricedCliCostPer1M(cli)
+          : { input: pricing.inputPer1M, output: pricing.outputPer1M };
+      expect(resolveCliCostPer1M(cli), cli).toEqual(expected);
+    }
   });
 
   // #6866 panel (catfish): the unpriced codex default fell back to the static
@@ -417,13 +439,25 @@ describe('resolveCliCostPer1M', () => {
     }
   });
 
-  it('estimates gpt-6.1-sol at no less than priced gpt-5.6-sol', () => {
-    expect(getModelPricing('gpt-6.1-sol')).toBeUndefined();
-    const sol = getModelPricing('gpt-5.6-sol');
-    const est = resolveCliCostPer1M('codex');
-    expect(est.input + est.output).toBeGreaterThanOrEqual(
-      (sol?.inputPer1M ?? Infinity) + (sol?.outputPer1M ?? Infinity)
-    );
+  it('estimates an explicitly unpriced codex default at no less than a priced sibling', () => {
+    const registry = getDefaultRegistry();
+    const getEntry = registry.getEntry.bind(registry);
+    const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+      const entry = { ...getEntry(id) };
+      if (id === 'gpt-6.1-sol') delete entry.pricing;
+      return entry;
+    });
+    try {
+      expect(getModelPricing('gpt-6.1-sol')).toBeUndefined();
+      const sibling = getModelPricing('gpt-5.6-sol');
+      expect(sibling).toBeDefined();
+      const est = resolveCliCostPer1M('codex');
+      expect(est.input + est.output).toBeGreaterThanOrEqual(
+        (sibling?.inputPer1M ?? Infinity) + (sibling?.outputPer1M ?? Infinity)
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('keeps the static codex row at or above every priced codex model', () => {
@@ -473,8 +507,11 @@ describe('resolveCliCostPer1M', () => {
     });
   });
 
-  it('TOPSIS prices an unpriced default exactly as the budget policy does', () => {
-    for (const profile of buildTopsisProfiles()) {
+  it('runtime TOPSIS prices every default exactly as the budget policy does', async () => {
+    const { getDefaultTopsisProfiles } = await import('../cli-adapters/topsis-types.js');
+    const profiles = getDefaultTopsisProfiles();
+    expect(profiles).toHaveLength(CLI_NAMES.length);
+    for (const profile of profiles) {
       const est = resolveCliCostPer1M(profile.cliName);
       expect(profile.costPerMillionInput, profile.cliName).toBe(est.input);
       expect(profile.costPerMillionOutput, profile.cliName).toBe(est.output);
@@ -600,10 +637,10 @@ describe('codex registry entries (#5091)', () => {
       expect(sol.displayName).toBe('GPT-6.1 Sol');
     });
 
-    it('is unpriced and labels its carried-over capabilities', () => {
+    it('uses registry pricing while labeling its carried-over capabilities', () => {
       const sol = codexEntry('gpt-6.1-sol');
       const previous = codexEntry('gpt-5.6-sol');
-      expect(sol.pricing).toBeUndefined();
+      expect(sol.pricing).toEqual(getModelPricing('gpt-6.1-sol'));
       expect(sol.notes).toContain('CARRIED-OVER');
       expect(sol.contextWindow).toBe(previous.contextWindow);
       expect(sol.maxOutputTokens).toBe(previous.maxOutputTokens);
@@ -729,5 +766,70 @@ describe('drift model registry entries (#7100, #7102, #7103, #7104 / #6625)', ()
       'nemotron-3.5-lightning'
     );
     expect(findInTreeByCli('opencode').map((e) => e.id)).toContain('nemotron-3.5-lightning');
+  });
+});
+
+// ============================================================================
+// Frontier models registry proposals (#7374, #7375, #7376, #7377, #7378 / #6625)
+// ============================================================================
+
+describe('frontier models registry entries (#7374, #7375, #7376, #7377, #7378 / #6625)', () => {
+  it('resolves metadata, pricing, and context window for claude-opus-5 (#7374)', () => {
+    expect(getModelDisplayName('claude-opus-5')).toBe('Claude Opus 5');
+    expect(getModelContextWindow('claude-opus-5')).toBe(1_000_000);
+    expect(getModelMaxOutput('claude-opus-5')).toBe(128_000);
+    expect(getModelPricing('claude-opus-5')).toEqual({ inputPer1M: 5.0, outputPer1M: 25.0 });
+    expect(getCliModelName('claude-opus-5')).toBe('claude-opus-5');
+    expect(findCanonicalModel('claude', 'claude-opus-5')?.id).toBe('claude-opus-5');
+    expect(findInTreeByCli('claude').map((e) => e.id)).toContain('claude-opus-5');
+  });
+
+  it('resolves metadata, pricing, and context window for gemini-3.7-flash (#7375)', () => {
+    expect(getModelDisplayName('gemini-3.7-flash')).toBe('Gemini 3.7 Flash');
+    expect(getModelContextWindow('gemini-3.7-flash')).toBe(1_048_576);
+    expect(getModelMaxOutput('gemini-3.7-flash')).toBe(65_536);
+    expect(getModelPricing('gemini-3.7-flash')).toEqual({ inputPer1M: 0.75, outputPer1M: 3.75 });
+    expect(getCliModelName('gemini-3.7-flash')).toBe('gemini-3.7-flash');
+    expect(findCanonicalModel('gemini', 'gemini-3.7-flash')?.id).toBe('gemini-3.7-flash');
+    expect(findInTreeByCli('gemini').map((e) => e.id)).toContain('gemini-3.7-flash');
+  });
+
+  it('resolves metadata, pricing, and context window for nemotron-3.5-content-safety (#7376)', () => {
+    expect(getModelDisplayName('nemotron-3.5-content-safety')).toBe(
+      'NVIDIA Nemotron 3.5 Content Safety'
+    );
+    expect(getModelContextWindow('nemotron-3.5-content-safety')).toBe(131_072);
+    expect(getModelMaxOutput('nemotron-3.5-content-safety')).toBe(16_384);
+    expect(getModelPricing('nemotron-3.5-content-safety')).toEqual({
+      inputPer1M: 0.2,
+      outputPer1M: 0.2,
+    });
+    expect(getCliModelName('nemotron-3.5-content-safety')).toBe(
+      'nvidia/nemotron-3.5-content-safety'
+    );
+    expect(findCanonicalModel('opencode', 'nvidia/nemotron-3.5-content-safety')?.id).toBe(
+      'nemotron-3.5-content-safety'
+    );
+    expect(findInTreeByCli('opencode').map((e) => e.id)).toContain('nemotron-3.5-content-safety');
+  });
+
+  it('resolves metadata, pricing, and context window for gpt-6-luna-pro (#7377)', () => {
+    expect(getModelDisplayName('gpt-6-luna-pro')).toBe('GPT-6 Luna Pro');
+    expect(getModelContextWindow('gpt-6-luna-pro')).toBe(1_050_000);
+    expect(getModelMaxOutput('gpt-6-luna-pro')).toBe(65_536);
+    expect(getModelPricing('gpt-6-luna-pro')).toEqual({ inputPer1M: 0.1, outputPer1M: 0.5 });
+    expect(getCliModelName('gpt-6-luna-pro')).toBe('openai/gpt-6-luna-pro');
+    expect(findCanonicalModel('opencode', 'openai/gpt-6-luna-pro')?.id).toBe('gpt-6-luna-pro');
+    expect(findInTreeByCli('opencode').map((e) => e.id)).toContain('gpt-6-luna-pro');
+  });
+
+  it('resolves metadata, pricing, and context window for claude-opus-4.8 (#7378)', () => {
+    expect(getModelDisplayName('claude-opus-4.8')).toBe('Claude Opus 4.8');
+    expect(getModelContextWindow('claude-opus-4.8')).toBe(1_000_000);
+    expect(getModelMaxOutput('claude-opus-4.8')).toBe(128_000);
+    expect(getModelPricing('claude-opus-4.8')).toEqual({ inputPer1M: 5.0, outputPer1M: 25.0 });
+    expect(getCliModelName('claude-opus-4.8')).toBe('claude-opus-4.8');
+    expect(findCanonicalModel('claude', 'claude-opus-4.8')?.id).toBe('claude-opus-4.8');
+    expect(findInTreeByCli('claude').map((e) => e.id)).toContain('claude-opus-4.8');
   });
 });

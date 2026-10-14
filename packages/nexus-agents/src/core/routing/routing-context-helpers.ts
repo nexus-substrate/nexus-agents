@@ -10,7 +10,7 @@ import type { CliName } from '../../cli-adapters/types.js';
 import type {
   QueryFeatures,
   ModelPerformance,
-  RoutingDecision,
+  RoutingDecisionRecord,
   TaskOutcome,
   AggregatedModelMetrics,
   PreferenceDataPoint,
@@ -63,7 +63,7 @@ export function buildOutcomeMap(outcomes: TaskOutcome[]): Map<string, TaskOutcom
 }
 
 export function aggregateByModel(
-  decisions: RoutingDecision[],
+  decisions: readonly RoutingDecisionRecord[],
   outcomeByTrace: Map<string, TaskOutcome>
 ): Map<CliName, ModelAggregation> {
   const aggs = new Map<CliName, ModelAggregation>();
@@ -251,6 +251,6 @@ export interface SerializedStoreData {
   actionCache: Array<[string, CachedActionResult]>;
   cacheHits: number;
   cacheMisses: number;
-  routingDecisions: RoutingDecision[];
+  routingDecisions: RoutingDecisionRecord[];
   taskOutcomes: TaskOutcome[];
 }

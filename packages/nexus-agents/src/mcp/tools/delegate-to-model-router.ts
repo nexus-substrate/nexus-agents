@@ -11,7 +11,7 @@ import { getErrorMessage } from '../../core/index.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 // Import directly from types to avoid circular dependency with delegate-to-model.ts
 import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-types.js';
-import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
+import { resolveCapabilityProfile } from './delegate-to-model-types.js';
 import {
   getDefaultModelForCli,
   FALLBACK_CONTEXT_WINDOW,
@@ -58,7 +58,7 @@ export function mapCompositeDecisionToOutput(
     : (decision.model ?? (slot === undefined ? decision.cliName : cliNameToModel(slot)));
   const caps = endpoint
     ? decision.adapter.capabilities
-    : (MODEL_CAPABILITIES[modelName] ?? DEFAULT_CAPABILITIES);
+    : (resolveCapabilityProfile(modelName) ?? DEFAULT_CAPABILITIES);
 
   return {
     recommended_model: modelName,
@@ -96,7 +96,7 @@ function describeAlternative(
   bestCaps: CapabilityProfile
 ): { model: string; score: number; tradeoff: string } {
   const model = cliNameToModel(slot);
-  const altCaps = MODEL_CAPABILITIES[model] ?? DEFAULT_CAPABILITIES;
+  const altCaps = resolveCapabilityProfile(model) ?? DEFAULT_CAPABILITIES;
   const ranked = decision.alternativeScores?.get(alt);
 
   if (ranked !== undefined) {

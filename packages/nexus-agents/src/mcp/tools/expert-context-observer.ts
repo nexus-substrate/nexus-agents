@@ -20,6 +20,7 @@
 import type { ILogger } from '../../core/index.js';
 import { getModelContextWindow } from '../../config/model-config-helpers.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
+import { getDefaultRegistry } from '../../config/model-registry.js';
 
 /** Default utilization threshold for emitting a context warning. */
 export const DEFAULT_CONTEXT_WARN_THRESHOLD = 0.85;
@@ -43,12 +44,28 @@ export function resolveContextWarnThreshold(env: NodeJS.ProcessEnv = process.env
 }
 
 /**
+ * Resolve context window for an expert model.
+ *
+ * Inspects {@link ModelRegistry} so models admitted from the models.dev
+ * snapshot or operator overlays are measured against their true window
+ * rather than falling back to the fail-closed 8K unknown default.
+ */
+// @export-no-consumer-yet — see #7370. Exported for tests and telemetry consumers.
+export function resolveExpertContextWindow(modelId: ModelId | (string & {})): number {
+  const entry = getDefaultRegistry().getEntry(modelId);
+  if (entry.contextWindow !== undefined && entry.contextWindow > 0) {
+    return entry.contextWindow;
+  }
+  return getModelContextWindow(modelId as ModelId);
+}
+
+/**
  * Observation inputs — what the observer needs to decide whether to warn.
  */
 export interface ExpertContextObservation {
   readonly expertId: string;
   readonly role: string;
-  readonly modelId: ModelId | undefined;
+  readonly modelId: ModelId | (string & {}) | undefined;
   readonly tokensUsed: number;
   /**
    * Whether `tokensUsed` is a measurement (#4743). `false` means the adapter
@@ -85,7 +102,7 @@ export function computeExpertContextUtilization(
 ): ContextUtilization {
   // No model means no window measurement (#7251), rather than an assumed one.
   const contextWindow =
-    observation.modelId !== undefined ? getModelContextWindow(observation.modelId) : undefined;
+    observation.modelId !== undefined ? resolveExpertContextWindow(observation.modelId) : undefined;
   const utilization =
     contextWindow !== undefined && contextWindow > 0 && observation.tokensMeasured !== false
       ? observation.tokensUsed / contextWindow

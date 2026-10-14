@@ -14,6 +14,7 @@ export {
   ObserverTopics,
   type AgentState,
   type TrackedAgent,
+  type ObserverRoutingDecision,
   type RoutingDecision,
   type SessionTokenTotals,
   type CostMetrics,

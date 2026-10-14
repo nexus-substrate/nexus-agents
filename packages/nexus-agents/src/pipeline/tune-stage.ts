@@ -254,8 +254,9 @@ export function createTuneStage(bus: IEventBus, options: TuneStageOptions = {}):
           return;
         }
         // Other signals' actions (flag_tech_debt / record_rejection) are not
-        // routing mutations — they belong to issue-filing / review paths, not
-        // the TuneAdjustmentStore. Keep shadow-logging until those land.
+        // routing mutations — per ADR 0020 (#4289), fitness signals belong
+        // to issue-filing / remediation paths (Epic #3653), not TuneAdjustmentStore.
+        // Keep shadow-logging until those automated issue-filing paths land.
         log.info('TuneStage (enforce) — non-routing action, shadow-only', {
           kind: action.kind,
           signal: action.signal,

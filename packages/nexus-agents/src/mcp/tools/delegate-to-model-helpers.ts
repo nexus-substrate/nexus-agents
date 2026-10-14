@@ -21,6 +21,7 @@ import type {
 import {
   DelegateOutputSchema,
   MODEL_CAPABILITIES,
+  resolveCapabilityProfile,
   REASONING_KEYWORDS,
   CONTEXT_KEYWORDS,
   SPEED_KEYWORDS,
@@ -331,7 +332,7 @@ type SelectionResult = {
 
 /** Resolves a model hint, falling back if the hinted model is unavailable. */
 function resolveModelHint(hint: string): SelectionResult | null {
-  if (hint === '' || MODEL_CAPABILITIES[hint] === undefined) return null;
+  if (hint === '' || resolveCapabilityProfile(hint) === undefined) return null;
   const availCache = getAvailabilityCache();
   if (availCache.isKnownUnavailable(hint as ModelId)) {
     const fb = resolveFallback(hint as ModelId, availCache);
@@ -421,7 +422,7 @@ export function buildDelegateOutput(
   selection: ReturnType<typeof selectModel>,
   requirements: TaskRequirements
 ): DelegateOutput | null {
-  const caps = MODEL_CAPABILITIES[selection.model];
+  const caps = resolveCapabilityProfile(selection.model);
   if (!caps) return null;
   return {
     recommended_model: selection.model,

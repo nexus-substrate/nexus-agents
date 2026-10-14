@@ -12,6 +12,7 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
 import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
+import type { IAuditLogger } from '../audit/audit-types.js';
 import type { ITaskTracker } from './task-tracker.js';
 import type { SecurityBaseline, SecurityGateResult } from './security-gate.js';
 import type { DevPipelineStages } from './dev-pipeline.js';
@@ -252,7 +253,7 @@ export interface AgentExecutorConfig {
    * Caller authentication from measuredTrustTier(), recorded at stage entry.
    * Absent callerInfo means 'unmeasured'; the MCP server supplies the connected
    * transport as callerInfo (#6795), so a stdio caller records Tier 1.
-   * Record-only: no stage refuses on this value. Takes precedence over trustTier.
+   * Enforced at startStage for execute stages (#4694). Takes precedence over trustTier.
    */
   readonly callerTrustTier?: string | undefined;
   /**
@@ -270,6 +271,8 @@ export interface AgentExecutorConfig {
         readonly fieldsModified: number;
       }
     | undefined;
+  /** Server's durable audit logger for hash-chained policy records (#4694). */
+  readonly auditLogger?: IAuditLogger | undefined;
 }
 
 /** Preserve the security gate's structured evidence in the execution-stage result. */
@@ -405,8 +408,8 @@ export interface StageDeps {
   readonly config: AgentExecutorConfig;
   /** Per-run budget guard (#3395). No-op unless config.budget is set. */
   readonly guard: BudgetGuard;
-  /** Emits the stage `started` event with the caller-trust/sanitization record (#4733). */
-  readonly startStage: (stage: string) => void;
+  /** Emits the stage `started` event and enforces trust-tier policy (#4694, #4733). */
+  readonly startStage: (stage: string, stageType?: 'plan' | 'execute') => void;
 }
 
 // ============================================================================

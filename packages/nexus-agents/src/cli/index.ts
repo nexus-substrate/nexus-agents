@@ -555,3 +555,32 @@ export {
   isValidAuthSubcommand,
 } from './auth-command.js';
 export type { AuthSubcommand, AuthCommandOptions, AuthCommandResult } from './auth-command.js';
+
+// Command options & CustomApiConfig (#5129 Item 2)
+export type {
+  CustomApiConfig,
+  BaseCliOptions,
+  SetupCliOptions,
+  VoteCliOptions,
+  OrchestrateCliOptions,
+  DoctorCliOptions,
+  InitCliOptions,
+  ImprovementReviewCliOptions,
+  RemediationReviewCliOptions,
+  LearningMetricsCliOptions,
+  ModelDriftCliOptions,
+  HealthCliOptions,
+  JobsCliOptions,
+  CommandArgs,
+  SetupCommandArgs,
+  VoteCommandArgs,
+  OrchestrateCommandArgs,
+  DoctorCommandArgs,
+  InitCommandArgs,
+  ImprovementReviewCommandArgs,
+  RemediationReviewCommandArgs,
+  LearningMetricsCommandArgs,
+  ModelDriftCommandArgs,
+  HealthCommandArgs,
+  JobsCommandArgs,
+} from './command-options-types.js';

@@ -33,7 +33,7 @@ export class RoutingError extends NexusError {
 /**
  * Routing decision with explanation.
  */
-export interface RoutingDecision {
+export interface CliRoutingDecision {
   /** Selected adapter */
   readonly adapter: ICliAdapter;
   /** Confidence score (0-1) */
@@ -45,6 +45,12 @@ export interface RoutingDecision {
   /** Time taken to make decision in ms */
   readonly decisionTimeMs: number;
 }
+
+/**
+ * Legacy alias for `CliRoutingDecision`. Renamed per #5129 to eliminate
+ * namespace collisions with workflow, observer, learning, and context-store routing decisions.
+ */
+export type RoutingDecision = CliRoutingDecision;
 
 /**
  * Router configuration options.
@@ -75,5 +81,5 @@ export interface ITaskRouter {
   /**
    * Routes a task and returns full decision details.
    */
-  routeWithDetails(task: Task): Promise<Result<RoutingDecision, RoutingError>>;
+  routeWithDetails(task: Task): Promise<Result<CliRoutingDecision, RoutingError>>;
 }

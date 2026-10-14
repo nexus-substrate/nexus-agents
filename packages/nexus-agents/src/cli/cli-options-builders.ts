@@ -12,6 +12,7 @@ import { ErrorPolicySchema, type ErrorPolicy } from '../mcp/tools/consensus-vote
 import type { NoQuorumPolicy } from './vote-types.js';
 import { parseVoteBarFlags } from './vote-bar-flags.js';
 import type { ParsedCliArgs } from '../cli-types.js';
+import type { CustomApiConfig } from './command-options-types.js';
 import {
   buildSubcommandFlagOptions,
   type SubcommandFlagValues,
@@ -202,9 +203,29 @@ function parseSetupScope(value: string | undefined): 'user' | 'project' | undefi
   return value === 'user' || value === 'project' ? value : undefined;
 }
 
+/** Builds CustomApiConfig when custom-api is provided (#5129 Item 2). */
+function buildCustomApiConfig(values: ParsedValues): CustomApiConfig | undefined {
+  const customApi = values['custom-api'];
+  if (customApi === undefined || customApi === '') {
+    return undefined;
+  }
+  const customApiKey = values['custom-api-key'];
+  const customModel = values['custom-model'];
+  return {
+    baseUrl: customApi,
+    ...(customApiKey !== undefined && customApiKey !== '' ? { apiKey: customApiKey } : {}),
+    ...(customModel !== undefined && customModel !== '' ? { model: customModel } : {}),
+  };
+}
+
 /** Builds setup-specific options. */
 function buildSetupOptions(values: ParsedValues): Record<string, unknown> {
   const scope = parseSetupScope(values.scope);
+  const customApi = values['custom-api'];
+  const customApiKey = values['custom-api-key'];
+  const customModel = values['custom-model'];
+  const customApiConfig = buildCustomApiConfig(values);
+
   return {
     nonInteractive: values['non-interactive'],
     skipMcp: values['skip-mcp'],
@@ -215,9 +236,10 @@ function buildSetupOptions(values: ParsedValues): Record<string, unknown> {
     skipGemini: values['skip-gemini'],
     skipCodex: values['skip-codex'],
     ...(scope !== undefined && { scope }),
-    ...(values['custom-api'] !== undefined && { customApi: values['custom-api'] }),
-    ...(values['custom-api-key'] !== undefined && { customApiKey: values['custom-api-key'] }),
-    ...(values['custom-model'] !== undefined && { customModel: values['custom-model'] }),
+    ...(customApiConfig !== undefined && { customApiConfig }),
+    ...(customApi !== undefined && { customApi }),
+    ...(customApiKey !== undefined && { customApiKey }),
+    ...(customModel !== undefined && { customModel }),
   };
 }
 

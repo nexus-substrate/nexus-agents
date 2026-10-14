@@ -5,6 +5,10 @@
  * observed task outcomes. Replaces hardcoded baseline/maxBonus/coldStart
  * values with data-driven adjustments.
  *
+ * Domain isolation note (#4289, ADR 0020): this module derives thresholds solely
+ * from empirical TaskOutcome history in OutcomeStore; static codebase fitness metrics
+ * (governance/fitness-score) are intentionally decoupled and do not mutate thresholds.
+ *
  * @module orchestration/outcomes/adaptive-thresholds
  */
 

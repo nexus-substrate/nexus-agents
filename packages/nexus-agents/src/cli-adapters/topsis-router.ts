@@ -18,7 +18,7 @@ import type {
   TopsisScore,
   TopsisResult,
 } from './topsis-types.js';
-import { DEFAULT_TOPSIS_CONFIG, DEFAULT_MODEL_PROFILES } from './topsis-types.js';
+import { DEFAULT_TOPSIS_CONFIG, getDefaultTopsisProfiles } from './topsis-types.js';
 /** Tolerance for weight sum validation (weights must sum to 1.0 ± this). */
 const WEIGHT_SUM_TOLERANCE = 0.01;
 
@@ -51,7 +51,7 @@ export {
  * Options for selecting a model with TOPSIS.
  */
 export interface SelectModelOptions {
-  /** Profiles to evaluate (defaults to DEFAULT_MODEL_PROFILES) */
+  /** Profiles to evaluate (defaults to current registry-priced CLI profiles). */
   profiles?: readonly TopsisModelProfile[];
   /** Expected input tokens for cost calculation */
   expectedInputTokens?: number;
@@ -86,7 +86,7 @@ export class TopsisRouter {
    * Selects the optimal model using TOPSIS algorithm.
    */
   selectModel(opts: SelectModelOptions = {}): TopsisResult {
-    const profiles = opts.profiles ?? DEFAULT_MODEL_PROFILES;
+    const profiles = opts.profiles ?? getDefaultTopsisProfiles();
     const inputTokens = opts.expectedInputTokens ?? DEFAULT_INPUT_TOKENS;
     const outputTokens = opts.expectedOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
 

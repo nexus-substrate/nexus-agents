@@ -21,6 +21,7 @@ import type {
 } from '../core/index.js';
 import { ModelCapability } from '../core/index.js';
 import { getCliModelName, resolveCliAlias } from '../config/model-config-helpers.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 
 /**
  * Name of the synthetic tool the adapter forces when a caller requests a
@@ -200,9 +201,14 @@ export function getModelCapabilities(modelId: string): readonly ModelCapability[
     ModelCapability.VISION,
   ];
 
-  // Extended thinking is available on Opus and Sonnet 4
+  // Extended thinking is available on Opus and Sonnet 4, or models with extended_thinking feature
   const resolvedId = resolveModelId(modelId);
-  if (resolvedId.includes('opus') || resolvedId.includes('sonnet-4')) {
+  const entry = getDefaultRegistry().getEntry(resolvedId);
+  if (
+    resolvedId.includes('opus') ||
+    resolvedId.includes('sonnet-4') ||
+    entry.specialFeatures?.includes('extended_thinking') === true
+  ) {
     capabilities.push(ModelCapability.EXTENDED_THINKING);
   }
 

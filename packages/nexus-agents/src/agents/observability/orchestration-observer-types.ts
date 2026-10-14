@@ -42,9 +42,10 @@ export interface TrackedAgent {
 // ============================================================================
 
 /**
- * Captured routing decision for audit and analysis.
+ * Captured routing decision for audit and analysis in orchestration observer.
+ * (Source: Issue #5129 Item 3, #4440 disambiguation precedent)
  */
-export interface RoutingDecision {
+export interface ObserverRoutingDecision {
   readonly timestamp: string;
   readonly taskId: string;
   readonly taskDescription: string;
@@ -58,6 +59,11 @@ export interface RoutingDecision {
   readonly topsisScore?: number | undefined;
   readonly ucbScore?: number | undefined;
 }
+
+/**
+ * Legacy alias for {@link ObserverRoutingDecision}. Renamed per #5129 Item 3 to prevent naming collisions.
+ */
+export type RoutingDecision = ObserverRoutingDecision;
 
 // ============================================================================
 // Session Metrics
@@ -179,7 +185,7 @@ export interface ConsensusStats {
  */
 export type OrchestrationObserverEvent =
   | { type: 'agent_state_changed'; agentId: string; state: AgentState; previousState: AgentState }
-  | { type: 'routing_decision'; decision: RoutingDecision }
+  | { type: 'routing_decision'; decision: ObserverRoutingDecision }
   | { type: 'session_started'; sessionId: string; pattern: string }
   | { type: 'session_completed'; sessionId: string; success: boolean; durationMs: number }
   | { type: 'metrics_updated'; metrics: OrchestrationStats }
@@ -258,7 +264,7 @@ export interface IOrchestrationObserver {
   getAgentStates(): readonly TrackedAgent[];
 
   /** Get routing decision history */
-  getRoutingHistory(limit?: number): readonly RoutingDecision[];
+  getRoutingHistory(limit?: number): readonly ObserverRoutingDecision[];
 
   /** Get session metrics */
   getSessionMetrics(sessionId?: string): readonly SessionMetrics[];
@@ -273,7 +279,7 @@ export interface IOrchestrationObserver {
   removeEventListener(listener: OrchestrationObserverListener): void;
 
   /** Record a routing decision manually (for non-event-bus integrations) */
-  recordRoutingDecision(decision: RoutingDecision): void;
+  recordRoutingDecision(decision: ObserverRoutingDecision): void;
 
   /** Record token usage for a session on a CLI slot. */
   recordTokenUsage(sessionId: string, model: CliName, tokens: SessionTokenTotals): void;

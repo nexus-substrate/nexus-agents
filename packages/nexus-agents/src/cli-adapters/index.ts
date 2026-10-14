@@ -126,7 +126,12 @@ export type {
 // Task Router types (Issue #78, #816)
 // Use CompositeRouter for task routing; these types describe routing contracts.
 export { RoutingError, RouterConfigSchema } from './router-types.js';
-export type { ITaskRouter, RoutingDecision, RouterConfig } from './router-types.js';
+export type {
+  ITaskRouter,
+  CliRoutingDecision,
+  RoutingDecision,
+  RouterConfig,
+} from './router-types.js';
 
 // Confidence Router types (Issue #99)
 // ConfidenceRouter class removed — use CompositeRouter with ConfidenceCascadeStage

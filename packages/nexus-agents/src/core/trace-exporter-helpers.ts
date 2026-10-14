@@ -6,7 +6,7 @@
  */
 
 import type { TraceSpan, AggregatedMetrics } from './trace.js';
-import { colors } from '../cli/ansi-output.js';
+import { colors, RAW_ANSI } from './ansi-colors.js';
 
 // =============================================================================
 // Types
@@ -37,19 +37,6 @@ export interface SpanNode {
 // =============================================================================
 // ANSI Colors
 // =============================================================================
-
-/**
- * Raw ANSI codes for trace visualization.
- * Used when opts.colors is true, bypassing TTY detection.
- */
-const RAW_ANSI = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  bold: '\x1b[1m',
-} as const;
 
 /** Get color code — uses raw ANSI when forceColors is true, else module-level detection. */
 function c(code: keyof typeof RAW_ANSI, useColors: boolean): string {

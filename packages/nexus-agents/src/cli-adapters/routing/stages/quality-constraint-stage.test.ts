@@ -4,19 +4,18 @@
  * @module cli-adapters/routing/stages/quality-constraint-stage.test
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   QualityConstraintStage,
   createQualityConstraintStage,
-  resetQualityProfileCache,
 } from './quality-constraint-stage.js';
 import type { RoutingContext } from '../router-stage.js';
+import { getDefaultRegistry } from '../../../config/model-registry.js';
 
 describe('QualityConstraintStage', () => {
   let stage: QualityConstraintStage;
 
   beforeEach(() => {
-    resetQualityProfileCache();
     stage = new QualityConstraintStage();
   });
 
@@ -46,6 +45,32 @@ describe('QualityConstraintStage', () => {
   });
 
   describe('route', () => {
+    it('refreshes registry prices between calls on the same stage', async () => {
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      let outputPer1M = 1;
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = getEntry(id);
+        return id === 'gpt-6.1-sol' ? { ...entry, pricing: { inputPer1M: 1, outputPer1M } } : entry;
+      });
+      const stage = new QualityConstraintStage({
+        maxCostUsd: 2,
+        expectedTokens: 1_000_000,
+        allowFallback: false,
+      });
+      try {
+        const cheap = await stage.route(createContext('test task', ['codex']));
+        expect(cheap.ok).toBe(true);
+        if (cheap.ok) expect(cheap.value.context.filtered.has('codex')).toBe(false);
+        outputPer1M = 3;
+        const expensive = await stage.route(createContext('test task', ['codex']));
+        expect(expensive.ok).toBe(true);
+        if (expensive.ok) expect(expensive.value.context.filtered.has('codex')).toBe(true);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('passes all candidates with default config', async () => {
       const ctx = createContext('test task');
       const result = await stage.route(ctx);

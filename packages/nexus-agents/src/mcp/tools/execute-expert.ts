@@ -335,7 +335,7 @@ function observeExpertContextIfOk(
   const observation: ExpertContextObservation = {
     expertId: expert.id,
     role: expert.role,
-    modelId: expertModelId as ExpertContextObservation['modelId'],
+    modelId: expertModelId,
     tokensUsed: result.value.metadata.tokensUsed,
     // #4743: provenance travels with the number, so a consumer can tell a
     // measured zero from an unreported one.

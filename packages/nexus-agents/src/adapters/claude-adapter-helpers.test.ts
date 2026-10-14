@@ -222,4 +222,12 @@ describe('getModelCapabilities', () => {
     const caps = getModelCapabilities('claude-haiku-3');
     expect(caps).not.toContain(ModelCapability.EXTENDED_THINKING);
   });
+
+  it('includes extended thinking for registered frontier models via specialFeatures', () => {
+    const capsOpus = getModelCapabilities('claude-opus-5.5');
+    expect(capsOpus).toContain(ModelCapability.EXTENDED_THINKING);
+
+    const capsFable = getModelCapabilities('claude-fable-5.1');
+    expect(capsFable).toContain(ModelCapability.EXTENDED_THINKING);
+  });
 });

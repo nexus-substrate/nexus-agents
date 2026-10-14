@@ -385,5 +385,26 @@ describe('handleSetupCommandAsync', () => {
       expect(result.exitCode).toBe(EXIT_CODES.SERVER_START_FAILED);
       expect(result.success).toBe(false);
     });
+
+    it('configures the gateway when customApiConfig is supplied (#5129 Item 2)', async () => {
+      const result = await handleSetupCommandAsync(
+        createMockArgs('setup', {
+          customApiConfig: {
+            baseUrl: 'https://gw.from-config.example/v1',
+            apiKey: 'cfg-key',
+            model: 'cfg-model',
+          },
+          nonInteractive: true,
+        })
+      );
+
+      expect(configureCustomApi).toHaveBeenCalledWith({
+        baseUrl: 'https://gw.from-config.example/v1',
+        nonInteractive: true,
+        apiKey: 'cfg-key',
+        model: 'cfg-model',
+      });
+      expect(result.exitCode).toBe(EXIT_CODES.SUCCESS);
+    });
   });
 });

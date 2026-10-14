@@ -28,12 +28,29 @@ import {
 import { getDefaultRegistry } from '../config/model-registry.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
 import { computeCostDetail, priceBasisOf } from '../learning/usage-log.js';
+import { getDefaultModelForCli, resolveCliCostPer1M } from '../config/model-config-helpers.js';
 
 describe('estimateBudgetArmCostUsd (#6393)', () => {
   it('uses the codex fallback for budgets but fails closed for cost ceilings (#6842)', () => {
-    expect(estimateBudgetArmCostUsd('codex', 1_000_000, 1_000_000)).toBe(35);
-    expect(estimateRegistryCostUsd('codex', 1_000_000, 1_000_000)).toBeUndefined();
-    expect(estimateArmCostUsd('api:openai', 1_000_000, 1_000_000)).toBeUndefined();
+    const registry = getDefaultRegistry();
+    const getEntry = registry.getEntry.bind(registry);
+    const modelId = getDefaultModelForCli('codex');
+    const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+      const entry = { ...getEntry(id) };
+      if (id === modelId) delete entry.pricing;
+      return entry;
+    });
+    try {
+      const fallback = resolveCliCostPer1M('codex');
+      expect(estimateBudgetArmCostUsd('codex', 1_000_000, 1_000_000)).toBe(
+        fallback.input + fallback.output
+      );
+      expect(fallback.input + fallback.output).toBeGreaterThan(0);
+      expect(estimateRegistryCostUsd('codex', 1_000_000, 1_000_000)).toBeUndefined();
+      expect(estimateArmCostUsd('api:openai', 1_000_000, 1_000_000)).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   afterEach(() => {

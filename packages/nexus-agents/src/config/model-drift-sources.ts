@@ -40,6 +40,8 @@ import {
   createOpenRouterModelsSource,
   type OpenRouterCatalogModel,
 } from './openrouter-models-source.js';
+import { fetchCatalog } from './models-dev-client.js';
+import { filterAdmittedModels, type ModelsDevCatalog } from './model-catalog-admission.js';
 
 /** A vendor whose list endpoint an SDK adapter wraps. */
 export type DriftVendorApi = 'anthropic' | 'openai' | 'google';
@@ -58,6 +60,7 @@ export interface DriftSourceDeps {
   ) => Promise<Result<readonly DiscoveredModel[], ConfigError>>;
   readonly vendorLister?: (vendor: DriftVendorApi, apiKey: string) => ModelLister;
   readonly openRouterCatalog?: () => Promise<readonly OpenRouterCatalogModel[]>;
+  readonly modelsDevCatalog?: () => Promise<ModelsDevCatalog>;
 }
 
 const VENDOR_APIS: ReadonlyArray<{
@@ -153,6 +156,40 @@ function openRouterSource(deps: DriftSourceDeps): DriftSource {
   };
 }
 
+function parseReleaseEpochSeconds(releaseDate: string | undefined): number | undefined {
+  if (releaseDate === undefined || releaseDate.trim() === '') return undefined;
+  const parsed = Date.parse(releaseDate);
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : undefined;
+}
+
+function modelsDevSource(deps: DriftSourceDeps): DriftSource {
+  const fetch = deps.modelsDevCatalog ?? (() => fetchCatalog());
+  return {
+    name: 'models-dev',
+    probe: async () => {
+      const catalog = await fetch();
+      const { admittedEntries } = filterAdmittedModels(catalog, {
+        configuredGateways: ['claude', 'codex', 'gemini', 'opencode'],
+      });
+      const models: ListedModel[] = admittedEntries.map((e): ListedModel => {
+        const createdAt = parseReleaseEpochSeconds(e.verifiedAt);
+        return {
+          id: e.id,
+          ...(createdAt !== undefined && { createdAt }),
+          ...(e.contextWindow !== undefined && { contextLength: e.contextWindow }),
+          ...(e.pricing !== undefined && {
+            pricing: {
+              inputPer1M: e.pricing.inputPer1M,
+              outputPer1M: e.pricing.outputPer1M,
+            },
+          }),
+        };
+      });
+      return { status: 'measured', models };
+    },
+  };
+}
+
 /** Every drift source, in report order. Building a source probes nothing. */
 export function buildDriftSources(deps: DriftSourceDeps = {}): readonly DriftSource[] {
   const env = deps.env ?? process.env;
@@ -161,5 +198,6 @@ export function buildDriftSources(deps: DriftSourceDeps = {}): readonly DriftSou
     gatewaySource(deps),
     ...VENDOR_APIS.map((api) => vendorApiSource(api, env, lister)),
     openRouterSource(deps),
+    modelsDevSource(deps),
   ];
 }

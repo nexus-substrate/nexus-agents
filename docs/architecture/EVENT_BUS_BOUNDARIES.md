@@ -102,6 +102,13 @@ producers ──signal.swarm_unhealthy──▶ TuneStage ──demote──▶ 
   `intended` per CLI). Non-routing signals (`fitness_declined`, `vote_rejected`)
   always stay shadow-logged.
 
+### Observability feedback boundaries (#4289, ADR 0020)
+
+Per [ADR 0020](../adr/0020-observability-feedback-loop-boundaries.md) and consensus vote:
+
+- **EventBus remains the sole signal bus:** No duplicate `IFeedbackCoordinator` or parallel `SignalBus` is introduced; the four feedback state-holders (`FeedbackIntegration`, `OutcomeFeedbackCollector`, `StrategyDistiller`, `RoutingMemory`) coordinate via existing component composition and Bus A's typed `signal.*` events.
+- **Fitness signals are strictly scoped to remediation:** `signal.fitness_declined` measures static codebase structure (`fitness-score.ts`), not runtime execution capability. It produces `flag_tech_debt` remediation signals and deliberately does NOT mutate `adaptive-thresholds` outcome baselines or routing multipliers.
+
 ## Pipeline policy audit: two records, one canonical source (#3710)
 
 The dev-pipeline consensus→execute policy gate

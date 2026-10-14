@@ -113,6 +113,14 @@ describe('mapCompositeDecisionToOutput', () => {
     });
   });
 
+  it('resolves real context window for catalog models from ModelRegistry (#6625)', () => {
+    const decision = makeDecision({ model: 'deepseek-v4-flash' });
+    const output = mapCompositeDecisionToOutput(decision, 200);
+
+    expect(output.recommended_model).toBe('deepseek-v4-flash');
+    expect(output.capabilities.contextWindow).toBe(1_000_000);
+  });
+
   it('slices alternatives to max 3', () => {
     const decision = makeDecision({
       alternatives: ['gemini', 'codex', 'claude', 'gemini', 'codex'],

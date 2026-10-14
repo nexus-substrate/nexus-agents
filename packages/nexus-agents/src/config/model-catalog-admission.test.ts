@@ -175,6 +175,7 @@ describe('filterAdmittedModels (Admission policy & Provider × Model)', () => {
           family: 'claude-opus',
           cost: { input: 15, output: 75 },
           modalities: { input: ['text', 'image'], output: ['text'] },
+          reasoning: true,
         },
         'claude-unadmitted-experimental': {
           id: 'claude-unadmitted-experimental',
@@ -214,10 +215,11 @@ describe('filterAdmittedModels (Admission policy & Provider × Model)', () => {
     expect(admittedIds).not.toContain('claude-unadmitted-experimental');
     expect(admittedIds).not.toContain('obscure/random-model-999');
 
-    // Preserves input and output modalities
+    // Preserves input and output modalities and attaches extended_thinking
     const opusEntry = admittedEntries.find((e) => e.id === 'claude-opus');
     expect(opusEntry?.inputModalities).toEqual(['text', 'image']);
     expect(opusEntry?.outputModalities).toEqual(['text']);
+    expect(opusEntry?.specialFeatures).toEqual(['extended_thinking']);
 
     // Records provider x model coverage: both anthropic and openrouter serve claude-opus
     const opusGateways = gatewaysByModel['claude-opus'];

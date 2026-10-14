@@ -19,7 +19,7 @@ import { getTimeProvider } from '../../core/index.js';
 import type {
   TrackedAgent,
   AgentState,
-  RoutingDecision,
+  ObserverRoutingDecision,
   SessionMetrics,
   SessionTokenTotals,
   CostMetrics,
@@ -186,7 +186,7 @@ export function createTrackedAgent(
  * @returns CLI counts and observed endpoint counts, preserving arm identity
  */
 export function calculateRoutingDistribution(
-  routingHistory: readonly RoutingDecision[]
+  routingHistory: readonly ObserverRoutingDecision[]
 ): OrchestrationStats['routingDistribution'] {
   const distribution: OrchestrationStats['routingDistribution'] = {
     claude: 0,

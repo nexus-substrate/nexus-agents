@@ -167,6 +167,23 @@ describe('OpenAIAdapter', () => {
       });
       expect(adapter.hasCapability(ModelCapability.VISION)).toBe(true);
     });
+
+    it('should have extended_thinking capability for o1 models', () => {
+      const adapter = new OpenAIAdapter({
+        ...validConfig,
+        modelId: 'o1-preview',
+      });
+      expect(adapter.hasCapability(ModelCapability.EXTENDED_THINKING)).toBe(true);
+    });
+
+    it('should have extended_thinking and vision capability for GPT-6.1-sol-pro', () => {
+      const adapter = new OpenAIAdapter({
+        ...validConfig,
+        modelId: 'gpt-6.1-sol-pro',
+      });
+      expect(adapter.hasCapability(ModelCapability.EXTENDED_THINKING)).toBe(true);
+      expect(adapter.hasCapability(ModelCapability.VISION)).toBe(true);
+    });
   });
 
   describe('validateConfig', () => {

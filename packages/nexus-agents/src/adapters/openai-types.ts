@@ -23,6 +23,8 @@
 
 import type { ILogger, ModelCapability } from '../core/index.js';
 import { ModelCapability as MC } from '../core/index.js';
+import type { ModelEntry } from '../config/model-registry.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 import { getCliModelName } from '../config/model-config-helpers.js';
 
 /**
@@ -123,23 +125,30 @@ export function isFunctionToolCall(toolCall: unknown): toolCall is FunctionToolC
   return tc['type'] === 'function' && typeof tc['function'] === 'object' && tc['function'] !== null;
 }
 
+function supportsOpenAiVision(modelId: string, entry: ModelEntry): boolean {
+  if (modelId.includes('gpt-4o') || modelId.includes('gpt-4-turbo')) return true;
+  if (modelId.includes('gpt-5.2') || modelId.includes('gpt-6')) return true;
+  return entry.inputModalities?.includes('image') === true;
+}
+
+function supportsOpenAiExtendedThinking(modelId: string, entry: ModelEntry): boolean {
+  if (modelId.includes('gpt-5.2') || modelId.includes('gpt-6')) return true;
+  if (modelId.startsWith('o1') || modelId.startsWith('o3')) return true;
+  return entry.specialFeatures?.includes('extended_thinking') === true;
+}
+
 /**
  * Determines capabilities based on model ID.
  */
 export function getModelCapabilities(modelId: string): readonly ModelCapability[] {
   const capabilities: ModelCapability[] = [MC.COMPLETION, MC.STREAMING, MC.TOOL_USE];
+  const entry = getDefaultRegistry().getEntry(modelId);
 
-  // Vision is available on GPT-4o, GPT-4-turbo, and GPT-5.2 models
-  if (
-    modelId.includes('gpt-4o') ||
-    modelId.includes('gpt-4-turbo') ||
-    modelId.includes('gpt-5.2')
-  ) {
+  if (supportsOpenAiVision(modelId, entry)) {
     capabilities.push(MC.VISION);
   }
 
-  // Extended thinking is available on GPT-5.2 models
-  if (modelId.includes('gpt-5.2')) {
+  if (supportsOpenAiExtendedThinking(modelId, entry)) {
     capabilities.push(MC.EXTENDED_THINKING);
   }
 

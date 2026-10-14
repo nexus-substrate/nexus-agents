@@ -8,6 +8,7 @@ import type { Content, Part, FunctionDeclaration } from '@google/genai';
 import type { Message, ToolDefinition, StopReason } from '../core/index.js';
 import { ModelCapability } from '../core/index.js';
 import { findCanonicalModel, getCliModelName } from '../config/model-config-helpers.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 
 /**
  * Supported Gemini model identifiers.
@@ -203,9 +204,15 @@ export function getModelCapabilities(modelId: string): readonly ModelCapability[
     ModelCapability.VISION,
   ];
 
-  // Gemini 2.0+, 2.5+, and 3.x models support extended thinking
+  // Gemini 2.0+, 2.5+, and 3.x models, or models with extended_thinking feature, support extended thinking
   const resolvedId = resolveModelId(modelId);
-  if (resolvedId.includes('2.5') || resolvedId.includes('2.0')) {
+  const entry = getDefaultRegistry().getEntry(resolvedId);
+  if (
+    resolvedId.includes('2.5') ||
+    resolvedId.includes('2.0') ||
+    resolvedId.includes('3.') ||
+    entry.specialFeatures?.includes('extended_thinking') === true
+  ) {
     capabilities.push(ModelCapability.EXTENDED_THINKING);
   }
 

@@ -11,12 +11,19 @@
  * Four voters made that an explicit condition of approving the record-first
  * approach.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { IAuditLogger } from '../audit/audit-types.js';
+import { PolicyBlockedError } from './policy-evaluator.js';
+import { getPipelineEventBus } from './event-bus.js';
 
-vi.mock('./expert-bridge.js', () => ({
-  executeExpert: vi.fn(() =>
+const { executeExpertMock } = vi.hoisted(() => ({
+  executeExpertMock: vi.fn(() =>
     Promise.resolve({ success: true, text: 'ok', expertType: 'code', durationMs: 1, tokensUsed: 1 })
   ),
+}));
+
+vi.mock('./expert-bridge.js', () => ({
+  executeExpert: executeExpertMock,
 }));
 
 // Keep external research, voters and shell checks outside this event-contract test.
@@ -49,6 +56,11 @@ import { createAgentStages, UNMEASURED_TRUST_TIER } from './agent-executor.js';
 
 beforeEach(() => {
   emitMock.mockClear();
+  executeExpertMock.mockClear();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 /** Trust tiers recorded on every `started` event emitted so far. */
@@ -149,5 +161,130 @@ describe('caller authentication and sanitizer observations (#4733)', () => {
           : undefined
       );
     }
+  });
+});
+
+function capturePolicyEvents(): { readonly events: string[]; readonly off: () => void } {
+  const events: string[] = [];
+  const off = getPipelineEventBus().subscribe({ type: 'policy.evaluated' }, (event) => {
+    if (event.type === 'policy.evaluated') {
+      events.push(event.gateId);
+    }
+  });
+  return { events, off };
+}
+
+describe('trust tier enforcement at stage boundary (#4694)', () => {
+  it('blocks untrusted caller (tier 3) on implement stage in block mode and does not call expert', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
+    const stages = createAgentStages({ callerTrustTier: '3' });
+    const task = { id: 't-untrusted', title: 'feature', description: 'desc' } as never;
+
+    await expect(stages.implement(task)).rejects.toBeInstanceOf(PolicyBlockedError);
+    expect(executeExpertMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed: blocks unmeasured/absent caller on implement stage in block mode', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
+    const stages = createAgentStages({});
+    const task = { id: 't-unmeasured', title: 'feature', description: 'desc' } as never;
+
+    await expect(stages.implement(task)).rejects.toBeInstanceOf(PolicyBlockedError);
+    expect(executeExpertMock).not.toHaveBeenCalled();
+  });
+
+  it('allows benign population (tier 1 and tier 2) on implement stage in block mode', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
+    const stages1 = createAgentStages({ callerTrustTier: '1' });
+    const task1 = { id: 't-tier1', title: 'feature', description: 'desc' } as never;
+    await expect(stages1.implement(task1)).resolves.toBeDefined();
+    expect(executeExpertMock).toHaveBeenCalledTimes(1);
+
+    executeExpertMock.mockClear();
+    const stages2 = createAgentStages({ callerTrustTier: '2' });
+    const task2 = { id: 't-tier2', title: 'feature', description: 'desc' } as never;
+    await expect(stages2.implement(task2)).resolves.toBeDefined();
+    expect(executeExpertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not block planning/analysis stages even for untrusted or unmeasured callers', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
+    const stages = createAgentStages({ callerTrustTier: '3' });
+    const task = { id: 't-analysis', title: 'feature', description: 'desc' } as never;
+
+    // Research, plan, decompose, qaReview, qualityGate, securityScan are non-execute stages
+    await expect(stages.plan('feature', 'research')).resolves.toBeDefined();
+    await expect(stages.decompose('plan')).resolves.toBeDefined();
+    await expect(stages.qaReview(task, 'impl')).resolves.toBeDefined();
+    if (stages.qualityGate !== undefined) {
+      await expect(stages.qualityGate()).resolves.toBeDefined();
+    }
+    await expect(stages.securityScan()).resolves.toBeDefined();
+  });
+
+  it('warn mode (default) emits policy.evaluated event with allowed:false and continues execution', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'warn');
+    const cap = capturePolicyEvents();
+    try {
+      const stages = createAgentStages({ callerTrustTier: '3' });
+      const task = { id: 't-warn', title: 'feature', description: 'desc' } as never;
+
+      await expect(stages.implement(task)).resolves.toBeDefined();
+      expect(executeExpertMock).toHaveBeenCalledTimes(1);
+      expect(cap.events).toContain('impl-t-warn:trust-tier');
+    } finally {
+      cap.off();
+    }
+  });
+
+  it('block mode emits policy.evaluated before throwing PolicyBlockedError', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
+    let emittedBeforeThrow = false;
+    const off = getPipelineEventBus().subscribe({ type: 'policy.evaluated' }, () => {
+      emittedBeforeThrow = true;
+    });
+    try {
+      const stages = createAgentStages({ callerTrustTier: '3' });
+      const task = { id: 't-order', title: 'feature', description: 'desc' } as never;
+      await stages.implement(task);
+      throw new Error('expected PolicyBlockedError');
+    } catch (e: unknown) {
+      expect(e).toBeInstanceOf(PolicyBlockedError);
+      expect(emittedBeforeThrow).toBe(true);
+    } finally {
+      off();
+    }
+  });
+
+  it('off mode skips evaluation entirely — no policy.evaluated event emitted', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'off');
+    const cap = capturePolicyEvents();
+    try {
+      const stages = createAgentStages({ callerTrustTier: '3' });
+      const task = { id: 't-off', title: 'feature', description: 'desc' } as never;
+
+      await expect(stages.implement(task)).resolves.toBeDefined();
+      expect(executeExpertMock).toHaveBeenCalledTimes(1);
+      expect(cap.events).toHaveLength(0);
+    } finally {
+      cap.off();
+    }
+  });
+
+  it('appends policy_gate violation record to durable auditLogger when configured (dual-emit)', async () => {
+    vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'warn');
+    const loggedEntries: Array<{ action: string; details: unknown }> = [];
+    const auditLogger = {
+      log: vi.fn((entry: { action: string; metadata?: unknown }) => {
+        loggedEntries.push({ action: entry.action, details: entry.metadata });
+      }),
+    } as unknown as IAuditLogger;
+
+    const stages = createAgentStages({ callerTrustTier: '3', auditLogger });
+    const task = { id: 't-audit', title: 'feature', description: 'desc' } as never;
+    await stages.implement(task);
+
+    expect(auditLogger.log).toHaveBeenCalled();
+    expect(loggedEntries.some((e) => e.action === 'security.policy_gate')).toBe(true);
   });
 });

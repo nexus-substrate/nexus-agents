@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { getTimeProvider } from './index.js';
+import { getTimeProvider } from './time-provider.js';
 
 /**
  * Current schema version for artifacts.

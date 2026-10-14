@@ -45,6 +45,7 @@ import type { CostPer1M } from './in-tree-data.js';
 import { estimateRegistryCostUsd } from '../cli-adapters/budget-arm-cost.js';
 import { estimateCost } from '../cli-adapters/budget-utils.js';
 import { computeCostDetail } from '../learning/usage-log.js';
+import { getDefaultTopsisProfiles } from '../cli-adapters/topsis-types.js';
 
 const MILLION = 1_000_000;
 
@@ -411,7 +412,9 @@ function loadOverlay(
   entries: readonly OverlayEntry[],
   catalogTier?: MatrixRow['catalogTier']
 ): void {
-  if (catalogTier !== undefined) stubCatalogTier(catalogTier);
+  // Every row declares its pricing fixture. A refreshed shipping catalog must
+  // not silently price the default in a row testing the unpriced policy.
+  stubCatalogTier(catalogTier ?? 'empty');
   const path = join(dir, 'models-manifest.yaml');
   // JSON is valid YAML; the loader parses either.
   writeFileSync(path, JSON.stringify({ version: 1, models: entries }), 'utf-8');
@@ -443,6 +446,11 @@ describe('model ownership and unpriced pricing over the overlay matrix (#6866)',
 
     const budget = resolveCliCostPer1M('codex');
     expect(budget, 'budget estimate').toEqual(row.codexBudget);
+    const topsis = getDefaultTopsisProfiles().find((profile) => profile.cliName === 'codex');
+    expect(topsis, 'runtime TOPSIS price').toMatchObject({
+      costPerMillionInput: row.codexBudget.input,
+      costPerMillionOutput: row.codexBudget.output,
+    });
     expect(estimateCost('codex', MILLION, MILLION), 'estimateCost').toBeCloseTo(
       row.codexBudget.input + row.codexBudget.output,
       9
