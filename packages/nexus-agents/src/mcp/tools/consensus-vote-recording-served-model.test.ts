@@ -129,6 +129,19 @@ describe('the adapter-reported served model reaches the persisted vote record (#
     expect(verifyVoteRecordSet(records).ok).toBe(true);
   });
 
+  it('persists resolved opus and original fable assignment through execution and recording (#7333)', async () => {
+    const { records, invalidLines } = parseVoteRecordsText(await persistSeatReporting('opus'));
+    expect(invalidLines).toEqual([]);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.voters[0]).toMatchObject({
+      model: 'claude-fable-5',
+      servedModel: 'opus',
+      resolvedModel: 'claude-opus',
+      assignedModel: 'claude-fable-5',
+    });
+    expect(verifyVoteRecordSet(records)).toEqual({ ok: true, recordCount: 1 });
+  });
+
   it('the served model is hash-covered: tampering it on disk breaks verification', async () => {
     const text = await persistSeatReporting('claude-sonnet');
     const tampered = text.replace('"servedModel":"claude-sonnet"', '"servedModel":"gpt-5.5"');
@@ -144,6 +157,8 @@ describe('the adapter-reported served model reaches the persisted vote record (#
     const voter = records[0]?.voters[0];
     expect(voter?.model).toBe('claude-fable-5');
     expect(voter).not.toHaveProperty('servedModel');
+    expect(voter?.resolvedModel).toBe('claude-fable-5');
+    expect(voter?.assignedModel).toBe('claude-fable-5');
     expect(verifyVoteRecordSet(records).ok).toBe(true);
   });
 

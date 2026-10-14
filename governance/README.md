@@ -639,6 +639,34 @@ none drifted. Unmeasured diagnostics use `::warning::`, drift diagnostics use
 empty needs list is drift, and its exact match to the live CI needs list is
 covered by an integration test.
 
+Since [#6391](https://github.com/nexus-substrate/nexus-agents/issues/6391), the
+base-owned manifest also pins `allowed_need_dependencies`: the direct edges a
+job in `ci-success.needs` may declare. Initially only `fitness-audit → build`
+is permitted, so the fitness gate can download build output. A new edge is
+drift even if its wrapper runs with `if: always()` and reports success after
+the actual verifier failed. `scripts/aggregator-shape.ts` measures the target
+workflow; `scripts/check-required-jobs.ts` authorizes edges using policy from
+the base checkout. A head manifest cannot authorize its own changes. No
+workflow edit or additional gate is required.
+
+A parsed job without `needs` has a measured empty dependency list. Missing
+measurement is `unmeasured`; malformed declarations, missing dependency jobs,
+self-reference and unauthorized edges are drift. An empty edge allowlist
+forbids all edges and still permits measured jobs with none. Policy keys and
+targets must name required jobs; targets cannot name their own source. The
+existing `skip_allowed` licence remains stricter: those jobs cannot depend on
+anything. The shared extractor does not apply CI policy to `docs-success`.
+
+This is a topology guarantee. It does not prove that job bodies execute their
+verifiers or propagate command failures: `pnpm audit || true`, an echo-only
+job, or a changed body using a permitted edge remain outside it. The seven-voter
+design panel explicitly accepted this residual in
+`vote-1791966743160-grrurrg`; implementation ratification remains a separate
+exact-head panel and owner decision. The original pass-through fixture is
+accepted by the old base checker, while unchanged ordinary head tests reject
+its unclassified helper and missing audit command. It is evidence of the
+policy gap, not an observed bypass of every CI check.
+
 **Part 2 (landed, owner-visible settings change): require the context.**
 The status context named exactly `Governor-path ratification gate` is in
 `main`'s required status checks
