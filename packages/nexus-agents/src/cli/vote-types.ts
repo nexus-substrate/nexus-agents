@@ -238,9 +238,9 @@ export interface AgentVoteResult {
    */
   readonly retriedFrom?: RetriedFrom | undefined;
   /**
-   * Model id that executed this vote, when known (e.g. 'claude-sonnet'). Carried
-   * so per-decision cost aggregation can attribute spend per model (#3855). Absent
-   * for error/simulation votes that never reached a model.
+   * Configured/requested adapter model id, when known (e.g. 'claude-sonnet'). Carried
+   * as configured/requested provenance; spend attribution uses {@link servedModel}.
+   * Absent for error/simulation votes that never reached a model.
    */
   readonly model?: string | undefined;
   /**
