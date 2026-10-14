@@ -35,9 +35,9 @@ interface QualityProfile {
   /** USD per 1M INPUT tokens. */
   readonly costPerMillionInput: number;
   /**
-   * USD per 1M OUTPUT tokens. Carried because output bills at several times
-   * input; collapsing the two into one rate is what made this stage's ceiling
-   * fail open (#5186).
+   * USD per 1M OUTPUT tokens. Either component may be more expensive;
+   * collapsing the two into one rate made this stage's ceiling fail open
+   * (#5186).
    */
   readonly costPerMillionOutput: number;
   readonly avgLatencyMs: number; // Milliseconds
@@ -75,8 +75,9 @@ function deriveQualityProfiles(): Record<CliName, QualityProfile> {
  * was configured to reject (#5186).
  *
  * When the caller supplies a split, price it exactly. When it supplies only a
- * total, there is no honest single rate — so use the OUTPUT rate, the expensive
- * one. Over-rejecting a cheap candidate costs a routing option; under-rejecting
+ * total (or an incomplete split), use the higher of the INPUT and OUTPUT rates.
+ * Registry/manifest prices need not make output more expensive (#7391).
+ * Over-rejecting a cheap candidate costs a routing option; under-rejecting
  * an expensive one costs money, which is the asymmetry #4196 already encodes
  * elsewhere in this tree.
  */
@@ -99,8 +100,11 @@ function estimateCeilingCost(
     ).costUsd;
   }
 
-  // Split unknown: charge the whole total at the output rate.
-  return computeTokenCost({ input: 0, output: config.expectedTokens }, rates).costUsd;
+  // Split unknown: either component may contain the whole total. Bound both.
+  return computeTokenCost(
+    { input: 0, output: config.expectedTokens },
+    { ...rates, outputPer1M: Math.max(rates.inputPer1M, rates.outputPer1M) }
+  ).costUsd;
 }
 
 /**
@@ -118,8 +122,8 @@ export interface QualityConstraintConfig {
   /**
    * Expected INPUT tokens, when the caller knows the split. Supplying both this
    * and {@link expectedOutputTokens} prices the ceiling exactly; leaving them
-   * unset prices {@link expectedTokens} at the OUTPUT rate, which is the
-   * conservative bound (#5186).
+   * incomplete prices {@link expectedTokens} at the higher INPUT/OUTPUT rate,
+   * which is the conservative bound (#5186, #7391).
    */
   readonly expectedInputTokens?: number | undefined;
   /** Expected OUTPUT tokens, when the caller knows the split. */

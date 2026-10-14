@@ -71,6 +71,133 @@ describe('QualityConstraintStage', () => {
       }
     });
 
+    it.each([
+      {
+        name: 'unknown split with input dearer than output',
+        inputPer1M: 20,
+        outputPer1M: 1,
+        tokens: 1_000_000,
+        ceiling: 2,
+        split: {},
+        rejects: true,
+      },
+      {
+        name: 'input-only split remains unknown',
+        inputPer1M: 20,
+        outputPer1M: 1,
+        tokens: 1_000_000,
+        ceiling: 2,
+        split: { expectedInputTokens: 0 },
+        rejects: true,
+      },
+      {
+        name: 'output-only split remains unknown',
+        inputPer1M: 20,
+        outputPer1M: 1,
+        tokens: 1_000_000,
+        ceiling: 2,
+        split: { expectedOutputTokens: 1_000_000 },
+        rejects: true,
+      },
+      {
+        name: 'known all-output split uses its exact cheaper rate',
+        inputPer1M: 20,
+        outputPer1M: 1,
+        tokens: 1_000_000,
+        ceiling: 2,
+        split: { expectedInputTokens: 0, expectedOutputTokens: 1_000_000 },
+        rejects: false,
+      },
+      {
+        name: 'known all-input split uses its exact dearer rate',
+        inputPer1M: 20,
+        outputPer1M: 1,
+        tokens: 1_000_000,
+        ceiling: 2,
+        split: { expectedInputTokens: 1_000_000, expectedOutputTokens: 0 },
+        rejects: true,
+      },
+      {
+        name: 'one token retains per-million rate units',
+        inputPer1M: 20,
+        outputPer1M: 1,
+        tokens: 1,
+        ceiling: 0.000_01,
+        split: {},
+        rejects: true,
+      },
+      {
+        name: 'explicit free prices meet a zero ceiling',
+        inputPer1M: 0,
+        outputPer1M: 0,
+        tokens: 1_000_000,
+        ceiling: 0,
+        split: {},
+        rejects: false,
+      },
+      {
+        name: 'free output does not make an unknown split free',
+        inputPer1M: 20,
+        outputPer1M: 0,
+        tokens: 1_000_000,
+        ceiling: 2,
+        split: {},
+        rejects: true,
+      },
+      {
+        name: 'known free-input tokens meet a zero ceiling',
+        inputPer1M: 0,
+        outputPer1M: 20,
+        tokens: 1_000_000,
+        ceiling: 0,
+        split: { expectedInputTokens: 1_000_000, expectedOutputTokens: 0 },
+        rejects: false,
+      },
+      {
+        name: 'known free-output tokens meet a zero ceiling',
+        inputPer1M: 20,
+        outputPer1M: 0,
+        tokens: 1_000_000,
+        ceiling: 0,
+        split: { expectedInputTokens: 0, expectedOutputTokens: 1_000_000 },
+        rejects: false,
+      },
+    ])('bounds current registry prices: $name', async (testCase) => {
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = getEntry(id);
+        return id === 'gpt-6.1-sol'
+          ? {
+              ...entry,
+              pricing: { inputPer1M: testCase.inputPer1M, outputPer1M: testCase.outputPer1M },
+            }
+          : entry;
+      });
+      const stage = new QualityConstraintStage({
+        minQuality: 0,
+        expectedTokens: testCase.tokens,
+        maxCostUsd: testCase.ceiling,
+        allowFallback: false,
+        ...testCase.split,
+      });
+      try {
+        const result = await stage.route(createContext('priced task', ['codex']));
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.context.filtered.has('codex')).toBe(testCase.rejects);
+          expect(result.value.continuesPipeline).toBe(!testCase.rejects);
+          expect(result.value.context.signals).not.toContain('quality:used-fallback');
+          expect(result.value.context.signals.includes('quality:constraint-cost')).toBe(
+            testCase.rejects
+          );
+          expect(stage.getStats()['fallbackCount']).toBe(0);
+        }
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('passes all candidates with default config', async () => {
       const ctx = createContext('test task');
       const result = await stage.route(ctx);
@@ -107,9 +234,9 @@ describe('QualityConstraintStage', () => {
       // estimate ran 5-6x under the worst case, so the ceiling ADMITTED
       // candidates it was configured to reject. The test encoded the defect.
       //
-      // With no split supplied, the whole total is now priced at the OUTPUT
-      // rate (outputPer1M: claude=50, gemini=12, codex=30):
-      //   at 1500 tokens — claude=$0.075, gemini=$0.018, codex=$0.045
+      // With no split supplied, price the whole total at the higher input/output
+      // rate. Every current default exceeds this ceiling at 1500 tokens; the
+      // bound must stay conservative regardless of which component is dearer.
       const lowBudgetStage = new QualityConstraintStage({
         maxCostUsd: 0.004,
         expectedTokens: 1500,
