@@ -39,26 +39,16 @@ import {
 } from './request-context.js';
 import { createMetricsMiddleware } from './tool-metrics.js';
 import { abortSignalStorage } from '../mcp-notifier.js';
-import { toolStructuredError } from '../tools/tool-result.js';
+import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import type { ErrorCategory } from '../error-envelope.js';
 
 /**
- * MCP tool result type.
- *
- * This interface is structurally compatible with the MCP SDK's CallToolResult.
- * The content array accepts text content for simplicity, while remaining
- * compatible with the SDK's broader ContentBlock type at runtime.
+ * MCP tool result type — re-exported from the single authoritative
+ * definition in `../tools/tool-result.ts` (#5129 item 6). This was a
+ * structurally-identical copy; a field added to one copy could drift out of
+ * the other. Structurally compatible with the MCP SDK's CallToolResult.
  */
-export interface ToolResult {
-  /** Content blocks returned by the tool (text content) */
-  content: Array<{ type: 'text'; text: string }>;
-  /** Whether this represents an error result */
-  isError?: boolean;
-  /** Structured output for SDK outputSchema validation (Issue #1117) */
-  structuredContent?: Record<string, unknown>;
-  /** Out-of-band metadata — carries the #2649 error envelope on errors. */
-  _meta?: Record<string, unknown>;
-}
+export type { ToolResult } from '../tools/tool-result.js';
 
 /**
  * Middleware context passed through the chain.
