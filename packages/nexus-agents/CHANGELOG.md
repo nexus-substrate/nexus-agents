@@ -1,5 +1,132 @@
 # nexus-agents
 
+## 11.6.0
+
+### Minor Changes
+
+- [#7368](https://github.com/nexus-substrate/nexus-agents/pull/7368) [`a34fc39`](https://github.com/nexus-substrate/nexus-agents/commit/a34fc39d6fac9ae6a55e1370eb78f323429ecc78) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(context): graduate NEXUS_CONTEXT_RANKED to default-on ([#3236](https://github.com/nexus-substrate/nexus-agents/issues/3236))
+
+  Changes `NEXUS_CONTEXT_RANKED` from default-off to default-on via `parseBoolEnv(CONTEXT_RANKED_FLAG, true)`. Context summaries now render unified cross-ranked memory blocks by default, scoring recency, importance, and relevance across all memory sources. Operators can opt out by setting `NEXUS_CONTEXT_RANKED=0`.
+
+- [#7364](https://github.com/nexus-substrate/nexus-agents/pull/7364) [`3e31dfe`](https://github.com/nexus-substrate/nexus-agents/commit/3e31dfef63c1941bb65c8ea0608dc9e40b256fad) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Thread measured execution cost (USD) through CompositeRouter and PendingRoutingOutcomes into model-selection shadow records to enable cost-measured evaluation ([#4197](https://github.com/nexus-substrate/nexus-agents/issues/4197)).
+
+- [#7372](https://github.com/nexus-substrate/nexus-agents/pull/7372) [`a689093`](https://github.com/nexus-substrate/nexus-agents/commit/a689093dbcb06a632bcacce12a1355ea537142cd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(observability): close feedback loop decision and enforce domain boundaries (ADR 0020, [#4289](https://github.com/nexus-substrate/nexus-agents/issues/4289))
+
+  Formalizes the architectural decision closing Issue [#4289](https://github.com/nexus-substrate/nexus-agents/issues/4289) via consensus vote (Option B):
+
+  - EventBus remains the sole canonical signal bus for typed observability and self-tuning events (`signal.*`); a duplicate `IFeedbackCoordinator` is rejected per anti-sprawl.
+  - `signal.fitness_declined` is confirmed strictly scoped to tech-debt/remediation (`flag_tech_debt`) and deliberately decoupled from `adaptive-thresholds` and routing multipliers.
+  - Added negative invariant tests (`tune-stage-invariants.test.ts`) guaranteeing that fitness signals never trigger routing demotions or mutate outcome baselines.
+
+- [#7366](https://github.com/nexus-substrate/nexus-agents/pull/7366) [`04311aa`](https://github.com/nexus-substrate/nexus-agents/commit/04311aaeb387e801faacb34c2697ae50205ff374) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose optional transient failure recoveryPolicy on create_expert and execute_expert MCP tool input schemas and thread per-call overrides ([#4291](https://github.com/nexus-substrate/nexus-agents/issues/4291)).
+
+- [#7371](https://github.com/nexus-substrate/nexus-agents/pull/7371) [`38a8a99`](https://github.com/nexus-substrate/nexus-agents/commit/38a8a9934336cfe4abdf673cae287f3f7b3fabe5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): add trust-tier policy enforcement at shared agent-executor stage entry ([#4694](https://github.com/nexus-substrate/nexus-agents/issues/4694))
+
+  Enforces caller trust-tier policy at `startStage` in `agent-executor.ts` across pipeline stages. Missing or unmeasured caller tiers fail closed to untrusted (`4`) in the policy snapshot. Under `NEXUS_POLICY_GATE_MODE=block`, untrusted callers are blocked before workspace execution with `PolicyBlockedError`, while benign callers (tiers 1 and 2) and analysis/planning stages continue unimpeded. Under default `warn` mode, violations are emitted to the event bus and durable audit trail (`security.policy_gate`) without halting.
+
+- [#7367](https://github.com/nexus-substrate/nexus-agents/pull/7367) [`d511a75`](https://github.com/nexus-substrate/nexus-agents/commit/d511a753af136a21f2c683b0da169b6f28e175a2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(context): token-aware greedy budgeting for context retriever sections ([#5497](https://github.com/nexus-substrate/nexus-agents/issues/5497))
+
+  Replaces the fixed `slice(0, 5)` selection in `context-retriever-helpers.ts` with token-aware greedy budgeting (`sliceContextLines`). When an item exceeds the remaining section budget (default: 400 tokens), it is skipped in favor of subsequent smaller items that fit, while respecting the maximum item count cap (default: 5 items).
+
+- [#7363](https://github.com/nexus-substrate/nexus-agents/pull/7363) [`86357eb`](https://github.com/nexus-substrate/nexus-agents/commit/86357eb7096fb3d3b90580eb3b5cca8d20353893) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Implement provider × model catalog with gateway-reachability admission ([#7072](https://github.com/nexus-substrate/nexus-agents/issues/7072), epic [#4391](https://github.com/nexus-substrate/nexus-agents/issues/4391) increment C).
+
+  - Add SSRF URL validation, payload size ceiling (25 MiB), and strict schema validation for models.dev catalog sync.
+  - Preserve provider × model coverage in snapshot (`gatewaysByModel` and `entry.gateways`).
+  - Enforce gateway-reachability admission: admit models only if covered by a configured gateway's `serves()` or explicit pins, preventing catalog sprawl.
+  - Add `whichGatewaysServe(modelId)` helper to answer which configured gateways serve a model.
+
+- [#7373](https://github.com/nexus-substrate/nexus-agents/pull/7373) [`a74e051`](https://github.com/nexus-substrate/nexus-agents/commit/a74e051194e7e89294cbb942b09c1c6cda208baa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(models): models.dev live discovery source and catalog resolution in model delegation
+
+  Supports newly released frontier models and resolves authentic capabilities across discovery and delegation ([#6625](https://github.com/nexus-substrate/nexus-agents/issues/6625)):
+
+  - Extracts shared HTTP fetcher with SSRF validation, payload ceiling, and schema parsing into `src/config/models-dev-client.ts`, shared between `scripts/sync-models-dev.ts` and discovery probes.
+  - Adds `models-dev` as an unauthenticated live discovery source in `model-drift-sources.ts`, allowing scheduled model drift detection to discover newly released models across frontier vendors with true context windows, pricing, and release timestamps.
+  - Implements `resolveCapabilityProfile(modelName)` in `delegate-to-model-types.ts`, querying the live `ModelRegistry` when models are not in the static in-tree matrix.
+  - Updates `selectModel` and `buildDelegateOutput` in `delegate-to-model-helpers.ts` to honor model hints for catalog-admitted models (such as 1M+ context models) rather than silently dropping them.
+  - Updates `delegate-to-model-router.ts` to resolve authentic context windows and scores from `ModelRegistry` rather than falling back to arbitrary static defaults.
+
+- [#7370](https://github.com/nexus-substrate/nexus-agents/pull/7370) [`6d9e15e`](https://github.com/nexus-substrate/nexus-agents/commit/6d9e15ed968101b8283b5a785d6d9f0570f19a1c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(models): universal model catalog resolution across adapters and observers
+
+  Eliminates conservative 8K default context window and hardcoded capability matching for catalog and frontier models:
+
+  - Bridges `ModelRegistry` catalog resolution into `expert-context-observer.ts` via `resolveExpertContextWindow(modelId)`, preventing premature context warnings on 1M+ context models.
+  - Updates provider adapters (`claude-adapter-helpers.ts`, `gemini-types.ts`, `openai-types.ts`) to inspect `ModelRegistry` entry metadata (`inputModalities` and `specialFeatures`), dynamically detecting vision and extended thinking capabilities.
+  - Maps `reasoning: true` from the `models.dev` catalog to `specialFeatures: ['extended_thinking']` in `model-catalog-admission.ts`.
+
+- [#7360](https://github.com/nexus-substrate/nexus-agents/pull/7360) [`cb5a70f`](https://github.com/nexus-substrate/nexus-agents/commit/cb5a70fb518cfcc5231564295e160e7c6442992e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Default async job-result reader to Stage-2 task-state log with precedence rule (epic [#2631](https://github.com/nexus-substrate/nexus-agents/issues/2631) / [#3090](https://github.com/nexus-substrate/nexus-agents/issues/3090) / [#3693](https://github.com/nexus-substrate/nexus-agents/issues/3693)), retaining `NEXUS_JOB_RESULT_SOURCE=sidecar` for legacy fallback.
+
+- [#7361](https://github.com/nexus-substrate/nexus-agents/pull/7361) [`77c5fb7`](https://github.com/nexus-substrate/nexus-agents/commit/77c5fb7e414cf49b010a922c50bc638784374bc2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(models): register gemini-3.8-flash in canonical model matrix ([#7101](https://github.com/nexus-substrate/nexus-agents/issues/7101), [#6625](https://github.com/nexus-substrate/nexus-agents/issues/6625))
+
+- [#7355](https://github.com/nexus-substrate/nexus-agents/pull/7355) [`55bda91`](https://github.com/nexus-substrate/nexus-agents/commit/55bda91fcefbe30af15c5e3945d5bede911ec99e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record the serving gateway arm on task outcomes to support shadow route evaluation and LinUCB warm-starts ([#7082](https://github.com/nexus-substrate/nexus-agents/issues/7082)).
+
+- [#7365](https://github.com/nexus-substrate/nexus-agents/pull/7365) [`3277c0d`](https://github.com/nexus-substrate/nexus-agents/commit/3277c0d9b18cb5ab48fc800e9b917797d3da2e9f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Register 4 weekly drift-detected models in the canonical matrix (claude-opus-5.5, nemotron-3.5-lightning, gpt-6.1-sol-pro, claude-fable-5.1) to resolve proposals ([#7100](https://github.com/nexus-substrate/nexus-agents/issues/7100), [#7102](https://github.com/nexus-substrate/nexus-agents/issues/7102), [#7103](https://github.com/nexus-substrate/nexus-agents/issues/7103), [#7104](https://github.com/nexus-substrate/nexus-agents/issues/7104)).
+
+- [#7358](https://github.com/nexus-substrate/nexus-agents/pull/7358) [`dfb708c`](https://github.com/nexus-substrate/nexus-agents/commit/dfb708ca659940e906a6a1d4407c29b50e715377) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Spike [#7071](https://github.com/nexus-substrate/nexus-agents/issues/7071) (Epic [#4391](https://github.com/nexus-substrate/nexus-agents/issues/4391) Increment A): Route=(model, gateway) shadow evaluation against gateway-health + flat-arms baseline and arm-statistics migration decision.
+
+### Patch Changes
+
+- [#7362](https://github.com/nexus-substrate/nexus-agents/pull/7362) [`28fd471`](https://github.com/nexus-substrate/nexus-agents/commit/28fd471a25cad9e91cb222bee74c131a526a9b6f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(pipeline): document deprecation of legacy V2 umbrella flags ([#925](https://github.com/nexus-substrate/nexus-agents/issues/925) Phase F)
+
+- [#7347](https://github.com/nexus-substrate/nexus-agents/pull/7347) [`953ff9a`](https://github.com/nexus-substrate/nexus-agents/commit/953ff9a00d58319933109054eba68dfe4c7d9499) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Downgrade uninstalled and unauthenticated CLIs when a voter-capable CLI is healthy, and treat unverified auth probe states as warnings rather than failures in doctor.
+
+- [#7381](https://github.com/nexus-substrate/nexus-agents/pull/7381) [`2f0ee9f`](https://github.com/nexus-substrate/nexus-agents/commit/2f0ee9f6117e88a1fbca1ae783d2919e9506c1ff) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(models): register newly discovered frontier models in canonical matrix ([#7374](https://github.com/nexus-substrate/nexus-agents/issues/7374), [#7375](https://github.com/nexus-substrate/nexus-agents/issues/7375), [#7376](https://github.com/nexus-substrate/nexus-agents/issues/7376), [#7377](https://github.com/nexus-substrate/nexus-agents/issues/7377), [#7378](https://github.com/nexus-substrate/nexus-agents/issues/7378))
+
+  Registers 5 newly released frontier models discovered via live `models-dev` and OpenRouter drift detection into the canonical in-tree model matrix:
+
+  - `claude-opus-5` (Issue [#7374](https://github.com/nexus-substrate/nexus-agents/issues/7374) / [#6625](https://github.com/nexus-substrate/nexus-agents/issues/6625)): Anthropic flagship, 1M context, 128K maxOutput, $5/$25 pricing.
+  - `gemini-3.7-flash` (Issue [#7375](https://github.com/nexus-substrate/nexus-agents/issues/7375) / [#6625](https://github.com/nexus-substrate/nexus-agents/issues/6625)): Google flash tier, 1M context, 65K maxOutput, $0.75/$3.75 pricing, extended thinking.
+  - `nemotron-3.5-content-safety` (Issue [#7376](https://github.com/nexus-substrate/nexus-agents/issues/7376) / [#6625](https://github.com/nexus-substrate/nexus-agents/issues/6625)): NVIDIA OpenRouter safety guardrail model, 131K context, 16K maxOutput, $0.20/$0.20 pricing.
+  - `gpt-6-luna-pro` (Issue [#7377](https://github.com/nexus-substrate/nexus-agents/issues/7377) / [#6625](https://github.com/nexus-substrate/nexus-agents/issues/6625)): OpenAI flagship, 1.05M context, 65K maxOutput, $0.10/$0.50 pricing, citations and streaming.
+  - `claude-opus-4.8` (Issue [#7378](https://github.com/nexus-substrate/nexus-agents/issues/7378) / [#6625](https://github.com/nexus-substrate/nexus-agents/issues/6625)): Anthropic flagship, 1M context, 128K maxOutput, $5/$25 pricing.
+
+  Updates `MODEL_IDS` tuple, `DEFAULT_MODEL_CAPABILITIES.models` matrix, and test coverage in `model-config-helpers.test.ts`.
+
+- [#7351](https://github.com/nexus-substrate/nexus-agents/pull/7351) [`5c443e9`](https://github.com/nexus-substrate/nexus-agents/commit/5c443e935ce2a846b1ef1560109f5fc0532be507) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve the single available read-only CLI adapter when assigning consensus panel seats rather than falling back to an unverified default adapter ([#7349](https://github.com/nexus-substrate/nexus-agents/issues/7349)).
+
+- [#7359](https://github.com/nexus-substrate/nexus-agents/pull/7359) [`4d000ad`](https://github.com/nexus-substrate/nexus-agents/commit/4d000add1e67217c56030f3a26d532380355c94f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(config): synchronize AGY_MODEL_SLUGS with live agy models (gemini-3.8-flash) and add dictionary terms to cspell.json
+
+- [#7357](https://github.com/nexus-substrate/nexus-agents/pull/7357) [`38955ce`](https://github.com/nexus-substrate/nexus-agents/commit/38955ce98c7d0d8239d99de5f92c0a2a4aeff5bf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Align CLI catalog description for expert command and mark aflow-mcts-workflows as implemented in research alignment map.
+
+- [#7380](https://github.com/nexus-substrate/nexus-agents/pull/7380) [`9460a14`](https://github.com/nexus-substrate/nexus-agents/commit/9460a14629cd5c7fb980ebd12af6670457eaf75d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(core): decouple ANSI color formatting utilities from cli layer and enforce clean layering ([#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129) item 1)
+
+  Decouples foundational ANSI color formatting from CLI presentation layer to eliminate inverted architectural dependencies:
+
+  - Creates `packages/nexus-agents/src/core/ansi-colors.ts` with foundational ANSI escape codes (`RAW_ANSI`), `detectColorsEnabled`, `createColors`, and `colors`.
+  - Re-exports ANSI color utilities from `packages/nexus-agents/src/cli/ansi-output.ts` to preserve 100% backward compatibility for existing CLI callers.
+  - Migrates `src/core/trace-exporter.ts` and `src/core/trace-exporter-helpers.ts` to import colors from `core/ansi-colors.js`.
+  - Adds ESLint architectural rule `nexus-agents/no-core-to-cli-imports-5129` to enforce that foundational `core/` modules never import from `cli/`.
+  - Re-exports ANSI color utilities from `src/core/index.ts` with explicit type and contract test coverage.
+  - Fixes internal barrel circular import in `src/core/artifact.ts` to directly import `getTimeProvider` from `./time-provider.js`.
+
+- [#7383](https://github.com/nexus-substrate/nexus-agents/pull/7383) [`e12a476`](https://github.com/nexus-substrate/nexus-agents/commit/e12a476e5fd06a71fba772c6ecc8fa1f9a225044) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(cli): split ParsedCliArgs into per-command option types and encapsulate CustomApiConfig ([#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129) item 2)
+
+  Refactors the monolithic `ParsedCliArgs` interface and encapsulates custom gateway options as approved by consensus panel (Option A):
+
+  - Introduces `CustomApiConfig` in `cli/command-options-types.ts` to encapsulate OpenAI-compatible gateway options (`baseUrl`, optional `apiKey`, optional `model`) so setting partial or uncoordinated flags is unrepresentable.
+  - Defines typed per-command option interfaces (`SetupCliOptions`, `VoteCliOptions`, `OrchestrateCliOptions`, `DoctorCliOptions`, `InitCliOptions`, `ImprovementReviewCliOptions`, `RemediationReviewCliOptions`, `LearningMetricsCliOptions`, `ModelDriftCliOptions`, `HealthCliOptions`, `JobsCliOptions`) and `CommandArgs<TCommand, TOptions>` container.
+  - Wires `buildCustomApiConfig` in `cli/cli-options-builders.ts` to automatically construct `customApiConfig` whenever `--custom-api` is supplied.
+  - Decomposes `cli-commands-handlers-setup.ts` into focused helper functions adhering to cyclomatic complexity $\le 4$ and `exactOptionalPropertyTypes: true`.
+  - Updates `health-command.ts`, `jobs-command.ts`, and setup handlers to accept typed command arguments while preserving 100% backward compatibility for existing callers of `ParsedCliArgs`.
+
+- [#7382](https://github.com/nexus-substrate/nexus-agents/pull/7382) [`a530018`](https://github.com/nexus-substrate/nexus-agents/commit/a530018acf2391db63d82590213b78f2ea687892) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(routing): disambiguate colliding RoutingDecision definitions across subsystems ([#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129) item 3)
+
+  Disambiguates 6 conflicting definitions of `RoutingDecision` that model distinct subsystem domains, following the precedent established in [#4440](https://github.com/nexus-substrate/nexus-agents/issues/4440) and consensus vote decision:
+
+  - Renames `RoutingDecision` in `orchestration/workflow-router-types.ts` to `WorkflowRoutingDecision` and updates `IWorkflowRouter.route` and `WorkflowPatternRouter.route`.
+  - Renames `RoutingDecision` in `agents/observability/orchestration-observer-types.ts` to `ObserverRoutingDecision` and updates `IOrchestrationObserver` and helper signatures.
+  - Renames `RoutingDecision` and `RoutingDecisionSchema` in `learning/outcome-feedback-types.ts` to `FeedbackRoutingDecision` and `FeedbackRoutingDecisionSchema`, updating `IOutcomeFeedback` and `OutcomeFeedbackCollector`.
+  - Renames `RoutingDecision` in `core/routing/routing-context-store.ts` to `RoutingDecisionRecord`, updating `IRoutingContextStore`, `RoutingContextStore`, and helper functions.
+  - Renames `RoutingDecision` in `cli-adapters/router-types.ts` to `CliRoutingDecision`, updating `ITaskRouter` and testing framework callers.
+  - Renames `RoutingDecision` in `cli-adapters/routing/router-stage.ts` to `StageRoutingDecision`, updating `IRoutingPipeline` and stage results.
+  - Preserves 100% backward compatibility at every definition site with deprecated `export type RoutingDecision = ...` and schema aliases.
+  - Regenerates public API surface (`api-surface.txt`), completely removing `RoutingDecision` from colliding names without breaking public API compatibility.
+
+- [#7350](https://github.com/nexus-substrate/nexus-agents/pull/7350) [`85bfc97`](https://github.com/nexus-substrate/nexus-agents/commit/85bfc97515ffd3d36bffb2f7a87e941450a9a88b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Exclude build artifacts, scratch worktrees, and test files with disclosure from complete baseline security scans, preventing unparseable test mocks from degrading comparisons to unmeasured.
+
+- [#7356](https://github.com/nexus-substrate/nexus-agents/pull/7356) [`fd34823`](https://github.com/nexus-substrate/nexus-agents/commit/fd3482394ed2bb1430d8c64929045c350d92c042) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Thread the runtime TaskContract through GraphState to StageContext.task during pipeline execution ([#6910](https://github.com/nexus-substrate/nexus-agents/issues/6910)).
+
+- [#7334](https://github.com/nexus-substrate/nexus-agents/pull/7334) [`53fe288`](https://github.com/nexus-substrate/nexus-agents/commit/53fe288c23f0f1d0c776555cb28d38a0fdc7565e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Recover every known vote-seat assignment after model fallback and report assignment coverage alongside distinct model and family counts.
+
 ## 11.5.9
 
 ### Patch Changes
