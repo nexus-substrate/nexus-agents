@@ -25,6 +25,7 @@ const PHONE = { width: 390, height: 844 };
 const THEMES = ['light', 'dark'];
 const TOUCH_TARGET_PX = 48;
 const PRIMARY_LINK_COUNT = 5;
+const CLOSE_EVENT_TIMEOUT_MS = 5000;
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -164,6 +165,85 @@ async function drawerChecks(page, theme, origin) {
   check(`${tag} Enter opens`, await dialog.evaluate((d) => d.open) && (await button.getAttribute('aria-expanded')) === 'true');
   await page.keyboard.press('Enter'); // focus is on Close
   check(`${tag} Close button closes, focus returns`, !(await dialog.evaluate((d) => d.open)) && (await activeInfo(page)).isMenuButton);
+
+  // #7393: both cancel-driven and direct closing queue a native close event.
+  // Reopen in the same task, then measure after that old event arrives.
+  for (const closeMethod of ['requestClose', 'close']) {
+    await button.click();
+    const reopened = await dialog.evaluate(
+      (d, { closeMethod, timeoutMs }) =>
+        new Promise((resolve, reject) => {
+          const opener = document.querySelector('[data-menu-open]');
+          const deadline = setTimeout(
+            () => reject(new Error('Queued close event did not arrive')),
+            timeoutMs
+          );
+          d.addEventListener(
+            'close',
+            () => {
+              clearTimeout(deadline);
+              requestAnimationFrame(() =>
+                resolve({
+                  open: d.open && d.matches(':modal'),
+                  expanded: opener.getAttribute('aria-expanded'),
+                  primary: d.querySelectorAll('.docs-primary-nav a').length,
+                  rail: d.querySelectorAll('.docs-rail a').length,
+                  focusClose: document.activeElement === d.querySelector('[data-menu-close]'),
+                })
+              );
+            },
+            { once: true }
+          );
+          d[closeMethod]();
+          opener.click();
+        }),
+      { closeMethod, timeoutMs: CLOSE_EVENT_TIMEOUT_MS }
+    );
+    check(`${tag} ${closeMethod} queued close preserves reopened modal`, reopened.open);
+    check(
+      `${tag} ${closeMethod} queued close preserves expanded state`,
+      reopened.expanded === 'true'
+    );
+    check(
+      `${tag} ${closeMethod} queued close preserves primary navigation`,
+      reopened.primary === PRIMARY_LINK_COUNT
+    );
+    check(
+      `${tag} ${closeMethod} queued close preserves section navigation`,
+      reopened.rail === contents.rail
+    );
+    check(`${tag} ${closeMethod} queued close preserves focus on Close`, reopened.focusClose);
+    await dialog.evaluate(
+      (d, timeoutMs) =>
+        new Promise((resolve, reject) => {
+          const deadline = setTimeout(
+            () => reject(new Error('Cleanup close event did not arrive')),
+            timeoutMs
+          );
+          d.addEventListener(
+            'close',
+            () => {
+              clearTimeout(deadline);
+              requestAnimationFrame(resolve);
+            },
+            { once: true }
+          );
+          d.close();
+        }),
+      CLOSE_EVENT_TIMEOUT_MS
+    );
+
+    check(
+      `${tag} ${closeMethod} restores navigation after final close`,
+      await page.evaluate(
+        () =>
+          document
+            .querySelector('.docs-primary-nav')
+            ?.parentElement?.classList.contains('docs-masthead-inner') &&
+          document.querySelector('.docs-rail')?.parentElement?.classList.contains('docs-page')
+      )
+    );
+  }
 
   // Backdrop click closes.
   await button.click();
