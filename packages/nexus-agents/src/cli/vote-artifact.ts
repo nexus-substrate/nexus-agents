@@ -36,6 +36,28 @@ async function readBoundedArtifact(artifactPath: string): Promise<Buffer> {
   }
 }
 
+/** Validate and frame bounded, complete UTF-8 text without replacing source bytes. */
+export function inlineVoteArtifactText(
+  proposal: string,
+  source: string | Uint8Array,
+  displayName: string
+): string {
+  // Buffer.from replaces lone UTF-16 surrogates; never hash that replacement
+  // while claiming it represents the caller's original in-memory plan.
+  if (typeof source === 'string' && !source.isWellFormed()) {
+    throw new Error('Vote artifact contains a lone surrogate and cannot encode exact UTF-8');
+  }
+  const size = typeof source === 'string' ? Buffer.byteLength(source, 'utf8') : source.byteLength;
+  if (size > MAX_VOTE_ARTIFACT_BYTES) throw oversizedArtifact(size);
+  const bytes = Buffer.from(source);
+  if (bytes.length === 0) throw new Error('Vote artifact is empty; an artifact must have content');
+  if (bytes.includes(0)) throw new Error('Vote artifact is binary (contains a NUL byte)');
+  const content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  const header = `Artifact: ${displayName} sha256:${digest} ${String(bytes.length)} bytes`;
+  return `${proposal}\n\n${header}\n===== BEGIN ARTIFACT =====\n${content}\n===== END ARTIFACT =====`;
+}
+
 /** Inline a file into the proposal every voter consumes and the recorder hashes. */
 export async function inlineVoteArtifact(
   proposal: string,
@@ -43,11 +65,9 @@ export async function inlineVoteArtifact(
   displayName?: string
 ): Promise<string> {
   if (artifactPath === undefined) return proposal;
-  const bytes = await readBoundedArtifact(artifactPath);
-  if (bytes.length === 0) throw new Error('Vote artifact is empty; an artifact must have content');
-  if (bytes.includes(0)) throw new Error('Vote artifact is binary (contains a NUL byte)');
-  const content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-  const digest = createHash('sha256').update(bytes).digest('hex');
-  const header = `Artifact: ${displayName ?? basename(artifactPath)} sha256:${digest} ${String(bytes.length)} bytes`;
-  return `${proposal}\n\n${header}\n===== BEGIN ARTIFACT =====\n${content}\n===== END ARTIFACT =====`;
+  return inlineVoteArtifactText(
+    proposal,
+    await readBoundedArtifact(artifactPath),
+    displayName ?? basename(artifactPath)
+  );
 }

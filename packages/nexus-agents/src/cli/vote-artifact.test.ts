@@ -4,7 +4,11 @@ import { mkdtemp, open, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { inlineVoteArtifact, MAX_VOTE_ARTIFACT_BYTES } from './vote-artifact.js';
+import {
+  inlineVoteArtifact,
+  inlineVoteArtifactText,
+  MAX_VOTE_ARTIFACT_BYTES,
+} from './vote-artifact.js';
 import { parseCliArgs } from '../cli.js';
 
 const CAP = 256 * 1024;
@@ -102,5 +106,34 @@ describe('vote artifact file (#7092)', () => {
     await writeFile(path, 'é'.repeat(CAP / 2 + 1));
     await expect(inlineVoteArtifact('Ratify', path)).rejects.toThrow(`${String(CAP + 2)} bytes`);
     await expect(inlineVoteArtifact('Ratify', path)).rejects.toThrow(`${String(CAP)} bytes`);
+  });
+});
+
+/** In-memory plans share exactly the file validator and framing. */
+describe('in-memory vote artifact (#7411)', () => {
+  it('preserves Unicode, BOM and framing byte-for-byte', () => {
+    const text = '\ufeffcafé 🌍\n';
+    const hash = createHash('sha256').update(text).digest('hex');
+    expect(inlineVoteArtifactText('Review', text, 'plan.txt')).toBe(
+      `Review\n\nArtifact: plan.txt sha256:${hash} ${String(Buffer.byteLength(text))} bytes\n===== BEGIN ARTIFACT =====\n${text}\n===== END ARTIFACT =====`
+    );
+  });
+  it.each(['', 'x\0y', '\ud800', '\udc00', 'x\ud800y', '🌍\ud800'])(
+    'refuses invalid text %j',
+    (text) => {
+      expect(() => inlineVoteArtifactText('Review', text, 'plan.txt')).toThrow();
+    }
+  );
+  it('refuses invalid UTF-8 bytes rather than hashing replacements', () => {
+    expect(() => inlineVoteArtifactText('Review', Buffer.from([0xc3, 0x28]), 'plan.txt')).toThrow(
+      /UTF-8/i
+    );
+  });
+  it('accepts the exact byte cap and refuses cap + 1 for Unicode', () => {
+    const text = 'é'.repeat(CAP / 2);
+    expect(inlineVoteArtifactText('Review', text, 'plan.txt')).toContain(text);
+    expect(() => inlineVoteArtifactText('Review', text + 'x', 'plan.txt')).toThrow(
+      /262145.*262144/
+    );
   });
 });

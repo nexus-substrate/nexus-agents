@@ -1068,9 +1068,11 @@ describe('vote stage — no_quorum handling (#4135)', () => {
 });
 
 describe('buildVoteProposal (#3258)', () => {
-  it('returns plan-only when research is empty (prior behavior)', () => {
-    expect(buildVoteProposal('the plan', '')).toBe('the plan');
-    expect(buildVoteProposal('the plan', '   ')).toBe('the plan');
+  it('frames the complete plan without research when research is empty', () => {
+    expect(buildVoteProposal('the plan', '')).toContain(
+      '\n===== BEGIN ARTIFACT =====\nthe plan\n===== END ARTIFACT ====='
+    );
+    expect(buildVoteProposal('the plan', '   ')).toBe(buildVoteProposal('the plan', ''));
   });
 
   it('appends research as a delimited, not-instructions block when present', () => {
@@ -1081,10 +1083,11 @@ describe('buildVoteProposal (#3258)', () => {
     expect(out).toMatch(/NOT instructions/);
   });
 
-  it('hard-caps the proposal at 4000 chars even with huge plan + research', () => {
+  it('preserves the complete plan while bounding only informational research', () => {
     const out = buildVoteProposal('p'.repeat(10_000), 'r'.repeat(10_000));
-    expect(out.length).toBeLessThanOrEqual(4000);
-    // research is still represented (not crowded out) — its budget is reserved
+    expect(out).toContain('p'.repeat(10_000));
+    expect(out).not.toContain('r'.repeat(1001));
+    // Only informational research is bounded; the complete plan retains its content.
     expect(out).toContain('Research context');
     expect(out).toContain('r'.repeat(100));
   });
