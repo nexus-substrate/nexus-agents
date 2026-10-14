@@ -186,7 +186,8 @@ jobs:
     needs: [build, link-check, accessibility]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Allow the action's 10-minute polling budget plus setup and cancellation (#7414).
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -194,3 +195,5 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        with:
+          timeout: 600000
