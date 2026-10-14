@@ -136,6 +136,11 @@ const ManifestSchema = z.object({
    */
   required_contexts: z.record(z.string().min(1), ProducerSchema),
   audit_config_forbidden: z.boolean(),
+  /** Base-owned allowlist; an empty record allows no needed-job edges (#6391). */
+  allowed_need_dependencies: z.record(
+    z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]*$/),
+    z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]*$/))
+  ),
 });
 
 interface RequiredJobsInput {
@@ -150,6 +155,7 @@ interface RequiredJobsInput {
 
 const PROTECTION_UNMEASURED = 'Required contexts: unmeasured (branch protection unreadable)';
 const INVENTORY_UNMEASURED = 'Required contexts: unmeasured (workflow inventory unreadable)';
+const DEPENDENCIES_UNMEASURED = 'Needed-job dependencies: unmeasured (measurement absent)';
 
 interface RequiredJobsResult {
   verdict: 'ok' | 'drift' | 'unmeasured';
@@ -176,6 +182,7 @@ export function checkRequiredJobs(input: RequiredJobsInput): RequiredJobsResult 
   problems.push(...inventoryProblems(input.workflowJobs, Object.keys(required)));
   problems.push(...pinnedProducerProblems(input.workflowJobs, required));
   problems.push(...unpinnedProducerProblems(input.workflowJobs, required));
+  problems.push(...dependencyProblems(input, manifest.allowed_need_dependencies));
   const unmeasured = unmeasuredProblems(input);
   let verdict: RequiredJobsResult['verdict'] = problems.length > 0 ? 'drift' : 'ok';
   if (problems.length === 0 && unmeasured.length > 0) verdict = 'unmeasured';
@@ -192,6 +199,38 @@ function manifestProblems(manifest: z.infer<typeof ManifestSchema>): string[] {
     if (!Object.hasOwn(required, context))
       problems.push(`Manifest pins no producer for required context: ${context}`);
   }
+  for (const [need, targets] of Object.entries(manifest.allowed_need_dependencies)) {
+    if (!manifest.ci_success_needs.includes(need))
+      problems.push(`Dependency policy names non-required job: ${need}`);
+    for (const target of targets) {
+      if (target === need || !manifest.ci_success_needs.includes(target))
+        problems.push(`Invalid dependency policy target: ${need} -> ${target}`);
+    }
+  }
+  return problems;
+}
+
+/** Compare measured edges with base policy; absence is handled separately as unmeasured. */
+function dependencyProblems(
+  input: RequiredJobsInput,
+  allowed: Readonly<Record<string, readonly string[]>>
+): string[] {
+  const measured = input.ciSuccessGate.neededJobDependencies;
+  if (measured === undefined) return [];
+  const problems: string[] = [];
+  for (const need of input.ciSuccessNeeds) {
+    const dependencies = Object.hasOwn(measured, need) ? measured[need] : undefined;
+    if (dependencies === undefined) continue;
+    if (dependencies === 'unreadable') {
+      problems.push(`Needed-job dependencies unreadable: ${need}`);
+      continue;
+    }
+    const permitted = Object.hasOwn(allowed, need) ? (allowed[need] ?? []) : [];
+    for (const target of dependencies) {
+      if (!permitted.includes(target))
+        problems.push(`Unauthorized needed-job dependency: ${need} -> ${target}`);
+    }
+  }
   return problems;
 }
 
@@ -199,6 +238,9 @@ function unmeasuredProblems(input: RequiredJobsInput): string[] {
   const problems: string[] = [];
   if (input.requiredContexts === 'unmeasured') problems.push(PROTECTION_UNMEASURED);
   if (input.workflowJobs === 'unmeasured') problems.push(INVENTORY_UNMEASURED);
+  const measured = input.ciSuccessGate.neededJobDependencies;
+  if (measured === undefined || input.ciSuccessNeeds.some((need) => !Object.hasOwn(measured, need)))
+    problems.push(DEPENDENCIES_UNMEASURED);
   return problems;
 }
 
@@ -351,7 +393,8 @@ function report(result: RequiredJobsResult): number {
     const unmeasured =
       result.verdict === 'unmeasured' ||
       problem === PROTECTION_UNMEASURED ||
-      problem === INVENTORY_UNMEASURED;
+      problem === INVENTORY_UNMEASURED ||
+      problem === DEPENDENCIES_UNMEASURED;
     console.log(`::${unmeasured ? 'warning' : 'error'}::${problem}`);
   }
   if (result.verdict === 'drift') return 1;

@@ -23,6 +23,7 @@ const manifest = {
   skip_allowed: ['lint'],
   required_contexts: requiredContexts,
   audit_config_forbidden: true,
+  allowed_need_dependencies: {},
 };
 const ciJob = { workflow: 'ci.yml', id: 'ci-success', context: 'CI Success' };
 const governorJob = {
@@ -37,11 +38,209 @@ const inv = (
   jobs,
   unparseable: [],
 });
+
+describe('#6391 base-pinned needed-job dependency policy', () => {
+  interface DependencyFixture {
+    workflow: { jobs: Record<string, Record<string, unknown>> };
+    policy: Record<string, unknown> & { allowed_need_dependencies: Record<string, string[]> };
+  }
+  function actualFixture(): DependencyFixture {
+    const workflow = parse(readFileSync('.github/workflows/ci.yml', 'utf8')) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+    const policy = JSON.parse(readFileSync('governance/required-jobs.json', 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    return {
+      workflow,
+      policy: { ...policy, allowed_need_dependencies: { 'fitness-audit': ['build'] } },
+    };
+  }
+
+  async function judge(
+    workflow: ReturnType<typeof actualFixture>['workflow'],
+    policy: unknown
+  ): Promise<ReturnType<typeof import('./check-required-jobs.js').checkRequiredJobs>> {
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
+    const { checkRequiredJobs, loadWorkflowJobs } = await import('./check-required-jobs.js');
+    const gate = extractWorkflowGate(workflow, 'ci-success');
+    return checkRequiredJobs({
+      manifest: policy,
+      packageJson: JSON.parse(readFileSync('package.json', 'utf8')) as unknown,
+      ciSuccessNeeds: gate.needs,
+      ciSuccessGate: gate.gate,
+      requiredContexts: contexts,
+      workflowJobs: loadWorkflowJobs(),
+    });
+  }
+
+  it('rejects the real audit body moved behind an always-run pass-through wrapper', async () => {
+    const { workflow, policy } = actualFixture();
+    workflow.jobs['security-run'] = workflow.jobs['security'] ?? {};
+    workflow.jobs['security'] = {
+      name: 'Security Audit',
+      needs: ['security-run'],
+      if: 'always()',
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo advisory' }],
+    };
+    const result = await judge(workflow, policy);
+    expect(result.verdict).toBe('drift');
+    expect(result.problems).toContain(
+      'Unauthorized needed-job dependency: security -> security-run'
+    );
+  });
+
+  it('accepts the real measured topology and its build-output consumer', async () => {
+    const { workflow, policy } = actualFixture();
+    expect(await judge(workflow, policy)).toEqual({ verdict: 'ok', problems: [] });
+  });
+
+  it('measures absent needs as empty, independently of the absent-measurement case', async () => {
+    const { workflow } = actualFixture();
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
+    const gate = extractWorkflowGate(workflow, 'ci-success');
+    expect(gate.gate).toMatchObject({
+      neededJobDependencies: { security: [], 'fitness-audit': ['build'] },
+    });
+  });
+
+  it('reports missing dependency measurement as unmeasured rather than no dependencies', async () => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint'], neutralized: [] },
+      }).verdict
+    ).toBe('unmeasured');
+  });
+
+  it('reports a partially missing measurement instead of substituting an empty list', async () => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { ...input.ciSuccessGate, neededJobDependencies: { lint: [] } },
+      }).verdict
+    ).toBe('unmeasured');
+  });
+
+  it('measured unauthorized edges stay drift when branch protection cannot be measured', async () => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    const result = checkRequiredJobs({
+      ...input,
+      requiredContexts: 'unmeasured',
+      ciSuccessGate: {
+        ...input.ciSuccessGate,
+        neededJobDependencies: { lint: [], security: ['lint'] },
+      },
+    });
+    expect(result.verdict).toBe('drift');
+    expect(result.problems).toContain('Unauthorized needed-job dependency: security -> lint');
+    expect(result.problems).toContain(
+      'Required contexts: unmeasured (branch protection unreadable)'
+    );
+  });
+
+  it('accepts the legitimate build-output edge declared as a string', async () => {
+    const { workflow, policy } = actualFixture();
+    workflow.jobs['fitness-audit'] = { ...workflow.jobs['fitness-audit'], needs: 'build' };
+    expect(await judge(workflow, policy)).toEqual({ verdict: 'ok', problems: [] });
+  });
+
+  it.each(
+    [
+      true,
+      null,
+      42,
+      {},
+      ['build', 42],
+      '',
+      '${{ inputs.target }}',
+      ['not-a-job'],
+      ['security'],
+    ].map((needs) => ({ needs }))
+  )('rejects malformed, missing-target or self-referential declarations: %j', async ({ needs }) => {
+    const { workflow, policy } = actualFixture();
+    workflow.jobs['security'] = { ...workflow.jobs['security'], needs };
+    expect((await judge(workflow, policy)).verdict).toBe('drift');
+  });
+
+  it.each(['build', ['build'], ['build', 'test']].map((needs) => ({ needs })))(
+    'rejects new declared edges: %j',
+    async ({ needs }) => {
+      const { workflow, policy } = actualFixture();
+      workflow.jobs['security'] = { ...workflow.jobs['security'], needs };
+      const result = await judge(workflow, policy);
+      expect(result.verdict).toBe('drift');
+      expect(result.problems).toContain('Unauthorized needed-job dependency: security -> build');
+    }
+  );
+
+  it('an empty edge policy forbids edges without forbidding measured no-dependency jobs', async () => {
+    const { workflow, policy } = actualFixture();
+    const empty = { ...policy, allowed_need_dependencies: {} };
+    expect((await judge(workflow, empty)).verdict).toBe('drift');
+    delete workflow.jobs['fitness-audit']?.['needs'];
+    expect(await judge(workflow, empty)).toEqual({ verdict: 'ok', problems: [] });
+  });
+
+  it.each([
+    undefined,
+    { unknown: ['build'] },
+    { security: ['unknown'] },
+    { security: ['security'] },
+    { security: 'build' },
+    { 'fitness-audit': ['build'], typo: [] },
+  ])(
+    'rejects missing or malformed policy instead of authorizing nothing silently: %j',
+    async (allowed) => {
+      const { workflow, policy } = actualFixture();
+      expect(
+        (await judge(workflow, { ...policy, allowed_need_dependencies: allowed })).verdict
+      ).toBe('drift');
+    }
+  );
+
+  it('keeps skip licences stricter than an otherwise authorized edge', async () => {
+    const { workflow, policy } = actualFixture();
+    workflow.jobs['commitlint'] = { ...workflow.jobs['commitlint'], needs: ['build'] };
+    const result = await judge(workflow, {
+      ...policy,
+      allowed_need_dependencies: { ...policy.allowed_need_dependencies, commitlint: ['build'] },
+    });
+    expect(result.verdict).toBe('drift');
+    expect(result.problems.join('\n')).toContain(
+      'may not depend on other jobs (needs) while skip_allowed'
+    );
+  });
+
+  it('does not apply the CI dependency policy to the shared docs extractor', async () => {
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
+    const workflow = parse(readFileSync('.github/workflows/docs-check.yml', 'utf8')) as unknown;
+    expect(extractWorkflowGate(workflow, 'docs-success').gate.neutralized).toEqual([]);
+  });
+
+  it('keeps direct command swallowing outside the selected topology guarantee', async () => {
+    const { workflow, policy } = actualFixture();
+    workflow.jobs['security'] = {
+      ...workflow.jobs['security'],
+      steps: [{ run: 'pnpm audit || true' }],
+    };
+    expect(await judge(workflow, policy)).toEqual({ verdict: 'ok', problems: [] });
+  });
+});
 const workflowJobs = inv([ciJob, governorJob]);
 const input = {
   manifest,
   ciSuccessNeeds: ['lint', 'security'],
-  ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint'], neutralized: [] },
+  ciSuccessGate: {
+    verifiesEveryNeed: true,
+    skipAllowed: ['lint'],
+    neutralized: [],
+    neededJobDependencies: { lint: [], security: [] },
+  },
   packageJson: {},
   requiredContexts: contexts,
   workflowJobs,
@@ -67,7 +266,12 @@ describe('checkRequiredJobs', () => {
     expect(
       checkRequiredJobs({
         ...input,
-        ciSuccessGate: { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] },
+        ciSuccessGate: {
+          ...input.ciSuccessGate,
+          verifiesEveryNeed: false,
+          skipAllowed: undefined,
+          neutralized: [],
+        },
       })
     ).toEqual({
       verdict: 'drift',
@@ -83,6 +287,7 @@ describe('checkRequiredJobs', () => {
       checkRequiredJobs({
         ...input,
         ciSuccessGate: {
+          ...input.ciSuccessGate,
           verifiesEveryNeed: true,
           skipAllowed: ['lint', 'security'],
           neutralized: [],
@@ -92,14 +297,24 @@ describe('checkRequiredJobs', () => {
     expect(
       checkRequiredJobs({
         ...input,
-        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: [], neutralized: [] },
+        ciSuccessGate: {
+          ...input.ciSuccessGate,
+          verifiesEveryNeed: true,
+          skipAllowed: [],
+          neutralized: [],
+        },
       }).problems
     ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
     // A wildcard is never acceptable for CI Success.
     expect(
       checkRequiredJobs({
         ...input,
-        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: '*', neutralized: [] },
+        ciSuccessGate: {
+          ...input.ciSuccessGate,
+          verifiesEveryNeed: true,
+          skipAllowed: '*',
+          neutralized: [],
+        },
       }).problems
     ).toEqual(['ci-success SKIP_ALLOWED is "*"; every need may skip']);
     // No / malformed SKIP_ALLOWED is drift in its own right — even against an
@@ -109,7 +324,12 @@ describe('checkRequiredJobs', () => {
         checkRequiredJobs({
           ...input,
           manifest: { ...manifest, skip_allowed: skipAllowed },
-          ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: undefined, neutralized: [] },
+          ciSuccessGate: {
+            ...input.ciSuccessGate,
+            verifiesEveryNeed: true,
+            skipAllowed: undefined,
+            neutralized: [],
+          },
         }).problems
       ).toEqual(['ci-success SKIP_ALLOWED is missing or not a JSON array of job ids']);
     }
@@ -480,7 +700,10 @@ describe('shared job gate extraction (#6382)', () => {
         ],
       }).gate;
       expect(gate.neutralized).toEqual(expected);
-      const result = checkRequiredJobs({ ...input, ciSuccessGate: gate });
+      const result = checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { ...input.ciSuccessGate, ...gate },
+      });
       if (expected.length === 0) expect(result.verdict).toBe('ok');
       else {
         expect(result.verdict).toBe('drift');
@@ -549,7 +772,12 @@ describe('shared job gate extraction (#6382)', () => {
       );
       expect(gate).toEqual({
         needs: ['lint'],
-        gate: { verifiesEveryNeed: true, skipAllowed: [], neutralized: expected },
+        gate: {
+          verifiesEveryNeed: true,
+          skipAllowed: [],
+          neutralized: expected,
+          neededJobDependencies: { lint: [] },
+        },
       });
     }
   );
@@ -834,6 +1062,29 @@ ${AGGREGATOR_RUN.split('\n')
       // And the target's manifest being broken changes nothing when policy is sound.
       writeFileSync(join(directory, 'governance/required-jobs.json'), 'not json');
       writeFileSync(join(policyDir, 'governance/required-jobs.json'), JSON.stringify(manifest));
+      output.length = 0;
+      expect(runRequiredJobsCheck(directory, policyDir)).toBe(0);
+    } finally {
+      rmSync(policyDir, { recursive: true, force: true });
+    }
+  });
+
+  it('a target cannot authorize its own edge; only changing base policy authorizes it', async () => {
+    const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+    const policyDir = mkdtempSync(join(tmpdir(), 'required-edges-policy-'));
+    try {
+      mkdirSync(join(policyDir, 'governance'));
+      const authorized = { ...manifest, allowed_need_dependencies: { security: ['lint'] } };
+      writeFileSync(join(policyDir, 'governance/required-jobs.json'), JSON.stringify(manifest));
+      writeFileSync(join(directory, 'governance/required-jobs.json'), JSON.stringify(authorized));
+      const path = join(directory, '.github/workflows/ci.yml');
+      writeFileSync(
+        path,
+        readFileSync(path, 'utf8').replace('  security:\n', '  security:\n    needs: [lint]\n')
+      );
+      expect(runRequiredJobsCheck(directory, policyDir)).toBe(1);
+      expect(output).toContain('::error::Unauthorized needed-job dependency: security -> lint');
+      writeFileSync(join(policyDir, 'governance/required-jobs.json'), JSON.stringify(authorized));
       output.length = 0;
       expect(runRequiredJobsCheck(directory, policyDir)).toBe(0);
     } finally {
