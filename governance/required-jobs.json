@@ -23,5 +23,6 @@
       "job": "governor-ratification"
     }
   },
-  "audit_config_forbidden": true
+  "audit_config_forbidden": true,
+  "allowed_need_dependencies": { "fitness-audit": ["build"] }
 }
