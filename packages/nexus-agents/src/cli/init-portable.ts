@@ -23,7 +23,7 @@ import {
   readFileSync,
 } from 'node:fs';
 import { resolve, join, isAbsolute } from 'node:path';
-import { DATA_SUBDIRECTORIES } from './doctor.js';
+import { DATA_SUBDIRECTORIES } from '../config/nexus-data-dir.js';
 import { emitMcpConfig, type EmitMcpConfigResult } from './mcp-config-emitter.js';
 import {
   installPortable,

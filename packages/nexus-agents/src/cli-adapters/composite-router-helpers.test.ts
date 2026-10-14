@@ -14,6 +14,7 @@ import type { TaskProfile } from '../core/index.js';
 import type { CliName, CliTask, RoutingArmId } from './types.js';
 import type { TopsisRouter } from './topsis-router.js';
 import type { TopsisModelProfile } from './topsis-types.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 import type {} from './zero-router-types.js';
 import {
   adjustProfileForTask,
@@ -1127,6 +1128,31 @@ describe('taskProfileToBanditContext budget feature (#4834)', () => {
 });
 
 describe('endpoint exclusion from CLI TOPSIS (#7151)', () => {
+  it('passes registry-priced CLI profiles into composite TOPSIS ranking', () => {
+    const registry = getDefaultRegistry();
+    const getEntry = registry.getEntry.bind(registry);
+    const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+      const entry = getEntry(id);
+      return id === 'gpt-6.1-sol'
+        ? { ...entry, pricing: { inputPer1M: 7, outputPer1M: 19 } }
+        : entry;
+    });
+    const selectModel = vi.fn().mockReturnValue({
+      scores: [{ cliName: 'codex', closenessScore: 0.9 }],
+      selectedModel: 'codex',
+    });
+    try {
+      const router = { selectModel } as unknown as TopsisRouter;
+      applyTopsisRanking(makeTaskProfile(), ['codex'], router);
+      const profiles = selectModel.mock.calls[0]?.[0].profiles as TopsisModelProfile[];
+      expect(profiles).toHaveLength(1);
+      expect(profiles[0]?.costPerMillionInput).toBe(7);
+      expect(profiles[0]?.costPerMillionOutput).toBe(19);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('does not inherit opencode TOPSIS scores or capability profiles', () => {
     const selectModel = vi.fn().mockReturnValue({
       scores: [{ cliName: 'opencode', closenessScore: 0.9 }],

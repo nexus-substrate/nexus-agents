@@ -72,6 +72,8 @@
 
   function open(): void {
     if (!dialog || !body || !closer || dialog.open) return;
+    // A direct close can leave its cleanup queued; preserve the original homes.
+    if (placements.length > 0) moveBack();
     moveIn(body);
     dialog.showModal();
     expanded = true;
@@ -85,8 +87,13 @@
   function onClose(): void {
     moveBack();
     expanded = false;
-    opener?.setAttribute('aria-expanded', 'false');
     opener?.focus();
+  }
+
+  function onNativeClose(): void {
+    // A cancel queues close; reopening before it arrives starts a new drawer.
+    if (dialog?.open) return;
+    onClose();
   }
 
   // A click on the dialog box itself is a click on the backdrop: the panel
@@ -136,7 +143,7 @@
   class="docs-menu"
   aria-labelledby={TITLE_ID}
   data-pagefind-ignore
-  onclose={onClose}
+  onclose={onNativeClose}
   oncancel={onClose}
   onclick={onDialogClick}
   onkeydown={onKeydown}

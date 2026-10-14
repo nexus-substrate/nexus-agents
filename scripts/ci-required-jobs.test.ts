@@ -266,4 +266,20 @@ describe('Documentation Gate required-job wiring (#4809)', () => {
 
     expect(contradictory).toEqual([]);
   });
+
+  it('installs Chromium and its system dependencies before browser-backed website tests (#7390)', () => {
+    const steps = docs.jobs['website-audit']?.steps ?? [];
+    const testIndex = steps.findIndex((step) => step.run === 'pnpm --dir website test');
+    const installIndex = steps.findIndex((step) =>
+      /^pnpm --dir website exec playwright install --with-deps chromium$/.test(
+        step.run?.trim() ?? ''
+      )
+    );
+
+    // A missing test or prerequisite is unmeasured, never a passing ordering check.
+    expect(testIndex).toBeGreaterThanOrEqual(0);
+    expect(installIndex).toBeGreaterThanOrEqual(0);
+    expect(installIndex).toBeLessThan(testIndex);
+    expect(steps[installIndex]?.['continue-on-error']).toBeUndefined();
+  });
 });

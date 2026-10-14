@@ -569,16 +569,16 @@ describe('selectModel with catalog model hints (#6625)', () => {
   it('resolves a model_hint for a catalog-admitted model with true context window', () => {
     const input = {
       task: 'Analyze long repository code base',
-      model_hint: 'deepseek-v4-flash-0731',
+      model_hint: 'deepseek-v4-flash',
     };
     const req = analyzeTask(input.task);
     const selection = selectModel(input, req);
-    expect(selection.model).toBe('deepseek-v4-flash-0731');
-    expect(selection.reasoning).toContain('deepseek-v4-flash-0731');
+    expect(selection.model).toBe('deepseek-v4-flash');
+    expect(selection.reasoning).toContain('deepseek-v4-flash');
 
     const output = buildDelegateOutput(selection, req);
     expect(output).not.toBeNull();
-    expect(output?.recommended_model).toBe('deepseek-v4-flash-0731');
+    expect(output?.recommended_model).toBe('deepseek-v4-flash');
     expect(output?.capabilities.contextWindow).toBe(1_000_000);
   });
 

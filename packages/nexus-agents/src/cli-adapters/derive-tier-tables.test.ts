@@ -7,7 +7,8 @@
 import { describe, it, expect } from 'vitest';
 
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
-import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
+import { unpricedCliCostPer1M } from '../config/in-tree-data.js';
+import { peekDefaultRegistry, setDefaultRegistry } from '../config/model-registry.js';
 import {
   readCliModelData,
   buildQualityRank,
@@ -42,7 +43,7 @@ function makeData(over: Partial<Record<CliNameLiteral, Partial<CliModelData>>> =
 }
 
 describe('derive-tier-tables (#4195)', () => {
-  describe('readCliModelData — from the live registry', () => {
+  describe('readCliModelData — bootstrap in-tree metadata', () => {
     it('reads composite quality + blended real price for each CLI default', () => {
       const data = readCliModelData();
       // claude default (fable-5) r10/cg10 → composite 10; priced 10+50=60.
@@ -53,9 +54,16 @@ describe('derive-tier-tables (#4195)', () => {
       expect(data.gemini.price).toBe(14);
     });
 
-    it('blends an unpriced default at the budget policy rate, not the static row (#6866)', () => {
-      const est = resolveCliCostPer1M('codex');
-      expect(readCliModelData().codex.price).toBe(est.input + est.output);
+    it('blends an unpriced bootstrap default without constructing the runtime registry', () => {
+      const previous = peekDefaultRegistry();
+      setDefaultRegistry(undefined);
+      try {
+        const est = unpricedCliCostPer1M('codex');
+        expect(readCliModelData().codex.price).toBe(est.input + est.output);
+        expect(peekDefaultRegistry()).toBeUndefined();
+      } finally {
+        setDefaultRegistry(previous);
+      }
     });
   });
 

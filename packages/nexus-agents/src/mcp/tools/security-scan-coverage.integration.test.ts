@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { executeSecurityScan, prepareSecurityScan } from './security-scan.js';
+import { mkdtempOutsideRepo } from '../../testing/non-repo-temp-dir.js';
 
 const available = spawnSync('semgrep', ['--version'], { timeout: 10_000 }).status === 0;
 
@@ -15,7 +15,9 @@ describe.skipIf(!available)(
     let rules: string;
 
     beforeAll(async () => {
-      directory = await mkdtemp(join(tmpdir(), 'semgrep-coverage-'));
+      // Production excludes .nexus-agents artifacts. Keep the fixture outside
+      // the runner's in-repo TMPDIR while retaining the hidden target below.
+      directory = mkdtempOutsideRepo('semgrep-coverage-');
       target = join(directory, '.hidden-source');
       await mkdir(target);
       rules = join(directory, 'rule.yaml');

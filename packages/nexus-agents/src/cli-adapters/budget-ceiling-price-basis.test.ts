@@ -4,6 +4,8 @@ import { BudgetRouter } from './budget-router.js';
 import type { CliTask, RoutingArmId } from './types.js';
 import { recordCeilingCostOfArm } from './budget-arm-cost.js';
 import { priceBasisCaveat } from '../core/price-basis.js';
+import { ModelRegistry, setDefaultRegistry } from '../config/model-registry.js';
+import { buildInTreeEntries } from '../config/in-tree-entries.js';
 
 const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 vi.mock('../core/logger.js', async (importOriginal) => {
@@ -19,6 +21,8 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
   let router: BudgetRouter;
 
   beforeEach(() => {
+    // Preserve the fixed priced/unpriced fixture without consulting mutable catalogs.
+    setDefaultRegistry(new ModelRegistry({ inTreeEntries: buildInTreeEntries() }));
     vi.stubEnv('NEXUS_BILLING_MODE', 'api');
     vi.stubEnv('NEXUS_GATEWAY_COST', 'priced');
     vi.stubEnv('NEXUS_CUSTOM_MODEL', 'totally-unknown-gateway-model-xyz');
@@ -30,6 +34,7 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
 
   afterEach(() => {
     router.dispose();
+    setDefaultRegistry(undefined);
     vi.unstubAllEnvs();
   });
 

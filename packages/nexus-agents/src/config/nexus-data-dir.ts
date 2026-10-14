@@ -69,6 +69,22 @@ import { ensureGitignored } from './portable-mode.js';
 import { parseBoolEnv } from './defaults-env.js';
 
 /**
+ * Standard directories checked by doctor and created by setup/portable init.
+ * This inventory is distinct from the per-repo routing categories below.
+ */
+export const DATA_SUBDIRECTORIES = [
+  'memory',
+  'memory/beliefs',
+  'learning',
+  'sessions',
+  'audit',
+  'voting',
+  'auth',
+  'research',
+  'checkpoints',
+] as const;
+
+/**
  * Subdirs scoped to a single repo's work (per the epic #2872 vote).
  * When `NEXUS_REPO_PREFERRED=1` and the caller is inside a git repo, these
  * route to `<repo-root>/.nexus-agents/`; otherwise homedir. The complement

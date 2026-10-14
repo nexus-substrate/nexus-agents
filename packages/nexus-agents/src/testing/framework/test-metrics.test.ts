@@ -6,7 +6,9 @@
  * computeRoutingMetrics, and computeAggregatedMetrics.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { ModelRegistry, setDefaultRegistry } from '../../config/model-registry.js';
+import { buildInTreeEntries } from '../../config/in-tree-entries.js';
 import { STATIC_CLI_COST_PER_1M } from '../../config/in-tree-data.js';
 import { estimateCost as budgetEstimateCost } from '../../cli-adapters/budget-utils.js';
 import type { CliName } from '../../cli-adapters/types.js';
@@ -23,6 +25,14 @@ import {
   computeAggregatedMetrics,
 } from './test-metrics.js';
 import type { TaskTestResult } from './types.js';
+
+// Keep arithmetic fixtures independent of weekly catalog refreshes.
+beforeEach(() => {
+  setDefaultRegistry(new ModelRegistry({ inTreeEntries: buildInTreeEntries() }));
+});
+afterEach(() => {
+  setDefaultRegistry(undefined);
+});
 
 // ============================================================================
 // Fixtures

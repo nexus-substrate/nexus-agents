@@ -6,7 +6,7 @@
  * (Source: Issue #170, CODING_STANDARDS.md)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   analyzeTaskString,
   taskProfileToBanditContextFromProfile,
@@ -20,6 +20,7 @@ import {
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { BanditContext, TaskProfile } from '../core/index.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 
 describe('routing-audit-logic', () => {
   describe('analyzeTaskString', () => {
@@ -289,6 +290,26 @@ describe('routing-audit-logic', () => {
   });
 
   describe('runTopsisRanking', () => {
+    it('uses registry pricing instead of bootstrap fallback prices', () => {
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = getEntry(id);
+        return id === 'gpt-6.1-sol'
+          ? { ...entry, pricing: { inputPer1M: 7, outputPer1M: 19 } }
+          : entry;
+      });
+      try {
+        const profile = { ...analyzeTaskString('Write a function'), contextRequired: 1_000_000 };
+        const result = runTopsisRanking(profile);
+        expect(
+          result.scores.find((score) => score.cliName === 'codex')?.rawValues['cost']
+        ).toBeCloseTo(12.7);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('should return TOPSIS result', () => {
       const profile = analyzeTaskString('Write a sorting algorithm');
       const result = runTopsisRanking(profile);

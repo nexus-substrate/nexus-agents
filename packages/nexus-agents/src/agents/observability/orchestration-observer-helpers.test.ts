@@ -408,8 +408,19 @@ describe('cost resolution reads split rates from the registry (#5180)', () => {
     });
 
     it('contributes the documented 0 floor for an unpriced default, not a guess', () => {
-      // gpt-6.1-sol, the codex default, has no published price (#6842).
-      expect(registryCostForModel(t(1000, 1000), 'codex')).toBe(0);
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      const modelId = getDefaultModelForCli('codex');
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = { ...getEntry(id) };
+        if (id === modelId) delete entry.pricing;
+        return entry;
+      });
+      try {
+        expect(registryCostForModel(t(1000, 1000), 'codex')).toBe(0);
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('fails SOFT on an unrecognised name rather than throwing', () => {

@@ -5,7 +5,7 @@
  * (Source: Issue #146)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TopsisRouter, createTopsisRouter, selectModelWithTopsis } from './topsis-router.js';
 import type { TopsisModelProfile } from './topsis-types.js';
 import {
@@ -16,6 +16,8 @@ import {
   getCriteriaForTaskCategory,
 } from './topsis-types.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
+import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 
 describe('TopsisRouter', () => {
   let router: TopsisRouter;
@@ -51,6 +53,36 @@ describe('TopsisRouter', () => {
   });
 
   describe('selectModel', () => {
+    it('uses current registry prices on every selection with default profiles', () => {
+      const expectedInputTokens = 1_000_000;
+      const expectedOutputTokens = 1_000_000;
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      let fixturePricing = { inputPer1M: 7, outputPer1M: 19 };
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = getEntry(id);
+        return id === 'gpt-6.1-sol' ? { ...entry, pricing: fixturePricing } : entry;
+      });
+      try {
+        const result = router.selectModel({
+          expectedInputTokens,
+          expectedOutputTokens,
+        });
+        expect(result.scores).toHaveLength(CLI_NAMES.length);
+        for (const score of result.scores) {
+          const price = resolveCliCostPer1M(score.cliName);
+          expect(score.rawValues['cost'], score.cliName).toBe(price.input + price.output);
+        }
+        fixturePricing = { inputPer1M: 11, outputPer1M: 29 };
+        const reloaded = router.selectModel({ expectedInputTokens, expectedOutputTokens });
+        expect(reloaded.scores.find((score) => score.cliName === 'codex')?.rawValues['cost']).toBe(
+          40
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('should select a model from default profiles', () => {
       const result = router.selectModel();
 
@@ -135,6 +167,12 @@ describe('TopsisRouter', () => {
 
       expect(['claude', 'gemini']).toContain(result.selectedModel);
       expect(result.scores.length).toBe(2);
+      expect(
+        result.scores.find((score) => score.cliName === 'claude')?.rawValues['cost']
+      ).toBeCloseTo(0.0105);
+      expect(
+        result.scores.find((score) => score.cliName === 'gemini')?.rawValues['cost']
+      ).toBeCloseTo(0.0015);
     });
 
     it('should consider expected token counts in cost calculation', () => {

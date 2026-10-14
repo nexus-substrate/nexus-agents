@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, existsSync, rmSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, existsSync, rmSync, mkdtempSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Must hoist the mock so NEXUS_DATA_DIR picks up the mocked homedir at import time
@@ -76,6 +76,14 @@ describe('initDataDirectories (#1249)', () => {
     expect(result.success).toBe(true);
     expect(result.created.length).toBe(0);
     expect(result.alreadyExisted.length).toBeGreaterThan(0);
+  });
+
+  it.skipIf(process.platform === 'win32')('creates auth with owner-only permissions', async () => {
+    const { initDataDirectories } = await import('./setup-data-dir.js');
+    const result = initDataDirectories();
+
+    expect(result.success).toBe(true);
+    expect(statSync(join(dataDirPath, '.nexus-agents', 'auth')).mode & 0o777).toBe(0o700);
   });
 
   it('should not create directories in dry-run mode', async () => {

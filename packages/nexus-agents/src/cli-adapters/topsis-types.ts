@@ -278,11 +278,22 @@ export interface TopsisResult {
   readonly reasoning: string;
 }
 
+import { buildTopsisProfiles, resolveCliCostPer1M } from '../config/model-config-helpers.js';
+
 /**
- * Default model profiles based on known CLI characteristics.
- * Derived from the canonical model registry (Issue #807).
+ * Filesystem-free bootstrap profiles from canonical in-tree metadata.
+ * Runtime consumers use getDefaultTopsisProfiles to resolve current pricing.
  */
-
-import { buildTopsisProfiles } from '../config/model-config-helpers.js';
-
 export const DEFAULT_MODEL_PROFILES: readonly TopsisModelProfile[] = buildTopsisProfiles();
+
+/** Resolve current registry rates without caching operator overlays or snapshot prices. */
+export function getDefaultTopsisProfiles(): readonly TopsisModelProfile[] {
+  return DEFAULT_MODEL_PROFILES.map((profile) => {
+    const price = resolveCliCostPer1M(profile.cliName);
+    return {
+      ...profile,
+      costPerMillionInput: price.input,
+      costPerMillionOutput: price.output,
+    };
+  });
+}

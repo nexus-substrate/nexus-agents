@@ -205,13 +205,11 @@ export interface ScoredModel {
 }
 
 /**
- * Tool result type.
+ * Tool result type — the canonical MCP shape from `./tool-result.ts`
+ * (#5129 item 6). This was a copy that had already drifted: it lacked the
+ * `_meta` error-envelope field (#2649) the canonical type carries.
  */
-export type ToolResult = {
-  isError?: boolean;
-  content: Array<{ type: 'text'; text: string }>;
-  structuredContent?: Record<string, unknown>;
-};
+export type { ToolResult } from './tool-result.js';
 
 /** Keywords indicating reasoning needs. */
 export const REASONING_KEYWORDS = [
