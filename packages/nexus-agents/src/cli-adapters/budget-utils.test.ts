@@ -4,7 +4,9 @@
  * @module cli-adapters/budget-utils.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { ModelRegistry, setDefaultRegistry } from '../config/model-registry.js';
+import { buildInTreeEntries } from '../config/in-tree-entries.js';
 import {
   getDefaultModelForCli,
   getModelPricing,
@@ -15,6 +17,14 @@ import type { CliName } from './types.js';
 import { STATIC_CLI_COST_PER_1M } from '../config/in-tree-data.js';
 import { estimateTokens, estimateCost, formatTokens } from './budget-utils.js';
 import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
+
+// These arithmetic and unpriced-policy fixtures intentionally exclude mutable catalogs.
+beforeEach(() => {
+  setDefaultRegistry(new ModelRegistry({ inTreeEntries: buildInTreeEntries() }));
+});
+afterEach(() => {
+  setDefaultRegistry(undefined);
+});
 
 describe('budget-utils', () => {
   // #4168: the former hardcoded `TOKEN_COSTS` table now resolves through the

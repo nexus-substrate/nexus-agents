@@ -16,7 +16,7 @@ import { routingArmCliSlot } from './types.js';
 import { NEUTRAL_BANDIT_FEATURE, type BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
 import {
-  DEFAULT_MODEL_PROFILES,
+  getDefaultTopsisProfiles,
   DEFAULT_TOPSIS_CRITERIA,
   PLAN_BILLING_TOPSIS_CRITERIA,
   applyDifficultyCostWeighting,
@@ -384,11 +384,11 @@ function buildAdjustedProfiles(
   candidates: RoutingArmId[],
   options?: TopsisRankingOptions
 ): TopsisModelProfile[] {
-  // TOPSIS profiles are slot-level (DEFAULT_MODEL_PROFILES keyed by CliName).
+  // TOPSIS profiles are slot-level (keyed by CliName) with current registry rates.
   // Endpoint catalogue models have no slot-level TOPSIS profile; exclude them
   // from this stage explicitly, while preserving their LinUCB candidacy.
   const candidateSlots = new Set(candidates.map(routingArmCliSlot));
-  const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidateSlots.has(p.cliName));
+  const profiles = getDefaultTopsisProfiles().filter((p) => candidateSlots.has(p.cliName));
   let adjusted = profiles.map((p) => adjustProfileForTask(p, taskProfile));
   if (options?.stageScores !== undefined && options.stageScores.size > 0) {
     adjusted = adjustProfileWithStageScores(adjusted, options.stageScores);

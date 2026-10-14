@@ -5,7 +5,7 @@
  * (Source: Issue #998 — Resource-aware strategy oscillation)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   ResourceStrategyStage,
   createResourceStrategyStage,
@@ -13,6 +13,7 @@ import {
   computeScoreAdjustments,
 } from './resource-strategy-stage.js';
 import type { RoutingContext, CliName } from '../router-stage.js';
+import { getDefaultRegistry } from '../../../config/model-registry.js';
 
 // ============================================================================
 // Helpers
@@ -118,6 +119,65 @@ describe('ResourceStrategyStage', () => {
   });
 
   describe('route — tier-based scoring', () => {
+    it('uses current registry costs on every route through the same resource stage', async () => {
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      let rate = 1;
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = getEntry(id);
+        return id === 'gpt-6.1-sol'
+          ? { ...entry, pricing: { inputPer1M: rate, outputPer1M: rate } }
+          : entry;
+      });
+      const ctx = createContext('test', ['gemini', 'codex'], [], { resourceLevel: 0.1 });
+      try {
+        const cheap = await stage.route(ctx);
+        expect(cheap.ok).toBe(true);
+        if (cheap.ok) {
+          const scores = cheap.value.context.scores;
+          expect(scores.get('codex') ?? 0).toBeGreaterThan(scores.get('gemini') ?? 0);
+        }
+        rate = 100;
+        const expensive = await stage.route(ctx);
+        expect(expensive.ok).toBe(true);
+        if (expensive.ok) {
+          const scores = expensive.value.context.scores;
+          expect(scores.get('gemini') ?? 0).toBeGreaterThan(scores.get('codex') ?? 0);
+        }
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('keeps zero-priced defaults out of the cheapest resource rank', () => {
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = getEntry(id);
+        return id === 'gpt-6.1-sol'
+          ? { ...entry, pricing: { inputPer1M: 0, outputPer1M: 0 } }
+          : entry;
+      });
+      try {
+        const scores = computeScoreAdjustments('critical', ['gemini', 'codex']);
+        expect(scores.get('gemini') ?? 0).toBeGreaterThan(scores.get('codex') ?? 0);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('does not resolve registry prices for balanced or quality-only scoring', () => {
+      const spy = vi.spyOn(getDefaultRegistry(), 'getEntry').mockImplementation(() => {
+        throw new Error('unused pricing lookup');
+      });
+      try {
+        expect(() => computeScoreAdjustments('balanced', ['claude', 'gemini'])).not.toThrow();
+        expect(() => computeScoreAdjustments('aggressive', ['claude', 'gemini'])).not.toThrow();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('boosts quality CLIs in aggressive tier', async () => {
       const ctx = createContext('test', ['claude', 'gemini', 'codex'], [], { resourceLevel: 0.9 }); // level=0.9 → aggressive
       const result = await stage.route(ctx);
@@ -155,7 +215,7 @@ describe('ResourceStrategyStage', () => {
       }
     });
 
-    it('strongly boosts cheapest CLI in critical tier', async () => {
+    it('adds critical cost boosts to eligible CLIs', async () => {
       const ctx = createContext('test', ['claude', 'gemini', 'codex'], [], { resourceLevel: 0.1 }); // level=0.1 → critical
       const result = await stage.route(ctx);
       expect(result.ok).toBe(true);
@@ -260,7 +320,7 @@ describe('computeResourceTier', () => {
 describe('computeScoreAdjustments', () => {
   const candidates: CliName[] = ['claude', 'gemini', 'codex'];
 
-  it('boosts claude most in aggressive tier', () => {
+  it('boosts claude above gemini in aggressive tier', () => {
     const adj = computeScoreAdjustments('aggressive', candidates);
     expect((adj.get('claude') ?? 0) > (adj.get('gemini') ?? 0)).toBe(true);
   });
@@ -272,12 +332,12 @@ describe('computeScoreAdjustments', () => {
     expect(adj.get('codex')).toBe(0);
   });
 
-  it('boosts gemini most in conservative tier', () => {
+  it('boosts gemini above claude in conservative tier', () => {
     const adj = computeScoreAdjustments('conservative', candidates);
     expect((adj.get('gemini') ?? 0) > (adj.get('claude') ?? 0)).toBe(true);
   });
 
-  it('boosts gemini most in critical tier', () => {
+  it('boosts gemini above claude in critical tier', () => {
     const adj = computeScoreAdjustments('critical', candidates);
     const gemini = adj.get('gemini') ?? 0;
     const claude = adj.get('claude') ?? 0;

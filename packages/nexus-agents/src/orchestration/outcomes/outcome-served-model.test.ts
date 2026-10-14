@@ -2,14 +2,22 @@
  * Tests for the served-model outcome fields (#6624).
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { servedOutcomeFields } from './outcome-served-model.js';
 import { TaskOutcomeSchema } from './outcome-types.js';
 import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
+import { ModelRegistry, setDefaultRegistry } from '../../config/model-registry.js';
+import { buildInTreeEntries } from '../../config/in-tree-entries.js';
 
 describe('servedOutcomeFields (#6624)', () => {
+  beforeEach(() => {
+    // Exercise the declared unpriced-default fixture, independent of catalog refreshes.
+    setDefaultRegistry(new ModelRegistry({ inTreeEntries: buildInTreeEntries() }));
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
+    setDefaultRegistry(undefined);
   });
 
   it('records the served model and its registry cost', () => {

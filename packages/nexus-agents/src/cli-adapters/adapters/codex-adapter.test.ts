@@ -8,7 +8,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CodexCliAdapter } from './codex-adapter.js';
 import type { CliTask } from '../types.js';
-import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
+import {
+  getDefaultModelForCli,
+  getCliModelName,
+  getModelPricing,
+} from '../../config/model-config-helpers.js';
+import { getDefaultRegistry } from '../../config/model-registry.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('codex'));
@@ -150,6 +155,24 @@ describe('CodexCliAdapter (Subprocess)', () => {
   });
 
   describe('getModelInfo()', () => {
+    it('omits cost info when the registry explicitly leaves the default unpriced', () => {
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      const modelId = getDefaultModelForCli('codex');
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = { ...getEntry(id) };
+        if (id === modelId) delete entry.pricing;
+        return entry;
+      });
+      try {
+        const info = adapter.getModelInfo();
+        expect(info.costPerMillionInput).toBeUndefined();
+        expect(info.costPerMillionOutput).toBeUndefined();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('should return correct model info for default model (from registry)', () => {
       const info = adapter.getModelInfo();
 
@@ -159,12 +182,12 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(info.maxOutput).toBe(128_000);
     });
 
-    it('should omit unknown cost info for the unpriced default model', () => {
+    it('should report canonical registry cost info for the default model', () => {
       const info = adapter.getModelInfo();
 
-      // #6842: gpt-6.1-sol has no published rates; model info stays unpriced.
-      expect(info.costPerMillionInput).toBeUndefined();
-      expect(info.costPerMillionOutput).toBeUndefined();
+      const pricing = getModelPricing(getDefaultModelForCli('codex'));
+      expect(info.costPerMillionInput).toBe(pricing?.inputPer1M);
+      expect(info.costPerMillionOutput).toBe(pricing?.outputPer1M);
     });
 
     it('should return correct info for gpt-6-luna model (from registry)', () => {

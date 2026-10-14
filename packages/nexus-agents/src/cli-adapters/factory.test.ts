@@ -23,7 +23,11 @@ import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
-import { getDefaultModelForCli, getCliModelName } from '../config/model-config-helpers.js';
+import {
+  getDefaultModelForCli,
+  getCliModelName,
+  getModelPricing,
+} from '../config/model-config-helpers.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
@@ -345,7 +349,7 @@ describe('model info', () => {
     expect(info.maxOutput).toBe(128000);
   });
 
-  it('returns prices for priced adapters and omits the unpriced Codex default (#6842)', () => {
+  it('returns canonical registry prices for default and pinned adapters', () => {
     const claude = createCliAdapter({ cli: 'claude' });
     const gemini = createCliAdapter({ cli: 'gemini' });
     const codex = createCliAdapter({ cli: 'codex' });
@@ -353,8 +357,9 @@ describe('model info', () => {
     expect(claude.getModelInfo().costPerMillionInput).toBeGreaterThan(0);
     expect(gemini.getModelInfo().costPerMillionInput).toBeGreaterThan(0);
     expect(codex.getModelInfo().id).toBe('gpt-6.1-sol');
-    expect(codex.getModelInfo().costPerMillionInput).toBeUndefined();
-    expect(codex.getModelInfo().costPerMillionOutput).toBeUndefined();
+    const pricing = getModelPricing(getDefaultModelForCli('codex'));
+    expect(codex.getModelInfo().costPerMillionInput).toBe(pricing?.inputPer1M);
+    expect(codex.getModelInfo().costPerMillionOutput).toBe(pricing?.outputPer1M);
     const pinned = createCliAdapter({ cli: 'codex', model: 'gpt-5.6-sol' });
     expect(pinned.getModelInfo().id).toBe('gpt-5.6-sol');
     expect(pinned.getModelInfo().costPerMillionInput).toBe(4);

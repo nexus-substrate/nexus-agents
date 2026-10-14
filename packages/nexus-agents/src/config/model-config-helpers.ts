@@ -314,8 +314,8 @@ interface TopsisProfileShape {
 }
 
 /**
- * Build TOPSIS model profiles for the default model of each CLI.
- * Used by topsis-types.ts to replace DEFAULT_MODEL_PROFILES.
+ * Build filesystem-free bootstrap TOPSIS profiles for each CLI default.
+ * Runtime consumers resolve current pricing with getDefaultTopsisProfiles.
  */
 export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
   const profiles: TopsisProfileShape[] = [];
@@ -327,11 +327,9 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
     const q = entry?.qualityScores;
     if (entry === undefined || q === undefined) continue;
     if (entry.contextWindow === undefined) continue;
-    // Pricing is registry-first with a conservative static fallback (#4168):
-    // an unpriced default model stays a candidate at a non-$0 cost rather than
-    // being dropped or scored as free (which TOPSIS would rank cheapest). Read
-    // the already-built in-tree `entry` directly (not `resolveModelCostPer1M`)
-    // to avoid re-entering `lookupInTree` at module-load time (TDZ hazard).
+    // Bootstrap uses in-tree prices with a conservative non-$0 fallback.
+    // Runtime selection replaces these rates from the registry. Reading only
+    // the already-built entry avoids registry IO and circular-load TDZ here.
     const p = entry.pricing;
     const price: CostPer1M =
       p !== undefined ? { input: p.inputPer1M, output: p.outputPer1M } : unpricedCliCostPer1M(cli);

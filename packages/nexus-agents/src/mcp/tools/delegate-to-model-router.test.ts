@@ -114,10 +114,10 @@ describe('mapCompositeDecisionToOutput', () => {
   });
 
   it('resolves real context window for catalog models from ModelRegistry (#6625)', () => {
-    const decision = makeDecision({ model: 'deepseek-v4-flash-0731' });
+    const decision = makeDecision({ model: 'deepseek-v4-flash' });
     const output = mapCompositeDecisionToOutput(decision, 200);
 
-    expect(output.recommended_model).toBe('deepseek-v4-flash-0731');
+    expect(output.recommended_model).toBe('deepseek-v4-flash');
     expect(output.capabilities.contextWindow).toBe(1_000_000);
   });
 

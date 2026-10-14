@@ -20,7 +20,7 @@ import type {
   CliName,
 } from '../router-stage.js';
 import { addTrace, filterCandidate, getRemainingCandidates } from '../router-stage.js';
-import { buildTopsisProfiles } from '../../../config/model-config-helpers.js';
+import { getDefaultTopsisProfiles } from '../../topsis-types.js';
 import { computeTokenCost } from '../../../learning/token-cost-core.js';
 
 // ============================================================================
@@ -35,9 +35,9 @@ interface QualityProfile {
   /** USD per 1M INPUT tokens. */
   readonly costPerMillionInput: number;
   /**
-   * USD per 1M OUTPUT tokens. Carried because output bills at several times
-   * input; collapsing the two into one rate is what made this stage's ceiling
-   * fail open (#5186).
+   * USD per 1M OUTPUT tokens. Either component may be more expensive;
+   * collapsing the two into one rate made this stage's ceiling fail open
+   * (#5186).
    */
   readonly costPerMillionOutput: number;
   readonly avgLatencyMs: number; // Milliseconds
@@ -49,10 +49,10 @@ const MAX_QUALITY = 10;
 /**
  * Derive quality profiles from the canonical model registry.
  * Quality scores normalized from 0-10 to 0-1.
- * Pricing converted from per-million to per-1k tokens.
+ * Pricing resolved from the current registry in USD per million tokens.
  */
 function deriveQualityProfiles(): Record<CliName, QualityProfile> {
-  const profiles = buildTopsisProfiles();
+  const profiles = getDefaultTopsisProfiles();
   const result: Record<string, QualityProfile> = {};
   for (const p of profiles) {
     result[p.cliName] = {
@@ -75,8 +75,9 @@ function deriveQualityProfiles(): Record<CliName, QualityProfile> {
  * was configured to reject (#5186).
  *
  * When the caller supplies a split, price it exactly. When it supplies only a
- * total, there is no honest single rate — so use the OUTPUT rate, the expensive
- * one. Over-rejecting a cheap candidate costs a routing option; under-rejecting
+ * total (or an incomplete split), use the higher of the INPUT and OUTPUT rates.
+ * Registry/manifest prices need not make output more expensive (#7391).
+ * Over-rejecting a cheap candidate costs a routing option; under-rejecting
  * an expensive one costs money, which is the asymmetry #4196 already encodes
  * elsewhere in this tree.
  */
@@ -99,16 +100,11 @@ function estimateCeilingCost(
     ).costUsd;
   }
 
-  // Split unknown: charge the whole total at the output rate.
-  return computeTokenCost({ input: 0, output: config.expectedTokens }, rates).costUsd;
-}
-
-/** Lazy-initialized profiles derived from model registry. */
-let cachedProfiles: Record<CliName, QualityProfile> | undefined;
-
-function getQualityProfiles(): Record<CliName, QualityProfile> {
-  cachedProfiles ??= deriveQualityProfiles();
-  return cachedProfiles;
+  // Split unknown: either component may contain the whole total. Bound both.
+  return computeTokenCost(
+    { input: 0, output: config.expectedTokens },
+    { ...rates, outputPer1M: Math.max(rates.inputPer1M, rates.outputPer1M) }
+  ).costUsd;
 }
 
 /**
@@ -126,8 +122,8 @@ export interface QualityConstraintConfig {
   /**
    * Expected INPUT tokens, when the caller knows the split. Supplying both this
    * and {@link expectedOutputTokens} prices the ceiling exactly; leaving them
-   * unset prices {@link expectedTokens} at the OUTPUT rate, which is the
-   * conservative bound (#5186).
+   * incomplete prices {@link expectedTokens} at the higher INPUT/OUTPUT rate,
+   * which is the conservative bound (#5186, #7391).
    */
   readonly expectedInputTokens?: number | undefined;
   /** Expected OUTPUT tokens, when the caller knows the split. */
@@ -176,6 +172,7 @@ export class QualityConstraintStage implements IRouterStage {
     const time = getTimeProvider();
     const startTime = time.now();
     const remaining = getRemainingCandidates(ctx);
+    const profiles = deriveQualityProfiles();
 
     this.routingsCount++;
 
@@ -184,7 +181,7 @@ export class QualityConstraintStage implements IRouterStage {
     const violations: Array<{ cli: CliName; reason: string }> = [];
 
     for (const cli of remaining) {
-      const result = this.checkConstraints(cli);
+      const result = this.checkConstraints(profiles[cli]);
       if (result.meets) {
         eligible.push(cli);
       } else {
@@ -198,7 +195,7 @@ export class QualityConstraintStage implements IRouterStage {
     // Handle fallback if all filtered
     let usedFallback = false;
     if (eligible.length === 0 && this.config.allowFallback && remaining.length > 0) {
-      const fallback = this.selectFallback(remaining);
+      const fallback = this.selectFallback(remaining, profiles);
       if (fallback !== undefined) {
         eligible.push(fallback);
         usedFallback = true;
@@ -259,13 +256,11 @@ export class QualityConstraintStage implements IRouterStage {
   /**
    * Check if a CLI meets all constraints.
    */
-  private checkConstraints(cli: CliName): {
+  private checkConstraints(profile: ReturnType<typeof deriveQualityProfiles>[CliName]): {
     meets: boolean;
     reason: string;
     violated: 'quality' | 'cost' | 'latency' | null;
   } {
-    const profile = getQualityProfiles()[cli];
-
     // Check quality
     if (profile.qualityScore < this.config.minQuality) {
       return {
@@ -309,10 +304,13 @@ export class QualityConstraintStage implements IRouterStage {
   /**
    * Select fallback as highest quality candidate.
    */
-  private selectFallback(candidates: CliName[]): CliName | undefined {
+  private selectFallback(
+    candidates: CliName[],
+    profiles: ReturnType<typeof deriveQualityProfiles>
+  ): CliName | undefined {
     const sorted = [...candidates].sort((a, b) => {
-      const profileA = getQualityProfiles()[a];
-      const profileB = getQualityProfiles()[b];
+      const profileA = profiles[a];
+      const profileB = profiles[b];
       return profileB.qualityScore - profileA.qualityScore;
     });
     return sorted[0];
@@ -367,9 +365,4 @@ export function createQualityConstraintStage(
   logger?: ILogger
 ): QualityConstraintStage {
   return new QualityConstraintStage(config, logger);
-}
-
-/** Reset cached profiles (for testing). */
-export function resetQualityProfileCache(): void {
-  cachedProfiles = undefined;
 }

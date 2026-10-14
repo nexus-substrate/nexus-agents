@@ -383,7 +383,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       ],
       specialFeatures: ['streaming'],
       notes:
-        'GPT-6.1 Sol; codex default per #6842 (panel option A). Context window, output limit, modalities, tools, features, quality scores and parameter support are CARRIED-OVER from gpt-5.6-sol, NOT measured. Unpriced until OpenAI publishes pricing.',
+        'GPT-6.1 Sol; codex default per #6842 (panel option A). Context window, output limit, modalities, tools, features, quality scores and parameter support are CARRIED-OVER from gpt-5.6-sol, NOT measured. No authoritative in-tree pricing; the runtime registry may supply catalog or overlay rates.',
       qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
       maxOutputTokens: 128_000,
       cliName: 'codex',

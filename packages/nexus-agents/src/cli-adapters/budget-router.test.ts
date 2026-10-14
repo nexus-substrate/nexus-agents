@@ -9,6 +9,7 @@ import { estimateArmCostUsd } from './budget-arm-cost.js';
 import { estimateCost, estimateTokens } from './budget-utils.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
 import { routingArmCliSlot } from './types.js';
+import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -398,13 +399,21 @@ vi.mock('../config/model-config-helpers.js', async (importOriginal) => {
 
 describe('BudgetRouter task-class cost ceiling (#4196)', () => {
   // 'implement a function' → detectTaskCategory → code_generation.
-  // Registry pricing of per-CLI default models (in-tree-data):
+  // Deterministic pricing fixtures for the canonical per-CLI defaults:
   //   claude → claude-fable-5 ($10/$50 per 1M)
   //   gemini → gemini-3-pro   ($2/$12 per 1M)
-  //   codex  → gpt-6.1-sol    (unpriced, #6842; cost ceiling fails closed)
+  //   codex  → fixture without pricing (cost ceiling fails closed)
   // With maxTokens 10_000 output: claude ≈ $0.50, gemini ≈ $0.12.
   const ceilingTask: CliTask = { content: 'implement a function', maxTokens: 10_000 };
   const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  beforeEach(() => {
+    const prices = new Map([
+      [getDefaultModelForCli('claude'), { inputPer1M: 10, outputPer1M: 50 }],
+      [getDefaultModelForCli('gemini'), { inputPer1M: 2, outputPer1M: 12 }],
+    ]);
+    vi.mocked(getModelPricing).mockImplementation((modelId) => prices.get(modelId));
+  });
 
   function makeAdapters(): Map<CliName, ICliAdapter> {
     return new Map<CliName, ICliAdapter>([

@@ -22,7 +22,14 @@ import type {
   CliName,
 } from '../router-stage.js';
 import { addTrace, updateScore, getRemainingCandidates } from '../router-stage.js';
-import { deriveCliQualityRank, deriveCliCostRank } from '../../derive-tier-tables.js';
+import {
+  deriveCliQualityRank,
+  readCliModelData,
+  normalizeBlendedPrice,
+  buildCostRank,
+} from '../../derive-tier-tables.js';
+import { resolveCliCostPer1M } from '../../../config/model-config-helpers.js';
+import { CLI_NAMES } from '../../../config/model-capabilities-types.js';
 
 /**
  * Resource strategy tier determining routing behavior.
@@ -64,11 +71,17 @@ const DEFAULT_CONFIG: ResourceStrategyConfig = {
 const CLI_QUALITY_RANK: Record<CliName, number> = deriveCliQualityRank();
 
 /**
- * Cost-efficiency ranking per CLI (higher = cheaper). DERIVED from each CLI's
- * default-model real registry pricing (#4195); a $0/$0 default is treated as
- * most-expensive so it can never rank "cheapest" and pull budget traffic.
+ * Resolve cost ranks only at runtime, retaining the bootstrap metadata and
+ * the #4195 sentinel policy for zero or negative blended rates.
  */
-const CLI_COST_RANK: Record<CliName, number> = deriveCliCostRank();
+function currentCostRank(): Record<CliName, number> {
+  const data = readCliModelData();
+  for (const cli of CLI_NAMES) {
+    const price = resolveCliCostPer1M(cli);
+    data[cli] = { ...data[cli], price: normalizeBlendedPrice(price.input + price.output) };
+  }
+  return buildCostRank(data);
+}
 
 /**
  * Computes the current resource tier from a utilization level.
@@ -92,24 +105,26 @@ export function computeScoreAdjustments(
   config: ResourceStrategyConfig = DEFAULT_CONFIG
 ): Map<CliName, number> {
   const adjustments = new Map<CliName, number>();
+  const ranking =
+    tier === 'conservative' || tier === 'critical' ? currentCostRank() : CLI_QUALITY_RANK;
 
   for (const cli of candidates) {
     switch (tier) {
       case 'aggressive':
         // Boost quality-oriented CLIs (claude gets most, gemini least)
-        adjustments.set(cli, CLI_QUALITY_RANK[cli] * (config.aggressiveBoost / 3));
+        adjustments.set(cli, ranking[cli] * (config.aggressiveBoost / 3));
         break;
       case 'balanced':
         // No adjustment — let other stages decide
         adjustments.set(cli, 0);
         break;
       case 'conservative':
-        // Boost cost-efficient CLIs (gemini gets most, claude least)
-        adjustments.set(cli, CLI_COST_RANK[cli] * (config.conservativeBoost / 3));
+        // Boost cost-efficient CLIs using their current registry rates.
+        adjustments.set(cli, ranking[cli] * (config.conservativeBoost / 3));
         break;
       case 'critical':
         // Strongly boost cheapest CLI
-        adjustments.set(cli, CLI_COST_RANK[cli] * (config.criticalBoost / 3));
+        adjustments.set(cli, ranking[cli] * (config.criticalBoost / 3));
         break;
     }
   }

@@ -1,8 +1,18 @@
 /** Ceiling evidence must reach the real logger at its default level (#5095). */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BudgetRouter } from './budget-router.js';
 import { getGlobalLogLevel, setGlobalLogLevel } from '../core/logger.js';
 import { priceBasisCaveat } from '../core/price-basis.js';
+import { ModelRegistry, setDefaultRegistry } from '../config/model-registry.js';
+import { buildInTreeEntries } from '../config/in-tree-entries.js';
+
+beforeEach(() => {
+  // The logging fixture deliberately contains an unpriced default.
+  setDefaultRegistry(new ModelRegistry({ inTreeEntries: buildInTreeEntries() }));
+});
+afterEach(() => {
+  setDefaultRegistry(undefined);
+});
 
 describe('task-class ceiling default logging', () => {
   it('emits list warnings and unmeasured evidence with the real logger at info level', () => {

@@ -19,7 +19,7 @@ import {
 import type { CliName } from '../cli-adapters/types.js';
 import { TopsisRouter } from '../cli-adapters/topsis-router.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
-import { DEFAULT_MODEL_PROFILES } from '../cli-adapters/topsis-types.js';
+import { getDefaultTopsisProfiles } from '../cli-adapters/topsis-types.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import { warmStartBandit } from '../cli-adapters/bandit-warm-start.js';
 import { BANDIT_INTERCEPT_FEATURES } from '../cli-adapters/linucb-math.js';
@@ -114,7 +114,7 @@ export function runTopsisRanking(taskProfile: TaskProfile): TopsisResult {
   const router = new TopsisRouter();
 
   // Adjust profiles based on task type
-  const adjustedProfiles = DEFAULT_MODEL_PROFILES.map((p) => {
+  const adjustedProfiles = getDefaultTopsisProfiles().map((p) => {
     if (taskProfile.taskType === 'architecture' || taskProfile.reasoningComplexity > 7) {
       return { ...p, qualityScore: Math.min(p.qualityScore * 1.2, 10) };
     }

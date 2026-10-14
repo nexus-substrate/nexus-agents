@@ -123,7 +123,7 @@ describe('computeExpertContextUtilization', () => {
 
   it('resolves full context window for models.dev catalog models instead of 8K fallback', () => {
     const u = computeExpertContextUtilization({
-      modelId: 'deepseek-v4-flash-0731',
+      modelId: 'deepseek-v4-flash',
       tokensUsed: 50_000,
     });
     expect(u.contextWindow).toBe(1_000_000);
@@ -139,7 +139,7 @@ describe('resolveExpertContextWindow', () => {
   });
 
   it('resolves context window for models.dev catalog models', () => {
-    expect(resolveExpertContextWindow('deepseek-v4-flash-0731')).toBe(1_000_000);
+    expect(resolveExpertContextWindow('deepseek-v4-flash')).toBe(1_000_000);
   });
 
   it('falls back to 8K unknown default for unregistered models', () => {
