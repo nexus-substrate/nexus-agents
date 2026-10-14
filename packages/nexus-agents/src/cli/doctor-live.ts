@@ -13,6 +13,7 @@ import { isCliName } from '../cli-adapters/types.js';
  */
 
 import { createAllAdapters } from '../cli-adapters/factory.js';
+import { GEMINI_CLI_COMMAND } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { resolveGatewayServedSlot } from '../cli-adapters/gateway-slot-arm.js';
@@ -66,7 +67,9 @@ export async function runLiveReadiness(
   const adapters =
     deps.adapters ?? (createAllAdapters() as unknown as Map<CliName, ServesProbeTarget>);
   const authStates = deps.authStates ?? (await readAuthStates());
-  const isInstalled = deps.isInstalled ?? ((cli: CliName) => detectCliBinary(cli).installed);
+  const isInstalled =
+    deps.isInstalled ??
+    ((cli: CliName) => detectCliBinary(cli === 'gemini' ? GEMINI_CLI_COMMAND : cli).installed);
 
   const results: CliReadiness[] = [];
   for (const [cli, adapter] of adapters) {
