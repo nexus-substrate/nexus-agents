@@ -21,6 +21,7 @@
 
 import { getTimeProvider, type ILogger } from '../../core/index.js';
 import { toolSuccess, toolStructuredError, type ToolResult } from '../tools/tool-result.js';
+import { parseToolErrorEnvelope } from '../error-envelope.js';
 import {
   pruneJobRecordsIfDue,
   writeJobComplete,
@@ -523,10 +524,12 @@ function settleJobResult<I, R, E>(
 ): void {
   const failure = detectFailureShapedResult(result);
   if (failure !== null && params.allowFailureShapedResult === undefined) {
+    const detail =
+      failure.detail ?? parseToolErrorEnvelope((result as Record<string, unknown>)._meta)?.message;
     writeJobFailed(
       jobId,
       params.toolName,
-      describeFailureShape(failure),
+      describeFailureShape({ ...failure, detail }),
       params.producerVersion,
       extractFailureDetail(result)
     );

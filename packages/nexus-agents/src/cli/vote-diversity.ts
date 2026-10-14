@@ -105,10 +105,10 @@ export function withResolvedAssignment(vote: AgentVoteResult): AgentVoteResult {
 }
 
 /**
- * The model that ANSWERED (#7179): the adapter-reported `servedModel` when it
- * reported one, else the requested model. Every diversity figure and warning
- * is computed from this, so the summary names the panel that actually voted —
- * the same model the ledger and `costSummary.perModel` record.
+ * Canonically qualified adapter-reported `servedModel`, else the requested model
+ * (#7179). Diversity and display use this resolved identity; an absent report's
+ * request fallback is not a transport measurement. The ledger preserves its
+ * configured `model` separately and stores this as `resolvedModel` (#7333).
  */
 export function resolvedModel(v: AgentVoteResult): string | undefined {
   const served = realModel(v.servedModel);

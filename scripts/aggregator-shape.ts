@@ -32,6 +32,11 @@ const NeedJobSchema = z
   })
   .loose();
 
+const NeedDependenciesSchema = z.union([
+  z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]*$/),
+  z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]*$/)),
+]);
+
 /** The one condition under which a `skip_allowed` need may skip: the job is pull_request-only. */
 const SKIP_ALLOWED_IF = "github.event_name == 'pull_request'";
 
@@ -91,6 +96,8 @@ export interface AggregatorShape {
    * missing or other than `always()`. Empty when the shape is exact.
    */
   readonly neutralized: readonly string[];
+  /** Needed jobs' direct edges; [] measures no dependencies, absence is unmeasured (#6391). */
+  readonly neededJobDependencies?: Readonly<Record<string, readonly string[] | 'unreadable'>>;
 }
 
 export interface JobGate {
@@ -185,7 +192,28 @@ export function extractWorkflowGate(workflow: unknown, jobId: string): JobGate {
     ...gate.neutralized,
     ...needs.flatMap((need) => swallowedNeed(need, root.jobs[need], gate.skipAllowed)),
   ];
-  return { needs, gate: { ...gate, neutralized } };
+  const neededJobDependencies = Object.fromEntries(
+    needs.map((need) => [need, extractNeedDependencies(need, root.jobs)])
+  );
+  return { needs, gate: { ...gate, neutralized, neededJobDependencies } };
+}
+
+/** Measure edges only; CI authorization belongs to the base-owned manifest/checker. */
+function extractNeedDependencies(
+  need: string,
+  jobs: Readonly<Record<string, unknown>>
+): readonly string[] | 'unreadable' {
+  if (!Object.hasOwn(jobs, need)) return 'unreadable';
+  const job = NeedJobSchema.safeParse(jobs[need]);
+  if (!job.success) return 'unreadable';
+  // A parsed job without needs is positive evidence of an empty dependency list.
+  if (job.data.needs === undefined) return [];
+  const parsed = NeedDependenciesSchema.safeParse(job.data.needs);
+  if (!parsed.success) return 'unreadable';
+  const dependencies = typeof parsed.data === 'string' ? [parsed.data] : parsed.data;
+  if (dependencies.some((target) => target === need || !Object.hasOwn(jobs, target)))
+    return 'unreadable';
+  return dependencies;
 }
 
 /**
