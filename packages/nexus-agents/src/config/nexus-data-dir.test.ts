@@ -6,7 +6,28 @@ import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } fr
 import { homedir } from 'node:os';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { join, resolve, isAbsolute } from 'node:path';
-import { getNexusDataDir, nexusDataPath, resetNexusDataDirCache } from './nexus-data-dir.js';
+import {
+  DATA_SUBDIRECTORIES,
+  getNexusDataDir,
+  nexusDataPath,
+  resetNexusDataDirCache,
+} from './nexus-data-dir.js';
+
+describe('standard initialization inventory (#5129)', () => {
+  it('preserves all nine directories independently of per-repo routing categories', () => {
+    expect(DATA_SUBDIRECTORIES).toEqual([
+      'memory',
+      'memory/beliefs',
+      'learning',
+      'sessions',
+      'audit',
+      'voting',
+      'auth',
+      'research',
+      'checkpoints',
+    ]);
+  });
+});
 
 describe('getNexusDataDir', () => {
   let originalEnv: string | undefined;

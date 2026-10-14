@@ -18,6 +18,7 @@ import {
   constants as fsConstants,
 } from 'node:fs';
 import {
+  DATA_SUBDIRECTORIES,
   getNexusDataDir,
   getNexusRepoDir,
   getPerRepoSubdirs,
@@ -260,18 +261,8 @@ export interface DataSubdirStatus {
   readonly writable: boolean;
 }
 
-/** Standard data subdirectories — resolved per-repo or cross-repo (epic #2872). */
-export const DATA_SUBDIRECTORIES = [
-  'memory',
-  'memory/beliefs',
-  'learning',
-  'sessions',
-  'audit',
-  'voting',
-  'auth',
-  'research',
-  'checkpoints',
-] as const;
+/** Compatibility export; the canonical inventory belongs to the data-dir resolver. */
+export { DATA_SUBDIRECTORIES } from '../config/nexus-data-dir.js';
 
 /**
  * Sandbox awareness (#2501, child 1 of epic #2500).

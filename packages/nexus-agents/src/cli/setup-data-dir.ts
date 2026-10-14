@@ -10,8 +10,12 @@
  */
 
 import { mkdirSync, existsSync } from 'node:fs';
-import { DATA_SUBDIRECTORIES } from './doctor.js';
-import { getNexusDataDir, nexusDataPath, previewNexusDataPath } from '../config/nexus-data-dir.js';
+import {
+  DATA_SUBDIRECTORIES,
+  getNexusDataDir,
+  nexusDataPath,
+  previewNexusDataPath,
+} from '../config/nexus-data-dir.js';
 
 /**
  * Homedir/cross-repo root data directory path.
