@@ -79,14 +79,21 @@ describe('quality gate over a workspace-edit implement directory (#6792)', () =>
   );
 
   it('warns on the blocking early return too (a red gate stops before the scan)', async () => {
-    const result = await runDevPipeline(
-      'Build feature X',
-      stages({ qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: 'tsc' }) }),
-      { ...TRUSTED, qualityGate: 'blocking' }
-    );
+    const s = stages({
+      qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: 'tsc' }),
+    });
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      qualityGate: 'blocking',
+    });
 
     expect(result.completed).toBe(false);
-    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings).toEqual([
+      'Quality gate failed: tsc',
+      expect.stringContaining('executed by the gate'),
+    ]);
+    expect(s.qualityGate).toHaveBeenCalledTimes(1);
+    expect(s.securityScan).not.toHaveBeenCalled();
   });
 
   it('does not warn when the gate is off (control)', async () => {
