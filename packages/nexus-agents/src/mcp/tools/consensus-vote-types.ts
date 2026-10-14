@@ -635,6 +635,12 @@ export interface ConsensusVoteResponse {
 export interface ExtendedVotingResult extends VotingResult {
   strategy: VotingStrategy;
   /**
+   * Diagnostic from the canonical response-layer decision evaluation (#7412).
+   * Unlike policyReason, this does not mark an error-policy short circuit.
+   * Consumers redact and bound it before rendering a caller-facing diagnostic.
+   */
+  decisionReason?: string;
+  /**
    * #4472: the declared-option tally + verdict, present only when the proposal
    * declared `options`. Reported alongside `approvalPercentage` rather than
    * folded into it, so a reader can tell which bar failed.

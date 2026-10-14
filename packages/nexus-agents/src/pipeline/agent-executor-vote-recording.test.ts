@@ -10,36 +10,50 @@ const voters = vi.hoisted<{
   failed: boolean;
   allFailed: boolean;
   empty: boolean;
+  decisions: AgentVoteResult['vote']['decision'][] | undefined;
+  respondents: number | undefined;
+  unverifiable: boolean;
 }>(() => ({
   decision: 'approve',
   failed: false,
   allFailed: false,
   empty: false,
+  decisions: undefined,
+  respondents: undefined,
+  unverifiable: false,
 }));
 vi.mock('../cli/voter-agents.js', () => ({
   collectRealVotes: ({ roles, simulate }: { roles: VoterRole[]; simulate: boolean }) =>
     Promise.resolve(
-      (voters.empty ? [] : roles).map((role, index): AgentVoteResult => ({
-        role,
-        vote: { decision: voters.decision, confidence: 0.9, reasoning: 'Measured plan' },
-        source: simulate
-          ? 'simulation'
-          : voters.allFailed || (voters.failed && index === 0)
-            ? 'error'
-            : 'llm',
-        cli: 'codex',
-        model: 'requested-alias',
-        servedModel: 'claude-sonnet',
-        processingTimeMs: 17,
-        inputTokens: 100,
-        outputTokens: 20,
-        attemptUsage: {
-          completions: 2,
-          reportedCompletions: 2,
-          inputTokens: 300,
-          outputTokens: 60,
-        },
-      }))
+      (voters.empty ? [] : roles.slice(0, voters.respondents)).map(
+        (role, index): AgentVoteResult => ({
+          role,
+          vote: {
+            decision: voters.decisions?.[index] ?? voters.decision,
+            confidence: 0.9,
+            reasoning: 'Measured plan',
+          },
+          source: simulate
+            ? 'simulation'
+            : voters.allFailed || (voters.failed && index === 0)
+              ? 'error'
+              : voters.unverifiable && index === 0
+                ? 'unverifiable'
+                : 'llm',
+          cli: 'codex',
+          model: 'requested-alias',
+          servedModel: 'claude-sonnet',
+          processingTimeMs: 17,
+          inputTokens: 100,
+          outputTokens: 20,
+          attemptUsage: {
+            completions: 2,
+            reportedCompletions: 2,
+            inputTokens: 300,
+            outputTokens: 60,
+          },
+        })
+      )
     ),
 }));
 vi.mock('./expert-bridge.js', () => ({
@@ -85,6 +99,7 @@ import { PersistentOutcomeStore } from '../orchestration/outcomes/outcome-store-
 import { DecisionCostStore } from '../observability/decision-cost-store.js';
 import { readVoteRecords, VOTE_RECORDS_PATH_ENV } from '../audit/vote-record-store.js';
 import { resetNexusDataDirCache } from '../config/nexus-data-dir.js';
+import * as voteRecording from '../mcp/tools/consensus-vote-recording.js';
 
 describe('pipeline plan votes share durable consensus records (#6872)', () => {
   let directory: string;
@@ -103,9 +118,13 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     voters.failed = false;
     voters.allFailed = false;
     voters.empty = false;
+    voters.decisions = undefined;
+    voters.respondents = undefined;
+    voters.unverifiable = false;
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     resetOutcomeStore();
     resetCorrelationTracker();
     vi.unstubAllEnvs();
@@ -208,6 +227,63 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
       errorPolicy: 'absolute_quorum',
     });
     expect(getOutcomeStore().query({ source: 'consensus' })).toHaveLength(0);
+  });
+
+  it('retains the fully returned absolute approval-floor cause through the dry pipeline (#7412)', async () => {
+    const recording = vi.spyOn(voteRecording, 'recordAuthenticVote');
+    voters.decisions = ['approve', 'reject', 'approve', 'abstain', 'approve', 'reject', 'approve'];
+    const result = await runDevPipeline(
+      'Exercise the fully returned plan panel',
+      createAgentStages({ votingStrategy: 'supermajority', quickMode: false }),
+      { dryRun: true, researchOverride: 'Research' }
+    );
+    expect(result).toMatchObject({
+      completed: false,
+      planStatus: 'no_quorum',
+      planVoteDecision: 'no_quorum',
+      tasks: [],
+      securityRan: false,
+    });
+    expect(result.planVoteReason).toBe(
+      'no_quorum: absolute quorum not met (4/5 approvals over 7-voter panel, absolute_quorum)'
+    );
+    expect(result.planVoteReason).not.toContain('a voice was missing');
+    const records = readVoteRecords(ledger).records;
+    expect(records).toHaveLength(3); // One outer cycle, initial attempt plus two same-plan retries.
+    for (const record of records) {
+      expect(record).toMatchObject({
+        decision: 'no_quorum',
+        voteCounts: { approve: 4, reject: 2, abstain: 1, total: 7 },
+      });
+    }
+    expect(recording).toHaveBeenCalledTimes(3);
+    for (const [args] of recording.mock.calls) expect(args.errorVoided).toBe(false);
+  });
+
+  it.each(['missing', 'errored', 'unverifiable'] as const)(
+    'retains the canonical %s-seat cause without changing no-quorum (#7412)',
+    async (cause) => {
+      if (cause === 'missing') voters.respondents = 6;
+      if (cause === 'errored') voters.failed = true;
+      if (cause === 'unverifiable') voters.unverifiable = true;
+      const vote = await createAgentStages({
+        votingStrategy: 'supermajority',
+        quickMode: false,
+      }).vote('Measured plan', '');
+      expect(vote.kind).toBe('no_quorum');
+      if (vote.kind === 'no_quorum') {
+        expect(vote.reason).toContain(cause);
+        expect(vote.reason).not.toContain('a voice was missing');
+      }
+    }
+  );
+
+  it('still approves five of seven and rejects genuine disagreement (#7412)', async () => {
+    voters.decisions = ['approve', 'approve', 'approve', 'approve', 'approve', 'reject', 'reject'];
+    const stages = createAgentStages({ votingStrategy: 'supermajority', quickMode: false });
+    expect((await stages.vote('Five approvals', '')).kind).toBe('approved');
+    voters.decisions = ['approve', 'approve', 'approve', 'reject', 'reject', 'reject', 'reject'];
+    expect((await stages.vote('Genuine disagreement', '')).kind).toBe('rejected');
   });
 
   it('writes no real records for an all-simulated panel', async () => {

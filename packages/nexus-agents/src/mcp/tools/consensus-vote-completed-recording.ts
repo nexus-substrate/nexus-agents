@@ -75,9 +75,9 @@ async function recordVoteSideEffects(
     errorVoided: result.policyReason !== undefined,
     // #4986: hand over the decision `resolveVoteDecision` already produced
     // (stamped on the result by `executeVoting`). `errorVoided` alone cannot
-    // express an absolute_quorum void, whose reason is stamped on the response
-    // and never on the result — so the record used to say `approved` for a vote
-    // this tool reports as `no_quorum`.
+    // express an absolute_quorum void, whose separate decisionReason is diagnostic
+    // only — so the record used to say `approved` for a vote this tool reports
+    // as `no_quorum`. Keep policyReason's error-void semantics unchanged (#7412).
     resolvedDecision: toRecordDecision(result.decision),
     // #6211: the EFFECTIVE policy `executeVoting` stamped, so a caller that
     // took the per-strategy default still gets `reduce_denominator` on the

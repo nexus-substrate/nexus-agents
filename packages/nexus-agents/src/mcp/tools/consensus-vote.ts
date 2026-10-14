@@ -535,7 +535,9 @@ export async function executeVoting(
   // response would leave the audit trail claiming an approval that did not
   // happen. No-op when no options were declared.
   applyOptionGate(input, result);
-  result.decision = resolveVoteDecision(input, result, errorCount).decision;
+  const resolved = resolveVoteDecision(input, result, errorCount);
+  result.decision = resolved.decision;
+  stampDecisionReason(result, resolved.degradeReason);
   // #6735: the tracker write stays here, not after the ledger append. It runs
   // with no `await` since the backstop above, so a cancel observed before the
   // verdict never reaches it. A cancel that lands later (during the ledger-lock
@@ -713,6 +715,19 @@ async function executeVotingInner(
     { ...finalized, contrarianCheck: escalation.contrarianCheck },
     escalation.degradeReason
   );
+}
+
+/**
+ * #7412: retain the canonical decision's cause without changing error-policy
+ * semantics. Separate assignment keeps executeVoting within its complexity budget.
+ */
+function stampDecisionReason(
+  result: ExtendedVotingResult,
+  degradeReason: string | undefined
+): void {
+  const reason = degradeReason ?? result.policyReason;
+  if (reason !== undefined) result.decisionReason = reason;
+  else delete result.decisionReason; // Re-evaluation must not retain a stale cause.
 }
 
 /**

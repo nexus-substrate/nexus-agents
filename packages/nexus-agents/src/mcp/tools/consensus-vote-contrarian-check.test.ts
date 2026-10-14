@@ -96,6 +96,7 @@ describe('contrarianCheck reports the quick-mode contrarian voice (#6111)', () =
       unverifiable: 0,
     });
     expect(response.contrarianCheck).toBe('errored');
+    expect(result.decisionReason).toBe(result.policyReason);
   });
 
   it('3 clean seats + succeeding expert call → approved with contrarianCheck ok', async () => {
@@ -110,6 +111,7 @@ describe('contrarianCheck reports the quick-mode contrarian voice (#6111)', () =
     expect(response.decision).toBe('approved');
     expect(response.voteCounts.error).toBe(0);
     expect(response.contrarianCheck).toBe('ok');
+    expect(result.decisionReason).toBeUndefined();
   });
 
   it('full 7-seat mode never runs the separate check → contrarianCheck skipped', async () => {
@@ -161,5 +163,23 @@ describe('contrarianCheck reports the quick-mode contrarian voice (#6111)', () =
     delete result.decision;
 
     expect(buildResponse(input, result).decision).toBe('no_quorum');
+  });
+
+  it('pairs an escalated full-panel quorum cause with the final decision (#7412)', async () => {
+    executeExpertMock.mockResolvedValue({
+      success: true,
+      text: '{"decision":"reject","confidence":0.9,"reasoning":"request full panel"}',
+    });
+    collectRealVotesMock.mockImplementation(({ roles }) =>
+      Promise.resolve(
+        cleanApprovals(roles.length === 3 ? roles : roles.filter((r) => r !== 'scope_steward'))
+      )
+    );
+    const result = await executeVoting(QUICK_ABSOLUTE, logger);
+    expect(collectRealVotesMock.mock.calls.map(([opts]) => opts.roles.length)).toEqual([3, 7]);
+    expect(result.decision).toBe('no_quorum');
+    expect(result.decisionReason).toContain('missing');
+    expect(result.policyReason).toBeUndefined();
+    expect(result.votes).toHaveLength(6);
   });
 });

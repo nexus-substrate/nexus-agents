@@ -5,6 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runIterativeConsensus } from './iterative-consensus.js';
 import type { VoteResult } from './dev-pipeline.js';
+import { createLogger } from '../core/index.js';
+import { FAKE_OPENAI_KEY } from '../testing/test-secrets.js';
 
 // Mock consensus-vote module
 vi.mock('../mcp/tools/consensus-vote.js', () => ({
@@ -228,6 +230,87 @@ describe('runIterativeConsensus', () => {
     // The plan is fine — a voice was missing — so we NEVER revise on no_quorum.
     expect(revisePlan).not.toHaveBeenCalled();
     expect(result.iterations).toBe(1);
+  });
+
+  it('retains the absolute-floor cause without treating disagreement as a missing voice (#7412)', async () => {
+    const cause =
+      'no_quorum: absolute quorum not met (4/5 approvals over 7-voter panel, absolute_quorum)';
+    mockExecuteVoting.mockResolvedValue({
+      ...makeVotingResult('approved', 4, 2),
+      decision: 'no_quorum',
+      decisionReason: cause,
+    });
+    const revisePlan = vi.fn();
+    const result = await runIterativeConsensus('The same plan', revisePlan, {
+      maxNoQuorumRetries: 0,
+    });
+    expect(result.vote.kind).toBe('no_quorum');
+    if (result.vote.kind === 'no_quorum') {
+      expect(result.vote.reason).toContain(cause);
+      expect(result.vote.reason).not.toContain('a voice was missing');
+    }
+    expect(revisePlan).not.toHaveBeenCalled();
+  });
+
+  it('logs an unmet approval floor without claiming a missing voice during retry (#7412)', async () => {
+    const cause =
+      'no_quorum: absolute quorum not met (4/5 approvals over 7-voter panel, absolute_quorum)';
+    const returned = makeVotingResult('approved', 4, 2);
+    mockExecuteVoting.mockResolvedValue({
+      ...returned,
+      decision: 'no_quorum',
+      decisionReason: cause,
+      result: {
+        ...returned.result,
+        voteCounts: { approve: 4, reject: 2, abstain: 1, error: 0 },
+      },
+      votes: [...returned.votes, { vote: { decision: 'abstain', reasoning: 'Uncertain' } }],
+    });
+    const logger = createLogger({ component: 'iterative-consensus-cause-test' });
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const revisePlan = vi.fn();
+
+    const result = await runIterativeConsensus('The same plan', revisePlan, {
+      maxNoQuorumRetries: 1,
+      logger,
+    });
+
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      'Vote reached no_quorum — re-running the same plan (bounded)',
+      { attempt: 1, maxNoQuorumRetries: 1, reason: cause }
+    );
+    expect(mockExecuteVoting).toHaveBeenCalledTimes(2);
+    expect(mockExecuteVoting).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ proposal: 'The same plan' }),
+      expect.anything()
+    );
+    expect(mockExecuteVoting).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ proposal: 'The same plan' }),
+      expect.anything()
+    );
+    expect(revisePlan).not.toHaveBeenCalled();
+    expect(result.vote.kind).toBe('no_quorum');
+    if (result.vote.kind !== 'no_quorum') throw new Error('Expected a no-quorum result');
+    expect(result.vote.reason).toContain(cause);
+    expect(result.vote.reason).not.toContain('missing voice');
+  });
+
+  it('redacts and bounds the causal diagnostic before returning it (#7412)', async () => {
+    mockExecuteVoting.mockResolvedValue({
+      ...makeVotingResult('approved', 4, 2),
+      decision: 'no_quorum',
+      decisionReason: `no_quorum: ${FAKE_OPENAI_KEY} ${'detail '.repeat(100)}`,
+    });
+    const result = await runIterativeConsensus('The same plan', vi.fn(), {
+      maxNoQuorumRetries: 0,
+    });
+    if (result.vote.kind !== 'no_quorum') throw new Error('Expected a no-quorum result');
+    expect(result.vote.reason).toContain('[REDACTED_KEY]');
+    expect(result.vote.reason).not.toContain(FAKE_OPENAI_KEY);
+    // The loop adds a fixed retry preamble to the bounded diagnostic.
+    expect(result.vote.reason.length).toBeLessThanOrEqual(260);
   });
 
   it('recovers when a bounded re-run reaches approval (does not terminate)', async () => {
