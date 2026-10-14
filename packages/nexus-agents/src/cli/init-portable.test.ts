@@ -11,7 +11,7 @@ import {
   formatInitPortableMessage,
   initPortable,
 } from './init-portable.js';
-import { DATA_SUBDIRECTORIES } from './doctor.js';
+import { DATA_SUBDIRECTORIES } from '../config/nexus-data-dir.js';
 
 let tmpRoot: string;
 let originalCwd: string;
@@ -38,6 +38,7 @@ describe('initPortable', () => {
   it('creates all 9 data subdirectories', async () => {
     const result = await initPortable();
     expect(result.success).toBe(true);
+    expect(DATA_SUBDIRECTORIES).toHaveLength(9);
     for (const subdir of DATA_SUBDIRECTORIES) {
       expect(fs.existsSync(path.join(result.absolutePath, subdir))).toBe(true);
     }

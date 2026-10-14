@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { runDoctor, printDoctorResults, doctorCommand } from './doctor.js';
+import { runDoctor, printDoctorResults, doctorCommand, DATA_SUBDIRECTORIES } from './doctor.js';
+import { DATA_SUBDIRECTORIES as CANONICAL_DATA_SUBDIRECTORIES } from '../config/nexus-data-dir.js';
 import type { CliCheckResult, DoctorResult } from './doctor.js';
 import { GeminiCliAdapter } from '../cli-adapters/adapters/gemini-adapter.js';
 import * as authEvidence from '../cli-adapters/auth-evidence.js';
@@ -124,6 +125,12 @@ import * as fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { execFileSync } from 'node:child_process';
+
+describe('doctor inventory compatibility (#5129)', () => {
+  it('re-exports the canonical initialization tuple without copying it', () => {
+    expect(DATA_SUBDIRECTORIES).toBe(CANONICAL_DATA_SUBDIRECTORIES);
+  });
+});
 
 /**
  * Helper to create a complete DoctorResult for print tests.
