@@ -519,6 +519,18 @@ _Auto-generated from `REGISTERED_TOOL_NAMES` + `TOOL_DESCRIPTIONS` by `scripts/i
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
+**Audit repository targets:** The `run_pipeline` audit template accepts a GitHub
+HTTP(S) URL anywhere in the task, an explicit `repo: owner/name` or
+`repository: owner/name` marker, or a concise `owner/name` / `audit owner/name`
+task. For example, `Audit repo: owner/name after checking /path/to/artifact.json`
+selects the remote repository while treating the artifact path as task context.
+Use a marker or GitHub URL for dotted repository names. Repeated references to
+the same repository are allowed; invalid, missing, or distinct conflicting
+targets fail before GitHub calls and produce no successful audit report. Absolute
+paths and paths prefixed with `./` or `../` alone do not request a repository
+audit. A standalone extensionless two-segment task deliberately uses the remote
+repository convention, even when those segments could also name a relative path.
+
 **Graph workflow templates call no model.** The `run_graph_workflow` templates
 `security-audit`, `test-generation` and `documentation` run local substring and
 regex checks over the input. No node invokes a model, CLI or adapter, and no

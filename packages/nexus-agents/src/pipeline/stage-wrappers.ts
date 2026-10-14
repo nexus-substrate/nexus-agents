@@ -8,7 +8,7 @@
  * @module pipeline/stage-wrappers
  */
 
-import { getTimeProvider, getErrorMessage } from '../core/index.js';
+import { getTimeProvider, getErrorMessage, type Result } from '../core/index.js';
 import { parseSpec } from '../orchestration/spec-parser.js';
 import type { DevPipelineStages, PipelineTask, VoteResult } from './dev-pipeline.js';
 import { isApproved, getVoteFeedback } from './dev-pipeline.js';
@@ -358,6 +358,69 @@ export function createGreenfieldStageRegistry(
 // Audit Pipeline Stages (#1774)
 // ============================================================================
 
+const AUDIT_REPO_SLUG = /^[a-zA-Z0-9_-]+\/(?!\.{1,2}$)[a-zA-Z0-9._-]+$/;
+const AUDIT_LEGACY_TASK = /^(?:audit\s+)?[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+(?:\.git)?$/i;
+const AUDIT_URL = /(?<![\w/\\])(?:https?:|[a-z][a-z0-9+.-]*:\/\/)[^\s<>"'`()\[\]{}]*/gi;
+const AUDIT_REPO_MARKER = /(?<![\w/\\])(?:repo|repository):\s*([^\s<>"'`()\[\]{}]*)/gi;
+
+/** Parse only the authority so URL normalization never erases the raw path. */
+function validatedAuditUrl(raw: string): Result<string | undefined, string> {
+  const authority = /^https?:\/\/[^/?#]+/i.exec(raw)?.[0] ?? '';
+  try {
+    const url = new URL(authority);
+    if (url.hostname !== 'github.com') return { ok: true, value: undefined };
+    const rawPath = raw.slice(authority.length).replace(/[?#].*$/, '');
+    const unsafePath = /%(?:2f|5c)|(?:^|\/)(?:\.|%2e){1,2}(?:\/|$)|%(?![a-f0-9]{2})/i;
+    if (raw.includes('\\') || unsafePath.test(rawPath)) {
+      return { ok: false, error: 'Invalid repository URL path' };
+    }
+    if (authority.includes('@') || url.port !== '') {
+      return { ok: false, error: 'Invalid GitHub repository URL authority' };
+    }
+    // Decode once only after raw traversal/separator validation; encoded names alias bare names.
+    const repo = decodeURIComponent(rawPath.split('/').slice(1, 3).join('/'));
+    if (!AUDIT_REPO_SLUG.test(repo)) {
+      return { ok: false, error: 'Invalid GitHub repository URL target' };
+    }
+    // Keep canonical URL .git semantics without query, fragment, or unrelated subpath.
+    return { ok: true, value: `${url.origin}/${repo}` };
+  } catch {
+    return { ok: false, error: 'Invalid repository URL' };
+  }
+}
+
+/** One explicit target convention for both audit consumers (#7401). */
+async function selectAuditRepository(task: string): Promise<Result<string, string>> {
+  const candidates: string[] = [];
+  const httpUrls = [...task.matchAll(AUDIT_URL)].filter((match) => /^https?:/i.test(match[0]));
+  for (const match of httpUrls) {
+    const url = validatedAuditUrl(match[0]);
+    if (!url.ok) return url;
+    if (url.value !== undefined) candidates.push(url.value);
+  }
+  // Foreign URL contents must not supply embedded repository markers or slugs.
+  const prose = task.replace(AUDIT_URL, ' ');
+  for (const match of prose.matchAll(AUDIT_REPO_MARKER)) {
+    const repo = match[1] ?? '';
+    if (!AUDIT_REPO_SLUG.test(repo))
+      return { ok: false, error: 'Invalid repository target marker' };
+    candidates.push(repo);
+  }
+  if (AUDIT_LEGACY_TASK.test(task.trim())) {
+    candidates.push(task.trim().replace(/^audit\s+/i, ''));
+  }
+  const [first, ...aliases] = candidates;
+  if (first === undefined) {
+    return { ok: false, error: 'No explicit GitHub repository target found in task' };
+  }
+  const { normalizeRepoId } = await import('../mcp/tools/repo-analyze.js');
+  const repo = normalizeRepoId(first);
+  if (aliases.some((alias) => normalizeRepoId(alias).toLowerCase() !== repo.toLowerCase())) {
+    return { ok: false, error: 'Ambiguous repository targets; specify one repository' };
+  }
+  return { ok: true, value: repo };
+}
+
 /** Analyze stage — detect repo tech stack via repo_analyze. */
 function createAnalyzeStageWrapper(): IPipelineStage {
   return {
@@ -366,18 +429,10 @@ function createAnalyzeStageWrapper(): IPipelineStage {
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
       try {
-        // Use task as repo slug if it looks like owner/name
-        const slug = ctx.task.match(/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/)?.[1];
-        if (slug === undefined) {
-          return output(
-            K.RESEARCH,
-            'No repository slug found in task',
-            getTimeProvider().now() - start,
-            true
-          );
-        }
+        const repo = await selectAuditRepository(ctx.task);
+        if (!repo.ok) return failOutput(K.RESEARCH, repo.error, getTimeProvider().now() - start);
         const { analyzeGitHubRepo } = await import('../mcp/tools/repo-analyze.js');
-        const analysis = await analyzeGitHubRepo({ repo: slug, depth: 'deep' });
+        const analysis = await analyzeGitHubRepo({ repo: repo.value, depth: 'deep' });
         const summary = `Language: ${String(analysis.language)}, Framework: ${String(analysis.framework)}, CI: ${String(analysis.ciProvider)}, Security: ${analysis.securityTooling.join(', ') || 'none'}`;
         return output(K.RESEARCH, summary, getTimeProvider().now() - start, true);
       } catch (e) {
@@ -395,17 +450,15 @@ function createScanStageWrapper(): IPipelineStage {
     async execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
       try {
-        const slug = ctx.task.match(/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/)?.[1];
-        if (slug !== undefined) {
-          const { generateSecurityPlan } = await import('../mcp/tools/repo-security-plan.js');
-          const plan = await generateSecurityPlan({ repo: slug, maxScanners: 10 });
-          const recs = plan.recommendations
-            .slice(0, 5)
-            .map((r) => `${r.priority}: ${r.displayName} (${r.category})`)
-            .join('; ');
-          return output(K.FINDINGS, recs, getTimeProvider().now() - start, true);
-        }
-        return output(K.FINDINGS, 'No repository to scan', getTimeProvider().now() - start, true);
+        const repo = await selectAuditRepository(ctx.task);
+        if (!repo.ok) return failOutput(K.FINDINGS, repo.error, getTimeProvider().now() - start);
+        const { generateSecurityPlan } = await import('../mcp/tools/repo-security-plan.js');
+        const plan = await generateSecurityPlan({ repo: repo.value, maxScanners: 10 });
+        const recs = plan.recommendations
+          .slice(0, 5)
+          .map((r) => `${r.priority}: ${r.displayName} (${r.category})`)
+          .join('; ');
+        return output(K.FINDINGS, recs, getTimeProvider().now() - start, true);
       } catch (e) {
         return failOutput(K.FINDINGS, getErrorMessage(e), getTimeProvider().now() - start);
       }
