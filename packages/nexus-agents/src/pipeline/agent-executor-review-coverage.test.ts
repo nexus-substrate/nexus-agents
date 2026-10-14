@@ -17,7 +17,8 @@
  *    QA pass.
  * 2. `buildVoteProposal` capped the plan at ~2900 chars. The research block it
  *    appends is explicitly labelled "may be incomplete"; the plan was not, so
- *    voters were shown a silently-truncated plan as though whole.
+ *    voters were shown a silently-truncated plan as though whole. #7411 now
+ *    supplies the complete bounded plan; only informational research is partial.
  *
  * The disclosure shape mirrors `packDiffForReview` (#4140), which already
  * solved this for `pr_review`: within budget the output is byte-identical, and
@@ -87,27 +88,31 @@ describe('buildQaPrompt discloses a bounded read (#4140 shape)', () => {
   });
 });
 
-describe('buildVoteProposal discloses a truncated plan', () => {
-  it('leaves a short plan untouched', () => {
-    expect(buildVoteProposal('short plan', '')).toBe('short plan');
+describe('buildVoteProposal supplies the complete plan (#7411)', () => {
+  it('frames a short plan without changing its content', () => {
+    expect(buildVoteProposal('short plan', '')).toContain(
+      '\n===== BEGIN ARTIFACT =====\nshort plan\n===== END ARTIFACT ====='
+    );
   });
 
-  it('marks the proposal when the plan itself was cut', () => {
-    // The research block already carries "may be incomplete"; the plan carried
-    // nothing, so voters could not tell a whole plan from a prefix.
+  it('delivers a complete plan beyond the former 4000-character proposal cap', () => {
+    // Previously this asserted truncation. A disclosed prefix still cannot
+    // authorize execution of the omitted part of the plan (#7411).
     const plan = 'p'.repeat(6000);
     const out = buildVoteProposal(plan, '');
-
-    expect(out).toMatch(/truncated/i);
-    expect(out.length).toBeLessThanOrEqual(4000);
+    expect(out).toContain(plan);
+    expect(out).toContain('6000 bytes');
+    expect(out).not.toMatch(/plan truncated/i);
   });
 
-  it('marks a cut plan even when research is present', () => {
-    const out = buildVoteProposal('p'.repeat(6000), 'some research');
-
-    expect(out).toMatch(/truncated/i);
+  it('bounds only informational research while preserving the complete plan', () => {
+    const plan = 'p'.repeat(6000);
+    const out = buildVoteProposal(plan, 'r'.repeat(6000));
+    expect(out).toContain(plan);
     expect(out).toContain('may be incomplete');
-    expect(out.length).toBeLessThanOrEqual(4000);
+    expect(out).toContain('r'.repeat(1000));
+    expect(out).not.toContain('r'.repeat(1001));
+    expect(out).not.toMatch(/plan truncated/i);
   });
 
   it('does not claim truncation for a plan that fits alongside research', () => {

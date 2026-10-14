@@ -65,7 +65,7 @@ const CONTRARIAN_ESCALATION_THRESHOLD = 0.8;
  * ordinary proposals is identical; what changed is that exceeding it is now
  * disclosed to the contrarian rather than silently applied (#5301).
  */
-const CONTRARIAN_PROPOSAL_BUDGET = 2000;
+export const CONTRARIAN_PROPOSAL_BUDGET = 2000;
 
 /** Build the contrarian prompt with full declared options and any partial-proposal note. */
 function buildContrarianPrompt(

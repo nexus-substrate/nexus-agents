@@ -493,6 +493,8 @@ export async function executeVoting(
     workspace?: string | undefined;
     workspaceSha?: string | undefined;
     gatewayAdapters?: readonly IModelAdapter[] | undefined;
+    /** Internal callers budget these exact preassigned seats before completion. */
+    roleAdapters?: ReadonlyMap<VoterRole, IModelAdapter> | undefined;
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
     /** #6110: set only by the escalation re-vote, which reuses the outer resolution. */
@@ -605,6 +607,8 @@ async function executeVotingInner(
     workspace?: string | undefined;
     workspaceSha?: string | undefined;
     gatewayAdapters?: readonly IModelAdapter[] | undefined;
+    /** Internal callers budget these exact preassigned seats before completion. */
+    roleAdapters?: ReadonlyMap<VoterRole, IModelAdapter> | undefined;
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
     /** #6110: the target project, resolved once by `executeVoting`. */
@@ -633,6 +637,7 @@ async function executeVotingInner(
     simulate: input.simulateVotes,
     ...(opts.voteTimeoutMs !== undefined && { timeoutMs: opts.voteTimeoutMs }),
     ...(opts.gatewayAdapters !== undefined && { gatewayAdapters: opts.gatewayAdapters }),
+    roleAdapters: opts.roleAdapters,
     declaredOptions: input.options,
     // #6110: every seat's system prompt names the caller's project.
     project: opts.project.name,
