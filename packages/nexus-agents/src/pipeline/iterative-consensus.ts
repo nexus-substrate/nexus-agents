@@ -12,6 +12,7 @@ import type { ILogger } from '../core/index.js';
 import type { VoteResult } from './dev-pipeline.js';
 import type { VotingStrategy, ErrorPolicy } from '../mcp/tools/consensus-vote-types.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
+import { sanitizeOutput } from '../security/output-sanitizer.js';
 
 const defaultLogger = createLogger({ component: 'iterative-consensus' });
 
@@ -40,10 +41,10 @@ export interface IterativeConsensusConfig {
   readonly errorPolicy?: ErrorPolicy | undefined;
   /**
    * #4135: how many times to re-run the SAME plan when a vote returns
-   * `no_quorum` — a missing/errored voice, not a rejection — before giving up
-   * (default: 2). Counted SEPARATELY from `maxIterations`: a quorum void is a
-   * recoverable "re-run the missing voice" state, not a plan-revision trigger, so
-   * it must not consume the refine budget.
+   * `no_quorum` — an unmet quorum rather than a plan rejection — before giving up
+   * (default: 2). Counted SEPARATELY from `maxIterations`: bounded retries use
+   * the same plan without treating the quorum cause as plan-revision feedback,
+   * so they do not consume the refine budget.
    */
   readonly maxNoQuorumRetries?: number | undefined;
   /** Max proposal length sent to voters (default: 4000). */
@@ -95,8 +96,8 @@ interface ConsensusLoopState {
 }
 
 /**
- * Run one vote and, on a `no_quorum` void, re-run the SAME plan (a voice was
- * missing — the plan is fine, so we do NOT revise) up to `maxNoQuorumRetries`
+ * Run one vote and, on a `no_quorum` void, re-run the SAME plan without
+ * treating the quorum cause as plan-revision feedback, up to `maxNoQuorumRetries`
  * times (#4135). Returns the recovered vote, or the last `no_quorum` when the
  * bounded re-runs are exhausted.
  */
@@ -105,7 +106,7 @@ async function voteWithQuorumRecovery(state: ConsensusLoopState): Promise<VoteRe
     () => executeSingleVote(state.plan, state.config, state.log),
     state.maxNoQuorumRetries,
     (attempt, vote) => {
-      state.log.warn('Vote reached no_quorum — re-running the missing voice (bounded)', {
+      state.log.warn('Vote reached no_quorum — re-running the same plan (bounded)', {
         attempt,
         maxNoQuorumRetries: state.maxNoQuorumRetries,
         reason: vote.reason,
@@ -310,6 +311,8 @@ function parseVotingResult(result: {
    * engine outcome is the fallback (legacy behavior, never `no_quorum`).
    */
   readonly decision?: string;
+  readonly decisionReason?: string;
+  readonly policyReason?: string;
   readonly result: {
     readonly outcome: string;
     readonly voteCounts: { readonly approve: number; readonly reject: number };
@@ -327,12 +330,15 @@ function parseVotingResult(result: {
   if (decision === 'approved') {
     return { kind: 'approved', approvalPercentage: pct };
   }
-  // #4135: a quorum void — the plan is fine, a voice was missing. Do NOT synthesize
-  // rejection feedback (that would feed a plan revision the loop must skip).
+  // #4135: preserve the quorum cause without synthesizing rejection feedback.
+  // An unmet absolute approval floor does not establish a missing voice or a sound plan.
   if (decision === 'no_quorum') {
     return {
       kind: 'no_quorum',
-      reason: 'vote could not reach quorum (a voice was missing)',
+      reason:
+        sanitizeOutput(result.decisionReason ?? result.policyReason ?? '')
+          .trim()
+          .slice(0, 200) || 'vote could not reach quorum (cause unavailable)',
       approvalPercentage: pct,
     };
   }

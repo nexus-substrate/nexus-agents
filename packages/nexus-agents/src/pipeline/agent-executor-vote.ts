@@ -8,6 +8,7 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { DevPipelineStages, VoteResult } from './dev-pipeline.js';
 import { recordCompletedVote } from '../mcp/tools/consensus-vote-completed-recording.js';
+import { sanitizeOutput } from '../security/output-sanitizer.js';
 import {
   type AgentExecutorConfig,
   type StageDeps,
@@ -70,12 +71,14 @@ export function buildVoteProposal(plan: string, research: string): string {
  * opt-in absolute_quorum policy / an error-policy short-circuit) rather than the
  * 2-valued engine outcome. Falls back to the engine outcome when `decision` is
  * absent — default-policy callers never see `no_quorum`, so this stays inert until
- * a call site opts in. `no_quorum` is a DISTINCT terminal signal (no reviewer
- * feedback — the plan is fine, a voice was missing), NOT a rejection fed into
- * plan-revision. Extracted from the vote stage to keep it within its complexity budget.
+ * a call site opts in. `no_quorum` is a distinct terminal signal, not a rejection
+ * fed into plan revision. Its cause can be an unmet absolute approval floor or
+ * missing/errored/unverifiable coverage; it does not establish that the plan is fine.
  */
 function classifyVoteStageResult(votingResult: {
   readonly decision?: string;
+  readonly decisionReason?: string;
+  readonly policyReason?: string;
   readonly result: {
     readonly outcome: string;
     readonly voteCounts: { readonly approve: number; readonly reject: number };
@@ -93,7 +96,10 @@ function classifyVoteStageResult(votingResult: {
     return {
       vote: {
         kind: 'no_quorum',
-        reason: 'consensus vote could not reach quorum (a voice was missing)',
+        reason:
+          sanitizeOutput(votingResult.decisionReason ?? votingResult.policyReason ?? '')
+            .trim()
+            .slice(0, 200) || 'consensus vote could not reach quorum (cause unavailable)',
         approvalPercentage: pct,
       },
       label: 'No quorum — re-run needed',
