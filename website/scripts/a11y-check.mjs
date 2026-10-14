@@ -72,7 +72,9 @@ export async function startStaticServer(dist) {
 }
 
 function sitemapLocation(loc, origin) {
-  const url = new URL(loc.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'"));
+  const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
+  // Decode one XML layer; a replacement must not be scanned as another entity.
+  const url = new URL(loc.replace(/&(?:amp|lt|gt|quot|apos);/g, (entity) => entities[entity]));
   if (url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) {
     throw new Error(`Sitemap URL outside site base: ${url.pathname}`);
   }
