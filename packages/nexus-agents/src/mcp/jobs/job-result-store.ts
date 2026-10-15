@@ -51,12 +51,13 @@ export {
   _setCandidatePathsResolverForTests,
 } from './job-result-candidates.js';
 export { JobFailureDetailSchema, type JobFailureDetail } from './job-failure-detail.js';
-import {
-  JobFailureDetailSchema,
-  type JobFailureDetail,
-  validateAndSanitizeFailureDetail,
-} from './job-failure-detail.js';
+import { JobFailureDetailSchema, type JobFailureDetail } from './job-failure-detail.js';
 import { CancelledPartialSchema } from './job-cancelled-partial-schema.js';
+import {
+  PlanFailureEvidenceSchema,
+  failedJobDiagnostics,
+  type FailedJobDiagnostics,
+} from './job-plan-failure-evidence.js';
 
 const logger = createLogger({ component: 'job-result-store' });
 
@@ -95,6 +96,8 @@ export const JobResultSchema = z.object({
    * raw response bodies or prompt strings.
    */
   failureDetail: JobFailureDetailSchema.optional(),
+  /** Bounded diagnostic plan evidence on failure; never a success result or checkpoint. */
+  failureEvidence: PlanFailureEvidenceSchema.optional(),
   /**
    * Machine-readable reason for a `failed` record that was NOT settled by the
    * process that ran the job (#6224). `abandoned` is written only by
@@ -399,7 +402,7 @@ export function writeJobFailed(
   toolName: string,
   error: string,
   producerVersion: string = VERSION,
-  failureDetail?: JobFailureDetail
+  diagnostics?: JobFailureDetail | FailedJobDiagnostics
 ): void {
   const existing = readJobResult(jobId);
   if (existing?.status === 'cancelled') {
@@ -409,8 +412,6 @@ export function writeJobFailed(
     });
     return;
   }
-  const sanitizedError = sanitizeErrorDetails(error);
-  const validatedDetail = validateAndSanitizeFailureDetail(failureDetail);
 
   const record: JobResult = {
     v: 1,
@@ -419,13 +420,13 @@ export function writeJobFailed(
     status: 'failed',
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
-    error: sanitizedError,
-    ...(validatedDetail !== undefined ? { failureDetail: validatedDetail } : {}),
+    error: sanitizeErrorDetails(error),
+    ...failedJobDiagnostics(diagnostics),
     producerVersion,
     ...carriedProgress(existing),
   };
   persistJobRecordAcrossCandidates(jobId, record);
-  logger.debug('Wrote failed job record', { jobId, toolName, error: sanitizedError });
+  logger.debug('Wrote failed job record', { jobId, toolName, error: record.error });
 }
 
 /**

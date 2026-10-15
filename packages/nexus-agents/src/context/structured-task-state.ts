@@ -16,6 +16,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
@@ -43,11 +44,15 @@ const TASKS_SUBDIR = 'tasks';
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 
-const asyncTaskStateJob = new AsyncLocalStorage<string>();
+const asyncTaskStateJob = new AsyncLocalStorage<{ jobId: string; dispatchId: string }>();
 
 /** Run work whose task-state initialization must record async dispatch. @internal */
-export function withAsyncTaskStateDispatch<T>(jobId: string, operation: () => T): T {
-  return asyncTaskStateJob.run(jobId, operation);
+export function withAsyncTaskStateDispatch<T>(
+  jobId: string,
+  operation: () => T,
+  dispatchId: string = randomUUID()
+): T {
+  return asyncTaskStateJob.run({ jobId, dispatchId }, operation);
 }
 
 /**
@@ -57,7 +62,7 @@ export function withAsyncTaskStateDispatch<T>(jobId: string, operation: () => T)
  * @internal
  */
 export function currentAsyncDispatchJobId(): string | undefined {
-  return asyncTaskStateJob.getStore();
+  return asyncTaskStateJob.getStore()?.jobId;
 }
 
 function getTasksDir(customDir?: string): string {
@@ -143,8 +148,13 @@ function appendLogEntry(
  * state as an `init` log entry. Safe to call once per taskId.
  */
 export function initTaskState(state: StructuredTaskState, customDir?: string): Result<void, Error> {
-  const isAsyncJob = asyncTaskStateJob.getStore() === state.taskId;
-  const persistedState = isAsyncJob ? { ...state, dispatch: 'async' as const } : state;
+  const origin = asyncTaskStateJob.getStore();
+  // A caller-supplied nonce cannot assert dispatcher provenance.
+  const { asyncDispatchId: _untrustedNonce, ...withoutNonce } = state;
+  const persistedState =
+    origin?.jobId === state.taskId
+      ? { ...withoutNonce, dispatch: 'async' as const, asyncDispatchId: origin.dispatchId }
+      : withoutNonce;
   return appendLogEntry(
     state.taskId,
     { event: 'init', ts: state.updatedAt, state: persistedState },
@@ -226,8 +236,9 @@ export function appendProgressLedgerEntry(
 
 /**
  * Append a tool-result payload (#3043 / epic #2631 Stage 2). Carries the
- * same shape the synchronous mode would have returned inline. Writers
- * should `updateStage(taskId, 'complete', ...)` immediately before so a
+ * same shape the synchronous mode would have returned inline on success.
+ * Failed stages may instead retain typed diagnostic evidence (#7424), never
+ * a successful result. Success writers should update the stage immediately before so a
  * polling reader observes the terminal stage transition + result together.
  *
  * The payload is JSON-serialized to measure size; over-cap writes

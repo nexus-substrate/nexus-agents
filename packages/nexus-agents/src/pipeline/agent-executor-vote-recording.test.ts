@@ -88,6 +88,7 @@ vi.mock('../mcp/tools/tool-memory.js', () => ({
 
 import { getVoterRoles } from '../cli/voter-roles.js';
 import { createAgentStages } from './agent-executor.js';
+import { buildVoteProposal } from './agent-executor-vote.js';
 import { runDevPipeline } from './dev-pipeline.js';
 import { resetCorrelationTracker } from '../mcp/tools/consensus-vote.js';
 import {
@@ -227,6 +228,18 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
       errorPolicy: 'absolute_quorum',
     });
     expect(getOutcomeStore().query({ source: 'consensus' })).toHaveLength(0);
+  });
+
+  it('returns the exact executed proposal as diagnostic evidence for rejected plans (#7424)', async () => {
+    voters.decision = 'reject';
+    const vote = await createAgentStages({
+      votingStrategy: 'simple_majority',
+      quickMode: true,
+    }).vote('Measured plan', 'Exact assembled research');
+    expect(vote.kind).toBe('rejected');
+    expect(vote).toMatchObject({
+      proposal: buildVoteProposal('Measured plan', 'Exact assembled research'),
+    });
   });
 
   it('retains the fully returned absolute approval-floor cause through the dry pipeline (#7412)', async () => {

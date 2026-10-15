@@ -144,8 +144,8 @@ export function registerGetJobResultTool(server: McpServer, deps: GetJobResultDe
     "server's _meta build stamp — and producerVersionSource (sidecar | task_state; " +
     'a task_state record never carries a version). A pending record may carry ' +
     "lastProgressAt, the job body's last heartbeat, so slow can be told from stuck " +
-    '(#6162). Poll until status !== "pending". Stage-1 of epic #2631 — Stage 2 will ' +
-    'fold this into query_task_state once StructuredTaskState gains the result field.';
+    '(#6162). Poll until status !== "pending". ' +
+    'Failed development-plan jobs may carry failureEvidence (diagnostics, never approval or a resumable checkpoint). Each plan/proposal retains at most 32768 UTF-8 bytes. coverage is complete, redacted, truncated or invalid; redacted and truncated flags distinguish combined transformations. rawSha256 binds original bytes, sanitizedSha256 binds all redacted bytes, and retainedSha256 binds returned text. For example, coverage=redacted with truncated=false means all sanitized text survived, but the raw artifact cannot be reconstructed. Absent evidence or proposal means unmeasured, not complete. Terminal task state takes precedence over the sidecar.';
 
   const secureHandler = createSecureHandler(getJobResultHandler, {
     toolName: 'get_job_result',

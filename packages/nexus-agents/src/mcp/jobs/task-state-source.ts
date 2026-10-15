@@ -21,6 +21,7 @@
  * @module mcp/jobs/task-state-source
  */
 
+import { planFailureEvidenceFromTaskState } from './job-plan-failure-evidence.js';
 import { createLogger } from '../../core/index.js';
 import { readTaskState, listTaskStateIds } from '../../context/structured-task-state.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
@@ -123,10 +124,23 @@ export function jobResultFromTaskState(state: StructuredTaskState, jobId: string
     return reason !== undefined ? { ...record, error: reason } : record;
   }
   if (status === 'failed') {
-    const msg = lastBlockerMessage(state);
-    return msg !== undefined ? { ...record, error: msg } : record;
+    return failedRecordFromTaskState(state, record);
   }
   return record;
+}
+
+/** Project a failed state without exposing arbitrary result payloads. */
+function failedRecordFromTaskState(state: StructuredTaskState, record: JobResult): JobResult {
+  const msg = lastBlockerMessage(state);
+  const failureEvidence =
+    state.dispatch === 'async' && state.taskId === record.jobId
+      ? planFailureEvidenceFromTaskState(state.result, record.jobId, state.asyncDispatchId)
+      : undefined;
+  return {
+    ...record,
+    ...(msg !== undefined ? { error: msg } : {}),
+    ...(failureEvidence !== undefined ? { failureEvidence } : {}),
+  };
 }
 
 /**

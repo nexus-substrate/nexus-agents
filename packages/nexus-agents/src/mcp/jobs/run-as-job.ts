@@ -19,6 +19,12 @@
  * @module mcp/jobs/run-as-job
  */
 
+import { randomUUID } from 'node:crypto';
+import { VERSION } from '../../version.js';
+import {
+  extractPlanFailureEvidence,
+  persistPlanFailureTaskEvidence,
+} from './job-plan-failure-evidence.js';
 import { getTimeProvider, type ILogger } from '../../core/index.js';
 import { toolSuccess, toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { parseToolErrorEnvelope } from '../error-envelope.js';
@@ -29,6 +35,7 @@ import {
   writeJobPending,
   heartbeatJob,
   readLastProgressMs,
+  readJobResult,
 } from './job-result-store.js';
 import { extractFailureDetail } from './job-failure-detail.js';
 export { extractFailureDetail } from './job-failure-detail.js';
@@ -520,19 +527,26 @@ export function runAsJob<I, R, E = ToolResult>(params: RunAsJobParams<I, R, E>):
 function settleJobResult<I, R, E>(
   jobId: string,
   params: RunAsJobParams<I, R, E>,
-  result: unknown
+  result: unknown,
+  dispatchId: string
 ): void {
   const failure = detectFailureShapedResult(result);
   if (failure !== null && params.allowFailureShapedResult === undefined) {
     const detail =
       failure.detail ?? parseToolErrorEnvelope((result as Record<string, unknown>)._meta)?.message;
+    const evidence = extractPlanFailureEvidence(params.toolName, result, {
+      jobId,
+      dispatchId,
+      producerVersion: params.producerVersion ?? VERSION,
+    });
     writeJobFailed(
       jobId,
       params.toolName,
       describeFailureShape({ ...failure, detail }),
       params.producerVersion,
-      extractFailureDetail(result)
+      { failureDetail: extractFailureDetail(result), failureEvidence: evidence }
     );
+    persistPlanFailureTaskEvidence(evidence, readJobResult(jobId)?.status);
     return;
   }
   if (failure !== null) {
@@ -570,13 +584,16 @@ export async function runJobInBackground<I, R, E>(
   // #6162: pipeline bodies heartbeat through the stage events they already
   // emit; attributed to this job by the async context the body runs under.
   const unbridge = bridgePipelineEventsToHeartbeat(jobId, guard.progress);
+  const dispatchId = randomUUID();
   try {
     // Race the body against the runaway-guard. On guard expiry the guard
     // rejects with AsyncJobGuardExpiredError → the body is aborted and the job
     // recorded as failed below. On body settle the guard is cleared so it can
     // never fire afterward.
-    const body = withAsyncTaskStateDispatch(jobId, () =>
-      params.run(jobId, params.input, controller.signal, guard.progress)
+    const body = withAsyncTaskStateDispatch(
+      jobId,
+      () => params.run(jobId, params.input, controller.signal, guard.progress),
+      dispatchId
     );
     const result = await Promise.race([body, guard.expired]);
     // #4363: `writeJobComplete` used to fire on ANY resolved value, so a
@@ -584,7 +601,7 @@ export async function runJobInBackground<I, R, E>(
     // caller polling `get_job_result` read it as a success. Fail closed by
     // default — an opt-in predicate was rejected because "caller forgot to
     // normalize" would just become "caller forgot to pass the predicate".
-    settleJobResult(jobId, params, result);
+    settleJobResult(jobId, params, result, dispatchId);
   } catch (err: unknown) {
     // #6725: the guard won the race, so the body is still running. Stop it
     // BEFORE recording failed and releasing the slot, so the record never

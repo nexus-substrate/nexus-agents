@@ -357,6 +357,37 @@ describe('run_dev_pipeline async dispatch (#3726)', () => {
     expect(record?.error).toContain('isError');
   });
 
+  it('retains planning artifacts through the registered async tool (#7424)', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: false,
+      plan: 'Complete rejected plan',
+      planVoteProposal: 'Exact proposal and context',
+      planStatus: 'unapproved',
+      planVoteRecordId: 'vote-wrapper-test',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+    } as never);
+    const handler = captureHandler();
+    await handler(
+      { task: 'Build feature X', dispatch: 'async', sessionId: 'sess-plan-evidence' },
+      STDIO_CTX
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    const record = readJobResult('sess-plan-evidence');
+    expect(record?.status).toBe('failed');
+    expect(record?.result).toBeUndefined();
+    expect(record).toMatchObject({
+      failureEvidence: {
+        plan: { text: 'Complete rejected plan', coverage: 'complete' },
+        proposal: { text: 'Exact proposal and context', coverage: 'complete' },
+        voteRecordId: 'vote-wrapper-test',
+      },
+    });
+  });
+
   it('records a harness run as a COMPLETE job — it stopped by request', async () => {
     // Pair test. Harness mode hands the tasks back for external implementation
     // and legitimately reports `completed: false`; erroring on it would trade a
