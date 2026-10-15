@@ -46,7 +46,9 @@ export const ListExpertsInputSchema = z.object({
     .enum(['full', 'names'])
     .optional()
     .default('full')
-    .describe('Output format: full (with details) or names (just role names)'),
+    .describe(
+      'Output format: full (detailed metadata) or names (compact objects with role, name, a one-sentence description, and an empty capabilities array)'
+    ),
 });
 
 /**
@@ -197,7 +199,9 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
     format: z
       .enum(['full', 'names'])
       .optional()
-      .describe('Output format: full (with details) or names (just role names)'),
+      .describe(
+        'Output format: full (detailed metadata) or names (compact objects with role, name, a one-sentence description, and an empty capabilities array)'
+      ),
   };
 
   const description =
