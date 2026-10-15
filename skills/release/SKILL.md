@@ -24,7 +24,7 @@ The `pnpm changeset` workflow handles versioning, but the human-judgment gates b
 ### Code quality
 
 - [ ] `pnpm lint && pnpm typecheck && pnpm test` — green
-- [ ] `pnpm coverage` — coverage hasn't regressed below the gate (89.66% statements, 93.26% functions per CLAUDE.md)
+- [ ] `pnpm test:coverage` — coverage meets the [enforced thresholds](../../packages/nexus-agents/vitest.config.ts)
 - [ ] No `TODO` / `FIXME` / `XXX` comments in production source added in this release that should have been resolved
 - [ ] No `console.log` debugging statements in production code
 - [ ] All `@deprecated` markers added in this release have a clear replacement and migration path (see `deprecation-and-migration` skill)
