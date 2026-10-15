@@ -1423,7 +1423,7 @@ ClassDeclaration ClaudeAdapter
   extends BaseAdapter
   listModels() => Promise<readonly ModelMetadata[]>
   stream(request: CompletionRequest) => AsyncIterable<StreamChunk>
-  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<true | undefined>
+  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<boolean | undefined>
   validateConfig() => Result<void, ConfigError>
 InterfaceDeclaration ClaudeAdapterConfig
   apiKey: string
@@ -4088,7 +4088,7 @@ ClassDeclaration GeminiAdapter
   extends BaseAdapter
   listModels() => Promise<readonly ModelMetadata[]>
   stream(request: CompletionRequest) => AsyncIterable<StreamChunk>
-  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<true | undefined>
+  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<boolean | undefined>
   validateConfig() => Result<void, ConfigError>
 InterfaceDeclaration GeminiAdapterConfig
   apiKey: string
@@ -6133,7 +6133,7 @@ ClassDeclaration OllamaAdapter
   countTokens(text: string) => Promise<number>
   extends BaseAdapter
   stream(request: CompletionRequest) => AsyncIterable<StreamChunk>
-  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<true | undefined>
+  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<boolean | undefined>
   validateConfig() => Result<void, ConfigError>
 InterfaceDeclaration OllamaAdapterConfig
   baseUrl?: string | undefined
@@ -6149,7 +6149,7 @@ ClassDeclaration OpenAIAdapter
   extends BaseAdapter
   listModels() => Promise<readonly ModelMetadata[]>
   stream(request: CompletionRequest) => AsyncIterable<StreamChunk>
-  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<true | undefined>
+  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<boolean | undefined>
   validateConfig() => Result<void, ConfigError>
 InterfaceDeclaration OpenAIAdapterConfig
   apiKey: string
@@ -8317,7 +8317,7 @@ ClassDeclaration SdkAdapter
   complete(request: CompletionRequest) => Promise<Result<CompletionResponse, ModelError>>
   extends BaseAdapter
   stream(request: CompletionRequest) => AsyncIterable<StreamChunk>
-  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<true | undefined>
+  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal) => Promise<boolean | undefined>
 InterfaceDeclaration SdkAdapterConfig
   apiKey?: string | undefined
   baseUrl?: string | undefined
