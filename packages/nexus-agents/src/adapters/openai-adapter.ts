@@ -109,10 +109,8 @@ function kvTag(key: string, val: string | number | null | undefined): string {
  * headers have no vendor shape), then the pattern sanitizer.
  */
 function redactErrorText(text: string, secrets: GatewaySecretSource): string {
-  return sanitizeErrorDetails(
-    redactGatewaySecrets(text, secrets, REDACTED_KEY_PLACEHOLDER),
-    secrets.apiKey
-  );
+  const redacted = redactGatewaySecrets(text, secrets, REDACTED_KEY_PLACEHOLDER);
+  return sanitizeErrorDetails(redacted, secrets.apiKey);
 }
 
 function describeOpenAIApiError(v: ApiErrorView, secrets: GatewaySecretSource): string {
@@ -140,7 +138,10 @@ const MAX_ERROR_BODY_CHARS = 600;
 
 export class OpenAIAdapter extends BaseAdapter {
   /** This concrete API only returns content/tool descriptions; it executes no host tools. */
-  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal): Promise<true | undefined> {
+  supportsAccessMode(
+    _mode: ExecutionAccessMode,
+    _signal?: AbortSignal
+  ): Promise<boolean | undefined> {
     return Promise.resolve(this.constructor === OpenAIAdapter ? true : undefined);
   }
 

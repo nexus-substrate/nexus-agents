@@ -131,6 +131,24 @@ describe('resilient selected-transport query (#7434)', () => {
     await expect(pending).rejects.toThrow(/abort/i);
   });
 });
+// A concrete public subclass may truthfully deny a mode without narrowing the interface.
+const unsupportedQuery: NonNullable<IModelAdapter['supportsAccessMode']> = () =>
+  Promise.resolve(false);
+class UnsupportedClaude extends ClaudeAdapter {
+  override supportsAccessMode = unsupportedQuery;
+}
+class UnsupportedOpenAI extends OpenAIAdapter {
+  override supportsAccessMode = unsupportedQuery;
+}
+class UnsupportedGemini extends GeminiAdapter {
+  override supportsAccessMode = unsupportedQuery;
+}
+class UnsupportedOllama extends OllamaAdapter {
+  override supportsAccessMode = unsupportedQuery;
+}
+class UnsupportedSdk extends SdkAdapter {
+  override supportsAccessMode = unsupportedQuery;
+}
 describe('only concrete text-only API adapters declare support', () => {
   for (const cls of [ClaudeAdapter, OpenAIAdapter, GeminiAdapter, OllamaAdapter, SdkAdapter]) {
     it(`${cls.name} explicitly supports content-only generation without SDK execution`, async () => {
@@ -147,6 +165,20 @@ describe('only concrete text-only API adapters declare support', () => {
       const derived = Object.create(prototype) as QueryAdapter;
       Object.defineProperty(derived, 'constructor', { value: function TestHostAdapter() {} });
       expect(await derived.supportsAccessMode?.('read-only-analysis')).toBeUndefined();
+    });
+  }
+  for (const cls of [
+    UnsupportedClaude,
+    UnsupportedOpenAI,
+    UnsupportedGemini,
+    UnsupportedOllama,
+    UnsupportedSdk,
+  ]) {
+    it(`${cls.name} may explicitly deny a mode through the public subclass contract`, async () => {
+      const api = Object.create(cls.prototype) as InstanceType<typeof cls>;
+      // Class fields run in constructors; bind the real override without constructing provider SDKs.
+      api.supportsAccessMode = unsupportedQuery;
+      expect(await api.supportsAccessMode('read-only-analysis')).toBe(false);
     });
   }
   it('BaseAdapter does not grant arbitrary subclasses support', () => {

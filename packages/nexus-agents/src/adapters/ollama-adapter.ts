@@ -152,7 +152,10 @@ function getModelCapabilities(modelId: string): readonly ModelCapability[] {
 /** Ollama model adapter for local model inference. */
 export class OllamaAdapter extends BaseAdapter {
   /** This concrete API only returns content/tool descriptions; it executes no host tools. */
-  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal): Promise<true | undefined> {
+  supportsAccessMode(
+    _mode: ExecutionAccessMode,
+    _signal?: AbortSignal
+  ): Promise<boolean | undefined> {
     return Promise.resolve(this.constructor === OllamaAdapter ? true : undefined);
   }
 
