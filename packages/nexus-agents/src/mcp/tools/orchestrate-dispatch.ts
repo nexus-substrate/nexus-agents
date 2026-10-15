@@ -12,7 +12,7 @@
 
 import type { ILogger } from '../../core/index.js';
 import type { ExecutionAccessMode, IModelAdapter } from '../../core/index.js';
-import { createLogger, getErrorMessage } from '../../core/index.js';
+import { createLogger, getErrorMessage, err, ModelError } from '../../core/index.js';
 import { resolveV2Config } from '../../pipeline/v2-config.js';
 import type { AgentPlan, AgentPlanEntry } from '../../orchestration/aorchestra/index.js';
 import {
@@ -105,7 +105,7 @@ function resolveMaxWorkerCalls(option?: number): number {
 // Types
 // ============================================================================
 
-/** Default initial worker-slot and later-phase eligibility budget (#1321). */
+/** Default completion-attempt maximum for this dispatch, including retries and synthesis. */
 const DEFAULT_MAX_WORKER_CALLS = 6;
 
 /** Default exit triggers: skip refinement when all workers done + no retriable errors (#1509). */
@@ -123,8 +123,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly maxConcurrency?: number;
   /** Opt-in: run synthesis LLM call to merge worker outputs (Issue #1309) */
   readonly synthesize?: boolean;
-  /** Initial worker-slot and later-phase eligibility budget (default: 6).
-   * Retries can exceed it; it is not a hard provider-call cap (#1321). */
+  /** Maximum underlying adapter completion attempts, including retries/refinement/synthesis.
+   * Excludes planning/voting and unobserved internal provider retries (default: 6). */
   readonly maxWorkerCalls?: number;
   /** Opt-in: re-dispatch failed workers if quality is low and budget allows (Issue #1389) */
   readonly refine?: boolean;
@@ -180,7 +180,7 @@ export interface WorkerDispatchResult {
   readonly conflicts: readonly WorkerConflict[];
   /** Unified response from synthesis (only present when synthesize=true) */
   readonly synthesis?: string;
-  /** Observed worker adapter.complete attempts plus successful synthesis calls.
+  /** Observed underlying adapter.complete attempts across workers and synthesis.
    * Adapter-internal/provider retries and billable/native calls are unmeasured. */
   readonly totalModelCalls: number;
   /** True when a refinement pass was applied (Issue #1389). */
@@ -232,6 +232,14 @@ function resolveWorkerAdapter(
 /** Private aggregate of observable adapter invocations, independent of result slots. */
 interface WorkerCallCounter {
   attempts: number;
+  readonly maxCalls: number;
+}
+
+/** Reserve synchronously; concurrent continuations cannot both claim the final call. */
+function reserveWorkerCall(counter: WorkerCallCounter): boolean {
+  if (counter.attempts >= counter.maxCalls) return false;
+  counter.attempts++;
+  return true;
 }
 
 interface WorkerExecutorConfig {
@@ -264,10 +272,11 @@ interface AdapterExecutionOptions {
 
 /** Per-invocation evidence prevents concurrent attempts from labeling a refused worker. */
 async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerResult> {
-  const invocation: WorkerCallCounter = { attempts: 0 };
+  const invocation = { attempts: 0 };
   const result = await completeOnAdapter(opts, () => {
+    if (!reserveWorkerCall(opts.callCounter)) return false;
     invocation.attempts++;
-    opts.callCounter.attempts++;
+    return true;
   });
   if (invocation.attempts === 0) return result;
   if (result.status === 'success') return { ...result, accessMode: WORKER_ACCESS_MODE };
@@ -302,7 +311,7 @@ async function prepareAdapterPrompt(
 
 async function completeOnAdapter(
   opts: AdapterExecutionOptions,
-  onAttempt: () => void
+  onAttempt: () => boolean
 ): Promise<WorkerResult> {
   const { entry, adapter, cliName, workerStartMs, signal } = opts;
   const prepared = await prepareAdapterPrompt(opts);
@@ -316,7 +325,7 @@ async function completeOnAdapter(
     };
   const { prompt, evidence } = prepared.value;
   try {
-    onAttempt();
+    if (!onAttempt()) return exhaustedWorkerResult(opts, evidence);
     const result = await adapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: WORKER_MAX_TOKENS,
@@ -346,6 +355,21 @@ async function completeOnAdapter(
       promptEvidence: { ...evidence, rawInputCoverage: 'UNSUPPORTED' },
     };
   }
+}
+
+/** Keep original retry context in subTask while identifying a refusal before completion. */
+function exhaustedWorkerResult(
+  opts: AdapterExecutionOptions,
+  evidence: NonNullable<WorkerResult['promptEvidence']>
+): WorkerResult {
+  return {
+    ...makeErrorResult(
+      opts.entry,
+      opts.workerStartMs,
+      'Worker call budget exhausted before completion'
+    ),
+    promptEvidence: { ...evidence, rawInputCoverage: 'UNSUPPORTED' },
+  };
 }
 
 /** Preserve the partial raw-byte coverage notice in the actual returned text. */
@@ -553,7 +577,32 @@ interface DispatchPhaseState {
   checkpoints: WorkerCheckpointStore;
 }
 
-/** Run opt-in synthesis if within call budget (#1321). */
+/** Delegate synthesis without changing adapter receivers or optional identity capabilities. */
+function synthesisAdapter(adapter: IModelAdapter, counter: WorkerCallCounter): IModelAdapter {
+  const listModels = adapter.listModels?.bind(adapter);
+  return {
+    providerId: adapter.providerId,
+    modelId: adapter.modelId,
+    capabilities: adapter.capabilities,
+    complete: async (request) => {
+      if (!reserveWorkerCall(counter)) {
+        return err(
+          new ModelError('Worker call budget exhausted before synthesis', {
+            retryable: false,
+            context: { operation: 'orchestrate-call-budget', attempted: false },
+          })
+        );
+      }
+      return adapter.complete(request);
+    },
+    stream: (request) => adapter.stream(request),
+    countTokens: (text) => adapter.countTokens(text),
+    validateConfig: () => adapter.validateConfig(),
+    ...(listModels !== undefined ? { listModels } : {}),
+  };
+}
+
+/** Run opt-in synthesis; every actual completion shares the worker reservation. */
 async function runSynthesisPhase(
   state: DispatchPhaseState,
   options: WorkerDispatchExecutionOptions,
@@ -568,13 +617,11 @@ async function runSynthesisPhase(
     results: state.results,
     conflicts: [...detectConflicts(state.results)],
     taskDescription: options.taskDescription,
-    modelAdapter: options.modelAdapter,
+    modelAdapter: synthesisAdapter(options.modelAdapter, state.callCounter),
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
-  // Only count LLM calls toward budget — deterministic merge is free
-  if (synthResult.ok && synthResult.synthesisSource !== 'deterministic') {
-    state.totalModelCalls++;
-  }
+  // Counts failed and multi-tier attempts too; deterministic merge remains free.
+  state.totalModelCalls = state.callCounter.attempts;
   if (!synthResult.ok) {
     options.logger.warn('Synthesis failed', { error: synthResult.error });
     return;
@@ -638,7 +685,6 @@ async function runRefinementPhase(
     remaining,
     checkpoints: checkpointCount,
   });
-  const attemptsBeforeRefinement = state.callCounter.attempts;
   const executor = createWorkerExecutor({
     callCounter: state.callCounter,
     taskDescription: options.taskDescription,
@@ -656,7 +702,7 @@ async function runRefinementPhase(
     executionId: `refine-${Date.now().toString(36)}`,
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
-  state.totalModelCalls += state.callCounter.attempts - attemptsBeforeRefinement;
+  state.totalModelCalls = state.callCounter.attempts;
   state.results = mergeRefinedResults(state.results, refinedResults);
   return true;
 }
@@ -665,7 +711,7 @@ async function runRefinementPhase(
 // Public API
 // ============================================================================
 
-/** Limit initial worker reservations and log dispatch start. */
+/** Limit initial worker slots before reserving individual completion attempts. */
 function prepareBudgetedEntries(
   plan: AgentPlan,
   maxCalls: number,
@@ -690,7 +736,8 @@ function prepareBudgetedEntries(
 
 function createPinnedExecutorConfig(
   options: WorkerDispatchExecutionOptions,
-  entries: readonly AgentPlanEntry[]
+  entries: readonly AgentPlanEntry[],
+  maxCalls: number
 ): WorkerExecutorConfig {
   const { taskDescription, modelAdapter, logger } = options;
   const resolvedAdapters = new Map(
@@ -706,7 +753,7 @@ function createPinnedExecutorConfig(
     ])
   );
   return {
-    callCounter: { attempts: 0 },
+    callCounter: { attempts: 0, maxCalls },
     taskDescription,
     modelAdapter,
     logger,
@@ -718,12 +765,15 @@ function createPinnedExecutorConfig(
   };
 }
 
-async function prepareDispatchPreflight(options: WorkerDispatchExecutionOptions): Promise<{
+async function prepareDispatchPreflight(
+  options: WorkerDispatchExecutionOptions,
+  maxCalls: number
+): Promise<{
   readonly pinnedConfig: WorkerExecutorConfig;
   readonly unsupported: string | undefined;
 }> {
   const entries = options.agentPlan.entries;
-  const pinnedConfig = createPinnedExecutorConfig(options, entries);
+  const pinnedConfig = createPinnedExecutorConfig(options, entries, maxCalls);
   const unsupported = await preflightWorkerPrompts({
     entries,
     taskDescription: options.taskDescription,
@@ -752,7 +802,7 @@ export async function executeWorkerDispatch(
   // Quality gate: opt-in via the qualityGate option (#1502); absent means ungated (#6589).
   const qualityGate = options.qualityGate === false ? undefined : options.qualityGate;
 
-  const { pinnedConfig, unsupported } = await prepareDispatchPreflight(options);
+  const { pinnedConfig, unsupported } = await prepareDispatchPreflight(options, maxCalls);
   if (unsupported !== undefined) {
     return refusedInlineDispatch(entries, taskDescription, unsupported, startMs, logger);
   }
