@@ -101,5 +101,5 @@ The test stays as a regression guard. Future refactors can't silently re-break t
 - [ ] All tests pass: `pnpm test`
 - [ ] Test names describe the behavior, not the implementation
 - [ ] No `.skip` / `.todo` / disabled tests added in this PR (or each is linked to an issue)
-- [ ] Coverage hasn't decreased: `pnpm coverage` (gate: 89.66% statements, 93.26% functions per CLAUDE.md)
+- [ ] Coverage hasn't decreased: `pnpm test:coverage`; enforced floors are defined in the [canonical Vitest configuration](../../packages/nexus-agents/vitest.config.ts).
 - [ ] If the fix is complex enough to warrant E2E coverage, an integration or E2E test is added
