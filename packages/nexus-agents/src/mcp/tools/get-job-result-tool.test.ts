@@ -4,6 +4,8 @@
  * @module mcp/tools/get-job-result-tool.test
  */
 
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,6 +14,10 @@ import { registerGetJobResultTool } from './get-job-result-tool.js';
 import { writeJobPending, writeJobComplete, heartbeatJob } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import { initTaskState, updateStage, appendResult } from '../../context/structured-task-state.js';
+import { extractPlanFailureEvidence } from '../jobs/job-plan-failure-evidence.js';
+import { writeJobFailed } from '../jobs/job-result-store.js';
+import { toolStructuredError } from './tool-result.js';
+import { FAKE_PASSWORD } from '../../testing/test-secrets.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
 
 type SdkCallback = (args: unknown) => Promise<{ content: readonly { text: string }[] }>;
@@ -58,6 +64,56 @@ describe('get_job_result abandoned disclosure (#4976)', () => {
     else process.env['NEXUS_DATA_DIR'] = originalDataDir;
     resetNexusDataDirCache();
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns redacted evidence with digests bound to actual RPC-delivered bytes (#7424)', async () => {
+    const jobId = 'dp-rpc-evidence';
+    const evidence = extractPlanFailureEvidence(
+      'run_dev_pipeline',
+      toolStructuredError({
+        errorCategory: 'business',
+        message: 'Plan rejected',
+        detail: {
+          completed: false,
+          planStatus: 'unapproved',
+          plan: FAKE_PASSWORD,
+          planVoteProposal: `Exact proposal: ${FAKE_PASSWORD}`,
+        },
+      }),
+      { jobId, dispatchId: '00000000-0000-4000-8000-000000000742', producerVersion: 'dev' }
+    );
+    expect(evidence).toBeDefined();
+    writeJobFailed(jobId, 'run_dev_pipeline', 'Plan rejected', undefined, {
+      failureEvidence: evidence,
+    });
+    const body = await envelope(jobId);
+    const actual = z
+      .object({
+        record: z.object({
+          status: z.literal('failed'),
+          failureEvidence: z.object({
+            plan: z.object({
+              text: z.string(),
+              retainedBytes: z.number(),
+              retainedSha256: z.string(),
+            }),
+            proposal: z.object({
+              text: z.string(),
+              retainedBytes: z.number(),
+              retainedSha256: z.string(),
+            }),
+          }),
+        }),
+      })
+      .parse(body);
+    for (const text of [
+      actual.record.failureEvidence.plan,
+      actual.record.failureEvidence.proposal,
+    ]) {
+      expect(text.text).not.toContain(FAKE_PASSWORD);
+      expect(Buffer.byteLength(text.text, 'utf8')).toBe(text.retainedBytes);
+      expect(createHash('sha256').update(text.text).digest('hex')).toBe(text.retainedSha256);
+    }
   });
 
   it('does not flag a freshly dispatched job', () => {

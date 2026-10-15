@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { createLogger } from '../../core/logger.js';
 import { appendResult, readTaskState } from '../../context/structured-task-state.js';
-import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
+import {
+  sanitizeErrorDetails,
+  TOOL_OUTPUT_REDACTION_PLACEHOLDER,
+} from '../../security/output-sanitizer.js';
 import { validateAndSanitizeFailureDetail, type JobFailureDetail } from './job-failure-detail.js';
 import { parseToolErrorEnvelope } from '../error-envelope.js';
 
@@ -12,6 +15,9 @@ const SOURCE_MAX_BYTES = 512 * 1024;
 const EVIDENCE_MAX_BYTES = 512 * 1024;
 /** Back off at most 128 times over a 32 KiB prefix if a sanitizer token is split. */
 const SANITIZER_BOUNDARY_BACKOFF_BYTES = 256;
+/** Convergence is measured, never assumed; unavailable evidence remains explicit. */
+const MAX_SANITIZATION_PASSES = 4;
+const DeliveredTextSchema = z.object({ text: z.string() });
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const byteCount = z.number().int().nonnegative();
@@ -36,7 +42,7 @@ const RetainedTextSchema = z
       !value.text.includes('\0') &&
       Buffer.byteLength(value.text, 'utf8') === value.retainedBytes &&
       sha256(value.text) === value.retainedSha256 &&
-      sanitizeErrorDetails(value.text) === value.text
+      sanitizeDeliveredText(value.text) === value.text
   )
   .refine(
     (value) =>
@@ -57,7 +63,7 @@ const TextEvidenceSchema = z.union([
   RetainedTextSchema,
   z.object({
     coverage: z.literal('invalid'),
-    reason: z.enum(['invalid_utf8', 'nul', 'source_too_large']),
+    reason: z.enum(['invalid_utf8', 'nul', 'source_too_large', 'unstable_sanitization']),
   }),
 ]);
 
@@ -86,7 +92,8 @@ function textEvidence(raw: string): TextEvidence {
   if (raw.includes('\0')) return { coverage: 'invalid', reason: 'nul' };
   const rawBytes = Buffer.byteLength(raw, 'utf8');
   if (rawBytes > SOURCE_MAX_BYTES) return { coverage: 'invalid', reason: 'source_too_large' };
-  const sanitized = sanitizeErrorDetails(raw);
+  const sanitized = sanitizeDeliveredText(raw);
+  if (sanitized === undefined) return { coverage: 'invalid', reason: 'unstable_sanitization' };
   const { text, retainedBytes, sanitizedBytes } = boundedSanitizedPrefix(sanitized);
   const redacted = sanitized !== raw;
   const truncated = retainedBytes < sanitizedBytes;
@@ -104,6 +111,37 @@ function textEvidence(raw: string): TextEvidence {
   };
 }
 
+/**
+ * MCP sanitizes complete JSON display text as well as string leaves. Escaped
+ * newlines/quotes can therefore broaden contextual redaction. Measure both
+ * representations to a bounded fixed point before computing artifact hashes.
+ * The wrapper's neutral key has the same JSON string escaping as tool delivery.
+ */
+function sanitizeDeliveredText(raw: string): string | undefined {
+  let current = raw;
+  for (let pass = 0; pass < MAX_SANITIZATION_PASSES; pass++) {
+    const leaf = sanitizeErrorDetails(current, undefined, TOOL_OUTPUT_REDACTION_PLACEHOLDER);
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(
+        sanitizeErrorDetails(
+          JSON.stringify({ text: leaf }),
+          undefined,
+          TOOL_OUTPUT_REDACTION_PLACEHOLDER
+        )
+      );
+    } catch {
+      return undefined;
+    }
+    const parsed = DeliveredTextSchema.safeParse(decoded);
+    if (!parsed.success) return undefined;
+    const next = parsed.data.text;
+    if (leaf === current && next === current) return current;
+    current = next;
+  }
+  return undefined;
+}
+
 /** Retain a sanitizer-stable UTF-8 prefix with a strictly decreasing byte bound. */
 function boundedSanitizedPrefix(sanitized: string): {
   text: string;
@@ -118,7 +156,7 @@ function boundedSanitizedPrefix(sanitized: string): {
   for (;;) {
     while (end < bytes.length && end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80) end--;
     text = bytes.subarray(0, end).toString('utf8');
-    if (sanitizeErrorDetails(text) === text) break;
+    if (sanitizeDeliveredText(text) === text) break;
     end = Math.max(0, end - SANITIZER_BOUNDARY_BACKOFF_BYTES);
   }
   return { text, retainedBytes: end, sanitizedBytes: bytes.length };
@@ -156,7 +194,13 @@ export function extractPlanFailureEvidence(
       ? { proposal: textEvidence(detail.planVoteProposal) }
       : {}),
     ...(detail.planVoteRecordId !== undefined
-      ? { voteRecordId: sanitizeErrorDetails(detail.planVoteRecordId) }
+      ? {
+          voteRecordId: sanitizeErrorDetails(
+            detail.planVoteRecordId,
+            undefined,
+            TOOL_OUTPUT_REDACTION_PLACEHOLDER
+          ),
+        }
       : {}),
   });
 }
@@ -194,7 +238,11 @@ export function persistPlanFailureTaskEvidence(
   if (!written.ok)
     logger.warn('Failed plan evidence unavailable in task state', {
       jobId: evidence.jobId,
-      reason: sanitizeErrorDetails(written.error.message),
+      reason: sanitizeErrorDetails(
+        written.error.message,
+        undefined,
+        TOOL_OUTPUT_REDACTION_PLACEHOLDER
+      ),
     });
 }
 

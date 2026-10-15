@@ -32,7 +32,11 @@ import {
 import type { IAuditLogger, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
-import { sanitizeErrorDetails, sanitizeStringLeaves } from '../../security/output-sanitizer.js';
+import {
+  sanitizeErrorDetails,
+  sanitizeStringLeaves,
+  TOOL_OUTPUT_REDACTION_PLACEHOLDER,
+} from '../../security/output-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { getGlobalExecutionMode } from './policy-registry.js';
 import { runPolicyCheck, getRegisteredAuditLogger } from './policy-check.js';
@@ -199,7 +203,7 @@ const MAX_INPUT_SIZE_BYTES = 10 * 1024 * 1024;
  * OpenAI sk-proj-*, Gemini AIzaSy*, GitHub PATs, and URL/Bearer credentials.
  */
 function sanitizeOutput(text: string, logger?: ILogger): string {
-  const sanitized = sanitizeErrorDetails(text, undefined, '[REDACTED]');
+  const sanitized = sanitizeErrorDetails(text, undefined, TOOL_OUTPUT_REDACTION_PLACEHOLDER);
   if (sanitized !== text && logger !== undefined) {
     logger.warn('Potential secret detected in tool output, redacting');
   }

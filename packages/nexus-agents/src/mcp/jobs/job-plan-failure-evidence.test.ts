@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { toolStructuredError } from '../tools/tool-result.js';
 import { FAKE_ANTHROPIC_KEY } from '../../testing/test-secrets.js';
-import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
+import {
+  sanitizeErrorDetails,
+  TOOL_OUTPUT_REDACTION_PLACEHOLDER,
+} from '../../security/output-sanitizer.js';
 import {
   extractPlanFailureEvidence,
   PlanFailureEvidenceSchema,
@@ -84,7 +87,9 @@ describe('bounded plan failure evidence', () => {
       redacted: true,
       truncated: true,
       rawSha256: hash(raw),
-      sanitizedSha256: hash(sanitizeErrorDetails(raw)),
+      sanitizedSha256: hash(
+        sanitizeErrorDetails(raw, undefined, TOOL_OUTPUT_REDACTION_PLACEHOLDER)
+      ),
     });
     expect(JSON.stringify(item)).not.toContain(FAKE_ANTHROPIC_KEY);
   });
