@@ -111,6 +111,10 @@ export interface ModelSelectionShadowComparison {
  * adapter resolves `getDefaultModelForCli` late, so that default IS the actual
  * model the comparison must use.
  *
+ * The shadow remains an unconstrained registry-policy counterfactual: for the
+ * Gemini CLI it can name unavailable Pro; it is not native availability proof
+ * and must not authorize a native selection or the selector flip (#7423).
+ *
  * CALLER CONTRACT (#4218 review): do NOT sample tasks with a pinned
  * `CliTask.model` — the adapter executes the pinned model, not the default
  * assumed here, so the comparison would attribute a model that never ran and

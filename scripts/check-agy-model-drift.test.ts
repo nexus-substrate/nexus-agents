@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 
 import { parseAgyModels, compareAgyModels } from './check-agy-model-drift.js';
@@ -63,5 +64,21 @@ describe('compareAgyModels', () => {
     // into `unmeasured` before it gets here; this pins that the comparison
     // itself cannot render absence as a match.
     expect(compareAgyModels([]).ok).toBe(false);
+  });
+});
+
+describe('captured AGY 1.3.5 native availability (#7423)', () => {
+  it('matches the advertised Gemini table via the actual parser and comparator', () => {
+    const captured = readFileSync(
+      new URL('../packages/nexus-agents/src/config/fixtures/agy-1.3.5-models.txt', import.meta.url),
+      'utf8'
+    );
+    const models = parseAgyModels(captured);
+    expect(models).toHaveLength(10);
+    expect(compareAgyModels(models)).toMatchObject({
+      ok: true,
+      staleInMap: [],
+      missingFromMap: [],
+    });
   });
 });

@@ -102,11 +102,11 @@ describe('GeminiCliAdapter', () => {
     it('should return correct capability profile', () => {
       const caps = adapter.capabilities;
 
-      expect(caps.reasoning).toBe(10);
+      expect(caps.reasoning).toBe(8);
       expect(caps.contextWindow).toBe(1_048_576);
       expect(caps.codeGeneration).toBe(9);
-      expect(caps.speed).toBe(8);
-      expect(caps.cost).toBe(6);
+      expect(caps.speed).toBe(10);
+      expect(caps.cost).toBe(9);
     });
   });
 
@@ -120,11 +120,11 @@ describe('GeminiCliAdapter', () => {
       expect(info.maxOutput).toBe(8_192);
     });
 
-    it('should return correct cost info for pro', () => {
+    it('should return correct cost info for the selected Flash default', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(2.0);
-      expect(info.costPerMillionOutput).toBe(12.0);
+      expect(info.costPerMillionInput).toBe(0.75);
+      expect(info.costPerMillionOutput).toBe(3.75);
     });
 
     it('should return correct info for pro model', () => {

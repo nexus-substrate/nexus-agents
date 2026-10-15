@@ -259,11 +259,11 @@ describe('QualityConstraintStage', () => {
     });
 
     it('does NOT admit a candidate whose real cost exceeds the ceiling (#5186)', async () => {
-      // The regression that matters. gemini's input-rate estimate at 1500
-      // tokens is $0.003; its output-rate bound is $0.018. A ceiling set
+      // The regression that matters. Gemini Flash's input-rate estimate at 1500
+      // tokens is $0.001125; its output-rate bound is $0.005625. A ceiling set
       // between them must reject — under the old arithmetic it admitted.
       const stage = new QualityConstraintStage({
-        maxCostUsd: 0.01,
+        maxCostUsd: 0.003,
         expectedTokens: 1500,
         minQuality: 0,
         maxLatencyMs: 100_000,
@@ -277,7 +277,7 @@ describe('QualityConstraintStage', () => {
     it('prices exactly when the caller supplies the input/output split (#5186)', async () => {
       // The conservative bound is a fallback for an unknown split, not a
       // penalty. A caller that knows the mix gets the real figure — here
-      // gemini at 1400 in / 100 out is (1400*2 + 100*12)/1e6 = $0.004, under a
+      // Flash at 1400 in / 100 out is (1400*.75 + 100*3.75)/1e6 = $0.001425, under a
       // $0.01 ceiling, so it survives where the worst-case bound rejected it.
       const stage = new QualityConstraintStage({
         maxCostUsd: 0.01,

@@ -111,6 +111,9 @@ import {
   isDynamicModelsEnabled,
   registerDefaultModelSources,
 } from '../config/register-model-sources.js';
+import { gatewaySlotEndpointOf } from './gateway-slot-arm.js';
+import { ModelToCliAdapter } from './model-to-cli-adapter.js';
+import { AGY_MODEL_SLUGS, fromAgyModelSlug } from '../config/agy-model-map.js';
 import { resolveModelForTier, isRouteModelSelectionEnabled } from './resolve-model-for-tier.js';
 import {
   PendingRoutingOutcomes,
@@ -200,6 +203,27 @@ function applyDistillationSwitch(config: CompositeRouterConfig): CompositeRouter
   return isStrategyDistillationEnabled()
     ? config
     : { ...config, enableStrategyDistillation: false };
+}
+
+/** Availability constrains only the actual native Gemini arm, never API/gateway slots. */
+function nativeAgyTierOptions(
+  arm: RoutingArmId,
+  adapter: ICliAdapter
+): Parameters<typeof resolveModelForTier>[2] {
+  if (
+    arm !== 'gemini' ||
+    adapter instanceof ModelToCliAdapter ||
+    gatewaySlotEndpointOf(adapter) !== undefined
+  )
+    return {};
+  return {
+    liveModelIds: new Set(
+      AGY_MODEL_SLUGS.flatMap((slug) => {
+        const canonical = fromAgyModelSlug(slug);
+        return canonical === null ? [] : [canonical];
+      })
+    ),
+  };
 }
 
 /** CompositeRouter implementation. */
@@ -928,7 +952,11 @@ export class CompositeRouter implements ICompositeRouter {
       isRouteModelSelectionEnabled() &&
       params.difficultyTier !== undefined &&
       modelSlot !== undefined
-        ? resolveModelForTier(modelSlot, params.difficultyTier)
+        ? resolveModelForTier(
+            modelSlot,
+            params.difficultyTier,
+            nativeAgyTierOptions(params.selectedCli, selectedAdapter)
+          )
         : undefined;
 
     return ok({

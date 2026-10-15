@@ -28,7 +28,11 @@ import { SdkAdapter } from './sdk/index.js';
 import { warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
 import type { CliName, ICliAdapter, ApiVendor, ApiArmId } from '../cli-adapters/types.js';
 import { apiArmId } from '../cli-adapters/types.js';
-import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
+import {
+  buildCliCapabilityProfiles,
+  lookupInTreeCapability,
+  getDefaultModelForGoogleApi,
+} from '../config/model-config-helpers.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { ensureGatewayDiscovered } from './gateway-rediscovery.js';
@@ -254,7 +258,7 @@ function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelec
   // Derive default model IDs from canonical registry instead of hardcoding
   const claudeModelId = getCliModelName(getDefaultModelForCli('claude'));
   const codexModelId = getCliModelName(getDefaultModelForCli('codex'));
-  const geminiModelId = getCliModelName(getDefaultModelForCli('gemini'));
+  const geminiModelId = getCliModelName(getDefaultModelForGoogleApi());
 
   // 1. Anthropic — use native ClaudeAdapter (battle-tested)
   const anthropicKey = resolveApiKeyFromEnv(config.anthropicApiKey, 'ANTHROPIC_API_KEY');
@@ -340,9 +344,17 @@ export function wrapApiSelectionForRouter(
   if (selection.source !== 'api') return null;
   const resolved = resolveApiVendor(selection.name);
   if (resolved === undefined) return null;
+  const model =
+    resolved.vendor === 'google' ? lookupInTreeCapability(selection.adapter.modelId) : undefined;
+  const capabilities =
+    resolved.vendor === 'google'
+      ? model?.qualityScores === undefined
+        ? undefined
+        : { ...model.qualityScores, contextWindow: model.contextWindow }
+      : buildCliCapabilityProfiles()[resolved.slot];
   const adapter = createModelToCliAdapter(selection.adapter, {
     name: resolved.slot,
-    capabilities: buildCliCapabilityProfiles()[resolved.slot],
+    ...(capabilities === undefined ? {} : { capabilities }),
   });
   return { armId: apiArmId(resolved.vendor), adapter };
 }
@@ -383,7 +395,7 @@ function buildApiSelectionForVendor(
     case 'google': {
       const key = resolveApiKeyFromEnv(config.googleApiKey, 'GOOGLE_AI_API_KEY');
       if (key === undefined) return null;
-      const modelId = getCliModelName(getDefaultModelForCli('gemini'));
+      const modelId = getCliModelName(getDefaultModelForGoogleApi());
       return {
         adapter: new SdkAdapter({ providerId: 'google', modelId, apiKey: key }),
         source: 'api',

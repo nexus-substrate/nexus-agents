@@ -150,7 +150,7 @@ export { delay } from '../../utils/async-utils.js';
  * the registry has not caught up with (codex ships new ones between releases)
  * must still be able to run it, and codex rejects a bad `-m` with a non-zero
  * exit, so the failure stays visible — unlike agy, whose exit-0 error is why
- * `toAgyModelSlug` substitutes a default instead.
+ * `toAgyModelSlug` refuses unsupported explicit pins before dispatch.
  */
 export function toCodexModelSlug(model: string, logger: ILogger): string {
   const slug = resolveCliModelName('codex', model);

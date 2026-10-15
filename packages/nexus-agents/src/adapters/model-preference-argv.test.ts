@@ -111,8 +111,8 @@ describe('model preference → real registry → real CLI argv (#6599)', () => {
   });
 
   it.each([
-    ['gemini-pro', 'gemini-3.1-pro-low'],
-    ['gemini-flash', 'gemini-3.6-flash-low'],
+    ['gemini-3.8-flash', 'gemini-3.8-flash-high'],
+    ['gemini-flash', 'gemini-3.8-flash-low'],
   ])('agy: preference %s runs --model %s', async (preference, accepted) => {
     const probe = new AgyProbe();
     await run(preference, probe);
@@ -125,4 +125,16 @@ describe('model preference → real registry → real CLI argv (#6599)', () => {
     const reported = await run('gpt-6-luna', new CodexProbe());
     expect(reported).toBe('codex-5.1-mini');
   });
+});
+
+it('attributes a migrated legacy Flash preference to the selected native model, not its original alias (#7423)', async () => {
+  const probe = new AgyProbe();
+  const bridge = new CliToModelAdapter(probe);
+  const response = await bridge.complete({
+    messages: [{ role: 'user', content: 'hi' }],
+    model: 'gemini-3.7-flash',
+  });
+  expect(flagValue(probe, '--model')).toBe('gemini-3.8-flash-high');
+  expect(response.ok).toBe(true);
+  if (response.ok) expect(response.value.model).toBe('gemini-3.8-flash');
 });

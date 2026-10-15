@@ -11,6 +11,10 @@ import {
   wrapApiSelectionForRouter,
 } from './auto-adapter.js';
 import { ok, type ILogger, type IModelAdapter } from '../core/index.js';
+import { DEFAULT_MODEL_PER_CLI } from '../config/in-tree-data.js';
+import { getCliModelName, getModelQualityScores } from '../config/model-config-helpers.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
+import { FAKE_GOOGLE_KEY } from '../testing/test-secrets.js';
 
 // ============================================================================
 // Mocks
@@ -301,6 +305,56 @@ describe('createAutoAdapter', () => {
       expect(result.reason).toContain('Google');
     });
 
+    it('keeps both Google API construction paths on Pro when CLI default becomes Flash (#7423)', async () => {
+      const previous = DEFAULT_MODEL_PER_CLI.gemini;
+      DEFAULT_MODEL_PER_CLI.gemini = 'gemini-3.8-flash';
+      try {
+        process.env.GOOGLE_AI_API_KEY = FAKE_GOOGLE_KEY;
+        const fallback = await createAutoAdapter({ priority: 'api-only' });
+        expect.soft(fallback.adapter.modelId).toBe(getCliModelName('gemini-3-pro'));
+        const arm = collectApiRoutingArms().find((candidate) => candidate.armId === 'api:google');
+        expect(arm).toBeDefined();
+        expect.soft(arm?.adapter.getModelInfo().id).toBe(getCliModelName('gemini-3-pro'));
+        expect
+          .soft(arm?.adapter.capabilities.reasoning)
+          .toBe(getModelQualityScores('gemini-3-pro')?.reasoning);
+        expect
+          .soft(arm?.adapter.capabilities.cost)
+          .toBe(getModelQualityScores('gemini-3-pro')?.cost);
+      } finally {
+        DEFAULT_MODEL_PER_CLI.gemini = previous;
+      }
+    });
+
+    it('honors the Pro registry overlay in both Google API paths independently of native availability (#7423)', async () => {
+      process.env.GOOGLE_AI_API_KEY = FAKE_GOOGLE_KEY;
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      const base = getEntry('gemini-3-pro');
+      const overlay = {
+        ...base,
+        id: 'operator-google-pro',
+        cliModelName: 'operator-google-api',
+        aliases: ['gemini-3-pro'],
+        source: 'manifest' as const,
+        qualityScores: { reasoning: 7, codeGeneration: 6, speed: 5, cost: 4 },
+      };
+      const spy = vi
+        .spyOn(registry, 'getEntry')
+        .mockImplementation((id) =>
+          ['gemini-3-pro', overlay.id, overlay.cliModelName].includes(id) ? overlay : getEntry(id)
+        );
+      try {
+        const fallback = await createAutoAdapter({ priority: 'api-only' });
+        const arm = collectApiRoutingArms().find((candidate) => candidate.armId === 'api:google');
+        expect.soft(fallback.adapter.modelId).toBe(overlay.cliModelName);
+        expect.soft(arm?.adapter.getModelInfo().id).toBe(overlay.cliModelName);
+        expect.soft(arm?.adapter.capabilities.reasoning).toBe(overlay.qualityScores.reasoning);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('prefers Anthropic over OpenAI when both available', async () => {
       vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
@@ -534,4 +588,18 @@ describe('custom-openai arm canonical env (#6291 B1)', () => {
     expect(flat).not.toContain('pw-TESTFAKE');
     expect(flat).not.toContain('https://u:');
   });
+});
+
+it('uses the actual explicit Google API model profile rather than either transport default (#7423)', () => {
+  const api = { modelId: getCliModelName('gemini-3.8-flash') } as IModelAdapter;
+  const wrapped = wrapApiSelectionForRouter({
+    adapter: api,
+    source: 'api',
+    name: 'google',
+    reason: 'explicit fixture',
+  });
+  expect(wrapped?.adapter.getModelInfo().id).toBe(api.modelId);
+  expect(wrapped?.adapter.capabilities.reasoning).toBe(
+    getModelQualityScores('gemini-3.8-flash')?.reasoning
+  );
 });

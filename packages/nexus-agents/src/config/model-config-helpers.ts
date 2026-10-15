@@ -18,6 +18,7 @@ import { buildInTreeEntries } from './in-tree-entries.js';
 import {
   DEFAULT_MODEL_CAPABILITIES,
   DEFAULT_MODEL_PER_CLI,
+  DEFAULT_GOOGLE_API_MODEL,
   unpricedCliCostPer1M,
   type CostPer1M,
   type PricedSibling,
@@ -147,9 +148,9 @@ export function getModelQualityScores(modelId: ModelId): QualityScores | undefin
 }
 
 /**
- * Get the default (strongest) model for a given CLI tool.
+ * Get the selected default model for a given CLI tool.
  *
- * The per-CLI default *policy* (which model id is strongest) lives in the
+ * The per-CLI default policy lives in the
  * static `DEFAULT_MODEL_PER_CLI` map. As of #3185 the resolved id is routed
  * through the overlay-bearing default registry so an operator overlay that
  * renames / re-aliases the default model is honored at runtime without a
@@ -169,6 +170,14 @@ export function getDefaultModelForCli(cli: CliNameLiteral): ModelId {
   const registry = peekDefaultRegistry();
   if (registry === undefined) return staticDefault;
   return registry.getEntry(staticDefault).id as ModelId;
+}
+
+/** Google API policy stays on Pro independently of the native CLI default. */
+export function getDefaultModelForGoogleApi(): ModelId {
+  const registry = peekDefaultRegistry();
+  return registry === undefined
+    ? DEFAULT_GOOGLE_API_MODEL
+    : (registry.getEntry(DEFAULT_GOOGLE_API_MODEL).id as ModelId);
 }
 
 /**
@@ -194,12 +203,13 @@ export function resolveModelCostPer1M(modelId: ModelId, fallback: CostPer1M): Co
  * estimated at the CLI's highest known rates ({@link unpricedCliCostPer1M},
  * #6866), never below a priced sibling. Single source for the former per-CLI
  * $ tables; usage accounting still records the model as unpriced.
+ * An API bridge may supply its actual model while keeping the same conservative fallback.
  */
-export function resolveCliCostPer1M(cli: CliNameLiteral): CostPer1M {
-  return resolveModelCostPer1M(
-    getDefaultModelForCli(cli),
-    unpricedCliCostPer1M(cli, registryPricedSiblings())
-  );
+export function resolveCliCostPer1M(
+  cli: CliNameLiteral,
+  modelId: ModelId = getDefaultModelForCli(cli)
+): CostPer1M {
+  return resolveModelCostPer1M(modelId, unpricedCliCostPer1M(cli, registryPricedSiblings()));
 }
 
 /**

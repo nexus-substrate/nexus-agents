@@ -97,9 +97,9 @@ describe('budget-utils', () => {
     });
 
     it('calculates cost for gemini', () => {
-      // 1M input at $2.00 + 1M output at $12.00 = $14.00 (gemini-3-pro)
+      // Selected CLI Flash: 1M input $0.75 + 1M output $3.75 = $4.50 (#7423).
       const cost = estimateCost('gemini', 1_000_000, 1_000_000);
-      expect(cost).toBeCloseTo(14.0, 4);
+      expect(cost).toBeCloseTo(4.5, 4);
     });
 
     it('calculates cost for codex', () => {
@@ -178,7 +178,7 @@ describe('budget-gate invariant: an unpriced candidate is never free (#5122 incr
   // These are observed outputs, not hand-computed expectations.
   const PINNED: readonly { cli: CliName; est: number }[] = [
     { cli: 'claude', est: 60 },
-    { cli: 'gemini', est: 14 },
+    { cli: 'gemini', est: 4.5 },
     // #6866: unpriced gpt-6.1-sol is estimated at codex's highest known
     // rates (gpt-5.5 $5/$30), never below priced gpt-5.6-sol's 24.
     { cli: 'codex', est: 35 },
