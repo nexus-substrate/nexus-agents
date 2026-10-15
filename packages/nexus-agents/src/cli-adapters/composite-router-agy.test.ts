@@ -1,6 +1,13 @@
 /** Exercise actual router tier wiring, not just the standalone resolver (#7423). */
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildGatewaySlotRouterArm } from './gateway-slot-arm.js';
+import {
+  buildGatewaySlotRouterArm,
+  resolveGatewayServedSlot,
+  gatewayServedSlotOf,
+} from './gateway-slot-arm.js';
 import {
   setGatewaySlotCatalog,
   _resetGatewaySlotCatalog,
@@ -106,3 +113,76 @@ it('does not constrain a gateway-backed Gemini slot to native AGY availability',
   expect(createCli).not.toHaveBeenCalled();
   await arm.dispose();
 });
+
+it.skipIf(process.platform === 'win32').each([false, true])(
+  'constrains the actual native target of a gateway-capable slot (already resolved=%s)',
+  async (alreadyResolved) => {
+    const bin = mkdtempSync(join(tmpdir(), 'nexus-7423-native-'));
+    writeFileSync(join(bin, 'agy'), '#!/bin/sh\nexit 99\n', { mode: 0o700 });
+    vi.stubEnv('PATH', bin);
+    vi.stubEnv('NEXUS_DISABLED_CLIS', '');
+    setGatewaySlotCatalog([fakeGatewayModel('gemini-3.1-pro-preview', 'api:openai-compat')]);
+    const native = new GeminiCliAdapter();
+    const available = vi.fn(() => Promise.resolve(true));
+    const slot = buildGatewaySlotRouterArm('gemini', () => native, available);
+    expect(slot).toBeDefined();
+    expect(slot).not.toBe('unavailable');
+    if (slot === undefined || slot === 'unavailable') {
+      rmSync(bin, { recursive: true, force: true });
+      return;
+    }
+    try {
+      if (alreadyResolved) await resolveGatewayServedSlot(slot);
+      const result = await routerFor('gemini', slot).route({ content: 'Explain this code' });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.model).toBe('gemini-3.8-flash');
+      expect(gatewayServedSlotOf(slot)).toBeUndefined();
+      expect(available).toHaveBeenCalledTimes(1);
+    } finally {
+      await slot.dispose();
+      rmSync(bin, { recursive: true, force: true });
+    }
+  }
+);
+
+it.skipIf(process.platform === 'win32')(
+  'binds gateway pricing before quality filtering an undecided slot',
+  async () => {
+    const bin = mkdtempSync(join(tmpdir(), 'nexus-7423-gateway-price-'));
+    writeFileSync(join(bin, 'agy'), '#!/bin/sh\nexit 99\n', { mode: 0o700 });
+    vi.stubEnv('PATH', bin);
+    vi.stubEnv('NEXUS_DISABLED_CLIS', '');
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,12');
+    setGatewaySlotCatalog([fakeGatewayModel('gemini-3.1-pro-preview', 'api:openai-compat')]);
+    const available = vi.fn(() => Promise.resolve(false));
+    const slot = buildGatewaySlotRouterArm('gemini', () => new GeminiCliAdapter(), available);
+    expect(slot).toBeDefined();
+    expect(slot).not.toBe('unavailable');
+    if (slot === undefined || slot === 'unavailable') throw new Error('fixture slot unavailable');
+    try {
+      const router = new CompositeRouter(new Map([['gemini', slot]]), {
+        enableBudgetFilter: false,
+        enableTopsisRanking: false,
+        enableLinUCBSelection: false,
+        enableCapacityBalancing: false,
+        enableRoutingMemory: false,
+        enableStrategyDistillation: false,
+        enableQualityConstraint: true,
+        qualityConstraintConfig: {
+          minQuality: 0,
+          maxCostUsd: 0.01,
+          expectedTokens: 1500,
+          allowFallback: false,
+        },
+      });
+      const result = await router.route({ content: 'bounded task' });
+      // Gateway Pro costs up to $0.018; native Flash's $0.005625 must not stand in for it.
+      expect(result.ok).toBe(false);
+      expect(available).toHaveBeenCalledTimes(1);
+      expect(gatewayServedSlotOf(slot)?.modelId).toBe('gemini-3.1-pro-preview');
+    } finally {
+      await slot.dispose();
+      rmSync(bin, { recursive: true, force: true });
+    }
+  }
+);

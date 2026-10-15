@@ -111,8 +111,11 @@ import {
   isDynamicModelsEnabled,
   registerDefaultModelSources,
 } from '../config/register-model-sources.js';
-import { gatewaySlotEndpointOf } from './gateway-slot-arm.js';
-import { ModelToCliAdapter } from './model-to-cli-adapter.js';
+import {
+  cliBinaryAdapterOf,
+  gatewayServedSlotOf,
+  resolveGatewayServedSlot,
+} from './gateway-slot-arm.js';
 import { AGY_MODEL_SLUGS, fromAgyModelSlug } from '../config/agy-model-map.js';
 import { resolveModelForTier, isRouteModelSelectionEnabled } from './resolve-model-for-tier.js';
 import {
@@ -206,16 +209,14 @@ function applyDistillationSwitch(config: CompositeRouterConfig): CompositeRouter
 }
 
 /** Availability constrains only the actual native Gemini arm, never API/gateway slots. */
-function nativeAgyTierOptions(
+async function nativeAgyTierOptions(
   arm: RoutingArmId,
   adapter: ICliAdapter
-): Parameters<typeof resolveModelForTier>[2] {
-  if (
-    arm !== 'gemini' ||
-    adapter instanceof ModelToCliAdapter ||
-    gatewaySlotEndpointOf(adapter) !== undefined
-  )
-    return {};
+): Promise<Parameters<typeof resolveModelForTier>[2]> {
+  if (arm !== 'gemini' || gatewayServedSlotOf(adapter) !== undefined) return {};
+  // Loading the subprocess class at module initialization would cycle through core/routing.
+  const { GeminiCliAdapter } = await import('./adapters/gemini-adapter.js');
+  if (!(cliBinaryAdapterOf(adapter) instanceof GeminiCliAdapter)) return {};
   return {
     liveModelIds: new Set(
       AGY_MODEL_SLUGS.flatMap((slug) => {
@@ -792,6 +793,10 @@ export class CompositeRouter implements ICompositeRouter {
         this.adapters
       );
       if (!candidateCliNames.ok) return candidateCliNames;
+      // Bind existing gateway-slot target state before pricing or quality projection.
+      await Promise.all(
+        candidateCliNames.value.map((arm) => resolveGatewayServedSlot(this.adapters.get(arm)))
+      );
       const pipelineResult = await runPipeline(
         task,
         taskProfile,
@@ -804,7 +809,7 @@ export class CompositeRouter implements ICompositeRouter {
         return pipelineResult;
       }
 
-      const decisionResult = this.buildRoutingDecision({
+      const decisionResult = await this.buildRoutingDecision({
         ...pipelineResult.value,
         taskProfile,
         stagesExecuted,
@@ -900,6 +905,7 @@ export class CompositeRouter implements ICompositeRouter {
       config: this.config,
       logger: this.logger,
       cliNames: this.cliNames,
+      adapters: this.adapters,
       budgetRouter: this.budgetRouter,
       zeroRouter: this.zeroRouter,
       preferenceRouter: this.preferenceRouter,
@@ -922,9 +928,9 @@ export class CompositeRouter implements ICompositeRouter {
     };
   }
 
-  private buildRoutingDecision(
+  private async buildRoutingDecision(
     params: BuildDecisionParams & PipelineResult
-  ): Result<CompositeRoutingDecision, CompositeRoutingError> {
+  ): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>> {
     const selectedAdapter = this.adapters.get(params.selectedCli);
     if (selectedAdapter === undefined) {
       return err(
@@ -943,7 +949,7 @@ export class CompositeRouter implements ICompositeRouter {
     });
 
     // #3394: pick a concrete model from the difficulty tier (opt-in, default
-    // OFF). Registry-only + synchronous — no probe on the hot path. Consumers
+    // OFF). Canonical gateway availability is resolved first. Consumers
     // fall back to getDefaultModelForCli when absent.
     // Concrete model resolution is registry/slot-level; collapse an api:* arm
     // to its display slot for the lookup (#3422).
@@ -955,7 +961,7 @@ export class CompositeRouter implements ICompositeRouter {
         ? resolveModelForTier(
             modelSlot,
             params.difficultyTier,
-            nativeAgyTierOptions(params.selectedCli, selectedAdapter)
+            await nativeAgyTierOptions(params.selectedCli, selectedAdapter)
           )
         : undefined;
 

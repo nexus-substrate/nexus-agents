@@ -21,48 +21,42 @@ import type {
 } from '../router-stage.js';
 import { addTrace, filterCandidate, getRemainingCandidates } from '../router-stage.js';
 import { getDefaultTopsisProfiles } from '../../topsis-types.js';
+import type { KeyedTopsisProfile } from '../../topsis-helpers.js';
 import { computeTokenCost } from '../../../learning/token-cost-core.js';
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-/**
- * Quality profile for each CLI.
- */
-interface QualityProfile {
-  readonly qualityScore: number; // 0-1 overall quality
-  /** USD per 1M INPUT tokens. */
-  readonly costPerMillionInput: number;
-  /**
-   * USD per 1M OUTPUT tokens. Either component may be more expensive;
-   * collapsing the two into one rate made this stage's ceiling fail open
-   * (#5186).
-   */
-  readonly costPerMillionOutput: number;
-  readonly avgLatencyMs: number; // Milliseconds
-}
-
 /** Max quality score from model registry (reasoning + codeGeneration are 0-10 each). */
 const MAX_QUALITY = 10;
 
-/**
- * Derive quality profiles from the canonical model registry.
- * Quality scores normalized from 0-10 to 0-1.
- * Pricing resolved from the current registry in USD per million tokens.
- */
-function deriveQualityProfiles(): Record<CliName, QualityProfile> {
-  const profiles = getDefaultTopsisProfiles();
-  const result: Record<string, QualityProfile> = {};
-  for (const p of profiles) {
-    result[p.cliName] = {
-      qualityScore: p.qualityScore / MAX_QUALITY,
-      costPerMillionInput: p.costPerMillionInput,
-      costPerMillionOutput: p.costPerMillionOutput,
-      avgLatencyMs: p.averageLatencyMs,
-    };
-  }
-  return result;
+/** Bound-profile result; unknown profiles are excluded before evaluation by the caller. */
+export interface QualityProfileEvaluation<Key extends string> {
+  readonly eligible: Key[];
+  readonly filtered: Map<Key, string>;
+  readonly violations: Array<{ cli: Key; reason: string }>;
+  readonly usedFallback: boolean;
+}
+
+/** Same normalization for the legacy CLI route and actual-arm entry point. */
+function qualityProfile(
+  profile: Pick<
+    KeyedTopsisProfile<string>,
+    'qualityScore' | 'costPerMillionInput' | 'costPerMillionOutput' | 'averageLatencyMs'
+  >
+): {
+  readonly qualityScore: number;
+  readonly costPerMillionInput: number;
+  readonly costPerMillionOutput: number;
+  readonly avgLatencyMs: number;
+} {
+  return {
+    qualityScore: profile.qualityScore / MAX_QUALITY,
+    costPerMillionInput: profile.costPerMillionInput,
+    costPerMillionOutput: profile.costPerMillionOutput,
+    avgLatencyMs: profile.averageLatencyMs,
+  };
 }
 
 /**
@@ -86,7 +80,7 @@ function estimateCeilingCost(
     QualityConstraintConfig,
     'expectedTokens' | 'expectedInputTokens' | 'expectedOutputTokens'
   >,
-  profile: QualityProfile
+  profile: ReturnType<typeof qualityProfile>
 ): number {
   const rates = {
     inputPer1M: profile.costPerMillionInput,
@@ -172,41 +166,13 @@ export class QualityConstraintStage implements IRouterStage {
     const time = getTimeProvider();
     const startTime = time.now();
     const remaining = getRemainingCandidates(ctx);
-    const profiles = deriveQualityProfiles();
-
-    this.routingsCount++;
-
+    const result = this.filterProfiles(
+      getDefaultTopsisProfiles().filter((p) => remaining.includes(p.cliName))
+    );
+    const { eligible, violations, usedFallback } = result;
     let updatedCtx = ctx;
-    const eligible: CliName[] = [];
-    const violations: Array<{ cli: CliName; reason: string }> = [];
-
-    for (const cli of remaining) {
-      const result = this.checkConstraints(profiles[cli]);
-      if (result.meets) {
-        eligible.push(cli);
-      } else {
-        updatedCtx = filterCandidate(updatedCtx, cli, result.reason);
-        violations.push({ cli, reason: result.reason });
-        this.filteredCount++;
-        this.trackViolation(result.violated);
-      }
-    }
-
-    // Handle fallback if all filtered
-    let usedFallback = false;
-    if (eligible.length === 0 && this.config.allowFallback && remaining.length > 0) {
-      const fallback = this.selectFallback(remaining, profiles);
-      if (fallback !== undefined) {
-        eligible.push(fallback);
-        usedFallback = true;
-        this.fallbackCount++;
-        // Remove from filtered
-        const newFiltered = new Map(updatedCtx.filtered);
-        newFiltered.delete(fallback);
-        updatedCtx = { ...updatedCtx, filtered: newFiltered };
-      }
-    }
-
+    for (const [cli, reason] of result.filtered)
+      updatedCtx = filterCandidate(updatedCtx, cli, reason);
     const signals = this.buildSignals(ctx.signals, eligible, violations, usedFallback);
     const durationMs = time.now() - startTime;
 
@@ -227,6 +193,38 @@ export class QualityConstraintStage implements IRouterStage {
     return Promise.resolve(
       ok({ context: { ...finalCtx, signals }, continuesPipeline: eligible.length > 0 })
     );
+  }
+
+  /** Host-bound models share the exact CLI constraint and fallback computation. */
+  filterProfiles<Key extends string>(
+    profiles: readonly KeyedTopsisProfile<Key>[]
+  ): QualityProfileEvaluation<Key> {
+    this.routingsCount++;
+    const normalized = new Map(profiles.map((p) => [p.cliName, qualityProfile(p)]));
+    const eligible: Key[] = [];
+    const filtered = new Map<Key, string>();
+    const violations: Array<{ cli: Key; reason: string }> = [];
+    for (const profile of profiles) {
+      const result = this.checkConstraints(qualityProfile(profile));
+      if (result.meets) eligible.push(profile.cliName);
+      else {
+        filtered.set(profile.cliName, result.reason);
+        violations.push({ cli: profile.cliName, reason: result.reason });
+        this.filteredCount++;
+        this.trackViolation(result.violated);
+      }
+    }
+    let usedFallback = false;
+    if (eligible.length === 0 && this.config.allowFallback && profiles.length > 0) {
+      const fallback = this.selectFallback(normalized);
+      if (fallback !== undefined) {
+        eligible.push(fallback);
+        filtered.delete(fallback);
+        usedFallback = true;
+        this.fallbackCount++;
+      }
+    }
+    return { eligible, filtered, violations, usedFallback };
   }
 
   recordOutcome(outcome: RoutingOutcome): void {
@@ -256,7 +254,7 @@ export class QualityConstraintStage implements IRouterStage {
   /**
    * Check if a CLI meets all constraints.
    */
-  private checkConstraints(profile: ReturnType<typeof deriveQualityProfiles>[CliName]): {
+  private checkConstraints(profile: ReturnType<typeof qualityProfile>): {
     meets: boolean;
     reason: string;
     violated: 'quality' | 'cost' | 'latency' | null;
@@ -304,16 +302,10 @@ export class QualityConstraintStage implements IRouterStage {
   /**
    * Select fallback as highest quality candidate.
    */
-  private selectFallback(
-    candidates: CliName[],
-    profiles: ReturnType<typeof deriveQualityProfiles>
-  ): CliName | undefined {
-    const sorted = [...candidates].sort((a, b) => {
-      const profileA = profiles[a];
-      const profileB = profiles[b];
-      return profileB.qualityScore - profileA.qualityScore;
-    });
-    return sorted[0];
+  private selectFallback<Key extends string>(
+    profiles: ReadonlyMap<Key, ReturnType<typeof qualityProfile>>
+  ): Key | undefined {
+    return [...profiles].sort((a, b) => b[1].qualityScore - a[1].qualityScore)[0]?.[0];
   }
 
   /**

@@ -21,15 +21,13 @@ describe('agy model slugs', () => {
     }
   });
 
-  it('maps registered Flash models and refuses unavailable registered Pro models', () => {
+  it('maps registered Flash models to supported native pins', () => {
     const gemini = DEFAULT_MODEL_CAPABILITIES.models.filter(
       (m) => m.cliName === 'gemini' && !m.id.includes('pro')
     );
     expect(gemini.length).toBeGreaterThan(0);
     for (const model of gemini) {
-      if (model.id.includes('pro'))
-        expect(() => toAgyModelSlug(model.id)).toThrow(/Unsupported AGY/);
-      else expect(isAgyModelSlug(toAgyModelSlug(model.id))).toBe(true);
+      expect(isAgyModelSlug(toAgyModelSlug(model.id))).toBe(true);
     }
   });
 
@@ -47,7 +45,7 @@ describe('agy model slugs', () => {
     expect(toAgyModelSlug('gemini-3-flash')).toBe('gemini-3.8-flash-low');
   });
 
-  it('maps a 2.5-generation entry agy does not serve to a surviving tier', () => {
+  it('migrates legacy Flash but refuses unavailable legacy Pro', () => {
     // agy serves no 2.5 models at all. Dropping these would break routing that
     // already selects them.
     expect(() => toAgyModelSlug('gemini-pro')).toThrow(/Unsupported AGY/);

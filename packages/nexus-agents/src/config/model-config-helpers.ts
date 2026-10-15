@@ -334,31 +334,44 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
     [CliNameLiteral, ModelId]
   >) {
     const entry = byId.get(modelId);
-    const q = entry?.qualityScores;
-    if (entry === undefined || q === undefined) continue;
-    if (entry.contextWindow === undefined) continue;
-    // Bootstrap uses in-tree prices with a conservative non-$0 fallback.
-    // Runtime selection replaces these rates from the registry. Reading only
-    // the already-built entry avoids registry IO and circular-load TDZ here.
-    const p = entry.pricing;
+    if (entry === undefined) continue;
+    // Bootstrap stays filesystem-free; only the runtime model entry-point below reads overlays.
     const price: CostPer1M =
-      p !== undefined ? { input: p.inputPer1M, output: p.outputPer1M } : unpricedCliCostPer1M(cli);
-    profiles.push({
-      cliName: cli,
-      capabilities: {
-        reasoning: q.reasoning,
-        contextWindow: entry.contextWindow,
-        codeGeneration: q.codeGeneration,
-        speed: q.speed,
-        cost: q.cost,
-      },
-      costPerMillionInput: price.input,
-      costPerMillionOutput: price.output,
-      averageLatencyMs: cliAvgLatency()[cli],
-      qualityScore: (q.reasoning + q.codeGeneration) / 2,
-    });
+      entry.pricing !== undefined
+        ? { input: entry.pricing.inputPer1M, output: entry.pricing.outputPer1M }
+        : unpricedCliCostPer1M(cli);
+    const profile = entryToTopsisProfile(cli, entry, price);
+    if (profile !== undefined) profiles.push(profile);
   }
   return profiles;
+}
+
+/** One metadata conversion for bootstrap CLI profiles and actual runtime API models. */
+function entryToTopsisProfile(
+  cli: CliNameLiteral,
+  entry: ModelEntry,
+  price: CostPer1M
+): TopsisProfileShape | undefined {
+  const q = entry.qualityScores;
+  if (q === undefined || entry.contextWindow === undefined) return undefined;
+  return {
+    cliName: cli,
+    capabilities: { ...q, contextWindow: entry.contextWindow },
+    costPerMillionInput: price.input,
+    costPerMillionOutput: price.output,
+    averageLatencyMs: cliAvgLatency()[cli],
+    qualityScore: (q.reasoning + q.codeGeneration) / 2,
+  };
+}
+
+/** Runtime actual-model profile, with rates bound by the caller's canonical arm cost policy. */
+export function buildTopsisProfileForModel(
+  cli: CliNameLiteral,
+  modelId: string,
+  price: CostPer1M
+): TopsisProfileShape | undefined {
+  const entry = lookupInTree(modelId);
+  return entry === undefined ? undefined : entryToTopsisProfile(cli, entry, price);
 }
 
 /**

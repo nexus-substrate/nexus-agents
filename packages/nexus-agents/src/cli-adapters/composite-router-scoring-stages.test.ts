@@ -222,15 +222,11 @@ describe('runQualityConstraintStage', () => {
   it('filters candidates and tracks stage when enabled', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi.fn().mockResolvedValue(
-        ok({
-          context: {
-            signals: [],
-            filtered: new Map([['codex', 'quality-below-threshold']]),
-            availableClis: ['claude', 'gemini', 'codex'],
-          },
-        })
-      ),
+      filterProfiles: vi.fn().mockReturnValue({
+        eligible: ['claude', 'gemini'],
+        filtered: new Map([['codex', 'quality-below-threshold']]),
+        usedFallback: false,
+      }),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableQualityConstraint: true },
@@ -245,11 +241,9 @@ describe('runQualityConstraintStage', () => {
   it('marks endpoints unmeasured while applying quality constraints to CLI slots', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi
+      filterProfiles: vi
         .fn()
-        .mockResolvedValue(
-          ok({ context: { signals: [], filtered: new Map(), availableClis: ['claude'] } })
-        ),
+        .mockReturnValue({ eligible: ['claude'], filtered: new Map(), usedFallback: false }),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableQualityConstraint: true },
@@ -263,11 +257,9 @@ describe('runQualityConstraintStage', () => {
   it('does not report measured quality for an endpoint-only candidate set', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi
+      filterProfiles: vi
         .fn()
-        .mockResolvedValue(
-          ok({ context: { signals: [], filtered: new Map(), availableClis: [] } })
-        ),
+        .mockReturnValue({ eligible: [], filtered: new Map(), usedFallback: false }),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableQualityConstraint: true },
@@ -277,32 +269,26 @@ describe('runQualityConstraintStage', () => {
     expect(result.eligible).toEqual(['api:gw-prod']);
     expect(result.usedFallback).toBe(false);
     expect(stages).toEqual(['quality-constraint:endpoint-unmeasured']);
-    expect(mockStage.route).not.toHaveBeenCalled();
+    expect(mockStage.filterProfiles).not.toHaveBeenCalled();
   });
 
-  it('falls back to all candidates when all filtered', async () => {
-    const stages: string[] = [];
+  it('preserves the core fallback selection instead of resurrecting excluded candidates', async () => {
     const mockStage = {
-      route: vi.fn().mockResolvedValue(
-        ok({
-          context: {
-            signals: ['quality:used-fallback'],
-            filtered: new Map([
-              ['claude', 'quality-below-threshold'],
-              ['gemini', 'quality-below-threshold'],
-              ['codex', 'quality-below-threshold'],
-            ]),
-            availableClis: ['claude', 'gemini', 'codex'],
-          },
-        })
-      ),
+      filterProfiles: vi.fn().mockReturnValue({
+        eligible: ['claude'],
+        filtered: new Map([
+          ['gemini', 'quality-below-threshold'],
+          ['codex', 'quality-below-threshold'],
+        ]),
+        usedFallback: true,
+      }),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableQualityConstraint: true },
       qualityConstraintStage: mockStage as unknown as StageDependencies['qualityConstraintStage'],
     });
-    const result = await runQualityConstraintStage(candidates, stages, deps);
-    expect(result.eligible).toEqual(candidates);
+    const result = await runQualityConstraintStage(candidates, [], deps);
+    expect(result.eligible).toEqual(['claude']);
     expect(result.usedFallback).toBe(true);
   });
 });

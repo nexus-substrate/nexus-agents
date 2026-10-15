@@ -754,18 +754,21 @@ describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
     const priorCost = DEFAULT_CAPABILITIES.opencode.cost;
     Object.assign(DEFAULT_CAPABILITIES.opencode, { cost: 10 });
     const r = makeRouter(['api:custom-openai', 'gemini']);
-    const result = r.checkBudget(task, budget);
-    expect(result.withinBudget).toBe(true);
-    expect(result.adapter?.name).toBe('gemini');
-    expect(result.estimatedCostUsd).toBeCloseTo(
-      estimateCost('gemini', inputTokens, outputTokens),
-      12
-    );
-    expect(result.unpricedArms).toEqual([
-      { arm: 'api:custom-openai', reason: 'gateway cost unset' },
-    ]);
-    Object.assign(DEFAULT_CAPABILITIES.opencode, { cost: priorCost });
-    r.dispose();
+    try {
+      const result = r.checkBudget(task, budget);
+      expect(result.withinBudget).toBe(true);
+      expect(result.adapter?.name).toBe('gemini');
+      expect(result.estimatedCostUsd).toBeCloseTo(
+        estimateCost('gemini', inputTokens, outputTokens),
+        12
+      );
+      expect(result.unpricedArms).toEqual([
+        { arm: 'api:custom-openai', reason: 'gateway cost unset' },
+      ]);
+    } finally {
+      Object.assign(DEFAULT_CAPABILITIES.opencode, { cost: priorCost });
+      r.dispose();
+    }
   });
 
   it.each<RoutingArmId>(['claude', 'gemini', 'codex', 'api:google'])(

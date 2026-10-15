@@ -278,9 +278,9 @@ describe('QualityConstraintStage', () => {
       // The conservative bound is a fallback for an unknown split, not a
       // penalty. A caller that knows the mix gets the real figure — here
       // Flash at 1400 in / 100 out is (1400*.75 + 100*3.75)/1e6 = $0.001425, under a
-      // $0.01 ceiling, so it survives where the worst-case bound rejected it.
+      // $0.003 ceiling, so it survives where the worst-case bound rejected it.
       const stage = new QualityConstraintStage({
-        maxCostUsd: 0.01,
+        maxCostUsd: 0.003,
         expectedTokens: 1500,
         expectedInputTokens: 1400,
         expectedOutputTokens: 100,
