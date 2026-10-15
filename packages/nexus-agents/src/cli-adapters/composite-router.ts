@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- 801 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); the canonical CompositeRouter class (CLAUDE.md entry point): construction, the route/execute path and outcome recording for the whole chain. The #6148 seam (model-selection-shadow glue) moved to composite-router-model-shadow.ts; what remains is the class itself, and no further dependency-driven seam is identified */
+/* eslint-disable max-lines -- Above the 600-line ceiling (.rules/governance.md); the canonical CompositeRouter class (CLAUDE.md entry point): construction, the route/execute path and outcome recording for the whole chain. The #6148 seam (model-selection-shadow glue) moved to composite-router-model-shadow.ts; what remains is the class itself, and no further dependency-driven seam is identified */
 /**
  * CompositeRouter — chains the full routing pipeline.
  *
@@ -49,6 +49,8 @@ import type {
 import { mapObserverRoutingDecision } from '../learning/routing-decision-mappers.js';
 import { routingArmCliSlot } from './types.js';
 import { armsForAccessMode } from './composite-router-access-mode.js';
+import { lookupInTreeCapability } from '../config/model-config-helpers.js';
+import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 import type { IOrchestrationObserver } from '../agents/observability/orchestration-observer-types.js';
 import { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
@@ -983,8 +985,52 @@ export class CompositeRouter implements ICompositeRouter {
       latencyScore: params.latencyScore,
       alternatives,
       ...(alternativeScores === undefined ? {} : { alternativeScores }),
+      alternativeDescriptors: this.snapshotAlternativeDescriptors(alternatives),
       taskProfile: params.taskProfile,
     });
+  }
+
+  /** Copy only declared metadata from already resolved targets; never execute/probe. */
+  private snapshotAlternativeDescriptors(
+    alternatives: readonly RoutingArmId[]
+  ): NonNullable<CompositeRoutingDecision['alternativeDescriptors']> {
+    const snapshots = new Map<
+      RoutingArmId,
+      {
+        modelId: string;
+        capabilities: ICliAdapter['capabilities'];
+        hasQualityMetadata: boolean;
+      }
+    >();
+    for (const arm of alternatives) {
+      const adapter = this.adapters.get(arm);
+      if (adapter === undefined) continue;
+      try {
+        const modelId = adapter.getModelInfo().id;
+        if (modelId.trim() === '' || modelId === UNRESOLVED_MODEL_ID) continue;
+        const caps = adapter.capabilities;
+        snapshots.set(
+          arm,
+          Object.freeze({
+            modelId,
+            capabilities: Object.freeze({
+              reasoning: caps.reasoning,
+              contextWindow: caps.contextWindow,
+              codeGeneration: caps.codeGeneration,
+              speed: caps.speed,
+              cost: caps.cost,
+            }),
+            hasQualityMetadata: lookupInTreeCapability(modelId)?.qualityScores !== undefined,
+          })
+        );
+      } catch (error: unknown) {
+        this.logger.warn('Alternative metadata unavailable', {
+          arm,
+          error: getErrorMessage(error),
+        });
+      }
+    }
+    return snapshots;
   }
 
   private updateStats(selectedCli: RoutingArmId, decisionTimeMs: number): void {

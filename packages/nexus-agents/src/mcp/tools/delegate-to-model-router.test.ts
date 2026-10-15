@@ -41,6 +41,34 @@ function makeDecision(overrides: Record<string, unknown> = {}) {
     stagesExecuted: ['budget', 'zero', 'topsis'],
     decisionTimeMs: 42,
     alternatives: ['gemini', 'codex'] as const,
+    // These fixtures establish native identities explicitly; legacy decisions
+    // without captured metadata have their own omission regression (#7430).
+    alternativeDescriptors: new Map([
+      [
+        'gemini' as const,
+        {
+          modelId: 'gemini-3.8-flash',
+          capabilities: MODEL_CAPABILITIES['gemini-3.8-flash']!,
+          hasQualityMetadata: true,
+        },
+      ],
+      [
+        'codex' as const,
+        {
+          modelId: 'gpt-6.1-sol',
+          capabilities: MODEL_CAPABILITIES['gpt-6.1-sol']!,
+          hasQualityMetadata: true,
+        },
+      ],
+      [
+        'claude' as const,
+        {
+          modelId: 'claude-fable-5',
+          capabilities: MODEL_CAPABILITIES['claude-fable-5']!,
+          hasQualityMetadata: true,
+        },
+      ],
+    ]),
     topsisScore: 0.85,
     adapter: {} as never,
     taskProfile: {} as never,
@@ -515,11 +543,27 @@ describe('actual Google API preview metadata (#7423)', () => {
     }
   );
 
-  it('describes the separate canonical Google API alternative rather than native Flash', () => {
+  it('describes a captured Google API alternative rather than a vendor default', () => {
+    const adapter = createModelToCliAdapter(
+      { modelId: 'gemini-3.1-pro-preview' } as IModelAdapter,
+      { name: 'gemini' }
+    );
     const output = mapCompositeDecisionToOutput(
-      makeDecision({ alternatives: ['api:google'] }),
+      makeDecision({
+        alternatives: ['api:google'],
+        alternativeDescriptors: new Map([
+          [
+            'api:google',
+            {
+              modelId: adapter.getModelInfo().id,
+              capabilities: { ...adapter.capabilities },
+              hasQualityMetadata: false,
+            },
+          ],
+        ]),
+      }),
       1500
     );
-    expect(output.alternatives[0]?.model).toBe('gemini-3-pro');
+    expect(output.alternatives[0]?.model).toBe('gemini-3.1-pro-preview');
   });
 });

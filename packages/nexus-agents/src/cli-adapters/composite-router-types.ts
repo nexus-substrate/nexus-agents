@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 import { TaskCategorySchema } from '../config/task-specialization-types.js';
-import type { ICliAdapter, CliName, RoutingArmId } from './types.js';
+import type { ICliAdapter, CliName, RoutingArmId, CapabilityProfile } from './types.js';
 import type { TaskProfile } from '../core/index.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
@@ -250,6 +250,22 @@ export interface CompositeRoutingDecision {
    * absence as "not ranked", never as a measurement.
    */
   readonly alternativeScores?: ReadonlyMap<RoutingArmId, number> | undefined;
+  /**
+   * Isolated route-time snapshots of established alternative targets (#7430).
+   * Absence means identity was not established; never substitute a slot default.
+   * Values contain no adapters or endpoint configuration. Registered quality
+   * metadata is not a measurement of this request's provider execution.
+   */
+  readonly alternativeDescriptors?:
+    | ReadonlyMap<
+        RoutingArmId,
+        {
+          readonly modelId: string;
+          readonly capabilities: CapabilityProfile;
+          readonly hasQualityMetadata: boolean;
+        }
+      >
+    | undefined;
   /** Task analysis used for routing */
   readonly taskProfile: TaskProfile;
 }

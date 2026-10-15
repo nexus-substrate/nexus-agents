@@ -1884,6 +1884,7 @@ InterfaceDeclaration CompositeRouterStats
   readonly totalDecisions: number
 InterfaceDeclaration CompositeRoutingDecision
   readonly adapter: ICliAdapter
+  readonly alternativeDescriptors?: ReadonlyMap<RoutingArmId, { readonly capabilities: CapabilityProfile; readonly hasQualityMetadata: boolean; readonly modelId: string; }> | undefined
   readonly alternativeScores?: ReadonlyMap<RoutingArmId, number> | undefined
   readonly alternatives: readonly RoutingArmId[]
   readonly cliName: RoutingArmId
