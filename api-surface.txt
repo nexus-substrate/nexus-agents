@@ -3032,6 +3032,7 @@ InterfaceDeclaration DevPipelineResult
   readonly planVoteApprovalPercentage?: number | undefined
   readonly planVoteDecision?: "approved" | "no_quorum" | "rejected" | undefined
   readonly planVoteFeedback?: string | undefined
+  readonly planVoteProposal?: string | undefined
   readonly planVoteReason?: string | undefined
   readonly planVoteRecordId?: string | undefined
   readonly qaIterations: number
@@ -4231,7 +4232,7 @@ InterfaceDeclaration GetJobResultResponse
   readonly jobId: string
   readonly producerVersionMeasured?: boolean | undefined
   readonly producerVersionSource?: JobResultSource | undefined
-  readonly record?: undefined | { cancelledPartial?: undefined | { panelSize: number; partialVotes: unknown[]; seatsCast: number; }; completedAt?: string | undefined; createdAt: string; error?: string | undefined; errorKind?: "abandoned" | undefined; failureDetail?: undefined | { adapter: string; category: string; transport: string; }; jobId: string; lastProgressAt?: string | undefined; producerVersion?: string | undefined; result?: unknown; signalAccepted?: boolean | undefined; status: "cancelled" | "complete" | "failed" | "pending"; toolName: string; v: 1; }
+  readonly record?: undefined | { cancelledPartial?: undefined | { panelSize: number; partialVotes: unknown[]; seatsCast: number; }; completedAt?: string | undefined; createdAt: string; error?: string | undefined; errorKind?: "abandoned" | undefined; failureDetail?: undefined | { adapter: string; category: string; transport: string; }; failureEvidence?: undefined | { dispatchId: string; jobId: string; kind: "dev_pipeline_plan"; plan: { coverage: "complete" | "redacted" | "truncated"; rawBytes: number; rawSha256: string; redacted: boolean; retainedBytes: number; retainedSha256: string; sanitizedBytes: number; sanitizedSha256: string; text: string; truncated: boolean; } | { coverage: "invalid"; reason: "invalid_utf8" | "nul" | "source_too_large" | "unstable_sanitization"; }; planStatus: "empty" | "no_quorum" | "unapproved"; producerVersion: string; proposal?: undefined | { coverage: "complete" | "redacted" | "truncated"; rawBytes: number; rawSha256: string; redacted: boolean; retainedBytes: number; retainedSha256: string; sanitizedBytes: number; sanitizedSha256: string; text: string; truncated: boolean; } | { coverage: "invalid"; reason: "invalid_utf8" | "nul" | "source_too_large" | "unstable_sanitization"; }; toolName: "run_dev_pipeline"; v: 1; voteRecordId?: string | undefined; }; jobId: string; lastProgressAt?: string | undefined; producerVersion?: string | undefined; result?: unknown; signalAccepted?: boolean | undefined; status: "cancelled" | "complete" | "failed" | "pending"; toolName: string; v: 1; }
 FunctionDeclaration getKnownNexusVarNames
   : () => readonly string[]
 FunctionDeclaration getOutcomeStore
@@ -10161,7 +10162,7 @@ InterfaceDeclaration VoteRejectedSignalEvent
   readonly rejectionRules?: readonly string[] | undefined
   readonly type: "signal.vote_rejected"
 TypeAliasDeclaration VoteResult
-  = { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; readonly voteRecordId?: string; } | { readonly approvalPercentage: number; readonly kind: 'approved'; readonly voteRecordId?: string; } | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; readonly voteRecordId?: string; }
+  = ( { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; readonly voteRecordId?: string; } | { readonly approvalPercentage: number; readonly kind: 'approved'; readonly voteRecordId?: string; } | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; readonly voteRecordId?: string; } ) & { readonly proposal?: string; }
 TypeAliasDeclaration VoterExpansionCallback
   = ( proposalId: ProposalId, currentVoterCount: number, requestedCount: number ) => Promise<readonly string[]>
 TypeAliasDeclaration VoterProjectSource

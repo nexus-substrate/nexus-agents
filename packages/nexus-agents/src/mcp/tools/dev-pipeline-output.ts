@@ -46,6 +46,7 @@ export function buildStructuredOutput(
     voteIterations: result.voteIterations,
     qaIterations: result.qaIterations,
     plan: result.plan,
+    ...(result.planVoteProposal !== undefined ? { planVoteProposal: result.planVoteProposal } : {}),
     tasks: result.tasks.map((t) => ({
       id: t.id,
       title: t.title,

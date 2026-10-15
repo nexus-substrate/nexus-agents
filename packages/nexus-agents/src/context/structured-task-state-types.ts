@@ -143,6 +143,8 @@ export const StructuredTaskStateSchema = z.object({
    * Optional for backward compatibility; absence does not prove async dispatch.
    */
   dispatch: z.literal('async').optional(),
+  /** Correlation nonce supplied only by the current async dispatcher (#7424). */
+  asyncDispatchId: z.uuid().optional(),
   stage: TaskStageSchema,
   decisions: z.array(TaskDecisionSchema),
   blockers: z.array(TaskBlockerSchema),
@@ -171,8 +173,9 @@ export const StructuredTaskStateSchema = z.object({
   version: z.number().int().nonnegative().optional(),
   /**
    * Tool result payload (#3043 / epic #2631 Stage 2). Set atomically
-   * via the `result` log event when `stage === 'complete'`. Carries the
-   * same shape the synchronous mode would have returned inline.
+   * via the `result` log event. A complete state carries the synchronous
+   * result; a failed state may carry explicitly typed diagnostic evidence
+   * (#7424), which never authorizes execution or a successful resume.
    *
    * Capped at `TASK_RESULT_MAX_BYTES` at write time; over-cap payloads
    * are replaced with `{ truncated: true, originalBytes }` so the
@@ -253,8 +256,8 @@ export const StructuredTaskLogEntrySchema = z.discriminatedUnion('event', [
     ts: z.iso.datetime(),
     entry: ProgressLedgerEntrySchema,
   }),
-  // #3043 / epic #2631 Stage 2 — tool result payload set when stage flips
-  // to 'complete'. Written by appendResult; replayed into state.result.
+  // #3043 / epic #2631 Stage 2 — complete result or typed failed diagnostics.
+  // Written by appendResult; replayed into state.result without changing stage.
   // The payload itself is `unknown` because each tool's result shape is
   // its own; readers cast after a status check.
   z.object({
