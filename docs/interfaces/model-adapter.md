@@ -55,7 +55,7 @@ interface IModelAdapter {
 
 Worker dispatch queries the optional `supportsAccessMode(mode, signal)` method on the actual selected adapter before scheduling restricted work. It accepts only explicit `true`. Explicit `false` means unsupported; an absent method, unavailable adapter, malformed result, query error, or deadline leaves support unknown. If no measured compatible alternative exists, dispatch returns `UNSUPPORTED` without attempting a completion. Direct `complete` and `stream` calls retain their existing contract and enforcement checks.
 
-Custom adapters that previously participated without this query may therefore stop receiving worker tasks. Forward evidence from the actual transport rather than returning a blanket `true`:
+This is a breaking worker-availability change: custom adapters that previously participated without this query may now receive `UNSUPPORTED` with zero worker completion attempts when no measured compatible alternative exists. Forward evidence from the actual transport rather than returning a blanket `true`:
 
 ```typescript
 // Inside an adapter wrapper that already holds its actual transport:

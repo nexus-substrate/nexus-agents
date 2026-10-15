@@ -1,7 +1,61 @@
 ---
-'nexus-agents': minor
+'nexus-agents': major
 ---
 
-Add an optional actual-transport access-mode query to model adapters. Worker dispatch selects a measured compatible adapter before input preflight, preserves unknown or unavailable support, and retains the final native enforcement checks. Known incompatible selections no longer consume a completion slot when an eligible fallback exists; late unsupported refusals do not repeat through refinement. Completion budgets and native permissions remain unchanged.
+BREAKING: worker dispatch now requires explicit access-mode evidence from the actual selected adapter. A previously usable custom content-only adapter without `supportsAccessMode` can now return `UNSUPPORTED` with zero worker completion attempts when no measured compatible alternative exists. The method remains optional for structural compatibility; direct `complete` and `stream` calls retain their existing contract.
 
-Migration for custom adapters: worker eligibility no longer treats an absent access-mode query as support. Existing implementations remain structurally valid, but may return `UNSUPPORTED` with zero worker completion attempts when no compatible alternative is measured. Direct completion and streaming are unchanged. Implement `supportsAccessMode(mode, signal)` using actual transport enforcement evidence, or forward the actual transport's query and preserve `undefined` when absent. Do not return blanket `true`; concrete API subclasses must declare their own behavior and may explicitly return `false`. See `docs/interfaces/model-adapter.md` for a forwarding example.
+Known incompatible selections no longer consume a completion slot when an eligible fallback exists; late unsupported refusals do not repeat through refinement. Unknown support remains distinct from explicit `false`. Completion budgets, native permissions, and the final enforcement checks are unchanged. Concrete built-in API subclasses must declare their own behavior and may return `false`.
+
+Migration: forward the query from the actual transport rather than asserting blanket `true`. These before/after wrappers retain the transport's normal completion behavior. The after wrapper preserves unknown support when the transport has no query; it does not make an unsupported transport eligible.
+
+Before:
+
+```typescript
+import type { IModelAdapter } from 'nexus-agents';
+
+export function wrapTransport(transport: IModelAdapter): IModelAdapter {
+  return {
+    get providerId() {
+      return transport.providerId;
+    },
+    get modelId() {
+      return transport.modelId;
+    },
+    get capabilities() {
+      return transport.capabilities;
+    },
+    complete: (request) => transport.complete(request),
+    stream: (request) => transport.stream(request),
+    countTokens: (text) => transport.countTokens(text),
+    validateConfig: () => transport.validateConfig(),
+  };
+}
+```
+
+After:
+
+```typescript
+import type { IModelAdapter } from 'nexus-agents';
+
+export function wrapTransport(transport: IModelAdapter): IModelAdapter {
+  return {
+    get providerId() {
+      return transport.providerId;
+    },
+    get modelId() {
+      return transport.modelId;
+    },
+    get capabilities() {
+      return transport.capabilities;
+    },
+    complete: (request) => transport.complete(request),
+    stream: (request) => transport.stream(request),
+    countTokens: (text) => transport.countTokens(text),
+    validateConfig: () => transport.validateConfig(),
+    supportsAccessMode: (mode, signal) =>
+      transport.supportsAccessMode?.(mode, signal) ?? Promise.resolve(undefined),
+  };
+}
+```
+
+See `docs/interfaces/model-adapter.md` for the worker eligibility and subclass contract. A custom transport must implement truthful enforcement evidence before forwarding can return support; neither the wrapper nor the query grants host permissions.
