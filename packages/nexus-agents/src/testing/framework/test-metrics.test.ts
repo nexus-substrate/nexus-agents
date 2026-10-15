@@ -161,8 +161,8 @@ describe('estimateCost', () => {
 
   it('calculates cost for Gemini', () => {
     const cost = estimateCost('gemini', { inputTokens: 1_000_000, outputTokens: 1_000_000 });
-    // 2.0 + 12.0 = 14.0 (gemini-3-pro)
-    expect(cost).toBeCloseTo(14.0);
+    // Native Flash: 0.75 + 3.75 = 4.50 (#7423).
+    expect(cost).toBeCloseTo(4.5);
   });
 
   it('calculates cost for Codex', () => {

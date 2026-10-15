@@ -11,9 +11,10 @@
  * Split out under #6148.
  * @module cli-adapters/composite-router-scoring-stages
  */
+import { profileForArm } from './composite-router-profiles.js';
 import type { ILogger, TaskProfile } from '../core/index.js';
-import type { CliName, RoutingArmId, CliTask } from './types.js';
-import { routingArmCliSlot } from './types.js';
+import type { CliName, RoutingArmId, CliTask, ICliAdapter } from './types.js';
+import { routingArmCliSlot, isCliName } from './types.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { TopsisRouter } from './topsis-router.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
@@ -31,7 +32,7 @@ import type {
   KnnRoutingStage,
   CapacityFilterStage,
 } from './routing/stages/index.js';
-import { createRoutingContext, getRemainingCandidates } from './routing/router-stage.js';
+import { createRoutingContext } from './routing/router-stage.js';
 import {
   taskProfileToBanditContext,
   filterByPreferenceTier,
@@ -65,24 +66,10 @@ export function armsToSlots(candidates: readonly RoutingArmId[]): CliName[] {
   ];
 }
 
-/**
- * Filter an arm candidate set down to those whose display slot survived a
- * slot-level filter (#3422). Preserves the distinct api:* arms.
- */
-function keepArmsForSlots(
-  candidates: readonly RoutingArmId[],
-  survivingSlots: readonly CliName[]
-): RoutingArmId[] {
-  const slotSet = new Set(survivingSlots);
-  // Preserve endpoint arms: exclusion from measurement is not exclusion from routing.
-  return candidates.filter((arm) => {
-    const slot = routingArmCliSlot(arm);
-    return slot === undefined || slotSet.has(slot);
-  });
-}
-
 /** Dependencies required for pipeline stage execution. */
 export interface StageDependencies {
+  /** Host-owned actual model/transport bindings, never caller task metadata. */
+  adapters?: ReadonlyMap<RoutingArmId, ICliAdapter>;
   config: CompositeRouterConfigWithPreference;
   logger: ILogger;
   cliNames: RoutingArmId[];
@@ -256,51 +243,53 @@ export async function runCapabilityMatchStage(
 export interface QualityConstraintStageResult {
   eligible: RoutingArmId[];
   filtered: Map<CliName, string>;
+  /** Actual-arm exclusions, including distinct API and native candidates. */
+  filteredArms?: ReadonlyMap<RoutingArmId, string>;
   usedFallback: boolean;
 }
 
 /** Runs quality constraint stage. (Issue #755, #1350) */
-export async function runQualityConstraintStage(
+export function runQualityConstraintStage(
   candidates: RoutingArmId[],
   stagesExecuted: string[],
   deps: StageDependencies
 ): Promise<QualityConstraintStageResult> {
   if (!deps.config.enableQualityConstraint || deps.qualityConstraintStage === undefined) {
-    return { eligible: candidates, filtered: new Map(), usedFallback: false };
+    return Promise.resolve({ eligible: candidates, filtered: new Map(), usedFallback: false });
   }
 
-  // Quality constraints are slot-level; collapse to slots for the stage, then
-  // keep the arms whose slot survived (#3422).
-  const slots = armsToSlots(candidates);
-  if (candidates.some((arm) => routingArmCliSlot(arm) === undefined)) {
-    stagesExecuted.push('quality-constraint:endpoint-unmeasured');
-  }
-  // No measured CLI profiles: endpoint admission is explicitly unmeasured.
-  if (slots.length === 0) {
-    return { eligible: candidates, filtered: new Map(), usedFallback: false };
-  }
-  const ctx = createRoutingContext('', slots);
-  const result = await deps.qualityConstraintStage.route(ctx);
-  stagesExecuted.push('quality-constraint');
-
-  if (!result.ok) {
-    deps.logger.debug('Quality constraint stage failed', { error: result.error.message });
-    return { eligible: candidates, filtered: new Map(), usedFallback: false };
-  }
-
-  const remaining = getRemainingCandidates(result.value.context);
-  const filtered = new Map(result.value.context.filtered);
-  const usedFallback = result.value.context.signals.includes('quality:used-fallback');
-
-  deps.logger.debug('Quality constraint completed', {
-    eligible: remaining.length,
-    filtered: filtered.size,
-    usedFallback,
+  const profiles = candidates.flatMap((arm) => {
+    const profile = profileForArm(arm, deps.adapters?.get(arm));
+    return profile === undefined ? [] : [profile];
   });
-
-  // If all slots filtered, fall back to original set
-  const eligible = remaining.length > 0 ? keepArmsForSlots(candidates, remaining) : candidates;
-  return { eligible, filtered, usedFallback: remaining.length === 0 || usedFallback };
+  const result =
+    profiles.length === 0
+      ? {
+          eligible: new Array<RoutingArmId>(),
+          filtered: new Map<RoutingArmId, string>(),
+          usedFallback: false,
+        }
+      : deps.qualityConstraintStage.filterProfiles(profiles);
+  const filteredArms = new Map(result.filtered);
+  const profiled = new Set(profiles.map((p) => p.cliName));
+  const endpoints = candidates.filter((arm) => routingArmCliSlot(arm) === undefined);
+  if (endpoints.length > 0) stagesExecuted.push('quality-constraint:endpoint-unmeasured');
+  if (candidates.length > endpoints.length) stagesExecuted.push('quality-constraint');
+  for (const arm of candidates) {
+    if (routingArmCliSlot(arm) !== undefined && !profiled.has(arm)) {
+      filteredArms.set(arm, 'quality/cost unmeasured for actual model');
+    }
+  }
+  // Preserve legacy CLI-only diagnostics without attributing an API failure to its native slot.
+  const filtered = new Map(
+    [...filteredArms].flatMap(([arm, reason]) => (isCliName(arm) ? [[arm, reason] as const] : []))
+  );
+  return Promise.resolve({
+    eligible: candidates.filter((arm) => endpoints.includes(arm) || result.eligible.includes(arm)),
+    filtered,
+    filteredArms,
+    usedFallback: result.usedFallback,
+  });
 }
 
 /** Resource strategy stage result. (Issue #998) */
@@ -517,13 +506,14 @@ export function runTopsisStage(
   if (options?.stageScores !== undefined) topsisOptions.stageScores = options.stageScores;
   if (options?.performanceData !== undefined)
     topsisOptions.performanceData = options.performanceData;
-  const result = applyTopsisRanking(taskProfile, candidates, deps.topsisRouter, topsisOptions);
+  const result = applyTopsisRanking(taskProfile, candidates, deps.topsisRouter, {
+    ...topsisOptions,
+    ...(deps.adapters === undefined ? {} : { adapters: deps.adapters }),
+  });
   stagesExecuted.push('topsis-ranking');
-  return {
-    ranking: result.ranking,
-    score: result.topScore,
-    ...(result.scoresByArm === undefined ? {} : { scoresByArm: result.scoresByArm }),
-  };
+  // A configured stage with no measurable profile is not a perfect ranking.
+  if (result.scoresByArm === undefined) return { ranking: result.ranking, score: undefined };
+  return { ranking: result.ranking, score: result.topScore, scoresByArm: result.scoresByArm };
 }
 
 /** Runs LinUCB bandit selection stage. */

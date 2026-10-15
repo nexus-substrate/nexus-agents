@@ -17,11 +17,17 @@ import { priceBasisCaveat, type PriceBasis } from '../core/price-basis.js';
 import { createLogger } from '../core/logger.js';
 import { computeCostDetail, priceBasisOf, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
+import type { ModelId } from '../config/model-capabilities-types.js';
 import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
 import { gatewayServedSlotOf, type GatewayServedSlot } from './gateway-slot-arm.js';
 import { ModelToCliAdapter } from './model-to-cli-adapter.js';
 import { estimateCost } from './budget-utils.js';
-import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
+import {
+  getDefaultModelForCli,
+  getDefaultModelForGoogleApi,
+  getModelPricing,
+  resolveCliCostPer1M,
+} from '../config/model-config-helpers.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
 import {
   gatewayCostGap,
@@ -90,12 +96,12 @@ function gatewayPricingModel(
 }
 
 /**
- * Registry price of a gateway model for bare `priced`. Resolves aliases the
+ * Registry price of an explicit API model or a gateway model for bare `priced`. Resolves aliases the
  * way every other pricing read does (`getDefaultRegistry().getEntry`), and is
  * fail-CLOSED: a model the registry cannot price is `undefined`, never $0 and
  * never the display slot's rate.
  */
-function estimateGatewayModelCostUsd(
+function estimateModelCostUsd(
   modelId: string,
   inputTokens: number,
   outputTokens: number
@@ -110,8 +116,8 @@ function estimateGatewayModelCostUsd(
 
 /**
  * Estimate the USD cost of a task on a routing ARM (#4392 increment 2). A
- * vendor arm or CLI slot is priced exactly as {@link estimateRegistryCostUsd}
- * prices its display slot. A GATEWAY arm is priced by its `NEXUS_GATEWAY_COST`
+ * CLI slot is priced by its default; Google API retains its separate Pro
+ * default, and a direct-API instance uses the model it actually sends. A GATEWAY arm is priced by its `NEXUS_GATEWAY_COST`
  * declaration: `free`/`local` → $0, `priced:<in>,<out>` → that flat rate, bare
  * `priced` → the registry rate of the model {@link gatewayPricingModel}
  * resolves. No model, an unpriced model and UNDECLARED are all `undefined`,
@@ -131,8 +137,18 @@ export function estimateArmCostUsd(
   env: NodeJS.ProcessEnv = process.env,
   modelId?: string
 ): number | undefined {
+  if (arm === 'api:google') {
+    return estimateModelCostUsd(
+      modelId ?? getDefaultModelForGoogleApi(),
+      inputTokens,
+      outputTokens
+    );
+  }
   if (!isGatewayArmId(arm)) {
-    return estimateRegistryCostUsd(observedArmDisplaySlot(arm), inputTokens, outputTokens);
+    const model = modelId;
+    return model === undefined
+      ? estimateRegistryCostUsd(observedArmDisplaySlot(arm), inputTokens, outputTokens)
+      : estimateModelCostUsd(model, inputTokens, outputTokens);
   }
   const declaration = resolveGatewayCostDeclaration(arm, env);
   // Fail-CLOSED sentinel, deliberately `undefined` and never $0: a $0 always
@@ -145,7 +161,7 @@ export function estimateArmCostUsd(
   const model = gatewayPricingModel(arm, modelId, env);
   // Fail-CLOSED again: no model to price is not a licence to price the slot.
   if (model === undefined) return undefined;
-  return estimateGatewayModelCostUsd(model, inputTokens, outputTokens);
+  return estimateModelCostUsd(model, inputTokens, outputTokens);
 }
 
 /**
@@ -228,7 +244,10 @@ function registryCeilingBasis(
   const model =
     arm !== undefined && isGatewayArmId(arm)
       ? gatewayPricingModel(arm, served?.modelId ?? sentModelOf(target.adapter), env)
-      : getDefaultModelForCli(observedArmDisplaySlot(target.arm));
+      : (sentModelOf(target.adapter) ??
+        (target.arm === 'api:google'
+          ? getDefaultModelForGoogleApi()
+          : getDefaultModelForCli(observedArmDisplaySlot(target.arm))));
   return model === undefined ? 'unknown' : priceBasisOf(computeCostDetail(model, 0, 0));
 }
 
@@ -292,8 +311,28 @@ export function estimateBudgetArmCostUsd(
 ): number | undefined {
   if (served !== undefined)
     return estimateServedSlotCostUsd(served, inputTokens, outputTokens, env);
+  if (arm === 'api:google') {
+    return estimateApiBudgetCostUsd(
+      'gemini',
+      getDefaultModelForGoogleApi(),
+      inputTokens,
+      outputTokens
+    );
+  }
   if (isGatewayArmId(arm)) return estimateArmCostUsd(arm, inputTokens, outputTokens, env);
   return estimateCost(routingArmDisplaySlot(arm), inputTokens, outputTokens);
+}
+
+/** Actual API model pricing with the slot's conservative unpriced fallback. */
+function estimateApiBudgetCostUsd(
+  slot: CliName,
+  modelId: string,
+  input: number,
+  output: number
+): number {
+  const rates = resolveCliCostPer1M(slot, getDefaultRegistry().getEntry(modelId).id as ModelId);
+  return computeTokenCost({ input, output }, { inputPer1M: rates.input, outputPer1M: rates.output })
+    .costUsd;
 }
 
 /**
@@ -310,6 +349,15 @@ export function budgetCostOfArm(
   if (served === undefined && isGatewayArmId(target.arm)) {
     const sent = sentModelOf(target.adapter);
     return estimateArmCostUsd(target.arm, inputTokens, outputTokens, env, sent);
+  }
+  const sent = sentModelOf(target.adapter);
+  if (served === undefined && sent !== undefined) {
+    return estimateApiBudgetCostUsd(
+      observedArmDisplaySlot(target.arm),
+      sent,
+      inputTokens,
+      outputTokens
+    );
   }
   return estimateBudgetArmCostUsd(target.arm, inputTokens, outputTokens, env, served);
 }

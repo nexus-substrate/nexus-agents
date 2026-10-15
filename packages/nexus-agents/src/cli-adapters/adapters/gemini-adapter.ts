@@ -26,9 +26,10 @@ import type {
   BaseAdapterOptions,
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
+import { createCallerInputCliError } from '../cli-error-helpers.js';
 import { withEnforcedAccessMode } from '../access-mode.js';
 import { AgyResponseParser } from '../parsers/agy-parser.js';
-import { toAgyModelSlug, AGY_MODEL_SLUGS } from '../../config/agy-model-map.js';
+import { toAgyModelSlug, fromAgyModelSlug, AGY_MODEL_SLUGS } from '../../config/agy-model-map.js';
 import type { CliModelInfo } from '../types-capability.js';
 import {
   getTimeoutForTask,
@@ -45,7 +46,11 @@ import { GEMINI_LEGACY_DEFAULTS, createCircuitOpenError } from './gemini-adapter
 import { executeCliRetryLoop } from '../cli-retry-loop.js';
 import { GEMINI_CLI_COMMAND } from '../cli-error-envelope.js';
 import { DEFAULT_GEMINI_CLI_MODEL, agyPrintTimeoutArgs } from './agy-invocation.js';
-import { buildModelInfo } from '../../config/model-config-helpers.js';
+import {
+  buildModelInfo,
+  getCliModelName,
+  resolveCliAlias,
+} from '../../config/model-config-helpers.js';
 
 /** Configuration for Gemini adapter. Extends BaseAdapterOptions with retry/circuit breaker. */
 export interface GeminiConfig extends BaseAdapterOptions {
@@ -163,7 +168,17 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
    * Note: maxOutput is capped at 8_192 (Gemini CLI constraint).
    */
   getModelInfo(): ModelInfo {
-    const fromRegistry = buildModelInfo('gemini', this.model);
+    // Describe a supported migrated selection honestly; unsupported configured
+    // models retain their requested descriptor but are refused at execution.
+    let selected = this.model;
+    try {
+      const canonical = fromAgyModelSlug(toAgyModelSlug(this.model));
+      const resolved = canonical === null ? undefined : resolveCliAlias(canonical);
+      if (resolved !== undefined) selected = getCliModelName(resolved);
+    } catch {
+      /* No selection: execution returns a non-retryable refusal. */
+    }
+    const fromRegistry = buildModelInfo('gemini', selected);
     if (fromRegistry !== undefined) {
       return { ...fromRegistry, maxOutput: 8_192 };
     }
@@ -208,6 +223,16 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     // fail-closed access-mode check first.
     const refusal = await this.accessModeRefusal(task);
     if (refusal !== undefined) return err(refusal);
+    try {
+      toAgyModelSlug(task.model ?? this.model);
+    } catch (error: unknown) {
+      return err(
+        createCallerInputCliError(
+          error instanceof Error ? error.message : 'Unsupported AGY model',
+          'gemini'
+        )
+      );
+    }
     const circuitCheckResult = this.checkCircuitBreaker();
     if (circuitCheckResult !== null) {
       return err(circuitCheckResult);
@@ -253,8 +278,8 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 
     // Registry model ids and agy slugs are different namespaces — see
     // config/agy-model-map.ts for why `cliModelName` cannot carry the agy slug.
-    // An unmapped id would make agy return status:ERROR with exit code 0, so the
-    // resolver substitutes a valid slug rather than letting that happen.
+    // Unsupported explicit pins are refused before dispatch; accepted legacy
+    // Flash aliases migrate through the documented transport map.
     const requested = task.model ?? this.model;
     const model = toAgyModelSlug(requested);
     if (model !== requested) {

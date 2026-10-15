@@ -18,6 +18,7 @@ import { buildInTreeEntries } from './in-tree-entries.js';
 import {
   DEFAULT_MODEL_CAPABILITIES,
   DEFAULT_MODEL_PER_CLI,
+  DEFAULT_GOOGLE_API_MODEL,
   unpricedCliCostPer1M,
   type CostPer1M,
   type PricedSibling,
@@ -147,9 +148,9 @@ export function getModelQualityScores(modelId: ModelId): QualityScores | undefin
 }
 
 /**
- * Get the default (strongest) model for a given CLI tool.
+ * Get the selected default model for a given CLI tool.
  *
- * The per-CLI default *policy* (which model id is strongest) lives in the
+ * The per-CLI default policy lives in the
  * static `DEFAULT_MODEL_PER_CLI` map. As of #3185 the resolved id is routed
  * through the overlay-bearing default registry so an operator overlay that
  * renames / re-aliases the default model is honored at runtime without a
@@ -169,6 +170,14 @@ export function getDefaultModelForCli(cli: CliNameLiteral): ModelId {
   const registry = peekDefaultRegistry();
   if (registry === undefined) return staticDefault;
   return registry.getEntry(staticDefault).id as ModelId;
+}
+
+/** Google API policy stays on Pro independently of the native CLI default. */
+export function getDefaultModelForGoogleApi(): ModelId {
+  const registry = peekDefaultRegistry();
+  return registry === undefined
+    ? DEFAULT_GOOGLE_API_MODEL
+    : (registry.getEntry(DEFAULT_GOOGLE_API_MODEL).id as ModelId);
 }
 
 /**
@@ -194,12 +203,13 @@ export function resolveModelCostPer1M(modelId: ModelId, fallback: CostPer1M): Co
  * estimated at the CLI's highest known rates ({@link unpricedCliCostPer1M},
  * #6866), never below a priced sibling. Single source for the former per-CLI
  * $ tables; usage accounting still records the model as unpriced.
+ * An API bridge may supply its actual model while keeping the same conservative fallback.
  */
-export function resolveCliCostPer1M(cli: CliNameLiteral): CostPer1M {
-  return resolveModelCostPer1M(
-    getDefaultModelForCli(cli),
-    unpricedCliCostPer1M(cli, registryPricedSiblings())
-  );
+export function resolveCliCostPer1M(
+  cli: CliNameLiteral,
+  modelId: ModelId = getDefaultModelForCli(cli)
+): CostPer1M {
+  return resolveModelCostPer1M(modelId, unpricedCliCostPer1M(cli, registryPricedSiblings()));
 }
 
 /**
@@ -324,31 +334,44 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
     [CliNameLiteral, ModelId]
   >) {
     const entry = byId.get(modelId);
-    const q = entry?.qualityScores;
-    if (entry === undefined || q === undefined) continue;
-    if (entry.contextWindow === undefined) continue;
-    // Bootstrap uses in-tree prices with a conservative non-$0 fallback.
-    // Runtime selection replaces these rates from the registry. Reading only
-    // the already-built entry avoids registry IO and circular-load TDZ here.
-    const p = entry.pricing;
+    if (entry === undefined) continue;
+    // Bootstrap stays filesystem-free; only the runtime model entry-point below reads overlays.
     const price: CostPer1M =
-      p !== undefined ? { input: p.inputPer1M, output: p.outputPer1M } : unpricedCliCostPer1M(cli);
-    profiles.push({
-      cliName: cli,
-      capabilities: {
-        reasoning: q.reasoning,
-        contextWindow: entry.contextWindow,
-        codeGeneration: q.codeGeneration,
-        speed: q.speed,
-        cost: q.cost,
-      },
-      costPerMillionInput: price.input,
-      costPerMillionOutput: price.output,
-      averageLatencyMs: cliAvgLatency()[cli],
-      qualityScore: (q.reasoning + q.codeGeneration) / 2,
-    });
+      entry.pricing !== undefined
+        ? { input: entry.pricing.inputPer1M, output: entry.pricing.outputPer1M }
+        : unpricedCliCostPer1M(cli);
+    const profile = entryToTopsisProfile(cli, entry, price);
+    if (profile !== undefined) profiles.push(profile);
   }
   return profiles;
+}
+
+/** One metadata conversion for bootstrap CLI profiles and actual runtime API models. */
+function entryToTopsisProfile(
+  cli: CliNameLiteral,
+  entry: ModelEntry,
+  price: CostPer1M
+): TopsisProfileShape | undefined {
+  const q = entry.qualityScores;
+  if (q === undefined || entry.contextWindow === undefined) return undefined;
+  return {
+    cliName: cli,
+    capabilities: { ...q, contextWindow: entry.contextWindow },
+    costPerMillionInput: price.input,
+    costPerMillionOutput: price.output,
+    averageLatencyMs: cliAvgLatency()[cli],
+    qualityScore: (q.reasoning + q.codeGeneration) / 2,
+  };
+}
+
+/** Runtime actual-model profile, with rates bound by the caller's canonical arm cost policy. */
+export function buildTopsisProfileForModel(
+  cli: CliNameLiteral,
+  modelId: string,
+  price: CostPer1M
+): TopsisProfileShape | undefined {
+  const entry = lookupInTree(modelId);
+  return entry === undefined ? undefined : entryToTopsisProfile(cli, entry, price);
 }
 
 /**

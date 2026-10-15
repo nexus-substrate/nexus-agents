@@ -21,21 +21,14 @@ describe('agy model slugs', () => {
     }
   });
 
-  it('maps every canonical gemini model to a slug agy accepts', () => {
-    // The mapping must be total over the registry: an unmapped id would reach
-    // agy and come back as status:ERROR with exit code 0.
-    const geminiIds = DEFAULT_MODEL_CAPABILITIES.models
-      .filter((m) => m.cliName === 'gemini')
-      .map((m) => m.id);
-
-    expect(geminiIds.length).toBeGreaterThan(0);
-    for (const id of geminiIds) {
-      expect(isAgyModelSlug(toAgyModelSlug(id))).toBe(true);
+  it('maps registered Flash models to supported native pins', () => {
+    const gemini = DEFAULT_MODEL_CAPABILITIES.models.filter(
+      (m) => m.cliName === 'gemini' && !m.id.includes('pro')
+    );
+    expect(gemini.length).toBeGreaterThan(0);
+    for (const model of gemini) {
+      expect(isAgyModelSlug(toAgyModelSlug(model.id))).toBe(true);
     }
-  });
-
-  it('maps the strongest registry entry to the strongest pro tier', () => {
-    expect(toAgyModelSlug('gemini-3-pro')).toBe('gemini-3.1-pro-high');
   });
 
   it('lists no gemini-3.5 slug, which agy 1.3.1 rejects (#7217)', () => {
@@ -47,20 +40,20 @@ describe('agy model slugs', () => {
 
   it('maps the 3.x flash entries to flash slugs, keeping their effort tier (#7217, #7101, #7375)', () => {
     expect(toAgyModelSlug('gemini-3.8-flash')).toBe('gemini-3.8-flash-high');
-    expect(toAgyModelSlug('gemini-3.7-flash')).toBe('gemini-3.7-flash-high');
-    expect(toAgyModelSlug('gemini-3.5-flash')).toBe('gemini-3.7-flash-medium');
-    expect(toAgyModelSlug('gemini-3-flash')).toBe('gemini-3.7-flash-low');
+    expect(toAgyModelSlug('gemini-3.7-flash')).toBe('gemini-3.8-flash-high');
+    expect(toAgyModelSlug('gemini-3.5-flash')).toBe('gemini-3.8-flash-medium');
+    expect(toAgyModelSlug('gemini-3-flash')).toBe('gemini-3.8-flash-low');
   });
 
-  it('maps a 2.5-generation entry agy does not serve to a surviving tier', () => {
+  it('migrates legacy Flash but refuses unavailable legacy Pro', () => {
     // agy serves no 2.5 models at all. Dropping these would break routing that
     // already selects them.
-    expect(isAgyModelSlug(toAgyModelSlug('gemini-pro'))).toBe(true);
+    expect(() => toAgyModelSlug('gemini-pro')).toThrow(/Unsupported AGY/);
     expect(isAgyModelSlug(toAgyModelSlug('gemini-flash'))).toBe(true);
   });
 
-  it('falls back to a valid slug for an unknown model', () => {
-    expect(toAgyModelSlug('some-model-that-does-not-exist')).toBe(DEFAULT_AGY_MODEL);
+  it('refuses an unknown model without substituting the default', () => {
+    expect(() => toAgyModelSlug('some-model-that-does-not-exist')).toThrow(/Unsupported AGY/);
     expect(isAgyModelSlug(DEFAULT_AGY_MODEL)).toBe(true);
   });
 
@@ -80,25 +73,22 @@ describe('agy model slugs', () => {
   describe('reverse mapping (#4395)', () => {
     it('round-trips every canonical gemini model', () => {
       const geminiIds = DEFAULT_MODEL_CAPABILITIES.models
-        .filter((m) => m.cliName === 'gemini')
+        .filter((m) => m.cliName === 'gemini' && !m.id.includes('pro'))
         .map((m) => m.id);
 
       for (const id of geminiIds) {
         const slug = toAgyModelSlug(id);
-        // Several registry entries can share a slug where agy's generations do
-        // not line up with ours, so the reverse need not return the SAME id —
-        // but it must return one that maps forward to the same slug.
+        // Effort is native transport metadata; reverse identity is the selected
+        // Flash model, irrespective of the legacy alias that requested it.
         const back = fromAgyModelSlug(slug);
         expect(back).not.toBeNull();
-        expect(toAgyModelSlug(back as string)).toBe(slug);
+        expect(back).toBe('gemini-3.8-flash');
       }
     });
 
     it('returns null for a slug with no registry entry', () => {
-      // agy serves 3.6 Flash at high/medium, and 3.8 Flash at medium/low; the registry only maps 3.8 Flash high.
+      // Retired native pins do not describe a currently supported selection.
       expect(fromAgyModelSlug('gemini-3.6-flash-high')).toBeNull();
-      expect(fromAgyModelSlug('gemini-3.8-flash-medium')).toBeNull();
-      expect(fromAgyModelSlug('gemini-3.8-flash-low')).toBeNull();
     });
 
     it('returns null for a string that is not an agy slug at all', () => {
@@ -109,15 +99,15 @@ describe('agy model slugs', () => {
       // #4395: callers pin Google API ids like `gemini-2.5-pro` (the registry's
       // cliModelName for `gemini-pro`). Falling through to the default here
       // would silently run a different model than the caller asked for.
-      expect(toAgyModelSlug('gemini-2.5-pro')).toBe(toAgyModelSlug('gemini-pro'));
-      expect(toAgyModelSlug('gemini-2.5-pro')).not.toBe(DEFAULT_AGY_MODEL);
+      expect(() => toAgyModelSlug('gemini-2.5-pro')).toThrow(/Unsupported AGY/);
+      expect(toAgyModelSlug('gemini-2.5-flash')).toBe(toAgyModelSlug('gemini-flash'));
     });
 
     it('resolves a reversed slug to real registry pricing', () => {
       // The point of the reverse map: an invoked slug must be priceable.
-      const canonical = fromAgyModelSlug('gemini-3.1-pro-high');
+      const canonical = fromAgyModelSlug('gemini-3.8-flash-high');
 
-      expect(canonical).toBe('gemini-3-pro');
+      expect(canonical).toBe('gemini-3.8-flash');
     });
   });
 });

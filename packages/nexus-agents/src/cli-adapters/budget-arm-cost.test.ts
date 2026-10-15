@@ -28,7 +28,12 @@ import {
 import { getDefaultRegistry } from '../config/model-registry.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
 import { computeCostDetail, priceBasisOf } from '../learning/usage-log.js';
-import { getDefaultModelForCli, resolveCliCostPer1M } from '../config/model-config-helpers.js';
+import {
+  getDefaultModelForCli,
+  resolveCliCostPer1M,
+  getModelPricing,
+} from '../config/model-config-helpers.js';
+import { DEFAULT_MODEL_PER_CLI } from '../config/in-tree-data.js';
 
 describe('estimateBudgetArmCostUsd (#6393)', () => {
   it('uses the codex fallback for budgets but fails closed for cost ceilings (#6842)', () => {
@@ -78,7 +83,10 @@ describe('estimateBudgetArmCostUsd (#6393)', () => {
     (arm) => {
       vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
       const slot = arm === 'api:google' ? 'gemini' : arm === 'api:openai' ? 'codex' : arm;
-      const expected = estimateCost(slot, 1_000, 1_000);
+      const expected =
+        arm === 'api:google'
+          ? computeCostDetail('gemini-3-pro', 1_000, 1_000).costUsd
+          : estimateCost(slot, 1_000, 1_000);
       expect(expected).toBeGreaterThan(0);
       expect(estimateBudgetArmCostUsd(arm, 1_000, 1_000)).toBe(expected);
     }
@@ -441,4 +449,86 @@ describe('gatewayCostDetail (#4392 inc 2 step 4)', () => {
       gatewayCostDetail(ARM, undefined, 1_000_000, 500_000, { NEXUS_GATEWAY_COST: 'priced:2,10' })
     ).toEqual({ costUsd: 7, priced: true, resolvedId: ARM, declared: true });
   });
+});
+
+describe('separate API and CLI Gemini default pricing (#7423)', () => {
+  it('keeps API Pro ceilings/budgets distinct from the Flash CLI default', () => {
+    const previous = DEFAULT_MODEL_PER_CLI.gemini;
+    DEFAULT_MODEL_PER_CLI.gemini = 'gemini-3.8-flash';
+    try {
+      const pro = getModelPricing('gemini-3-pro');
+      const flash = getModelPricing('gemini-3.8-flash');
+      expect(pro).toBeDefined();
+      expect(flash).toBeDefined();
+      const proCost = (pro?.inputPer1M ?? 0) + (pro?.outputPer1M ?? 0);
+      const flashCost = (flash?.inputPer1M ?? 0) + (flash?.outputPer1M ?? 0);
+      expect(proCost).toBeGreaterThan(flashCost);
+      expect(estimateArmCostUsd('api:google', 1_000_000, 1_000_000)).toBe(proCost);
+      expect(estimateBudgetArmCostUsd('api:google', 1_000_000, 1_000_000)).toBe(proCost);
+      expect(estimateArmCostUsd('gemini', 1_000_000, 1_000_000)).toBe(flashCost);
+    } finally {
+      DEFAULT_MODEL_PER_CLI.gemini = previous;
+    }
+  });
+});
+
+describe('API bridge instance pricing (#7423)', () => {
+  it.each(['api:google', 'gemini'] as const)(
+    'prices the API model actually sent under %s',
+    (arm) => {
+      const previous = DEFAULT_MODEL_PER_CLI.gemini;
+      DEFAULT_MODEL_PER_CLI.gemini = 'gemini-3.8-flash';
+      try {
+        const adapter = createModelToCliAdapter(
+          { modelId: 'gemini-3.1-pro-preview' } as IModelAdapter,
+          { name: 'gemini' }
+        );
+        const expected = computeCostDetail('gemini-3-pro', 1_000_000, 1_000_000).costUsd;
+        expect.soft(ceilingCostOfArm({ arm, adapter }, 1_000_000, 1_000_000)).toBe(expected);
+        expect.soft(budgetCostOfArm({ arm, adapter }, 1_000_000, 1_000_000)).toBe(expected);
+      } finally {
+        DEFAULT_MODEL_PER_CLI.gemini = previous;
+      }
+    }
+  );
+});
+
+describe('API Pro missing/free prices stay explicit (#7423)', () => {
+  it.each([undefined, { inputPer1M: 0, outputPer1M: 0 }])(
+    'preserves ceiling and budget policies for %j',
+    (pricing) => {
+      const registry = getDefaultRegistry();
+      const getEntry = registry.getEntry.bind(registry);
+      const pro = getEntry('gemini-3-pro');
+      const knownSiblingPrice = computeCostDetail('gemini-pro', 1_000_000, 1_000_000).costUsd;
+      expect(knownSiblingPrice).toBeGreaterThan(0);
+      const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = { ...getEntry(id) };
+        if (entry.id === pro.id) {
+          if (pricing === undefined) delete entry.pricing;
+          else entry.pricing = pricing;
+        }
+        return entry;
+      });
+      const adapter = createModelToCliAdapter(
+        { modelId: 'gemini-3.1-pro-preview' } as IModelAdapter,
+        { name: 'gemini' }
+      );
+      try {
+        for (const arm of ['api:google', 'gemini'] as const) {
+          const ceiling = ceilingCostOfArm({ arm, adapter }, 1_000_000, 1_000_000);
+          const budget = budgetCostOfArm({ arm, adapter }, 1_000_000, 1_000_000);
+          if (pricing === undefined) {
+            expect(ceiling).toBeUndefined();
+            expect(budget).toBeGreaterThanOrEqual(knownSiblingPrice);
+          } else {
+            expect(ceiling).toBe(0);
+            expect(budget).toBe(0);
+          }
+        }
+      } finally {
+        spy.mockRestore();
+      }
+    }
+  );
 });

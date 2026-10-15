@@ -7,21 +7,19 @@
  * (Source: Issue #275, Epic #164, Issue #347)
  */
 
-import { adjustProfileForTask } from './topsis-helpers.js';
+import { profileForArm, selectTopsisRouter } from './composite-router-profiles.js';
+import {
+  adjustKeyedProfileForTask,
+  rankTopsisProfiles,
+  type KeyedTopsisProfile,
+} from './topsis-helpers.js';
 export { adjustProfileForTask } from './topsis-helpers.js';
 import type { Task } from '../core/types/agent.js';
 import { getTimeProvider, type TaskProfile } from '../core/index.js';
-import type { CliName, RoutingArmId, CliTask } from './types.js';
+import type { CliName, RoutingArmId, CliTask, ICliAdapter } from './types.js';
 import { routingArmCliSlot } from './types.js';
 import { NEUTRAL_BANDIT_FEATURE, type BanditContext } from './budget-router-types.js';
-import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
-import {
-  getDefaultTopsisProfiles,
-  DEFAULT_TOPSIS_CRITERIA,
-  PLAN_BILLING_TOPSIS_CRITERIA,
-  applyDifficultyCostWeighting,
-  getCriteriaForTaskCategory,
-} from './topsis-types.js';
+import type { TopsisModelProfile } from './topsis-types.js';
 import type { BillingMode } from '../mcp/tools/delegate-to-model-types.js';
 import type { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
@@ -250,35 +248,6 @@ export interface TopsisRankingResult {
  */
 export const TOPSIS_TOLERANCE_BAND_PERCENT = 0.05;
 
-/** Returns a TopsisRouter with task-category-aware criteria (#1491) and
- * difficulty-conditional quality/cost weighting (#4196).
- * Difficulty conditioning is api-mode ONLY: plan mode zeroes the cost weight
- * already, so conditioning there would be a silent no-op — plan mode instead
- * emits an explicit routing-decision annotation (see buildReason).
- * Only creates a new router when the criteria differ from the billing-mode default. */
-function selectTopsisRouter(
-  router: TopsisRouter,
-  billingMode: BillingMode,
-  taskType?: string,
-  reasoningComplexity?: number
-): TopsisRouter {
-  const mode = billingMode === 'plan' ? 'plan' : 'api';
-  const defaultCriteria = mode === 'plan' ? PLAN_BILLING_TOPSIS_CRITERIA : DEFAULT_TOPSIS_CRITERIA;
-  const base =
-    taskType !== undefined ? getCriteriaForTaskCategory(taskType, mode) : defaultCriteria;
-  // #4196: condition the quality/cost split on the canonical SharedTaskAnalyzer
-  // complexity (TaskProfile.reasoningComplexity). Mid-band complexity returns
-  // the same reference, keeping the default path byte-identical.
-  const criteria =
-    mode === 'api' && reasoningComplexity !== undefined
-      ? applyDifficultyCostWeighting(base, reasoningComplexity)
-      : base;
-  // Only create a new router when the effective criteria differ from default
-  if (criteria !== defaultCriteria) return new TopsisRouter({ criteria });
-  if (mode === 'plan') return new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
-  return router;
-}
-
 // ---------------------------------------------------------------------------
 // Performance Floor Gate (Issue #1401 — consensus-approved Option A)
 // ---------------------------------------------------------------------------
@@ -342,6 +311,14 @@ export function adjustProfileWithStageScores(
   profiles: readonly TopsisModelProfile[],
   stageScores: ReadonlyMap<CliName, number>
 ): TopsisModelProfile[] {
+  return adjustBoundProfileWithStageScores(profiles, stageScores, (key) => key);
+}
+
+function adjustBoundProfileWithStageScores<Key extends string>(
+  profiles: readonly KeyedTopsisProfile<Key>[],
+  stageScores: ReadonlyMap<CliName, number>,
+  slotOf: (key: Key) => CliName | undefined
+): KeyedTopsisProfile<Key>[] {
   if (stageScores.size === 0) return [...profiles];
 
   // Calculate the mean score across all CLIs that have scores
@@ -354,7 +331,8 @@ export function adjustProfileWithStageScores(
   );
 
   return profiles.map((p) => {
-    const score = stageScores.get(p.cliName);
+    const slot = slotOf(p.cliName);
+    const score = slot === undefined ? undefined : stageScores.get(slot);
     if (score === undefined) return p;
 
     const deviation = score - mean;
@@ -374,6 +352,8 @@ export function adjustProfileWithStageScores(
 /** Options for TOPSIS ranking beyond the core required params. */
 export interface TopsisRankingOptions {
   billingMode?: BillingMode;
+  /** Actual adapter instances, before any display-slot projection. */
+  adapters?: ReadonlyMap<RoutingArmId, ICliAdapter>;
   stageScores?: ReadonlyMap<CliName, number>;
   performanceData?: ReadonlyMap<CliName, PerformanceFloorEntry>;
 }
@@ -383,18 +363,24 @@ function buildAdjustedProfiles(
   taskProfile: TaskProfile,
   candidates: RoutingArmId[],
   options?: TopsisRankingOptions
-): TopsisModelProfile[] {
-  // TOPSIS profiles are slot-level (keyed by CliName) with current registry rates.
-  // Endpoint catalogue models have no slot-level TOPSIS profile; exclude them
-  // from this stage explicitly, while preserving their LinUCB candidacy.
-  const candidateSlots = new Set(candidates.map(routingArmCliSlot));
-  const profiles = getDefaultTopsisProfiles().filter((p) => candidateSlots.has(p.cliName));
-  let adjusted = profiles.map((p) => adjustProfileForTask(p, taskProfile));
-  if (options?.stageScores !== undefined && options.stageScores.size > 0) {
-    adjusted = adjustProfileWithStageScores(adjusted, options.stageScores);
-  }
-  if (options?.performanceData !== undefined && options.performanceData.size > 0) {
-    adjusted = applyPerformanceFloorPenalty(adjusted, options.performanceData);
+): KeyedTopsisProfile<RoutingArmId>[] {
+  let adjusted = candidates.flatMap((arm) => {
+    const profile = profileForArm(arm, options?.adapters?.get(arm));
+    return profile === undefined ? [] : [adjustKeyedProfileForTask(profile, taskProfile)];
+  });
+  if (options?.stageScores !== undefined)
+    adjusted = adjustBoundProfileWithStageScores(adjusted, options.stageScores, routingArmCliSlot);
+  const performanceData = options?.performanceData;
+  if (performanceData !== undefined) {
+    adjusted = adjusted.map((profile) => {
+      const slot = routingArmCliSlot(profile.cliName);
+      if (slot === undefined) return profile;
+      const penalized = applyPerformanceFloorPenalty(
+        [{ ...profile, cliName: slot }],
+        performanceData
+      )[0];
+      return penalized === undefined ? profile : { ...penalized, cliName: profile.cliName };
+    });
   }
   return adjusted;
 }
@@ -423,20 +409,19 @@ export function applyTopsisRanking(
   );
   const adjustedProfiles = buildAdjustedProfiles(taskProfile, candidates, options);
   if (adjustedProfiles.length === 0) return { ranking: candidates, topScore: 1.0 };
-  const result: TopsisResult = router.selectModel({ profiles: adjustedProfiles });
+  const result = rankTopsisProfiles(router.getConfig(), adjustedProfiles);
 
-  // Scores are slot-keyed. Only CLI and built-in vendor arms have a slot;
+  // Scores retain actual arm identity. Only measured profiles are ranked;
   // discovered endpoints remain unmeasured by TOPSIS.
   const scoreOf = (arm: RoutingArmId): number =>
-    result.scores.find((score) => score.cliName === routingArmCliSlot(arm))?.closenessScore ?? 0;
+    result.scores.find((score) => score.cliName === arm)?.closenessScore ?? 0;
   const ranking = [...candidates].sort((a, b) => scoreOf(b) - scoreOf(a));
   const topArm = ranking[0];
   const topScore = topArm !== undefined ? scoreOf(topArm) : 1.0;
-  // Keyed by ARM, not by display slot: `scoreOf` already resolves an api:* arm
-  // to its slot, so this records the score each arm actually ranked on.
+  // Keyed by actual arm, so API and native candidates keep distinct scores.
   const scoresByArm = new Map(
     candidates
-      .filter((arm) => routingArmCliSlot(arm) !== undefined)
+      .filter((arm) => result.scores.some((score) => score.cliName === arm))
       .map((arm) => [arm, scoreOf(arm)])
   );
 

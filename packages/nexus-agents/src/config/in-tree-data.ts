@@ -777,17 +777,19 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
 };
 
 /**
- * Default (strongest) model per CLI tool.
- * Quality-first: each CLI routes to its strongest model by default.
+ * Default model per CLI tool. Gemini selects the measured available Flash
+ * family; the Google API retains its separate Pro default (#7423).
  */
 export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
-  // #4176: fable/gpt-5.5 were strongest per CLI; gemini-3.5-flash is flash-tier, not default.
   // #6842: option A; revert this default to gpt-5.6-sol in one line if needed.
   claude: 'claude-fable-5',
-  gemini: 'gemini-3-pro',
+  gemini: 'gemini-3.8-flash',
   codex: 'gpt-6.1-sol',
   opencode: 'opencode-default',
 };
+
+/** Google API default is independent of native AGY availability (#7423). */
+export const DEFAULT_GOOGLE_API_MODEL: ModelId = 'gemini-3-pro';
 
 /** A per-1M-token USD pricing pair (input/output). */
 export interface CostPer1M {

@@ -9,9 +9,9 @@
  * (Source: Issue #102, arXiv:2508.21141 - EMNLP 2025)
  */
 
-import type { Result } from '../core/index.js';
-import { getTimeProvider } from '../core/index.js';
-import { createLogger } from '../core/logger.js';
+import { ModelToCliAdapter } from './model-to-cli-adapter.js';
+import { gatewayServedSlotOf } from './gateway-slot-arm.js';
+import { type Result, getTimeProvider, createLogger } from '../core/index.js';
 import type {
   IBudgetRouter,
   BudgetConstraint,
@@ -475,13 +475,12 @@ export class BudgetRouter implements IBudgetRouter {
     budget: BudgetConstraint,
     estimatedTokens: number
   ): BudgetSelection {
-    // Vendor arms retain slot profiles; endpoint arms use their own adapter's
-    // resolved model profile. Costs are independently priced by arm below.
-    const sortedAdapters = [...this.adapters].sort((a, b) => {
-      const capA = this.capabilitiesOf(a[0], a[1]);
-      const capB = this.capabilitiesOf(b[0], b[1]);
-      return capB.cost - capA.cost; // Prefer cheaper models
-    });
+    // Native slots retain slot profiles; API bridges, served gateway slots
+    // and endpoints use their own model profile. Costs are priced by arm below.
+    const sortedAdapters = [...this.adapters].sort(
+      ([armA, a], [armB, b]) =>
+        this.capabilitiesOf(armB, b).cost - this.capabilitiesOf(armA, a).cost
+    );
     const unpricedArms: UnpricedArm[] = [];
 
     for (const [arm, adapter] of sortedAdapters) {
@@ -504,10 +503,12 @@ export class BudgetRouter implements IBudgetRouter {
     return { selected: null, unpricedArms };
   }
 
-  /** Slot profiles apply only to vendor arms; endpoints supply their own profile. */
+  /** Native slots use slot profiles; actual API/gateway targets supply their own profile. */
   private capabilitiesOf(arm: RoutingArmId, adapter: ICliAdapter): ICliAdapter['capabilities'] {
-    const slot = routingArmCliSlot(arm);
-    return slot === undefined ? adapter.capabilities : DEFAULT_CAPABILITIES[slot];
+    const slot = gatewayServedSlotOf(adapter) === undefined ? routingArmCliSlot(arm) : undefined;
+    return slot === undefined || adapter instanceof ModelToCliAdapter
+      ? adapter.capabilities
+      : DEFAULT_CAPABILITIES[slot];
   }
 
   /** The four per-candidate admission checks of `selectAdapterWithinBudget`. */

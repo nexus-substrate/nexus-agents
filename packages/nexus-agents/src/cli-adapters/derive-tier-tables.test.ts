@@ -49,9 +49,9 @@ describe('derive-tier-tables (#4195)', () => {
       // claude default (fable-5) r10/cg10 → composite 10; priced 10+50=60.
       expect(data.claude.quality).toBe(10);
       expect(data.claude.price).toBe(60);
-      // gemini default (gemini-3-pro) r10/cg9 → 9.5; 2+12=14.
-      expect(data.gemini.quality).toBe(9.5);
-      expect(data.gemini.price).toBe(14);
+      // Native Gemini Flash default r8/cg9 → 8.5; 0.75+3.75=4.5 (#7423).
+      expect(data.gemini.quality).toBe(8.5);
+      expect(data.gemini.price).toBe(4.5);
     });
 
     it('blends an unpriced bootstrap default without constructing the runtime registry', () => {

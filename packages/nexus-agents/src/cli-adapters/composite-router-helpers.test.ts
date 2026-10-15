@@ -8,11 +8,12 @@
  * buildDifficultyOutcome, buildDecisionFields, buildPreferenceStats.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TaskProfile } from '../core/index.js';
 import type { CliName, CliTask, RoutingArmId } from './types.js';
-import type { TopsisRouter } from './topsis-router.js';
+import { TopsisRouter } from './topsis-router.js';
+import * as topsisHelpers from './topsis-helpers.js';
 import type { TopsisModelProfile } from './topsis-types.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
 import type {} from './zero-router-types.js';
@@ -46,6 +47,26 @@ import {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function stubRanking(scores: Array<{ cliName: CliName; closenessScore: number }>): TopsisRouter {
+  const original = topsisHelpers.rankTopsisProfiles;
+  vi.spyOn(topsisHelpers, 'rankTopsisProfiles').mockImplementation((...args) => {
+    const result = original(...args);
+    return {
+      ...result,
+      scores: result.scores.map((score) => ({
+        ...score,
+        closenessScore:
+          scores.find((s) => s.cliName === score.cliName)?.closenessScore ?? score.closenessScore,
+      })),
+    };
+  });
+  return new TopsisRouter();
+}
 
 function makeTaskProfile(overrides: Partial<TaskProfile> = {}): TaskProfile {
   return {
@@ -424,16 +445,12 @@ describe('applyTopsisRanking', () => {
   });
 
   it('ranks candidates by TOPSIS scores', () => {
-    const mockRouter = {
-      selectModel: vi.fn(() => ({
-        scores: [
-          { cliName: 'gemini', closenessScore: 0.9 },
-          { cliName: 'claude', closenessScore: 0.7 },
-          { cliName: 'codex', closenessScore: 0.8 },
-        ],
-      })),
-    };
-    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
+    const mockRouter = stubRanking([
+      { cliName: 'gemini', closenessScore: 0.9 },
+      { cliName: 'claude', closenessScore: 0.7 },
+      { cliName: 'codex', closenessScore: 0.8 },
+    ]);
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter);
     expect(result.ranking[0]).toBe('gemini');
     expect(result.topScore).toBe(0.9);
   });
@@ -443,16 +460,12 @@ describe('applyTopsisRanking', () => {
   // and filled every alternative with the winner's. Nothing tested the
   // producer end, so removing the map again would go unnoticed.
   it('reports the closeness score of every candidate, not just the top one', () => {
-    const mockRouter = {
-      selectModel: vi.fn(() => ({
-        scores: [
-          { cliName: 'gemini', closenessScore: 0.9 },
-          { cliName: 'claude', closenessScore: 0.7 },
-          { cliName: 'codex', closenessScore: 0.8 },
-        ],
-      })),
-    };
-    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
+    const mockRouter = stubRanking([
+      { cliName: 'gemini', closenessScore: 0.9 },
+      { cliName: 'claude', closenessScore: 0.7 },
+      { cliName: 'codex', closenessScore: 0.8 },
+    ]);
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter);
 
     expect(result.scoresByArm).toBeDefined();
     expect(result.scoresByArm?.get('gemini')).toBe(0.9);
@@ -470,31 +483,23 @@ describe('applyTopsisRanking', () => {
   });
 
   it('computes tolerance band size for close scores', () => {
-    const mockRouter = {
-      selectModel: vi.fn(() => ({
-        scores: [
-          { cliName: 'gemini', closenessScore: 0.9 },
-          { cliName: 'codex', closenessScore: 0.88 },
-          { cliName: 'claude', closenessScore: 0.6 },
-        ],
-      })),
-    };
-    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
+    const mockRouter = stubRanking([
+      { cliName: 'gemini', closenessScore: 0.9 },
+      { cliName: 'codex', closenessScore: 0.88 },
+      { cliName: 'claude', closenessScore: 0.6 },
+    ]);
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter);
     // gemini (0.90) and codex (0.88) are within 5% tolerance band; claude (0.60) is not
     expect(result.toleranceBandSize).toBe(2);
   });
 
   it('tolerance band includes all when scores are equal', () => {
-    const mockRouter = {
-      selectModel: vi.fn(() => ({
-        scores: [
-          { cliName: 'gemini', closenessScore: 0.8 },
-          { cliName: 'codex', closenessScore: 0.8 },
-          { cliName: 'claude', closenessScore: 0.8 },
-        ],
-      })),
-    };
-    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
+    const mockRouter = stubRanking([
+      { cliName: 'gemini', closenessScore: 0.8 },
+      { cliName: 'codex', closenessScore: 0.8 },
+      { cliName: 'claude', closenessScore: 0.8 },
+    ]);
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter);
     expect(result.toleranceBandSize).toBe(3);
   });
 });
@@ -1137,32 +1142,26 @@ describe('endpoint exclusion from CLI TOPSIS (#7151)', () => {
         ? { ...entry, pricing: { inputPer1M: 7, outputPer1M: 19 } }
         : entry;
     });
-    const selectModel = vi.fn().mockReturnValue({
-      scores: [{ cliName: 'codex', closenessScore: 0.9 }],
-      selectedModel: 'codex',
-    });
+    const rank = vi.spyOn(topsisHelpers, 'rankTopsisProfiles');
     try {
-      const router = { selectModel } as unknown as TopsisRouter;
+      const router = new TopsisRouter();
       applyTopsisRanking(makeTaskProfile(), ['codex'], router);
-      const profiles = selectModel.mock.calls[0]?.[0].profiles as TopsisModelProfile[];
+      const profiles = rank.mock.calls[0]?.[1];
       expect(profiles).toHaveLength(1);
-      expect(profiles[0]?.costPerMillionInput).toBe(7);
-      expect(profiles[0]?.costPerMillionOutput).toBe(19);
+      expect(profiles?.[0]?.costPerMillionInput).toBe(7);
+      expect(profiles?.[0]?.costPerMillionOutput).toBe(19);
     } finally {
       spy.mockRestore();
     }
   });
 
   it('does not inherit opencode TOPSIS scores or capability profiles', () => {
-    const selectModel = vi.fn().mockReturnValue({
-      scores: [{ cliName: 'opencode', closenessScore: 0.9 }],
-      selectedModel: 'opencode',
-    });
-    const router = { selectModel } as unknown as TopsisRouter;
+    const rank = vi.spyOn(topsisHelpers, 'rankTopsisProfiles');
+    const router = new TopsisRouter();
     const result = applyTopsisRanking(makeTaskProfile(), ['opencode', 'api:lab'], router);
     expect(result.scoresByArm?.has('api:lab')).toBe(false);
-    expect(result.scoresByArm?.get('opencode')).toBe(0.9);
-    expect(selectModel.mock.calls[0]?.[0].profiles).toHaveLength(1);
+    expect(Number.isFinite(result.scoresByArm?.get('opencode'))).toBe(true);
+    expect(rank.mock.calls[0]?.[1]).toHaveLength(1);
   });
 });
 

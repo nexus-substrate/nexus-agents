@@ -31,6 +31,8 @@ import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
 import { isCallerInputCliError, isHostUnavailableCliError } from './cli-error-helpers.js';
 import { findCanonicalModel } from '../config/model-config-helpers.js';
+import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
+import { toAgyModelSlug, fromAgyModelSlug } from '../config/agy-model-map.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 const logger = createLogger({ component: 'cli-to-model-adapter' });
@@ -170,9 +172,9 @@ export class CliToModelAdapter implements IModelAdapter {
       // usage crosses the type boundary through the one conversion (#4440).
       ...(u !== undefined ? { usage: toModelTokenUsage(u) } : {}),
       stopReason: 'end_turn',
-      // #6599: no CLI parser reports the model, so a forwarded model is the
-      // one that ran — report its canonical id, or cost and outcomes are
-      // attributed to the CLI default.
+      // Provider-reported identity wins. Otherwise attribute the configured
+      // selection (including documented native alias migration), not proof of
+      // a provider-served model. The CLI response itself remains unmeasured.
       model: response.model ?? this.reportedForwardedModel(forwarded) ?? this.modelId,
       // #6094: carry the transport's captured stderr up to the model boundary
       // so the voter path can read the structured "could not read" signal.
@@ -203,12 +205,15 @@ export class CliToModelAdapter implements IModelAdapter {
   /**
    * The canonical registry id of a model forwarded to this CLI, when the
    * registry lists it under this CLI. A name the registry does not know is not
-   * claimed: the CLI may have substituted its default (agy does), so the
-   * adapter default stays the honest report.
+   * claimed. The native Gemini adapter explicitly migrates accepted Flash
+   * aliases, so attribution follows that selection instead of the old alias.
    */
   private reportedForwardedModel(forwarded: string | undefined): string | undefined {
     // Endpoint model IDs are discovered, never looked up as CLI models.
     if (forwarded === undefined || !isCliName(this.cliAdapter.name)) return undefined;
+    if (this.cliAdapter instanceof GeminiCliAdapter) {
+      return fromAgyModelSlug(toAgyModelSlug(forwarded)) ?? undefined;
+    }
     return findCanonicalModel(this.cliAdapter.name, forwarded)?.id;
   }
 

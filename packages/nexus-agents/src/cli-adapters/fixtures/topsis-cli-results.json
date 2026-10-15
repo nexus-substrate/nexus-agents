@@ -1,0 +1,791 @@
+[
+  {
+    "name": "weighted",
+    "profiles": [
+      {
+        "cliName": "claude",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 10,
+        "costPerMillionOutput": 50,
+        "averageLatencyMs": 800,
+        "qualityScore": 10
+      },
+      {
+        "cliName": "gemini",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 0.75,
+        "costPerMillionOutput": 3.75,
+        "averageLatencyMs": 400,
+        "qualityScore": 8.5
+      },
+      {
+        "cliName": "codex",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 5,
+        "costPerMillionOutput": 30,
+        "averageLatencyMs": 500,
+        "qualityScore": 9.5
+      }
+    ],
+    "criteria": [
+      {
+        "name": "quality",
+        "weight": 0.5,
+        "beneficial": true
+      },
+      {
+        "name": "cost",
+        "weight": 0.3,
+        "beneficial": false
+      },
+      {
+        "name": "latency",
+        "weight": 0.2,
+        "beneficial": false
+      }
+    ],
+    "expected": {
+      "selectedModel": "gemini",
+      "scores": [
+        {
+          "cliName": "gemini",
+          "rawValues": {
+            "quality": 8.5,
+            "cost": 0.0026249999999999997,
+            "latency": 400
+          },
+          "normalizedValues": {
+            "quality": 0.5246313898711126,
+            "cost": 0.0649806100119203,
+            "latency": 0.3903600291794133
+          },
+          "weightedValues": {
+            "quality": 0.2623156949355563,
+            "cost": 0.019494183003576093,
+            "latency": 0.07807200583588267
+          },
+          "distanceToPIS": 0.04629100498862754,
+          "distanceToNIS": 0.2527864412513148,
+          "closenessScore": 0.8452206758797538
+        },
+        {
+          "cliName": "codex",
+          "rawValues": {
+            "quality": 9.5,
+            "cost": 0.02,
+            "latency": 500
+          },
+          "normalizedValues": {
+            "quality": 0.5863527298559493,
+            "cost": 0.4950903619955834,
+            "latency": 0.4879500364742666
+          },
+          "weightedValues": {
+            "quality": 0.29317636492797466,
+            "cost": 0.14852710859867502,
+            "latency": 0.09759000729485333
+          },
+          "distanceToPIS": 0.13140983032740722,
+          "distanceToNIS": 0.1295757394329137,
+          "closenessScore": 0.49648622164018896
+        },
+        {
+          "cliName": "claude",
+          "rawValues": {
+            "quality": 10,
+            "cost": 0.035,
+            "latency": 800
+          },
+          "normalizedValues": {
+            "quality": 0.6172133998483676,
+            "cost": 0.866408133492271,
+            "latency": 0.7807200583588266
+          },
+          "weightedValues": {
+            "quality": 0.3086066999241838,
+            "cost": 0.2599224400476813,
+            "latency": 0.15614401167176534
+          },
+          "distanceToPIS": 0.2527864412513148,
+          "distanceToNIS": 0.04629100498862754,
+          "closenessScore": 0.1547793241202462
+        }
+      ],
+      "positiveIdeal": {
+        "quality": 0.3086066999241838,
+        "cost": 0.019494183003576093,
+        "latency": 0.07807200583588267
+      },
+      "negativeIdeal": {
+        "quality": 0.2623156949355563,
+        "cost": 0.2599224400476813,
+        "latency": 0.15614401167176534
+      },
+      "costOptimized": true,
+      "estimatedSavingsPercent": 92.5,
+      "reasoning": "Selected \"gemini\" with closeness score 0.845. (34.9% better than codex). Cost savings: 92.5% vs highest quality model"
+    }
+  },
+  {
+    "name": "cost-only",
+    "profiles": [
+      {
+        "cliName": "claude",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 10,
+        "costPerMillionOutput": 50,
+        "averageLatencyMs": 800,
+        "qualityScore": 10
+      },
+      {
+        "cliName": "gemini",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 0.75,
+        "costPerMillionOutput": 3.75,
+        "averageLatencyMs": 400,
+        "qualityScore": 8.5
+      },
+      {
+        "cliName": "codex",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 5,
+        "costPerMillionOutput": 30,
+        "averageLatencyMs": 500,
+        "qualityScore": 9.5
+      }
+    ],
+    "criteria": [
+      {
+        "name": "quality",
+        "weight": 0,
+        "beneficial": true
+      },
+      {
+        "name": "cost",
+        "weight": 1,
+        "beneficial": false
+      },
+      {
+        "name": "latency",
+        "weight": 0,
+        "beneficial": false
+      }
+    ],
+    "expected": {
+      "selectedModel": "gemini",
+      "scores": [
+        {
+          "cliName": "gemini",
+          "rawValues": {
+            "quality": 8.5,
+            "cost": 0.0026249999999999997,
+            "latency": 400
+          },
+          "normalizedValues": {
+            "quality": 0.5246313898711126,
+            "cost": 0.0649806100119203,
+            "latency": 0.3903600291794133
+          },
+          "weightedValues": {
+            "quality": 0,
+            "cost": 0.0649806100119203,
+            "latency": 0
+          },
+          "distanceToPIS": 0,
+          "distanceToNIS": 0.8014275234803506,
+          "closenessScore": 1
+        },
+        {
+          "cliName": "codex",
+          "rawValues": {
+            "quality": 9.5,
+            "cost": 0.02,
+            "latency": 500
+          },
+          "normalizedValues": {
+            "quality": 0.5863527298559493,
+            "cost": 0.4950903619955834,
+            "latency": 0.4879500364742666
+          },
+          "weightedValues": {
+            "quality": 0,
+            "cost": 0.4950903619955834,
+            "latency": 0
+          },
+          "distanceToPIS": 0.4301097519836631,
+          "distanceToNIS": 0.3713177714966876,
+          "closenessScore": 0.46332046332046334
+        },
+        {
+          "cliName": "claude",
+          "rawValues": {
+            "quality": 10,
+            "cost": 0.035,
+            "latency": 800
+          },
+          "normalizedValues": {
+            "quality": 0.6172133998483676,
+            "cost": 0.866408133492271,
+            "latency": 0.7807200583588266
+          },
+          "weightedValues": {
+            "quality": 0,
+            "cost": 0.866408133492271,
+            "latency": 0
+          },
+          "distanceToPIS": 0.8014275234803506,
+          "distanceToNIS": 0,
+          "closenessScore": 0
+        }
+      ],
+      "positiveIdeal": {
+        "quality": 0,
+        "cost": 0.0649806100119203,
+        "latency": 0
+      },
+      "negativeIdeal": {
+        "quality": 0,
+        "cost": 0.866408133492271,
+        "latency": 0
+      },
+      "costOptimized": true,
+      "estimatedSavingsPercent": 92.5,
+      "reasoning": "Selected \"gemini\" with closeness score 1.000. (53.7% better than codex). Cost savings: 92.5% vs highest quality model"
+    }
+  },
+  {
+    "name": "quality-only",
+    "profiles": [
+      {
+        "cliName": "claude",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 10,
+        "costPerMillionOutput": 50,
+        "averageLatencyMs": 800,
+        "qualityScore": 10
+      },
+      {
+        "cliName": "gemini",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 0.75,
+        "costPerMillionOutput": 3.75,
+        "averageLatencyMs": 400,
+        "qualityScore": 8.5
+      },
+      {
+        "cliName": "codex",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 5,
+        "costPerMillionOutput": 30,
+        "averageLatencyMs": 500,
+        "qualityScore": 9.5
+      }
+    ],
+    "criteria": [
+      {
+        "name": "quality",
+        "weight": 1,
+        "beneficial": true
+      },
+      {
+        "name": "cost",
+        "weight": 0,
+        "beneficial": false
+      },
+      {
+        "name": "latency",
+        "weight": 0,
+        "beneficial": false
+      }
+    ],
+    "expected": {
+      "selectedModel": "claude",
+      "scores": [
+        {
+          "cliName": "claude",
+          "rawValues": {
+            "quality": 10,
+            "cost": 0.035,
+            "latency": 800
+          },
+          "normalizedValues": {
+            "quality": 0.6172133998483676,
+            "cost": 0.866408133492271,
+            "latency": 0.7807200583588266
+          },
+          "weightedValues": {
+            "quality": 0.6172133998483676,
+            "cost": 0,
+            "latency": 0
+          },
+          "distanceToPIS": 0,
+          "distanceToNIS": 0.09258200997725508,
+          "closenessScore": 1
+        },
+        {
+          "cliName": "codex",
+          "rawValues": {
+            "quality": 9.5,
+            "cost": 0.02,
+            "latency": 500
+          },
+          "normalizedValues": {
+            "quality": 0.5863527298559493,
+            "cost": 0.4950903619955834,
+            "latency": 0.4879500364742666
+          },
+          "weightedValues": {
+            "quality": 0.5863527298559493,
+            "cost": 0,
+            "latency": 0
+          },
+          "distanceToPIS": 0.03086066999241832,
+          "distanceToNIS": 0.061721339984836754,
+          "closenessScore": 0.6666666666666671
+        },
+        {
+          "cliName": "gemini",
+          "rawValues": {
+            "quality": 8.5,
+            "cost": 0.0026249999999999997,
+            "latency": 400
+          },
+          "normalizedValues": {
+            "quality": 0.5246313898711126,
+            "cost": 0.0649806100119203,
+            "latency": 0.3903600291794133
+          },
+          "weightedValues": {
+            "quality": 0.5246313898711126,
+            "cost": 0,
+            "latency": 0
+          },
+          "distanceToPIS": 0.09258200997725508,
+          "distanceToNIS": 0,
+          "closenessScore": 0
+        }
+      ],
+      "positiveIdeal": {
+        "quality": 0.6172133998483676,
+        "cost": 0,
+        "latency": 0
+      },
+      "negativeIdeal": {
+        "quality": 0.5246313898711126,
+        "cost": 0,
+        "latency": 0
+      },
+      "costOptimized": false,
+      "estimatedSavingsPercent": 0,
+      "reasoning": "Selected \"claude\" with closeness score 1.000. (33.3% better than codex)"
+    }
+  },
+  {
+    "name": "tie",
+    "profiles": [
+      {
+        "cliName": "claude",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 10,
+        "costPerMillionOutput": 50,
+        "averageLatencyMs": 800,
+        "qualityScore": 10
+      },
+      {
+        "cliName": "codex",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 10,
+        "costPerMillionOutput": 50,
+        "averageLatencyMs": 800,
+        "qualityScore": 10
+      }
+    ],
+    "criteria": [
+      {
+        "name": "quality",
+        "weight": 0.5,
+        "beneficial": true
+      },
+      {
+        "name": "cost",
+        "weight": 0.3,
+        "beneficial": false
+      },
+      {
+        "name": "latency",
+        "weight": 0.2,
+        "beneficial": false
+      }
+    ],
+    "expected": {
+      "selectedModel": "claude",
+      "scores": [
+        {
+          "cliName": "claude",
+          "rawValues": {
+            "quality": 10,
+            "cost": 0.035,
+            "latency": 800
+          },
+          "normalizedValues": {
+            "quality": 0.7071067811865475,
+            "cost": 0.7071067811865476,
+            "latency": 0.7071067811865475
+          },
+          "weightedValues": {
+            "quality": 0.35355339059327373,
+            "cost": 0.21213203435596426,
+            "latency": 0.1414213562373095
+          },
+          "distanceToPIS": 0,
+          "distanceToNIS": 0,
+          "closenessScore": 0
+        },
+        {
+          "cliName": "codex",
+          "rawValues": {
+            "quality": 10,
+            "cost": 0.035,
+            "latency": 800
+          },
+          "normalizedValues": {
+            "quality": 0.7071067811865475,
+            "cost": 0.7071067811865476,
+            "latency": 0.7071067811865475
+          },
+          "weightedValues": {
+            "quality": 0.35355339059327373,
+            "cost": 0.21213203435596426,
+            "latency": 0.1414213562373095
+          },
+          "distanceToPIS": 0,
+          "distanceToNIS": 0,
+          "closenessScore": 0
+        }
+      ],
+      "positiveIdeal": {
+        "quality": 0.35355339059327373,
+        "cost": 0.21213203435596426,
+        "latency": 0.1414213562373095
+      },
+      "negativeIdeal": {
+        "quality": 0.35355339059327373,
+        "cost": 0.21213203435596426,
+        "latency": 0.1414213562373095
+      },
+      "costOptimized": false,
+      "estimatedSavingsPercent": 0,
+      "reasoning": "Selected \"claude\" with closeness score 0.000. (0.0% better than codex)"
+    }
+  },
+  {
+    "name": "single-zero",
+    "profiles": [
+      {
+        "cliName": "gemini",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 0,
+        "costPerMillionOutput": 0,
+        "averageLatencyMs": 0,
+        "qualityScore": 0
+      }
+    ],
+    "criteria": [
+      {
+        "name": "quality",
+        "weight": 0.5,
+        "beneficial": true
+      },
+      {
+        "name": "cost",
+        "weight": 0.3,
+        "beneficial": false
+      },
+      {
+        "name": "latency",
+        "weight": 0.2,
+        "beneficial": false
+      }
+    ],
+    "expected": {
+      "selectedModel": "gemini",
+      "scores": [
+        {
+          "cliName": "gemini",
+          "rawValues": {
+            "quality": 0,
+            "cost": 0,
+            "latency": 0
+          },
+          "normalizedValues": {
+            "quality": 0,
+            "cost": 0,
+            "latency": 0
+          },
+          "weightedValues": {
+            "quality": 0,
+            "cost": 0,
+            "latency": 0
+          },
+          "distanceToPIS": 0,
+          "distanceToNIS": 0,
+          "closenessScore": 0
+        }
+      ],
+      "positiveIdeal": {
+        "quality": 0,
+        "cost": 0,
+        "latency": 0
+      },
+      "negativeIdeal": {
+        "quality": 0,
+        "cost": 0,
+        "latency": 0
+      },
+      "costOptimized": false,
+      "estimatedSavingsPercent": 0,
+      "reasoning": "Selected \"gemini\" with closeness score 0.000"
+    }
+  },
+  {
+    "name": "zero-tokens",
+    "profiles": [
+      {
+        "cliName": "claude",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 10,
+        "costPerMillionOutput": 50,
+        "averageLatencyMs": 800,
+        "qualityScore": 10
+      },
+      {
+        "cliName": "gemini",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 0.75,
+        "costPerMillionOutput": 3.75,
+        "averageLatencyMs": 400,
+        "qualityScore": 8.5
+      },
+      {
+        "cliName": "codex",
+        "capabilities": {
+          "reasoning": 8,
+          "contextWindow": 200000,
+          "codeGeneration": 8,
+          "speed": 8,
+          "cost": 6
+        },
+        "costPerMillionInput": 5,
+        "costPerMillionOutput": 30,
+        "averageLatencyMs": 500,
+        "qualityScore": 9.5
+      }
+    ],
+    "criteria": [
+      {
+        "name": "quality",
+        "weight": 0.5,
+        "beneficial": true
+      },
+      {
+        "name": "cost",
+        "weight": 0.3,
+        "beneficial": false
+      },
+      {
+        "name": "latency",
+        "weight": 0.2,
+        "beneficial": false
+      }
+    ],
+    "expectedInputTokens": 0,
+    "expectedOutputTokens": 0,
+    "expected": {
+      "selectedModel": "codex",
+      "scores": [
+        {
+          "cliName": "codex",
+          "rawValues": {
+            "quality": 9.5,
+            "cost": 0,
+            "latency": 500
+          },
+          "normalizedValues": {
+            "quality": 0.5863527298559493,
+            "cost": 0,
+            "latency": 0.4879500364742666
+          },
+          "weightedValues": {
+            "quality": 0.29317636492797466,
+            "cost": 0,
+            "latency": 0.09759000729485333
+          },
+          "distanceToPIS": 0.024880667576405942,
+          "distanceToNIS": 0.06618876325292974,
+          "closenessScore": 0.7267945198534032
+        },
+        {
+          "cliName": "gemini",
+          "rawValues": {
+            "quality": 8.5,
+            "cost": 0,
+            "latency": 400
+          },
+          "normalizedValues": {
+            "quality": 0.5246313898711126,
+            "cost": 0,
+            "latency": 0.3903600291794133
+          },
+          "weightedValues": {
+            "quality": 0.2623156949355563,
+            "cost": 0,
+            "latency": 0.07807200583588267
+          },
+          "distanceToPIS": 0.04629100498862754,
+          "distanceToNIS": 0.07807200583588267,
+          "closenessScore": 0.6277751344091436
+        },
+        {
+          "cliName": "claude",
+          "rawValues": {
+            "quality": 10,
+            "cost": 0,
+            "latency": 800
+          },
+          "normalizedValues": {
+            "quality": 0.6172133998483676,
+            "cost": 0,
+            "latency": 0.7807200583588266
+          },
+          "weightedValues": {
+            "quality": 0.3086066999241838,
+            "cost": 0,
+            "latency": 0.15614401167176534
+          },
+          "distanceToPIS": 0.07807200583588267,
+          "distanceToNIS": 0.04629100498862754,
+          "closenessScore": 0.37222486559085644
+        }
+      ],
+      "positiveIdeal": {
+        "quality": 0.3086066999241838,
+        "cost": 0,
+        "latency": 0.07807200583588267
+      },
+      "negativeIdeal": {
+        "quality": 0.2623156949355563,
+        "cost": 0,
+        "latency": 0.15614401167176534
+      },
+      "costOptimized": true,
+      "estimatedSavingsPercent": 42.85714285714286,
+      "reasoning": "Selected \"codex\" with closeness score 0.727. (9.9% better than gemini). Cost savings: 42.9% vs highest quality model"
+    }
+  },
+  {
+    "name": "empty",
+    "profiles": [],
+    "criteria": [
+      {
+        "name": "quality",
+        "weight": 0.5,
+        "beneficial": true
+      },
+      {
+        "name": "cost",
+        "weight": 0.3,
+        "beneficial": false
+      },
+      {
+        "name": "latency",
+        "weight": 0.2,
+        "beneficial": false
+      }
+    ],
+    "error": "No models available for selection"
+  }
+]

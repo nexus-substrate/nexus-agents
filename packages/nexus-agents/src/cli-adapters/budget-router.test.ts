@@ -4,10 +4,19 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { BudgetRouter, createBudgetRouter, estimateRegistryCostUsd } from './budget-router.js';
+import { BudgetRouter, createBudgetRouter } from './budget-router.js';
 import { estimateArmCostUsd } from './budget-arm-cost.js';
 import { estimateCost, estimateTokens } from './budget-utils.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
+import { DEFAULT_CAPABILITIES } from './types-capability.js';
+import { createModelToCliAdapter } from './model-to-cli-adapter.js';
+import { buildGatewaySlotRouterArm, gatewayServedSlotOf } from './gateway-slot-arm.js';
+import {
+  setGatewaySlotCatalog,
+  _resetGatewaySlotCatalog,
+} from '../adapters/gateway-family-slots.js';
+import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
+import type { IModelAdapter } from '../core/index.js';
 import { routingArmCliSlot } from './types.js';
 import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
 import type {
@@ -608,8 +617,9 @@ describe('estimateArmCostUsd (#4392 inc 2)', () => {
   it('a vendor arm is priced by the registry regardless of the declaration', () => {
     vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
     const viaArm = estimateArmCostUsd('api:google', 1_000, 1_000);
-    const viaSlot = estimateRegistryCostUsd('gemini', 1_000, 1_000);
-    expect(viaArm).toBe(viaSlot);
+    const pricing = getModelPricing('gemini-3-pro');
+    expect(pricing).toBeDefined();
+    expect(viaArm).toBe(computeTokenCost({ input: 1_000, output: 1_000 }, pricing!).costUsd);
     expect(viaArm).toBeGreaterThan(0);
   });
 
@@ -745,18 +755,26 @@ describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
   });
 
   it('skips the undeclared gateway but still selects a priceable vendor arm, and says so', () => {
+    // Give the unpriced gateway priority explicitly; the native Flash default
+    // now has a higher cost score than opencode, so insertion order is insufficient.
+    const priorCost = DEFAULT_CAPABILITIES.opencode.cost;
+    Object.assign(DEFAULT_CAPABILITIES.opencode, { cost: 10 });
     const r = makeRouter(['api:custom-openai', 'gemini']);
-    const result = r.checkBudget(task, budget);
-    expect(result.withinBudget).toBe(true);
-    expect(result.adapter?.name).toBe('gemini');
-    expect(result.estimatedCostUsd).toBeCloseTo(
-      estimateCost('gemini', inputTokens, outputTokens),
-      12
-    );
-    expect(result.unpricedArms).toEqual([
-      { arm: 'api:custom-openai', reason: 'gateway cost unset' },
-    ]);
-    r.dispose();
+    try {
+      const result = r.checkBudget(task, budget);
+      expect(result.withinBudget).toBe(true);
+      expect(result.adapter?.name).toBe('gemini');
+      expect(result.estimatedCostUsd).toBeCloseTo(
+        estimateCost('gemini', inputTokens, outputTokens),
+        12
+      );
+      expect(result.unpricedArms).toEqual([
+        { arm: 'api:custom-openai', reason: 'gateway cost unset' },
+      ]);
+    } finally {
+      Object.assign(DEFAULT_CAPABILITIES.opencode, { cost: priorCost });
+      r.dispose();
+    }
   });
 
   it.each<RoutingArmId>(['claude', 'gemini', 'codex', 'api:google'])(
@@ -764,7 +782,10 @@ describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
     (arm) => {
       // Control: the pre-#6393 formula, `estimateCost(displaySlot, in, out)`,
       // must survive for every non-gateway arm — declared or not.
-      const before = estimateCost(routingArmCliSlot(arm) ?? 'opencode', inputTokens, outputTokens);
+      const before =
+        arm === 'api:google'
+          ? (estimateArmCostUsd(arm, inputTokens, outputTokens) ?? NaN)
+          : estimateCost(routingArmCliSlot(arm) ?? 'opencode', inputTokens, outputTokens);
       expect(before).toBeGreaterThan(0);
       for (const decl of [undefined, 'free']) {
         vi.stubEnv('NEXUS_GATEWAY_COST', decl);
@@ -820,4 +841,96 @@ describe('BudgetRouter endpoint metadata (#7151)', () => {
     expect(result.estimatedLatencyMs).toBeUndefined();
     router.dispose();
   });
+});
+
+describe('API model quality stays separate from CLI defaults (#7423)', () => {
+  it('ranks the API bridge by its own profile rather than the Flash display slot', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const priorCost = DEFAULT_CAPABILITIES.gemini.cost;
+    Object.assign(DEFAULT_CAPABILITIES.gemini, { cost: 9 });
+    const pro = createModelToCliAdapter({ modelId: 'gemini-3.1-pro-preview' } as IModelAdapter, {
+      name: 'gemini',
+      capabilities: {
+        reasoning: 10,
+        contextWindow: 1_048_576,
+        codeGeneration: 9,
+        speed: 8,
+        cost: 6,
+      },
+    });
+    const alternative = createModelToCliAdapter({ modelId: 'control-model' } as IModelAdapter, {
+      name: 'opencode',
+      capabilities: { reasoning: 8, contextWindow: 200000, codeGeneration: 8, speed: 7, cost: 8 },
+    });
+    const router = new BudgetRouter(
+      new Map<RoutingArmId, ICliAdapter>([
+        ['api:google', pro],
+        ['api:custom-openai', alternative],
+      ]),
+      { sessionBudget: { resetIntervalMs: 0 } }
+    );
+    try {
+      // Flash's CLI cost score is 9; Google's API Pro score is 6. The endpoint
+      // score of 8 distinguishes metadata reuse from accidental slot collapse.
+      expect(router.checkBudget({ content: 'bounded task' }).adapter).toBe(alternative);
+    } finally {
+      Object.assign(DEFAULT_CAPABILITIES.gemini, { cost: priorCost });
+      router.dispose();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describe('Gateway budget selection uses the actual serving model (#7423)', () => {
+  it.each([9, 5])(
+    'keeps an affordable control eligible regardless of native Gemini cost score %s',
+    async (nativeCostScore) => {
+      vi.stubEnv('NEXUS_DISABLED_CLIS', 'gemini');
+      vi.stubEnv('NEXUS_GATEWAY_COST', 'free;openai-compat=priced:2,12');
+      const priorCost = DEFAULT_CAPABILITIES.gemini.cost;
+      Object.assign(DEFAULT_CAPABILITIES.gemini, { cost: nativeCostScore });
+      const model = fakeGatewayModel('gemini-3.1-pro-preview', 'api:openai-compat');
+      setGatewaySlotCatalog([model]);
+      const createCli = vi.fn(() => createMockAdapter('gemini'));
+      const gateway = buildGatewaySlotRouterArm('gemini', createCli, () => Promise.resolve(false));
+      expect(gateway).toBeDefined();
+      expect(gateway).not.toBe('unavailable');
+      if (gateway === undefined || gateway === 'unavailable')
+        throw new Error('Gateway fixture missing');
+      const control = createModelToCliAdapter({ modelId: 'control-model' } as IModelAdapter, {
+        name: 'opencode',
+        capabilities: { reasoning: 8, contextWindow: 200000, codeGeneration: 8, speed: 7, cost: 8 },
+      });
+      const router = new BudgetRouter(
+        new Map<RoutingArmId, ICliAdapter>([
+          ['gemini', gateway],
+          ['api:custom-openai', control],
+        ]),
+        { sessionBudget: { costBudgetUsd: 0.01, resetIntervalMs: 0 } }
+      );
+      try {
+        expect(gatewayServedSlotOf(gateway)?.modelId).toBe('gemini-3.1-pro-preview');
+        expect(gateway.capabilities.cost).toBe(6);
+        // Both pass the per-task ceiling. Actual Pro costs $0.014, above the
+        // session's $0.01; the higher cost-efficiency control is explicitly free.
+        const task = { content: 'x'.repeat(4000), maxTokens: 1000 };
+        const checked = router.checkBudget(task);
+        expect(checked.withinBudget).toBe(true);
+        expect(checked.adapter === control).toBe(true);
+        expect(checked.estimatedCostUsd).toBe(0);
+        const routed = await router.routeWithBudget(task);
+        expect(routed.ok).toBe(true);
+        if (routed.ok) expect(routed.value.adapter).toBe(control);
+        expect(createCli).not.toHaveBeenCalled();
+        expect(model.complete).not.toHaveBeenCalled();
+        expect(model.stream).not.toHaveBeenCalled();
+      } finally {
+        router.dispose();
+        await gateway.dispose();
+        Object.assign(DEFAULT_CAPABILITIES.gemini, { cost: priorCost });
+        _resetGatewaySlotCatalog();
+        vi.unstubAllEnvs();
+      }
+    }
+  );
 });

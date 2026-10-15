@@ -14,6 +14,8 @@ import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-type
 import { resolveCapabilityProfile } from './delegate-to-model-types.js';
 import {
   getDefaultModelForCli,
+  getDefaultModelForGoogleApi,
+  lookupInTreeCapability,
   FALLBACK_CONTEXT_WINDOW,
 } from '../../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
@@ -21,6 +23,8 @@ import { isEndpointArmId, routingArmCliSlot } from '../../cli-adapters/types.js'
 import type { RoutingArmId } from '../../cli-adapters/types.js';
 // #5269: the same pure capability comparison the non-router path uses, so both
 // paths describe an alternative the same way.
+import { ModelToCliAdapter } from '../../cli-adapters/model-to-cli-adapter.js';
+import { gatewayServedSlotOf } from '../../cli-adapters/gateway-slot-arm.js';
 import { getTradeoff } from './delegate-to-model-helpers.js';
 
 /**
@@ -53,16 +57,20 @@ export function mapCompositeDecisionToOutput(
   // otherwise fall back to the CLI default. Default-off → decision.model undefined.
   const slot = routingArmCliSlot(decision.cliName);
   const endpoint = slot === undefined && isEndpointArmId(decision.cliName);
-  const modelName = endpoint
+  // API bridges ignore task.model; describe the adapter that will actually run.
+  const gateway = gatewayServedSlotOf(decision.adapter);
+  const adapterBound =
+    endpoint || decision.adapter instanceof ModelToCliAdapter || gateway !== undefined;
+  const modelName = adapterBound
     ? decision.adapter.getModelInfo().id
     : (decision.model ?? (slot === undefined ? decision.cliName : cliNameToModel(slot)));
-  const caps = endpoint
+  const caps = adapterBound
     ? decision.adapter.capabilities
     : (resolveCapabilityProfile(modelName) ?? DEFAULT_CAPABILITIES);
 
   return {
     recommended_model: modelName,
-    reasoning: decision.reason,
+    reasoning: describeGatewayCapabilityEvidence(decision),
     capabilities: caps,
     estimated_tokens: estimatedTokens,
     // A decision has only the winner's adapter. Endpoint alternatives cannot
@@ -74,6 +82,14 @@ export function mapCompositeDecisionToOutput(
       })
       .slice(0, 3),
   };
+}
+
+/** A gateway with no canonical metadata has estimates, not model measurements. */
+function describeGatewayCapabilityEvidence(decision: CompositeRoutingDecision): string {
+  const served = gatewayServedSlotOf(decision.adapter);
+  if (served === undefined || lookupInTreeCapability(served.modelId)?.qualityScores !== undefined)
+    return decision.reason;
+  return `${decision.reason}; capabilities unmeasured — neutral bridge estimates shown`;
 }
 
 /**
@@ -95,7 +111,7 @@ function describeAlternative(
   decision: CompositeRoutingDecision,
   bestCaps: CapabilityProfile
 ): { model: string; score: number; tradeoff: string } {
-  const model = cliNameToModel(slot);
+  const model = alt === 'api:google' ? getDefaultModelForGoogleApi() : cliNameToModel(slot);
   const altCaps = resolveCapabilityProfile(model) ?? DEFAULT_CAPABILITIES;
   const ranked = decision.alternativeScores?.get(alt);
 

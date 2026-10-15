@@ -4,6 +4,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { createModelToCliAdapter } from '../../cli-adapters/model-to-cli-adapter.js';
+import type { IModelAdapter } from '../../core/index.js';
 import type { ILogger } from '../../core/index.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
@@ -56,7 +58,7 @@ describe('cliNameToModel', () => {
   });
 
   it('maps gemini to default model from registry', () => {
-    expect(cliNameToModel('gemini')).toBe('gemini-3-pro');
+    expect(cliNameToModel('gemini')).toBe('gemini-3.8-flash');
   });
 
   it('maps codex to default model from registry', () => {
@@ -134,7 +136,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision({ alternatives: ['gemini', 'codex'] });
     const output = mapCompositeDecisionToOutput(decision, 100);
 
-    expect(output.alternatives[0]!.model).toBe('gemini-3-pro');
+    expect(output.alternatives[0]!.model).toBe('gemini-3.8-flash');
     expect(output.alternatives[1]!.model).toBe('gpt-6.1-sol');
   });
 
@@ -209,7 +211,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision({ cliName: 'gemini' });
     const output = mapCompositeDecisionToOutput(decision, 100);
 
-    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['gemini-3-pro']);
+    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['gemini-3.8-flash']);
   });
 
   it('produces codex capabilities for codex decision', () => {
@@ -482,5 +484,42 @@ describe('endpoint recommendations (#7151)', () => {
       500
     );
     expect(output.alternatives.map((alternative) => alternative.model)).toEqual(['gpt-6.1-sol']);
+  });
+});
+
+describe('actual Google API preview metadata (#7423)', () => {
+  it.each([undefined, 'gemini-3.8-flash'])(
+    'prefers actual API identity/capabilities over route hint %s',
+    (model) => {
+      const adapter = createModelToCliAdapter(
+        { modelId: 'gemini-3.1-pro-preview' } as IModelAdapter,
+        {
+          name: 'gemini',
+          capabilities: {
+            reasoning: 10,
+            codeGeneration: 9,
+            speed: 8,
+            cost: 6,
+            contextWindow: 1_048_576,
+          },
+        }
+      );
+      const decision = makeDecision({
+        cliName: 'api:google',
+        adapter,
+        ...(model === undefined ? {} : { model }),
+      });
+      const output = mapCompositeDecisionToOutput(decision, 1500);
+      expect(output.recommended_model).toBe(adapter.getModelInfo().id);
+      expect(output.capabilities).toEqual(adapter.capabilities);
+    }
+  );
+
+  it('describes the separate canonical Google API alternative rather than native Flash', () => {
+    const output = mapCompositeDecisionToOutput(
+      makeDecision({ alternatives: ['api:google'] }),
+      1500
+    );
+    expect(output.alternatives[0]?.model).toBe('gemini-3-pro');
   });
 });

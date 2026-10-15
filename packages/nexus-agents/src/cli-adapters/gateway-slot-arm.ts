@@ -52,7 +52,7 @@ import {
   type GatewaySlotResolution,
 } from '../adapters/gateway-family-slots.js';
 import { isCliDisabled } from './disabled-clis.js';
-import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
+import { lookupInTreeCapability } from '../config/model-config-helpers.js';
 import { isCliBinaryOnPath } from './cli-binary-on-path.js';
 import { createModelToCliAdapter } from './model-to-cli-adapter.js';
 
@@ -91,9 +91,14 @@ class GatewaySlotArm implements ICliAdapter {
 
   constructor(private readonly deps: GatewaySlotArmDeps) {
     this.name = deps.cli;
+    const model = lookupInTreeCapability(deps.gatewayModel.modelId);
+    const capabilities =
+      model?.qualityScores === undefined
+        ? undefined
+        : { ...model.qualityScores, contextWindow: model.contextWindow };
     this.gatewayAdapter = createModelToCliAdapter(
       createGatewaySlotAdapter(deps.cli, deps.gatewayModel),
-      { name: deps.cli, capabilities: buildCliCapabilityProfiles()[deps.cli] }
+      { name: deps.cli, ...(capabilities === undefined ? {} : { capabilities }) }
     );
     if (deps.cliAdapter === undefined) this.resolved = this.gatewayAdapter;
   }
