@@ -13,6 +13,8 @@ import { isJsonDocument, contextValueEnd } from '../core/redaction-boundaries.js
 
 /** Placeholder text that replaces redacted keys. */
 export const REDACTED_KEY_PLACEHOLDER = '[REDACTED_KEY]';
+/** Stable marker for delivered MCP tool text and byte-bound diagnostic artifacts. */
+export const TOOL_OUTPUT_REDACTION_PLACEHOLDER = '[REDACTED]';
 
 /**
  * Redacts known API key patterns from a string: the shared credential-shape

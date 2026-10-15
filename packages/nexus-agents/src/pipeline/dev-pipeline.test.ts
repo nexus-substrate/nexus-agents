@@ -461,6 +461,38 @@ describe('runDevPipeline', () => {
     expect(stages.securityScan).not.toHaveBeenCalled();
   });
 
+  it('replans and revotes a rejected session whose diagnostics include an exact proposal (#7424)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pipeline-rejected-evidence-'));
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    try {
+      const stages = createMockStages({
+        vote: vi.fn().mockResolvedValue({
+          kind: 'rejected',
+          feedback: 'Needs work',
+          approvalPercentage: 0,
+          proposal: 'Exact rejected proposal',
+          voteRecordId: 'vote-evidence-test',
+        }),
+      });
+      const options = { sessionId: 'rejected-evidence-resume', mode: 'harness' as const };
+      const first = await runDevPipeline('Build feature X', stages, options);
+      expect(first.planVoteProposal).toBe('Exact rejected proposal');
+      const checkpoint = loadCheckpointState(options.sessionId);
+      expect(checkpoint?.plan).toBeUndefined();
+      expect(stages.implement).not.toHaveBeenCalled();
+      vi.mocked(stages.plan).mockClear();
+      vi.mocked(stages.vote).mockClear();
+      const resumed = await runDevPipeline('Build feature X', stages, options);
+      expect(resumed.planStatus).toBe('unapproved');
+      expect(stages.plan).toHaveBeenCalled();
+      expect(stages.vote).toHaveBeenCalled();
+      expect(stages.implement).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('#5506: retries the same no_quorum plan separately, then stops without implementing', async () => {
     const vote = vi.fn().mockResolvedValue({
       kind: 'no_quorum',

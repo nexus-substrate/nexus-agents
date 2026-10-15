@@ -277,7 +277,7 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
         'Vote',
         `${label} (${String(Math.round(vote.approvalPercentage))}%, ${String(ms)}ms)`
       );
-      return vote;
+      return vote.kind === 'approved' ? vote : { ...vote, proposal };
     } catch (error) {
       return failClosedVote(config, start, error);
     }

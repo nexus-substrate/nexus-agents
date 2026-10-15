@@ -101,7 +101,7 @@ export interface PipelineTask {
  * the ledger; absent when nothing was persisted (a simulated panel, a failed
  * write, or a stage that does not record).
  */
-export type VoteResult =
+export type VoteResult = (
   | {
       readonly kind: 'approved';
       readonly approvalPercentage: number;
@@ -125,7 +125,8 @@ export type VoteResult =
       readonly reason: string;
       readonly approvalPercentage: number;
       readonly voteRecordId?: string;
-    };
+    }
+) & { readonly proposal?: string };
 
 /** Check if the vote result is approved. */
 export function isApproved(result: VoteResult): boolean {
@@ -274,6 +275,8 @@ export interface DevPipelineResult {
    * alongside {@link planVoteDecision} only when a record was written.
    */
   readonly planVoteRecordId?: string;
+  /** Exact executed proposal, diagnostics only; never a resumable approved plan. */
+  readonly planVoteProposal?: string;
   /** Last rejection feedback when {@link planStatus} is `'unapproved'`. */
   readonly planVoteFeedback?: string;
   /**
@@ -808,6 +811,9 @@ function buildPlanFailureResult(planResult: PlanVoteResult): DevPipelineResult {
  */
 function planVoteEvidence(planResult: PlanVoteResult): Partial<DevPipelineResult> {
   return {
+    ...(planResult.planVoteProposal !== undefined
+      ? { planVoteProposal: planResult.planVoteProposal }
+      : {}),
     ...(planResult.planVoteDecision !== undefined
       ? { planVoteDecision: planResult.planVoteDecision }
       : {}),
@@ -1219,6 +1225,8 @@ interface PlanVoteResult {
   readonly planVoteFeedback?: string;
   readonly planVoteDecision?: 'approved' | 'rejected' | 'no_quorum';
   readonly planVoteRecordId?: string;
+  /** Exact executed proposal, diagnostics only; never a resumable approved plan. */
+  readonly planVoteProposal?: string;
 }
 
 /** Run decompose or return from checkpoint. */
@@ -1333,9 +1341,17 @@ function buildApprovedPlanResult(
   };
 }
 
-/** The persisted record id of a vote, as a field to spread, or `{}` when none (#7181). */
-function recordIdOf(vote: VoteResult | undefined): { planVoteRecordId?: string } {
-  return vote?.voteRecordId !== undefined ? { planVoteRecordId: vote.voteRecordId } : {};
+/** Return the measured record ID and, for an unapproved vote, its proposal. */
+function recordIdOf(vote: VoteResult | undefined): {
+  planVoteRecordId?: string;
+  planVoteProposal?: string;
+} {
+  return {
+    ...(vote?.voteRecordId !== undefined ? { planVoteRecordId: vote.voteRecordId } : {}),
+    ...(vote?.kind !== 'approved' && vote?.proposal !== undefined
+      ? { planVoteProposal: vote.proposal }
+      : {}),
+  };
 }
 
 /** Run one stage-aware plan vote so progress/outcome instrumentation remains intact. */
