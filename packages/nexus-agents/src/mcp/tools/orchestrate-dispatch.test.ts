@@ -93,6 +93,7 @@ function makeMockAdapter(responseText: string): IModelAdapter {
     providerId: 'test',
     modelId: 'test-model',
     capabilities: ['text_generation'] as const,
+    supportsAccessMode: vi.fn().mockResolvedValue(true),
     complete: vi.fn().mockResolvedValue(makeSuccessResponse(responseText)),
     stream: vi.fn(),
     countTokens: vi.fn().mockResolvedValue(100),
@@ -182,6 +183,7 @@ describe('executeWorkerDispatch', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockRejectedValue(new Error('Model unavailable')),
       stream: vi.fn(),
       countTokens: vi.fn().mockResolvedValue(100),
@@ -209,6 +211,7 @@ describe('executeWorkerDispatch', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi
         .fn()
         .mockResolvedValue(
@@ -240,6 +243,7 @@ describe('executeWorkerDispatch', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockImplementation(() => {
         concurrent++;
         if (concurrent > maxConcurrent) maxConcurrent = concurrent;
@@ -300,6 +304,7 @@ describe('executeWorkerDispatch', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi
         .fn()
         .mockResolvedValueOnce(makeSuccessResponse('Modified src/auth.ts for feature'))
@@ -319,6 +324,28 @@ describe('executeWorkerDispatch', () => {
 
     expect(result.conflicts).toHaveLength(1);
     expect(result.conflicts[0]?.filePath).toBe('src/auth.ts');
+  });
+
+  it('preserves optional actual-mode evidence through synthesis without reserving a completion', async () => {
+    const adapter = makeMockAdapter('TEST worker response');
+    vi.mocked(adapter.supportsAccessMode!).mockImplementation(function (this: IModelAdapter) {
+      expect(this).toBe(adapter);
+      return Promise.resolve(true);
+    });
+    mockSynthesizeResults.mockImplementationOnce(
+      async (input: { modelAdapter: IModelAdapter }): Promise<SynthesisResult> => {
+        expect(await input.modelAdapter.supportsAccessMode?.('read-only-analysis')).toBe(true);
+        return { ok: false, error: 'TEST synthesis not completed' };
+      }
+    );
+    const result = await executeWorkerDispatch({
+      agentPlan: makePlan(1),
+      taskDescription: 'Review only.',
+      modelAdapter: adapter,
+      logger,
+      synthesize: true,
+    });
+    expect(result.totalModelCalls).toBe(1);
   });
 
   it('handles synthesis failure without crashing (#1469)', async () => {
@@ -343,6 +370,7 @@ describe('executeWorkerDispatch', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi
         .fn()
         .mockResolvedValueOnce(makeSuccessResponse('Modified src/auth.ts for feature'))

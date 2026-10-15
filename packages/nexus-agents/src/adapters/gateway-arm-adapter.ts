@@ -1,3 +1,5 @@
+import type { ExecutionAccessMode } from '../core/types/model.js';
+import { queryModelAccessMode } from './access-mode-support.js';
 /**
  * Gateway endpoint arm adapter (#4392 increment 2, step 2).
  *
@@ -122,6 +124,16 @@ class GatewayArmAdapter implements IResilientAdapter {
 
   get capabilities(): IModelAdapter['capabilities'] {
     return this.requireDelegate().capabilities;
+  }
+
+  supportsAccessMode(
+    mode: ExecutionAccessMode,
+    signal?: AbortSignal
+  ): Promise<boolean | undefined> {
+    const selected = this.resolveDelegate();
+    return selected.ok
+      ? queryModelAccessMode(selected.value, mode, signal)
+      : Promise.resolve(undefined);
   }
 
   /**

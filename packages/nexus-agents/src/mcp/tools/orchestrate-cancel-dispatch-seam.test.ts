@@ -26,6 +26,23 @@ import type {
   Result,
 } from '../../core/index.js';
 
+// Fallback-only routing must never acquire a native adapter during this seam.
+const registryAcquire = vi.hoisted(() =>
+  vi.fn(() => {
+    throw new Error('Unexpected fixture native acquisition');
+  })
+);
+vi.mock('../../adapters/unified-registry.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../adapters/unified-registry.js')>()),
+  getGlobalRegistry: () => ({ getAdapterForCli: registryAcquire }),
+}));
+beforeEach(() => {
+  registryAcquire.mockClear();
+});
+afterEach(() => {
+  expect(registryAcquire).not.toHaveBeenCalled();
+});
+
 vi.mock('../../context/context-retriever.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../context/context-retriever.js')>();
   return {
@@ -172,6 +189,7 @@ function parkingAdapter(opts: {
     providerId: 'fake',
     modelId: 'fake-model',
     capabilities: [],
+    supportsAccessMode: () => Promise.resolve(true),
     complete: async (request: CompletionRequest) => {
       const label = callLabel(request);
       calls.push(label);
@@ -619,6 +637,7 @@ describe('executeWorkerDispatch cancellation (#6680)', () => {
       providerId: 'fake',
       modelId: 'fake-model',
       capabilities: [],
+      supportsAccessMode: () => Promise.resolve(true),
       complete: (request: CompletionRequest) => {
         const label = callLabel(request);
         calls.push(label);
@@ -656,6 +675,7 @@ describe('executeWorkerDispatch cancellation (#6680)', () => {
       providerId: 'fake',
       modelId: 'fake-model',
       capabilities: [],
+      supportsAccessMode: () => Promise.resolve(true),
       complete: (request: CompletionRequest) => {
         const label = callLabel(request);
         calls.push(label);

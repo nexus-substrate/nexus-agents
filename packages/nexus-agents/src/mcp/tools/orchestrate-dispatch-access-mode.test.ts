@@ -56,6 +56,7 @@ function recordingAdapter(): { adapter: IModelAdapter; requests: CompletionReque
     providerId: 'test',
     modelId: 'test-model',
     capabilities: ['text_generation'] as const,
+    supportsAccessMode: vi.fn().mockResolvedValue(true),
     complete: vi.fn((request: CompletionRequest) => {
       requests.push(request);
       return Promise.resolve(

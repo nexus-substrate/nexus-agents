@@ -1,3 +1,5 @@
+import type { ExecutionAccessMode } from '../core/types/model.js';
+import { queryModelAccessMode } from './access-mode-support.js';
 /**
  * A CLI slot adapter bound to one requested model (#6599).
  *
@@ -42,6 +44,13 @@ export class ModelBoundAdapter implements IResilientAdapter {
 
   get capabilities(): readonly ModelCapability[] {
     return this.slot.capabilities;
+  }
+
+  supportsAccessMode(
+    mode: ExecutionAccessMode,
+    signal?: AbortSignal
+  ): Promise<boolean | undefined> {
+    return queryModelAccessMode(this.slot, mode, signal);
   }
 
   private bind(request: CompletionRequest): CompletionRequest {

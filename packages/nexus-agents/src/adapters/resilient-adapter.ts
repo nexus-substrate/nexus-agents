@@ -1,3 +1,8 @@
+import type { ExecutionAccessMode } from '../core/types/model.js';
+import { queryModelAccessMode } from './access-mode-support.js';
+import { withTimeout } from '../utils/async-utils.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
+import { raceAbort, throwIfAborted } from './abort-utils.js';
 /**
  * Resilient Model Adapter
  *
@@ -139,6 +144,22 @@ export class ResilientAdapter implements IResilientAdapter {
   get gatewayArm(): EndpointArmId | undefined {
     const arm: unknown = (this.currentAdapter as { gatewayArm?: unknown } | undefined)?.gatewayArm;
     return typeof arm === 'string' && isEndpointArmId(arm) ? arm : undefined;
+  }
+
+  /** Resolve current serving evidence; cancellation stops waiting, not underlying discovery. */
+  async supportsAccessMode(
+    mode: ExecutionAccessMode,
+    signal?: AbortSignal
+  ): Promise<boolean | undefined> {
+    throwIfAborted(signal, 'Access-mode detection aborted');
+    const selected = await withTimeout(
+      raceAbort(this.ensureAdapter(), signal),
+      CLI_SUBPROCESS_TIMEOUTS.spawnMs,
+      'Access-mode detection unavailable'
+    );
+    throwIfAborted(signal, 'Access-mode detection aborted');
+    if (!selected.ok || selected.value === undefined) return undefined;
+    return queryModelAccessMode(selected.value, mode, signal);
   }
 
   // --- IModelAdapter methods ---

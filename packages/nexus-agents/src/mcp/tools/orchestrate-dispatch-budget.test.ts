@@ -40,6 +40,7 @@ function adapter(): FixtureAdapter {
     providerId: 'fixture',
     modelId: 'fixture',
     capabilities: ['completion'] as const,
+    supportsAccessMode: vi.fn().mockResolvedValue(true),
     complete: vi.fn<IModelAdapter['complete']>().mockResolvedValue(response(WORKER_TEXT)),
     stream: vi.fn(),
     countTokens: vi.fn().mockResolvedValue(50),

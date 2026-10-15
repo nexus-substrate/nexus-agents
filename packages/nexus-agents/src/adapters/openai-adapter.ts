@@ -1,3 +1,4 @@
+import type { ExecutionAccessMode } from '../core/types/model.js';
 /**
  * nexus-agents/adapters - OpenAI Model Adapter
  *
@@ -138,6 +139,11 @@ function describeOpenAIApiError(v: ApiErrorView, secrets: GatewaySecretSource): 
 const MAX_ERROR_BODY_CHARS = 600;
 
 export class OpenAIAdapter extends BaseAdapter {
+  /** This concrete API only returns content/tool descriptions; it executes no host tools. */
+  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal): Promise<true | undefined> {
+    return Promise.resolve(this.constructor === OpenAIAdapter ? true : undefined);
+  }
+
   private readonly client: OpenAI;
   private readonly apiSurface: 'chat' | 'responses';
   private readonly omitDefaultTokenCap: boolean;

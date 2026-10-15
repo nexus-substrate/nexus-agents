@@ -1,3 +1,4 @@
+import type { ExecutionAccessMode } from '../core/types/model.js';
 /**
  * nexus-agents/adapters - Gemini/Google AI Model Adapter
  *
@@ -96,6 +97,11 @@ function applyResponseFormat(
  * ```
  */
 export class GeminiAdapter extends BaseAdapter {
+  /** This concrete API only returns content/tool descriptions; it executes no host tools. */
+  supportsAccessMode(_mode: ExecutionAccessMode, _signal?: AbortSignal): Promise<true | undefined> {
+    return Promise.resolve(this.constructor === GeminiAdapter ? true : undefined);
+  }
+
   private readonly client: GoogleGenAI;
   private readonly resolvedModelId: string;
 

@@ -273,6 +273,17 @@ export interface IModelAdapter {
   readonly capabilities: readonly ModelCapability[];
 
   /**
+   * Optional evidence about the actual selected transport, not permission or
+   * served-model proof. True/false are explicit support/non-support; absence,
+   * failed detection or unknown stays undefined. Callers retain final execution
+   * enforcement because serving state may change after this bounded query.
+   */
+  supportsAccessMode?(
+    mode: ExecutionAccessMode,
+    signal?: AbortSignal
+  ): Promise<boolean | undefined>;
+
+  /**
    * Send a completion request.
    * @param request - The completion request
    * @returns Result with response or ModelError

@@ -1,3 +1,4 @@
+import { queryModelAccessMode } from './access-mode-support.js';
 /**
  * Per-call gateway usage recording shared by discovered and fallback models.
  * Verification belongs to this adapter's selection, including during failover.
@@ -89,7 +90,7 @@ export function withGatewayUsageRecording(
     },
   };
   recordingSources.set(wrapped, inner);
-  attachListModels(wrapped, inner);
+  attachAdapterQueries(wrapped, inner);
   return wrapped;
 }
 
@@ -116,13 +117,13 @@ function recordFailedCall(
 }
 
 /**
- * (#2540) Forward `listModels` through the wrapper when the inner adapter
+ * Forward actual mode evidence and (#2540) optional `listModels` when the inner adapter
  * exposes one. Only attach when defined so the wrapper's `listModels?:`
  * hint stays accurate for the resolver. The inner reference is captured
  * by closure so the forwarded call binds `this` to the inner adapter.
  */
-function attachListModels(wrapped: IModelAdapter, inner: IModelAdapter): void {
+function attachAdapterQueries(wrapped: IModelAdapter, inner: IModelAdapter): void {
   const list = inner.listModels?.bind(inner);
-  if (list === undefined) return;
-  wrapped.listModels = (): Promise<readonly ModelMetadata[]> => list();
+  if (list !== undefined) wrapped.listModels = (): Promise<readonly ModelMetadata[]> => list();
+  wrapped.supportsAccessMode = (mode, signal) => queryModelAccessMode(inner, mode, signal);
 }
