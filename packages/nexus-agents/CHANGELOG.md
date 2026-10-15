@@ -1,5 +1,23 @@
 # nexus-agents
 
+## 11.7.0
+
+### Minor Changes
+
+- [#7428](https://github.com/nexus-substrate/nexus-agents/pull/7428) [`a75a699`](https://github.com/nexus-substrate/nexus-agents/commit/a75a6994c7a91f093127ff11e2e4f34d104b8250) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve bounded, redacted plan and exact vote-proposal evidence after an asynchronous development planning failure, including default task-state retrieval. Keep failed status and rejected-plan resume protections intact.
+
+- [#7431](https://github.com/nexus-substrate/nexus-agents/pull/7431) [`cb5c2e6`](https://github.com/nexus-substrate/nexus-agents/commit/cb5c2e6d073783f6e3e655b8d867c90424f8988f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Align the native Gemini CLI with the measured AGY 1.3.5 model table: explicitly select registered Gemini 3.8 Flash by default and retain the available high/medium/low effort pins. Supported legacy Flash aliases migrate to 3.8 with selected-model attribution. Explicit Pro, retired native pins and unknown models now fail before execution rather than silently selecting another model; use the Google API for Pro. Preserve Google API defaults, model identifiers, profiles and pricing independently of the CLI default. Native tier selection excludes unavailable models without restricting API or gateway arms. Model enumeration does not establish authentication, provider-served identity or read-only enforcement.
+
+  Bind composite quality constraints and TOPSIS to each actual API/native model, sharing the existing ranking and constraint calculations. Expose an additive bound-profile quality-stage method and optional host-owned stage adapter bindings. API previews retain actual adapter metadata, and gateway slots resolve their serving target before quality/cost checks. Unknown API pricing remains unmeasured and fails configured quality ceilings; explicit free prices remain valid.
+
+  Attribute TOPSIS confidence and explanations to the final selected arm after bandit/memory selection, leaving unmeasured scores absent. Gateway bridge capabilities follow the actual serving model rather than the native slot; unknown gateway metadata is labeled unmeasured with neutral estimates. Configured no-fallback quality rejection no longer restores every candidate. Actual-model profile binding applies to all API bridges, whose missing prices/quality remain unmeasured.
+
+  Use the actual serving gateway model's capabilities in budget candidate selection as well as winner previews, so the native Flash profile cannot displace an affordable alternative.
+
+### Patch Changes
+
+- [#7425](https://github.com/nexus-substrate/nexus-agents/pull/7425) [`8f262f8`](https://github.com/nexus-substrate/nexus-agents/commit/8f262f88e8df5be07d28822ff99f951bc0b58821) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce the shared orchestration adapter-attempt maximum across worker retries, alternate adapters, refinement and every synthesis tier. Count failed attempts while keeping budget refusals out of synthesis quality history.
+
 ## 11.6.2
 
 ### Patch Changes
