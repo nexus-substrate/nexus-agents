@@ -10,6 +10,7 @@
  */
 
 import { ModelToCliAdapter } from './model-to-cli-adapter.js';
+import { gatewayServedSlotOf } from './gateway-slot-arm.js';
 import { type Result, getTimeProvider, createLogger } from '../core/index.js';
 import type {
   IBudgetRouter,
@@ -474,13 +475,12 @@ export class BudgetRouter implements IBudgetRouter {
     budget: BudgetConstraint,
     estimatedTokens: number
   ): BudgetSelection {
-    // Native slots retain slot profiles; API bridges and endpoints use their
-    // own model profile. Costs are independently priced by arm below.
-    const sortedAdapters = [...this.adapters].sort((a, b) => {
-      const capA = this.capabilitiesOf(a[0], a[1]);
-      const capB = this.capabilitiesOf(b[0], b[1]);
-      return capB.cost - capA.cost; // Prefer cheaper models
-    });
+    // Native slots retain slot profiles; API bridges, served gateway slots
+    // and endpoints use their own model profile. Costs are priced by arm below.
+    const sortedAdapters = [...this.adapters].sort(
+      ([armA, a], [armB, b]) =>
+        this.capabilitiesOf(armB, b).cost - this.capabilitiesOf(armA, a).cost
+    );
     const unpricedArms: UnpricedArm[] = [];
 
     for (const [arm, adapter] of sortedAdapters) {
@@ -503,9 +503,9 @@ export class BudgetRouter implements IBudgetRouter {
     return { selected: null, unpricedArms };
   }
 
-  /** Native slots use slot profiles; API bridges and endpoints supply their own profile. */
+  /** Native slots use slot profiles; actual API/gateway targets supply their own profile. */
   private capabilitiesOf(arm: RoutingArmId, adapter: ICliAdapter): ICliAdapter['capabilities'] {
-    const slot = routingArmCliSlot(arm);
+    const slot = gatewayServedSlotOf(adapter) === undefined ? routingArmCliSlot(arm) : undefined;
     return slot === undefined || adapter instanceof ModelToCliAdapter
       ? adapter.capabilities
       : DEFAULT_CAPABILITIES[slot];

@@ -10,6 +10,12 @@ import { estimateCost, estimateTokens } from './budget-utils.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
 import { DEFAULT_CAPABILITIES } from './types-capability.js';
 import { createModelToCliAdapter } from './model-to-cli-adapter.js';
+import { buildGatewaySlotRouterArm, gatewayServedSlotOf } from './gateway-slot-arm.js';
+import {
+  setGatewaySlotCatalog,
+  _resetGatewaySlotCatalog,
+} from '../adapters/gateway-family-slots.js';
+import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
 import type { IModelAdapter } from '../core/index.js';
 import { routingArmCliSlot } from './types.js';
 import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
@@ -873,4 +879,58 @@ describe('API model quality stays separate from CLI defaults (#7423)', () => {
       vi.unstubAllEnvs();
     }
   });
+});
+
+describe('Gateway budget selection uses the actual serving model (#7423)', () => {
+  it.each([9, 5])(
+    'keeps an affordable control eligible regardless of native Gemini cost score %s',
+    async (nativeCostScore) => {
+      vi.stubEnv('NEXUS_DISABLED_CLIS', 'gemini');
+      vi.stubEnv('NEXUS_GATEWAY_COST', 'free;openai-compat=priced:2,12');
+      const priorCost = DEFAULT_CAPABILITIES.gemini.cost;
+      Object.assign(DEFAULT_CAPABILITIES.gemini, { cost: nativeCostScore });
+      const model = fakeGatewayModel('gemini-3.1-pro-preview', 'api:openai-compat');
+      setGatewaySlotCatalog([model]);
+      const createCli = vi.fn(() => createMockAdapter('gemini'));
+      const gateway = buildGatewaySlotRouterArm('gemini', createCli, () => Promise.resolve(false));
+      expect(gateway).toBeDefined();
+      expect(gateway).not.toBe('unavailable');
+      if (gateway === undefined || gateway === 'unavailable')
+        throw new Error('Gateway fixture missing');
+      const control = createModelToCliAdapter({ modelId: 'control-model' } as IModelAdapter, {
+        name: 'opencode',
+        capabilities: { reasoning: 8, contextWindow: 200000, codeGeneration: 8, speed: 7, cost: 8 },
+      });
+      const router = new BudgetRouter(
+        new Map<RoutingArmId, ICliAdapter>([
+          ['gemini', gateway],
+          ['api:custom-openai', control],
+        ]),
+        { sessionBudget: { costBudgetUsd: 0.01, resetIntervalMs: 0 } }
+      );
+      try {
+        expect(gatewayServedSlotOf(gateway)?.modelId).toBe('gemini-3.1-pro-preview');
+        expect(gateway.capabilities.cost).toBe(6);
+        // Both pass the per-task ceiling. Actual Pro costs $0.014, above the
+        // session's $0.01; the higher cost-efficiency control is explicitly free.
+        const task = { content: 'x'.repeat(4000), maxTokens: 1000 };
+        const checked = router.checkBudget(task);
+        expect(checked.withinBudget).toBe(true);
+        expect(checked.adapter === control).toBe(true);
+        expect(checked.estimatedCostUsd).toBe(0);
+        const routed = await router.routeWithBudget(task);
+        expect(routed.ok).toBe(true);
+        if (routed.ok) expect(routed.value.adapter).toBe(control);
+        expect(createCli).not.toHaveBeenCalled();
+        expect(model.complete).not.toHaveBeenCalled();
+        expect(model.stream).not.toHaveBeenCalled();
+      } finally {
+        router.dispose();
+        await gateway.dispose();
+        Object.assign(DEFAULT_CAPABILITIES.gemini, { cost: priorCost });
+        _resetGatewaySlotCatalog();
+        vi.unstubAllEnvs();
+      }
+    }
+  );
 });
