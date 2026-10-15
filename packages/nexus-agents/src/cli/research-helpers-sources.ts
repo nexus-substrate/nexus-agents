@@ -155,13 +155,16 @@ export async function fetchSource(
 // GITHUB DISCOVERY
 // =============================================================================
 
-/** Converts validated GitHub API response items to DiscoveredSource[]. */
+/**
+ * Converts validated GitHub items to provider previews, as for arXiv (#7435).
+ * Downstream relevance deliberately scores the preview, not discarded full text.
+ */
 function parseGitHubRepos(data: z.infer<typeof GitHubSearchResponseSchema>): DiscoveredSource[] {
   return (data.items ?? []).map((repo) => ({
     source: 'github',
     title: repo.full_name ?? '',
     url: repo.html_url ?? '',
-    description: repo.description ?? '',
+    description: truncate(repo.description ?? ''),
     relevance:
       (repo.stargazers_count ?? 0) > 1000
         ? 'high'
@@ -411,9 +414,13 @@ function extractTag(entry: string, tag: string): string {
   return regex.exec(entry)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
 }
 
-/** Truncate text to max length. */
+/** Marked provider preview, bounded in UTF-16 units without splitting a valid pair. */
 function truncate(text: string, maxLen = 200): string {
-  return text.length > maxLen ? text.slice(0, maxLen - 3) + '...' : text;
+  if (text.length <= maxLen) return text;
+  let end = maxLen - 3;
+  // codePointAt sees the full pair even when the cut would retain only its high half.
+  if ((text.codePointAt(end - 1) ?? 0) > 0xffff) end--;
+  return text.slice(0, end) + '...';
 }
 
 /** Score relevance based on topic word match ratio in title. */
