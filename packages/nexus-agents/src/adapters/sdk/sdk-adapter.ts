@@ -1,3 +1,4 @@
+import type { ExecutionAccessMode } from '../../core/types/model.js';
 /* eslint max-lines: ["error", { "max": 500, "skipBlankLines": true, "skipComments": true }] */
 // AI SDK model lifecycle, response mapping, and error fidelity remain cohesive
 // under the file's governance allowance (#6618).
@@ -330,6 +331,14 @@ function categorizeError(error: unknown): ErrorCode {
  * the public custom-openai identifier delegates to the gateway HTTP adapter.
  */
 export class SdkAdapter extends BaseAdapter {
+  /** This concrete API only returns content/tool descriptions; it executes no host tools. */
+  supportsAccessMode(
+    _mode: ExecutionAccessMode,
+    _signal?: AbortSignal
+  ): Promise<boolean | undefined> {
+    return Promise.resolve(this.constructor === SdkAdapter ? true : undefined);
+  }
+
   private readonly sdkProviderId: SdkProviderId;
   private model: AiSdkModel | undefined;
   private sdkFunctions: AiSdkFunctions | undefined;

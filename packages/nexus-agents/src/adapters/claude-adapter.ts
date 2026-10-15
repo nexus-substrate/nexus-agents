@@ -1,3 +1,4 @@
+import type { ExecutionAccessMode } from '../core/types/model.js';
 /**
  * nexus-agents/adapters - Claude/Anthropic Model Adapter
  *
@@ -73,6 +74,14 @@ export { CLAUDE_MODELS, CLAUDE_MODEL_ALIASES } from './claude-adapter-types.js';
  * ```
  */
 export class ClaudeAdapter extends BaseAdapter {
+  /** This concrete API only returns content/tool descriptions; it executes no host tools. */
+  supportsAccessMode(
+    _mode: ExecutionAccessMode,
+    _signal?: AbortSignal
+  ): Promise<boolean | undefined> {
+    return Promise.resolve(this.constructor === ClaudeAdapter ? true : undefined);
+  }
+
   private readonly client: Anthropic;
   private readonly resolvedModelId: string;
 

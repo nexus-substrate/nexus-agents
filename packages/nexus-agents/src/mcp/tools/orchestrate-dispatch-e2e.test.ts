@@ -23,7 +23,8 @@ vi.mock('../../adapters/unified-registry.js', () => ({
   resetGlobalRegistry: vi.fn(),
 }));
 
-vi.mock('./create-expert-routing.js', () => ({
+vi.mock('./create-expert-routing.js', async (original) => ({
+  ...(await original<typeof import('./create-expert-routing.js')>()),
   resolveAdapterForRole: vi.fn().mockReturnValue(null),
   getExpertFallbackChain: vi.fn().mockReturnValue([]),
 }));
@@ -47,6 +48,9 @@ function makePlan(entries: AgentPlanEntry[]): AgentPlan {
 
 function createMockAdapter(responses: Map<string, string>): IModelAdapter {
   return {
+    providerId: 'TEST',
+    modelId: 'TEST-model',
+    supportsAccessMode: vi.fn().mockResolvedValue(true),
     complete: vi
       .fn()
       .mockImplementation(
@@ -113,6 +117,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
     const roleSequence = ['architecture', 'code', 'testing'];
 
     const adapter = {
+      providerId: 'TEST',
+      modelId: 'TEST-model',
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi
         .fn()
         .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
@@ -185,6 +192,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
     // Use unique subtask marker to identify the failing worker
     const FAIL_MARKER = 'UNIQUE_FAIL_MARKER_XYZ';
     const adapter = {
+      providerId: 'TEST',
+      modelId: 'TEST-model',
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockImplementation(
         (opts: {
           messages: Array<{ content: string }>;
@@ -238,6 +248,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
     let currentParallel = 0;
 
     const adapter = {
+      providerId: 'TEST',
+      modelId: 'TEST-model',
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi
         .fn()
         .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
@@ -282,6 +295,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
   it('composes prompts with task context and role enrichment', async () => {
     let capturedPrompt = '';
     const adapter = {
+      providerId: 'TEST',
+      modelId: 'TEST-model',
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi
         .fn()
         .mockImplementation(
@@ -332,6 +348,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
     it('returns deterministic synthesis when no conflicts (#1507)', async () => {
       let callCount = 0;
       const adapter = {
+        providerId: 'TEST',
+        modelId: 'TEST-model',
+        supportsAccessMode: vi.fn().mockResolvedValue(true),
         complete: vi
           .fn()
           .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
@@ -371,6 +390,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
     it('returns LLM synthesis when conflicts exist (#1507)', async () => {
       let callCount = 0;
       const adapter = {
+        providerId: 'TEST',
+        modelId: 'TEST-model',
+        supportsAccessMode: vi.fn().mockResolvedValue(true),
         complete: vi
           .fn()
           .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
@@ -443,6 +465,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
     it('falls back gracefully when synthesis LLM call fails', async () => {
       let callCount = 0;
       const adapter = {
+        providerId: 'TEST',
+        modelId: 'TEST-model',
+        supportsAccessMode: vi.fn().mockResolvedValue(true),
         complete: vi.fn().mockImplementation(
           (): Promise<{
             ok: boolean;
@@ -493,6 +518,9 @@ describe('Worker Dispatch E2E Pipeline', () => {
       const roleSequence = ['architecture', 'code'];
 
       const adapter = {
+        providerId: 'TEST',
+        modelId: 'TEST-model',
+        supportsAccessMode: vi.fn().mockResolvedValue(true),
         complete: vi
           .fn()
           .mockImplementation(

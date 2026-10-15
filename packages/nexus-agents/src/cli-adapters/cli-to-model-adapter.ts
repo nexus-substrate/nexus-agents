@@ -26,7 +26,8 @@ import {
 } from '../core/index.js';
 import { estimateTokens } from '../core/token-estimator.js';
 import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } from './types.js';
-import { unenforcedAccessModeRefusal } from './access-mode.js';
+import type { ExecutionAccessMode } from '../core/types/model.js';
+import { declaredAccessModeSupport, unenforcedAccessModeRefusal } from './access-mode.js';
 import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
 import { isCallerInputCliError, isHostUnavailableCliError } from './cli-error-helpers.js';
@@ -64,6 +65,11 @@ export class CliToModelAdapter implements IModelAdapter {
   readonly providerId: string;
   readonly modelId: string;
   readonly capabilities: readonly ModelCapability[];
+
+  /** Re-read the actual wrapped CLI declaration without completing a prompt. */
+  supportsAccessMode(mode: ExecutionAccessMode): Promise<boolean | undefined> {
+    return Promise.resolve(declaredAccessModeSupport(this.cliAdapter, { accessMode: mode }));
+  }
 
   private readonly cliAdapter: ICliAdapter;
   private readonly defaultTimeoutMs: number | undefined;

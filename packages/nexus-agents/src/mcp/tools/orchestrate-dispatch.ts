@@ -12,7 +12,7 @@
 
 import type { ILogger } from '../../core/index.js';
 import type { ExecutionAccessMode, IModelAdapter } from '../../core/index.js';
-import { createLogger, getErrorMessage, err, ModelError } from '../../core/index.js';
+import { createLogger, getErrorMessage, err, ModelError, ErrorCode } from '../../core/index.js';
 import { resolveV2Config } from '../../pipeline/v2-config.js';
 import type { AgentPlan, AgentPlanEntry } from '../../orchestration/aorchestra/index.js';
 import {
@@ -52,8 +52,9 @@ import {
   CliNameSchema,
   type CliNameLiteral,
 } from '../../config/model-capabilities-types.js';
-import { resolveAdapterForRole, getExpertFallbackChain } from './create-expert-routing.js';
-import { getGlobalRegistry } from '../../adapters/unified-registry.js';
+import { resolveAdapterForRole, resolveAdapterForRoleAccess } from './create-expert-routing.js';
+import { queryModelAccessMode } from '../../adapters/access-mode-support.js';
+import { warmModelMetadata } from '../../adapters/model-metadata.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import {
@@ -213,20 +214,37 @@ interface ResolvedWorkerAdapter {
   readonly cliName: string;
 }
 
-/** Resolve the adapter for a worker, optionally routing by role (Issue #1416). */
-function resolveWorkerAdapter(
+/** Eligibility is resolved before whole-plan preflight, including short inputs. */
+async function resolveWorkerAdapter(
   entry: AgentPlanEntry,
-  fallback: IModelAdapter,
-  fallbackCli: string,
-  perWorkerRouting: boolean,
-  log: ILogger
-): ResolvedWorkerAdapter {
-  if (!perWorkerRouting) return { adapter: fallback, cliName: fallbackCli };
-  const expertRole = `${entry.role}_expert`;
-  const resolved = resolveAdapterForRole(expertRole, fallback, log) ?? fallback;
-  // Derive CLI name from the adapter's providerId (e.g., 'claude', 'codex', 'gemini')
-  const cliName = resolved.providerId;
-  return { adapter: resolved, cliName };
+  config: Pick<WorkerExecutorConfig, 'modelAdapter' | 'perWorkerRouting' | 'logger'>,
+  signal?: AbortSignal,
+  exclude?: IModelAdapter
+): Promise<ResolvedWorkerAdapter | string> {
+  const role = `${entry.role}_expert`;
+  let primary = exclude ?? config.modelAdapter;
+  if (exclude === undefined && config.perWorkerRouting === true) {
+    try {
+      primary =
+        resolveAdapterForRole(role, config.modelAdapter, config.logger) ?? config.modelAdapter;
+    } catch {
+      config.logger.debug('Role-primary acquisition unavailable', { role });
+    }
+  }
+  const selected = await resolveAdapterForRoleAccess(primary, config.modelAdapter, {
+    role,
+    mode: WORKER_ACCESS_MODE,
+    logger: config.logger,
+    includeRoleChain: config.perWorkerRouting === true,
+    signal,
+    exclude,
+  });
+  if (!selected.ok) return selected.error;
+  try {
+    return { adapter: selected.value, cliName: selected.value.providerId };
+  } catch {
+    return 'unsupported worker access-mode delivery: selected identity unavailable';
+  }
 }
 
 /** Private aggregate of observable adapter invocations, independent of result slots. */
@@ -244,17 +262,20 @@ function reserveWorkerCall(counter: WorkerCallCounter): boolean {
 
 interface WorkerExecutorConfig {
   readonly callCounter: WorkerCallCounter;
+  readonly unsupportedEntries: Set<AgentPlanEntry>;
   readonly taskDescription: string;
   readonly modelAdapter: IModelAdapter;
   readonly logger: ILogger;
   readonly learnings?: readonly WorkerLearning[];
   readonly perWorkerRouting?: boolean;
   readonly resolvedAdapters?: ReadonlyMap<AgentPlanEntry, ResolvedWorkerAdapter>;
+  readonly modeUnsupported?: string;
 }
 
 /** Options for executeOnAdapter — bundled to stay within max-params (5). */
 interface AdapterExecutionOptions {
   readonly callCounter: WorkerCallCounter;
+  readonly unsupportedEntries: Set<AgentPlanEntry>;
   readonly entry: AgentPlanEntry;
   readonly adapter: IModelAdapter;
   readonly cliName: string;
@@ -298,6 +319,11 @@ async function prepareAdapterPrompt(
   });
   if (!prepared.ok) return prepared;
   if (isExpandedWorkerInput(opts.taskDescription, opts.entry.subTask)) {
+    try {
+      await warmModelMetadata([opts.adapter], opts.signal);
+    } catch {
+      return { ok: false, error: 'unsupported inline delivery: model metadata preflight failed' };
+    }
     const reason = await checkExpandedPromptBudget(
       opts.adapter,
       prepared.value.prompt,
@@ -307,6 +333,19 @@ async function prepareAdapterPrompt(
     if (reason !== undefined) return { ok: false, error: reason };
   }
   return prepared;
+}
+
+/** Only an observed late non-support suppresses unchanged refinement, not generic errors. */
+async function noteUnsupportedAfterError(
+  opts: AdapterExecutionOptions,
+  error: ModelError
+): Promise<void> {
+  if (
+    error.code === ErrorCode.INVALID_INPUT &&
+    (await queryModelAccessMode(opts.adapter, WORKER_ACCESS_MODE, opts.signal)) === false
+  ) {
+    opts.unsupportedEntries.add(opts.entry);
+  }
 }
 
 async function completeOnAdapter(
@@ -333,6 +372,7 @@ async function completeOnAdapter(
       ...(signal !== undefined ? { signal } : {}),
     });
     if (!result.ok) {
+      await noteUnsupportedAfterError(opts, result.error);
       return {
         ...makeErrorResult(entry, workerStartMs, result.error.message),
         promptEvidence: { ...evidence, rawInputCoverage: 'UNSUPPORTED' },
@@ -411,21 +451,19 @@ function createWorkerExecutor(
   priorWaveResults?: readonly WorkerResult[],
   signal?: AbortSignal
 ) => Promise<WorkerResult> {
-  const { taskDescription, modelAdapter, logger, learnings, perWorkerRouting } = config;
-  const effectiveFallbackCli = modelAdapter.providerId;
+  const { taskDescription, learnings } = config;
   return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
-    const { adapter, cliName } =
-      config.resolvedAdapters?.get(entry) ??
-      resolveWorkerAdapter(
-        entry,
-        modelAdapter,
-        effectiveFallbackCli,
-        perWorkerRouting === true,
-        logger
-      );
+    const resolved =
+      config.resolvedAdapters?.get(entry) ?? (await resolveWorkerAdapter(entry, config, signal));
+    if (typeof resolved === 'string') {
+      config.unsupportedEntries.add(entry);
+      return makeErrorResult(entry, workerStartMs, resolved);
+    }
+    const { adapter, cliName } = resolved;
     return executeOnAdapter({
       callCounter: config.callCounter,
+      unsupportedEntries: config.unsupportedEntries,
       entry,
       adapter,
       cliName,
@@ -455,25 +493,6 @@ function refusedInlineDispatch(
   return { ...buildDispatchResult(refused, startMs, log, 0), unsupportedReason: reason };
 }
 
-/** Resolve an alt adapter from the fallback chain for a worker role (#1535). */
-function resolveAltAdapter(
-  entry: AgentPlanEntry,
-  primaryCli: string,
-  log: ILogger
-): { adapter: IModelAdapter; cliName: string } | null {
-  const chain = getExpertFallbackChain(`${entry.role}_expert`, primaryCli, log);
-  const first = chain[0];
-  if (first === undefined) return null;
-  const altCli = first;
-  try {
-    const registry = getGlobalRegistry();
-    return { adapter: registry.getAdapterForCli(altCli), cliName: altCli };
-  } catch {
-    log.debug('Alt CLI adapter unavailable', { altCli });
-    return null;
-  }
-}
-
 /**
  * Creates an alt executor that picks a different CLI from the fallback chain (#1535).
  * Used for `retry_different_cli` triage action — actual CLI rotation on rate-limit.
@@ -486,16 +505,25 @@ function createAltWorkerExecutor(
   signal?: AbortSignal
 ) => Promise<WorkerResult> {
   const { taskDescription, modelAdapter, logger: log, learnings } = config;
-  const primaryCli = modelAdapter.providerId;
+
   return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
-    const alt = resolveAltAdapter(entry, primaryCli, log);
-    if (alt === null) {
-      return makeErrorResult(entry, workerStartMs, 'No alternative CLI available');
-    }
-    log.info('Using alt CLI for retry', { role: entry.role, primaryCli, altCli: alt.cliName });
+    const primary = config.resolvedAdapters?.get(entry)?.adapter ?? modelAdapter;
+    const alt = await resolveWorkerAdapter(
+      entry,
+      { ...config, perWorkerRouting: true },
+      signal,
+      primary
+    );
+    if (typeof alt === 'string') return makeErrorResult(entry, workerStartMs, alt);
+    log.info('Using alt CLI for retry', {
+      role: entry.role,
+      primaryCli: primary.providerId,
+      altCli: alt.cliName,
+    });
     return executeOnAdapter({
       callCounter: config.callCounter,
+      unsupportedEntries: config.unsupportedEntries,
       entry,
       adapter: alt.adapter,
       cliName: alt.cliName,
@@ -570,6 +598,7 @@ function saveFailedCheckpoints(
 /** Intermediate state passed between dispatch phases. */
 interface DispatchPhaseState {
   readonly callCounter: WorkerCallCounter;
+  readonly unsupportedEntries: Set<AgentPlanEntry>;
   results: WorkerResult[];
   totalModelCalls: number;
   synthesisValue?: string;
@@ -580,6 +609,7 @@ interface DispatchPhaseState {
 /** Delegate synthesis without changing adapter receivers or optional identity capabilities. */
 function synthesisAdapter(adapter: IModelAdapter, counter: WorkerCallCounter): IModelAdapter {
   const listModels = adapter.listModels?.bind(adapter);
+  const supportsAccessMode = adapter.supportsAccessMode?.bind(adapter);
   return {
     providerId: adapter.providerId,
     modelId: adapter.modelId,
@@ -599,6 +629,7 @@ function synthesisAdapter(adapter: IModelAdapter, counter: WorkerCallCounter): I
     countTokens: (text) => adapter.countTokens(text),
     validateConfig: () => adapter.validateConfig(),
     ...(listModels !== undefined ? { listModels } : {}),
+    ...(supportsAccessMode !== undefined ? { supportsAccessMode } : {}),
   };
 }
 
@@ -675,7 +706,11 @@ async function runRefinementPhase(
 
   const remaining = maxCalls - state.totalModelCalls;
   const failedEntries = entries
-    .filter((e) => state.results.some((r) => r.role === e.role && r.status === 'error'))
+    .filter(
+      (e) =>
+        !state.unsupportedEntries.has(e) &&
+        state.results.some((r) => r.role === e.role && r.status === 'error')
+    )
     .slice(0, remaining);
   if (failedEntries.length === 0) return false;
 
@@ -687,6 +722,7 @@ async function runRefinementPhase(
   });
   const executor = createWorkerExecutor({
     callCounter: state.callCounter,
+    unsupportedEntries: state.unsupportedEntries,
     taskDescription: options.taskDescription,
     modelAdapter: options.modelAdapter,
     logger: options.logger,
@@ -734,35 +770,30 @@ function prepareBudgetedEntries(
   return entries;
 }
 
-function createPinnedExecutorConfig(
+async function createPinnedExecutorConfig(
   options: WorkerDispatchExecutionOptions,
   entries: readonly AgentPlanEntry[],
   maxCalls: number
-): WorkerExecutorConfig {
-  const { taskDescription, modelAdapter, logger } = options;
-  const resolvedAdapters = new Map(
-    entries.map((entry) => [
-      entry,
-      resolveWorkerAdapter(
-        entry,
-        modelAdapter,
-        modelAdapter.providerId,
-        options.perWorkerRouting === true,
-        logger
-      ),
-    ])
-  );
-  return {
+): Promise<WorkerExecutorConfig> {
+  const config: WorkerExecutorConfig = {
     callCounter: { attempts: 0, maxCalls },
-    taskDescription,
-    modelAdapter,
-    logger,
-    resolvedAdapters,
+    unsupportedEntries: new Set(),
+    taskDescription: options.taskDescription,
+    modelAdapter: options.modelAdapter,
+    logger: options.logger,
     ...(options.learnings !== undefined ? { learnings: options.learnings } : {}),
     ...(options.perWorkerRouting !== undefined
       ? { perWorkerRouting: options.perWorkerRouting }
       : {}),
   };
+  const resolvedAdapters = new Map<AgentPlanEntry, ResolvedWorkerAdapter>();
+  for (const entry of entries) {
+    const resolved = await resolveWorkerAdapter(entry, config, options.signal);
+    if (typeof resolved === 'string')
+      return { ...config, resolvedAdapters, modeUnsupported: resolved };
+    resolvedAdapters.set(entry, resolved);
+  }
+  return { ...config, resolvedAdapters };
 }
 
 async function prepareDispatchPreflight(
@@ -773,7 +804,9 @@ async function prepareDispatchPreflight(
   readonly unsupported: string | undefined;
 }> {
   const entries = options.agentPlan.entries;
-  const pinnedConfig = createPinnedExecutorConfig(options, entries, maxCalls);
+  const pinnedConfig = await createPinnedExecutorConfig(options, entries, maxCalls);
+  if (pinnedConfig.modeUnsupported !== undefined)
+    return { pinnedConfig, unsupported: pinnedConfig.modeUnsupported };
   const unsupported = await preflightWorkerPrompts({
     entries,
     taskDescription: options.taskDescription,
@@ -822,6 +855,7 @@ export async function executeWorkerDispatch(
   const state: DispatchPhaseState = {
     results: [...results],
     callCounter: pinnedConfig.callCounter,
+    unsupportedEntries: pinnedConfig.unsupportedEntries,
     totalModelCalls: pinnedConfig.callCounter.attempts,
     checkpoints,
   };

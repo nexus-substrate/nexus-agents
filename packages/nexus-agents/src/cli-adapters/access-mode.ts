@@ -83,6 +83,17 @@ export function adapterEnforces(
   return adapter?.[RESTRICTED_MODES[mode].declaredBy] === true;
 }
 
+/** Explicit declarations only: a missing declaration is unknown, not measured false. */
+export function declaredAccessModeSupport(
+  adapter: AccessModeDeclarations | undefined,
+  task: Pick<CliTask, 'accessMode'>
+): boolean | undefined {
+  const mode = restrictedAccessMode(task);
+  if (mode === undefined) return true;
+  const declaration = adapter?.[RESTRICTED_MODES[mode].declaredBy];
+  return typeof declaration === 'boolean' ? adapterEnforces(adapter, task) : undefined;
+}
+
 /** The human-readable name of a restricted mode, e.g. `read-only analysis`. */
 export function accessModeLabel(mode: RestrictedAccessMode): string {
   return RESTRICTED_MODES[mode].label;

@@ -1,3 +1,4 @@
+import { queryModelAccessMode } from './access-mode-support.js';
 /**
  * Gateway family slots (#6604, epic #6612, panel option A).
  *
@@ -242,6 +243,7 @@ export function createGatewaySlotAdapter(cli: CliName, model: IModelAdapter): IM
     capabilities: model.capabilities,
     complete: (request) => model.complete(request),
     stream: (request) => model.stream(request),
+    supportsAccessMode: (mode, signal) => queryModelAccessMode(model, mode, signal),
     countTokens: (text) => model.countTokens(text),
     validateConfig: () => model.validateConfig(),
     ...(typeof arm === 'string' && isEndpointArmId(arm) && { gatewayArm: arm }),

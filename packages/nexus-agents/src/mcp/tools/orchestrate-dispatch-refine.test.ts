@@ -58,6 +58,7 @@ function makeMockAdapter(responseText: string): IModelAdapter {
     providerId: 'test',
     modelId: 'test-model',
     capabilities: ['text_generation'] as const,
+    supportsAccessMode: vi.fn().mockResolvedValue(true),
     complete: vi.fn().mockResolvedValue(makeSuccessResponse(responseText)),
     stream: vi.fn(),
     countTokens: vi.fn().mockResolvedValue(100),
@@ -143,6 +144,7 @@ describe('executeWorkerDispatch refinement', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockRejectedValue(new Error('Model error')),
       stream: vi.fn(),
       countTokens: vi.fn().mockResolvedValue(100),
@@ -185,6 +187,7 @@ describe('executeWorkerDispatch refinement', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockImplementation(() => {
         callCount++;
         // First call fails, subsequent calls succeed
@@ -220,6 +223,7 @@ describe('executeWorkerDispatch refinement', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockImplementation(() => {
         callCount++;
         if (callCount <= 2) {
@@ -250,6 +254,7 @@ describe('executeWorkerDispatch refinement', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockRejectedValue(new Error('Error')),
       stream: vi.fn(),
       countTokens: vi.fn().mockResolvedValue(100),
@@ -280,6 +285,7 @@ describe('executeWorkerDispatch refinement', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockImplementation(() => {
         callCount++;
         // Worker 1 fails, worker 2 succeeds, synthesis succeeds, refinement succeeds
@@ -315,6 +321,7 @@ describe('executeWorkerDispatch refinement', () => {
       providerId: 'test',
       modelId: 'test-model',
       capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
       complete: vi.fn().mockImplementation(() => {
         callCount++;
         // Worker 1 (code) succeeds, Worker 2 (testing) fails, refinement of Worker 2 succeeds

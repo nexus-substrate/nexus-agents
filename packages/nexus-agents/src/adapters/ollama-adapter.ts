@@ -1,3 +1,4 @@
+import type { ExecutionAccessMode } from '../core/types/model.js';
 /**
  * nexus-agents/adapters - Ollama Model Adapter
  *
@@ -150,6 +151,14 @@ function getModelCapabilities(modelId: string): readonly ModelCapability[] {
 
 /** Ollama model adapter for local model inference. */
 export class OllamaAdapter extends BaseAdapter {
+  /** This concrete API only returns content/tool descriptions; it executes no host tools. */
+  supportsAccessMode(
+    _mode: ExecutionAccessMode,
+    _signal?: AbortSignal
+  ): Promise<boolean | undefined> {
+    return Promise.resolve(this.constructor === OllamaAdapter ? true : undefined);
+  }
+
   private readonly client: Ollama;
 
   constructor(config: OllamaAdapterConfig) {

@@ -13,7 +13,11 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import type { IModelAdapter } from '../../core/index.js';
+import type { ExecutionAccessMode, IModelAdapter, Result } from '../../core/index.js';
+import { ok, err } from '../../core/index.js';
+import { queryModelAccessMode } from '../../adapters/access-mode-support.js';
+import { throwIfAborted } from '../../adapters/abort-utils.js';
+import { CliNameSchema } from '../../config/model-capabilities-types.js';
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { CliName } from '../../cli-adapters/types.js';
@@ -117,4 +121,110 @@ export function getExpertFallbackChain(
   const filtered = chain.filter((cli) => cli !== excludeCli && !isDisabledSlotUnserved(cli));
   logger.debug('Expert fallback chain resolved', { role, category, excludeCli, chain: filtered });
   return [...filtered];
+}
+
+interface ModeCandidateOptions {
+  readonly role: string;
+  readonly mode: ExecutionAccessMode;
+  readonly logger: ILogger;
+  readonly includeRoleChain: boolean;
+  readonly signal?: AbortSignal | undefined;
+  readonly exclude?: IModelAdapter | undefined;
+}
+interface ModeCandidateEvidence {
+  readonly seen: Set<IModelAdapter>;
+  unsupported: number;
+  unknown: number;
+  unavailable: number;
+  excluded: number;
+}
+function slotName(adapter: IModelAdapter): string | undefined {
+  try {
+    const provider = adapter.providerId;
+    return typeof provider === 'string' && provider !== ''
+      ? provider.replace(/^cli-/, '')
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function excludedCandidate(
+  adapter: IModelAdapter,
+  name: string,
+  options: ModeCandidateOptions
+): boolean {
+  if (adapter === options.exclude) return true;
+  const cli = CliNameSchema.safeParse(name);
+  if (!cli.success) return false;
+  return (
+    (options.exclude !== undefined && name === slotName(options.exclude)) ||
+    isDisabledSlotUnserved(cli.data)
+  );
+}
+async function eligibleCandidate(
+  adapter: IModelAdapter | undefined,
+  options: ModeCandidateOptions,
+  evidence: ModeCandidateEvidence
+): Promise<boolean> {
+  throwIfAborted(options.signal, 'Worker eligibility aborted');
+  if (adapter === undefined || evidence.seen.has(adapter)) return false;
+  evidence.seen.add(adapter);
+  const name = slotName(adapter);
+  if (name === undefined) {
+    evidence.unavailable++;
+    return false;
+  }
+  if (excludedCandidate(adapter, name, options)) {
+    evidence.excluded++;
+    return false;
+  }
+  const support = await queryModelAccessMode(adapter, options.mode, options.signal);
+  if (support === true) return true;
+  if (support === false) evidence.unsupported++;
+  else evidence.unknown++;
+  return false;
+}
+
+/**
+ * Deterministic bounded candidates: role primary, supplied fallback, canonical
+ * role chain. Every distinct adapter is queried at most once. Unknown never
+ * earns eligibility; it remains distinct from measured non-support. This is
+ * selection evidence only: execution-time enforcement must remain authoritative.
+ */
+export async function resolveAdapterForRoleAccess(
+  primary: IModelAdapter | undefined,
+  fallback: IModelAdapter,
+  options: ModeCandidateOptions
+): Promise<Result<IModelAdapter, string>> {
+  const evidence: ModeCandidateEvidence = {
+    seen: new Set(),
+    unsupported: 0,
+    unknown: 0,
+    unavailable: 0,
+    excluded: 0,
+  };
+  for (const adapter of [primary, fallback]) {
+    if (await eligibleCandidate(adapter, options, evidence)) return ok(adapter as IModelAdapter);
+  }
+  const chain = options.includeRoleChain
+    ? getExpertFallbackChain(
+        options.role,
+        primary === undefined ? '' : (slotName(primary) ?? ''),
+        options.logger
+      )
+    : [];
+  for (const cli of new Set(chain)) {
+    let adapter: IModelAdapter;
+    try {
+      adapter = getGlobalRegistry().getAdapterForCli(cli);
+    } catch {
+      evidence.unavailable++;
+      continue;
+    }
+    if (await eligibleCandidate(adapter, options, evidence)) return ok(adapter);
+  }
+  return err(
+    `unsupported worker access-mode delivery: no measured compatible adapter ` +
+      `(unsupported=${String(evidence.unsupported)}, unknown=${String(evidence.unknown)}, unavailable=${String(evidence.unavailable)}, excluded=${String(evidence.excluded)})`
+  );
 }

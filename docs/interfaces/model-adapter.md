@@ -51,6 +51,20 @@ interface IModelAdapter {
 }
 ```
 
+## Worker access-mode eligibility
+
+Worker dispatch queries the optional `supportsAccessMode(mode, signal)` method on the actual selected adapter before scheduling restricted work. It accepts only explicit `true`. Explicit `false` means unsupported; an absent method, unavailable adapter, malformed result, query error, or deadline leaves support unknown. If no measured compatible alternative exists, dispatch returns `UNSUPPORTED` without attempting a completion. Direct `complete` and `stream` calls retain their existing contract and enforcement checks.
+
+This is a breaking worker-availability change: custom adapters that previously participated without this query may now receive `UNSUPPORTED` with zero worker completion attempts when no measured compatible alternative exists. Forward evidence from the actual transport rather than returning a blanket `true`:
+
+```typescript
+// Inside an adapter wrapper that already holds its actual transport:
+supportsAccessMode: IModelAdapter['supportsAccessMode'] = (mode, signal) =>
+  this.transport.supportsAccessMode?.(mode, signal) ?? Promise.resolve(undefined);
+```
+
+Concrete built-in content-only API adapters declare their own support. Their subclasses remain unknown unless they explicitly implement the query for their actual execution behavior; a subclass may return `false`. CLI-backed adapters must declare native enforcement through the canonical bridge. The query does not grant permissions or replace the final access-mode enforcement check.
+
 ## Supporting Types
 
 ### CompletionRequest

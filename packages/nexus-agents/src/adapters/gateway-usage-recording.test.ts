@@ -55,3 +55,21 @@ describe('gateway usage alias', () => {
     expect(recordUsageEvent).not.toHaveBeenCalled();
   });
 });
+
+describe('selection-time provider attribution (#7434)', () => {
+  it.each([true, false])(
+    'preserves captured provider for success=%s after inner identity changes',
+    async (success) => {
+      vi.mocked(recordUsageEvent).mockClear();
+      const raw = fakeGatewayModel('gpt-5.5');
+      const selectedProvider = raw.providerId;
+      const wrapped = withGatewayUsageRecording(raw, 'api:openai-compat');
+      Object.defineProperty(raw, 'providerId', { value: 'TEST-changed-provider' });
+      if (!success) vi.mocked(raw.complete).mockResolvedValue(err(new ModelError('TEST refused')));
+      expect((await wrapped.complete({ messages: [] })).ok).toBe(success);
+      expect(recordUsageEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: selectedProvider, success })
+      );
+    }
+  );
+});

@@ -50,6 +50,7 @@ function boundary(
 ): {
   adapter: CliToModelAdapter;
   requests: CliTask[];
+  cli: ICliAdapter;
 } {
   const requests: CliTask[] = [];
   const model = cliName === 'claude' ? 'claude-sonnet' : 'gpt-5.4';
@@ -64,7 +65,7 @@ function boundary(
       return Promise.resolve(ok({ text: 'Review delivered', model }));
     },
   } as unknown as ICliAdapter;
-  return { adapter: new CliToModelAdapter(cli), requests };
+  return { adapter: new CliToModelAdapter(cli), requests, cli };
 }
 
 async function refuseAfterPreflight(): Promise<{
@@ -184,8 +185,13 @@ describe('worker completion accounting (#7413)', () => {
   });
 
   it('counts a bridge invocation but records only requested intent when native startup refuses', async () => {
-    const fixture = boundary('claude', false);
-    const complete = vi.spyOn(fixture.adapter, 'complete');
+    const fixture = boundary();
+    // #7434: known incompatibility is now filtered before completion. This
+    // test covers the final defense when serving state changes after pinning.
+    const complete = vi.spyOn(fixture.adapter, 'complete').mockImplementation((request) => {
+      Object.defineProperty(fixture.cli, 'enforcesReadOnlyAnalysis', { value: false });
+      return CliToModelAdapter.prototype.complete.call(fixture.adapter, request);
+    });
     const result = await executeWorkerDispatch({
       agentPlan: plan(),
       taskDescription: TASK,
