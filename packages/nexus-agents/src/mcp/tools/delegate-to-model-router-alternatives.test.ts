@@ -16,6 +16,11 @@ import { DEFAULT_MODEL_PER_CLI } from '../../config/in-tree-data.js';
 import { UNRESOLVED_MODEL_ID } from '../../config/model-equivalence.js';
 import { mapCompositeDecisionToOutput } from './delegate-to-model-router.js';
 
+const binaryOnPath = vi.hoisted(() => vi.fn(() => false));
+vi.mock('../../cli-adapters/cli-binary-on-path.js', () => ({
+  isCliBinaryOnPath: binaryOnPath,
+}));
+
 const providerCall = vi.fn((): never => {
   throw new Error('This route-only test must never invoke a provider');
 });
@@ -85,7 +90,10 @@ function gateway(modelId = 'gemini-3.1-pro-preview'): ICliAdapter {
   return arm;
 }
 
-beforeEach(() => vi.stubEnv('NEXUS_DISABLED_CLIS', ''));
+beforeEach(() => {
+  vi.stubEnv('NEXUS_DISABLED_CLIS', '');
+  binaryOnPath.mockReset().mockReturnValue(false);
+});
 afterEach(async () => {
   await Promise.all(owned.splice(0).map(async (adapter) => adapter.dispose()));
   _resetGatewaySlotCatalog();
@@ -180,7 +188,24 @@ describe('actual route-to-output alternative descriptors', () => {
     expect(captured?.capabilities).not.toHaveProperty('endpointConfig');
   });
 
+  it('uses the gateway without acquiring a native adapter when its binary is absent', async () => {
+    setGatewaySlotCatalog([model('gemini-3.1-pro-preview')]);
+    const acquireNative = vi.fn((): never => {
+      throw new Error('Absent native binary must never be acquired');
+    });
+    const availability = vi.fn(() => Promise.resolve(true));
+    const arm = buildGatewaySlotRouterArm('gemini', acquireNative, availability);
+    if (arm === undefined || arm === 'unavailable') throw new Error('Expected gateway arm');
+    owned.push(arm);
+    const output = mapCompositeDecisionToOutput(await decision(router(arm)), 1000);
+    expect(output.alternatives[0]?.model).toBe('gemini-3.1-pro-preview');
+    expect(binaryOnPath).toHaveBeenCalledWith('gemini');
+    expect(acquireNative).not.toHaveBeenCalled();
+    expect(availability).not.toHaveBeenCalled();
+  });
+
   it('keeps earlier alternatives stable when a reused slot changes its target', async () => {
+    binaryOnPath.mockReturnValue(true);
     setGatewaySlotCatalog([model('gemini-3.1-pro-preview')]);
     const native = new GeminiCliAdapter();
     let nativeAvailable = true;
