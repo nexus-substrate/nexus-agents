@@ -1341,7 +1341,7 @@ function buildApprovedPlanResult(
   };
 }
 
-/** The persisted record id of a vote, as a field to spread, or `{}` when none (#7181). */
+/** Return the measured record ID and, for an unapproved vote, its proposal. */
 function recordIdOf(vote: VoteResult | undefined): {
   planVoteRecordId?: string;
   planVoteProposal?: string;
