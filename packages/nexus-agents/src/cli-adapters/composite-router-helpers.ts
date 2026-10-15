@@ -114,8 +114,6 @@ export interface BuildReasonOptions {
   difficultyScore?: number;
   /** Billing mode in effect; 'plan' appends {@link PLAN_MODE_COST_ANNOTATION} (#4196). */
   billingMode?: BillingMode;
-  /** Actual adapter instances, before any display-slot projection. */
-  adapters?: ReadonlyMap<RoutingArmId, ICliAdapter>;
 }
 
 /**

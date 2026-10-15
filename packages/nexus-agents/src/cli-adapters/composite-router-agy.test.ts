@@ -20,7 +20,9 @@ import { createModelToCliAdapter } from './model-to-cli-adapter.js';
 import type { IModelAdapter } from '../core/index.js';
 import type { CliTask, ICliAdapter, RoutingArmId } from './types.js';
 import * as agyMap from '../config/agy-model-map.js';
-import { getCliModelName } from '../config/model-config-helpers.js';
+import { DEFAULT_MODEL_PER_CLI } from '../config/in-tree-data.js';
+import { mapCompositeDecisionToOutput } from '../mcp/tools/delegate-to-model-router.js';
+import { getCliModelName, lookupInTreeCapability } from '../config/model-config-helpers.js';
 
 const originalEstimate = ZeroRouter.prototype.estimateDifficulty;
 beforeEach(() => {
@@ -186,3 +188,66 @@ it.skipIf(process.platform === 'win32')(
     }
   }
 );
+
+describe('gateway-bound model capabilities in the public preview', () => {
+  it('keeps Pro capabilities stable when only the native default changes', async () => {
+    const previous = DEFAULT_MODEL_PER_CLI.gemini;
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'gemini');
+    const model = fakeGatewayModel('gemini-3.1-pro-preview', 'api:openai-compat');
+    setGatewaySlotCatalog([model]);
+    const expected = lookupInTreeCapability(model.modelId);
+    if (expected?.qualityScores === undefined) throw new Error('Pro metadata fixture missing');
+    try {
+      for (const nativeDefault of ['gemini-3-pro', 'gemini-3.8-flash'] as const) {
+        DEFAULT_MODEL_PER_CLI.gemini = nativeDefault;
+        const construct = vi.fn(() => new GeminiCliAdapter());
+        const slot = buildGatewaySlotRouterArm('gemini', construct, () => Promise.resolve(false));
+        if (slot === undefined || slot === 'unavailable')
+          throw new Error('gateway fixture unavailable');
+        try {
+          const result = await routerFor('gemini', slot).route({ content: 'Explain the model' });
+          if (!result.ok) throw result.error;
+          const preview = mapCompositeDecisionToOutput(result.value, 1000);
+          expect(preview.recommended_model).toBe(model.modelId);
+          expect(slot.capabilities).toEqual({
+            ...expected.qualityScores,
+            contextWindow: expected.contextWindow,
+          });
+          expect(preview.capabilities).toEqual(slot.capabilities);
+          expect(construct).not.toHaveBeenCalled();
+          expect(model.complete).not.toHaveBeenCalled();
+          expect(model.stream).not.toHaveBeenCalled();
+        } finally {
+          await slot.dispose();
+        }
+      }
+    } finally {
+      DEFAULT_MODEL_PER_CLI.gemini = previous;
+    }
+  });
+
+  it('labels unknown gateway metadata unmeasured instead of borrowing native Flash', async () => {
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'gemini');
+    const model = fakeGatewayModel('gemini-99-pro', 'api:openai-compat');
+    setGatewaySlotCatalog([model]);
+    const slot = buildGatewaySlotRouterArm(
+      'gemini',
+      () => new GeminiCliAdapter(),
+      () => Promise.resolve(false)
+    );
+    if (slot === undefined || slot === 'unavailable')
+      throw new Error('gateway fixture unavailable');
+    try {
+      const result = await routerFor('gemini', slot).route({ content: 'Explain the model' });
+      if (!result.ok) throw result.error;
+      const preview = mapCompositeDecisionToOutput(result.value, 1000);
+      expect(preview.recommended_model).toBe(model.modelId);
+      expect(slot.capabilities.reasoning).toBe(7); // existing bridge neutral fallback, not model evidence
+      expect(preview.reasoning).toContain('capabilities unmeasured');
+      expect(model.complete).not.toHaveBeenCalled();
+      expect(model.stream).not.toHaveBeenCalled();
+    } finally {
+      await slot.dispose();
+    }
+  });
+});

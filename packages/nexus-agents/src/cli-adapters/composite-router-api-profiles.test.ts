@@ -6,7 +6,7 @@ import { CompositeRouter } from './composite-router.js';
 import { createModelToCliAdapter } from './model-to-cli-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
-import { applyTopsisRanking } from './composite-router-helpers.js';
+import { applyTopsisRanking, calculateConfidence } from './composite-router-helpers.js';
 import { TopsisRouter } from './topsis-router.js';
 import { DEFAULT_MODEL_PER_CLI } from '../config/in-tree-data.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
@@ -238,4 +238,98 @@ describe('actual-arm API TOPSIS profiles', () => {
       DEFAULT_MODEL_PER_CLI.gemini = previous;
     }
   });
+});
+
+describe('actual selected-arm score after real LinUCB selection', () => {
+  it.each([true, false])(
+    'attributes only the selected API score (unpriced=%s)',
+    async (unpriced) => {
+      const registry = getDefaultRegistry();
+      const original = registry.getEntry.bind(registry);
+      vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+        const entry = { ...original(id) };
+        if (unpriced && entry.id === 'gemini-3-pro') delete entry.pricing;
+        return entry;
+      });
+      const adapters = new Map<RoutingArmId, ICliAdapter>([
+        ['api:google', apiPro()],
+        ['gemini', new GeminiCliAdapter()],
+        ['claude', new ClaudeCliAdapter()],
+      ]);
+      const r = new CompositeRouter(adapters, {
+        enableBudgetFilter: false,
+        enableZeroRouter: false,
+        enableTopsisRanking: true,
+        enableLinUCBSelection: true,
+        enableCapacityBalancing: false,
+        enableRoutingMemory: false,
+        enableStrategyDistillation: false,
+        enableResourceStrategy: false,
+        enableQualityConstraint: false,
+        enableLatencyTracking: false,
+        billingMode: 'api',
+      });
+      const query = { content: 'bounded task' };
+      // Train the real bandit through the public outcome seam; never force select().
+      for (let i = 0; i < 100; i++) r.recordOutcome('api:google', query, 1, true);
+      const result = await r.route(query);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+      const d = result.value;
+      expect(d.cliName).toBe('api:google');
+      const ranked = applyTopsisRanking(d.taskProfile, [...adapters.keys()], new TopsisRouter(), {
+        billingMode: 'api',
+        adapters,
+      });
+      const own = ranked.scoresByArm?.get('api:google');
+      const native = ranked.scoresByArm?.get('gemini');
+      expect(native).toBeDefined();
+      if (unpriced) expect(own).toBeUndefined();
+      else {
+        expect(own).toBeDefined();
+        expect(own).not.toBe(native);
+      }
+      expect(d.topsisScore).toBe(own);
+      expect(d.confidence).toBeCloseTo(calculateConfidence(own, d.ucbScore, 3), 12);
+      if (own === undefined) expect(d.reason).not.toContain('TOPSIS score');
+      else expect(d.reason).toContain(`TOPSIS score ${own.toFixed(2)}`);
+      for (const [arm, score] of d.alternativeScores ?? [])
+        expect(score).toBe(ranked.scoresByArm?.get(arm));
+    }
+  );
+});
+
+it('retains a measured selected score and distinct alternatives for a native-only ranking', async () => {
+  const adapters = new Map<RoutingArmId, ICliAdapter>([
+    ['claude', new ClaudeCliAdapter()],
+    ['gemini', new GeminiCliAdapter()],
+  ]);
+  const r = new CompositeRouter(adapters, {
+    enableBudgetFilter: false,
+    enableZeroRouter: false,
+    enableTopsisRanking: true,
+    enableLinUCBSelection: false,
+    enableCapacityBalancing: false,
+    enableRoutingMemory: false,
+    enableStrategyDistillation: false,
+    enableResourceStrategy: false,
+    enableQualityConstraint: false,
+    enableLatencyTracking: false,
+    billingMode: 'api',
+  });
+  const result = await r.route({ content: 'bounded task' });
+  if (!result.ok) throw result.error;
+  const d = result.value;
+  const ranking = applyTopsisRanking(d.taskProfile, [...adapters.keys()], new TopsisRouter(), {
+    billingMode: 'api',
+    adapters,
+  });
+  expect(d.cliName).toBe(ranking.ranking[0]);
+  const own = ranking.scoresByArm?.get(d.cliName);
+  expect(own).toBeDefined();
+  if (own === undefined) throw new Error('native ranking score unmeasured');
+  expect(d.topsisScore).toBe(own);
+  expect(d.reason).toContain(`TOPSIS score ${own.toFixed(2)}`);
+  for (const [arm, score] of d.alternativeScores ?? [])
+    expect(score).toBe(ranking.scoresByArm?.get(arm));
 });

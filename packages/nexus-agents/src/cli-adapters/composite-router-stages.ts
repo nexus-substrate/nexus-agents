@@ -633,8 +633,9 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
     preferenceScore: p.prefResult.preferenceScore,
     preferenceTier: p.prefResult.preferenceTier,
     topsisRanking: p.topsisResult.ranking,
-    // An endpoint did not participate in TOPSIS; do not report a CLI score.
-    topsisScore: routingArmCliSlot(p.selectedCli) === undefined ? undefined : p.topsisResult.score,
+    // Attribute only the FINAL selected arm, including a bandit or memory pick.
+    // An unmeasured arm must not inherit the ranking winner's confidence.
+    topsisScore: p.topsisResult.scoresByArm?.get(p.selectedCli),
     topsisScoresByArm: p.topsisResult.scoresByArm,
     selectedCli: p.selectedCli,
     ucbScore: p.linucbResult.ucbScore,

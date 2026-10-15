@@ -32,7 +32,7 @@ import { computeTokenCost } from '../../../learning/token-cost-core.js';
 const MAX_QUALITY = 10;
 
 /** Bound-profile result; unknown profiles are excluded before evaluation by the caller. */
-export interface QualityProfileEvaluation<Key extends string> {
+interface QualityProfileEvaluation<Key extends string> {
   readonly eligible: Key[];
   readonly filtered: Map<Key, string>;
   readonly violations: Array<{ cli: Key; reason: string }>;

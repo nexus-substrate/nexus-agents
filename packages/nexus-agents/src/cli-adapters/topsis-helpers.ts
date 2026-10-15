@@ -191,10 +191,7 @@ export type KeyedTopsisProfile<Key extends string> = Omit<TopsisModelProfile, 'c
 type KeyedTopsisScore<Key extends string> = Omit<TopsisScore, 'cliName'> & {
   readonly cliName: Key;
 };
-export type KeyedTopsisResult<Key extends string> = Omit<
-  TopsisResult,
-  'selectedModel' | 'scores'
-> & {
+type KeyedTopsisResult<Key extends string> = Omit<TopsisResult, 'selectedModel' | 'scores'> & {
   readonly selectedModel: Key;
   readonly scores: readonly KeyedTopsisScore<Key>[];
 };
