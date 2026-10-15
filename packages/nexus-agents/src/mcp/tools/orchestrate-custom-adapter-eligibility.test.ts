@@ -1,11 +1,19 @@
 /** Public custom-adapter migration crosses the real registered handler and dispatcher (#7434). */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { MemoryRegistry, setMemoryRegistry } from 'nexus-memory';
 import { z } from 'zod';
 import { registerOrchestrateTool, McpRateLimiter } from '../../exports/mcp.js';
-import { getGlobalRegistry } from '../../exports/adapters.js';
+import { getGlobalRegistry, resetGlobalRegistry } from '../../exports/adapters.js';
 import type { IModelAdapter } from '../../exports/core.js';
 import { createLogger, ok } from '../../core/index.js';
 import { createMockOrchestrator } from './orchestrate-types.js';
+import { shutdownToolMemory } from './tool-memory.js';
+import { setSharedMobiMem } from '../../context/mobimem.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 
 // No operator history influences this public-handler control.
 vi.mock('../../config/learning-persistence.js', () => ({ isPersistenceEnabled: () => false }));
@@ -28,7 +36,35 @@ type Handler = (args: unknown) => Promise<{
   isError?: boolean;
   content: Array<{ type: string; text?: string }>;
 }>;
-afterEach(() => vi.restoreAllMocks());
+let ownedDirectory = '';
+beforeEach(() => {
+  ownedDirectory = mkdtempSync(join(tmpdir(), 'custom-adapter-eligibility-'));
+  const configPath = join(ownedDirectory, 'nexus-agents.yaml');
+  writeFileSync(configPath, '{}\n');
+  vi.stubEnv('NEXUS_DATA_DIR', ownedDirectory);
+  vi.stubEnv('NEXUS_CONFIG_PATH', configPath);
+  vi.stubEnv('NEXUS_VOTE_RECORDS_PATH', join(ownedDirectory, 'vote-records.jsonl'));
+  vi.stubEnv('NEXUS_NO_SCAFFOLD', '1');
+  vi.stubEnv('NEXUS_AORCHESTRA', '1');
+  vi.stubEnv('NEXUS_AORCHESTRA_DISPATCH', 'true');
+  resetNexusDataDirCache();
+  resetOutcomeStore();
+  // The registry owns no SQLite connection; ToolMemory owns any attached backends.
+  setMemoryRegistry(new MemoryRegistry());
+});
+afterEach(() => {
+  // End the owned session and stop its decay timers before restoring environment/paths.
+  shutdownToolMemory();
+  setSharedMobiMem(null);
+  setMemoryRegistry(null);
+  resetOutcomeStore();
+  vi.restoreAllMocks();
+  resetGlobalRegistry();
+  vi.unstubAllEnvs();
+  resetNexusDataDirCache();
+  if (ownedDirectory !== '') rmSync(ownedDirectory, { recursive: true, force: true });
+  ownedDirectory = '';
+});
 
 function contentOnlyAdapter(): IModelAdapter {
   return {
