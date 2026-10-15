@@ -14,7 +14,6 @@ import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-type
 import { resolveCapabilityProfile } from './delegate-to-model-types.js';
 import {
   getDefaultModelForCli,
-  getDefaultModelForGoogleApi,
   lookupInTreeCapability,
   FALLBACK_CONTEXT_WINDOW,
 } from '../../config/model-config-helpers.js';
@@ -73,12 +72,12 @@ export function mapCompositeDecisionToOutput(
     reasoning: describeGatewayCapabilityEvidence(decision),
     capabilities: caps,
     estimated_tokens: estimatedTokens,
-    // A decision has only the winner's adapter. Endpoint alternatives cannot
-    // be resolved here, so omit them instead of inventing an OpenCode model.
+    // Only route-time snapshots establish an alternative's identity. Legacy
+    // decisions without them are honest omissions, never native-default guesses.
     alternatives: decision.alternatives
       .flatMap((alt) => {
-        const altSlot = routingArmCliSlot(alt);
-        return altSlot === undefined ? [] : [describeAlternative(alt, altSlot, decision, caps)];
+        const described = describeAlternative(alt, decision, caps, modelName);
+        return described === undefined ? [] : [described];
       })
       .slice(0, 3),
   };
@@ -107,16 +106,21 @@ function describeGatewayCapabilityEvidence(decision: CompositeRoutingDecision): 
  */
 function describeAlternative(
   alt: RoutingArmId,
-  slot: CliNameLiteral,
   decision: CompositeRoutingDecision,
-  bestCaps: CapabilityProfile
-): { model: string; score: number; tradeoff: string } {
-  const model = alt === 'api:google' ? getDefaultModelForGoogleApi() : cliNameToModel(slot);
-  const altCaps = resolveCapabilityProfile(model) ?? DEFAULT_CAPABILITIES;
+  bestCaps: CapabilityProfile,
+  bestModel: string
+): { model: string; score: number; tradeoff: string } | undefined {
+  const descriptor = decision.alternativeDescriptors?.get(alt);
+  if (descriptor === undefined) return undefined;
+  const model = descriptor.modelId;
+  const tradeoff =
+    descriptor.hasQualityMetadata && lookupInTreeCapability(bestModel)?.qualityScores !== undefined
+      ? getTradeoff(bestCaps, descriptor.capabilities)
+      : 'capabilities unmeasured — no comparative quality claim';
   const ranked = decision.alternativeScores?.get(alt);
 
   if (ranked !== undefined) {
-    return { model, score: ranked, tradeoff: getTradeoff(bestCaps, altCaps) };
+    return { model, score: ranked, tradeoff };
   }
 
   // No ranking ran, so there is no per-alternative score to report. The output
@@ -127,7 +131,7 @@ function describeAlternative(
   return {
     model,
     score: decision.topsisScore ?? 0.7,
-    tradeoff: `not ranked — score shown is the selected model's, not this alternative's; ${getTradeoff(bestCaps, altCaps)}`,
+    tradeoff: `not ranked — score shown is the selected model's, not this alternative's; ${tradeoff}`,
   };
 }
 
