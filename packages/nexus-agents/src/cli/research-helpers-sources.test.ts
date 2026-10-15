@@ -18,6 +18,11 @@ import {
   buildArxivUrl,
 } from './research-helpers-sources.js';
 
+// The HTTP boundary is controlled below; do not read operator credentials either.
+vi.mock('../scm/token-resolver.js', () => ({
+  resolveToken: vi.fn().mockResolvedValue({ ok: false, error: { message: 'No fixture token' } }),
+}));
+
 // Mock global fetch
 const mockFetch = vi.fn();
 
@@ -55,6 +60,55 @@ describe('scoreRelevance', () => {
 });
 
 describe('discoverGitHubRepos', () => {
+  it.each([
+    ['short', 'Routing preview', 'Routing preview'],
+    ['empty', '', ''],
+    ['null', null, ''],
+    ['absent', undefined, ''],
+    ['exactly 200 units', 'a'.repeat(200), 'a'.repeat(200)],
+    ['201 units', 'a'.repeat(201), `${'a'.repeat(197)}...`],
+    ['large response', 'a'.repeat(241_979), `${'a'.repeat(197)}...`],
+    ['pair crossing the cut', `${'a'.repeat(196)}😀tail`, `${'a'.repeat(196)}...`],
+    ['pair fitting the cut', `${'a'.repeat(195)}😀tail`, `${'a'.repeat(195)}😀...`],
+    ['astral-only text', '😀'.repeat(101), `${'😀'.repeat(98)}...`],
+  ])('returns a marked, well-formed preview for %s (#7435)', async (_name, input, expected) => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          items: [
+            {
+              full_name: 'fixture/research-preview',
+              html_url: 'https://github.com/fixture/research-preview',
+              description: input,
+              stargazers_count: 1500,
+              pushed_at: '2026-10-01T00:00:00Z',
+            },
+          ],
+        }),
+    });
+
+    const result = await discoverGitHubRepos('routing', 1);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: [
+        {
+          source: 'github',
+          title: 'fixture/research-preview',
+          url: 'https://github.com/fixture/research-preview',
+          description: expected,
+          relevance: 'high',
+          publishedAt: '2026-10-01T00:00:00Z',
+        },
+      ],
+    });
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]?.description.length).toBeLessThanOrEqual(200);
+    expect(result.value[0]?.description.isWellFormed()).toBe(true);
+  });
+
   it('should parse GitHub API response', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -223,6 +277,28 @@ describe('discoverGitHubRepos - Zod validation', () => {
 });
 
 describe('discoverArxiv', () => {
+  it.each([
+    ['a'.repeat(201), `${'a'.repeat(197)}...`],
+    [`${'a'.repeat(196)}😀tail`, `${'a'.repeat(196)}...`],
+    [`${'a'.repeat(195)}😀tail`, `${'a'.repeat(195)}😀...`],
+  ])('keeps the shared arXiv preview bounded and well-formed (#7435)', async (input, expected) => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () =>
+        Promise.resolve(
+          `<feed><entry><id>http://arxiv.org/abs/2401.12345</id>` +
+            `<title>Routing fixture</title><summary>${input}</summary></entry></feed>`
+        ),
+    });
+
+    const result = await discoverArxiv('routing', 1);
+
+    expect(result).toMatchObject({ ok: true, value: [{ description: expected }] });
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]?.description.isWellFormed()).toBe(true);
+  });
+
   const arxivXml = `<?xml version="1.0" encoding="UTF-8"?>
 <feed>
   <entry>
