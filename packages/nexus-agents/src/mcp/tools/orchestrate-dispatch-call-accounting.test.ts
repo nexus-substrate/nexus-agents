@@ -93,6 +93,76 @@ beforeEach(() => {
 });
 
 describe('worker completion accounting (#7413)', () => {
+  it.each(['returned', 'thrown'] as const)(
+    'enforces the shared maximum after a %s retryable failure (#7422)',
+    async (failure) => {
+      const fixture = boundary();
+      const complete = vi.spyOn(fixture.adapter, 'complete');
+      if (failure === 'returned') {
+        complete.mockResolvedValueOnce(err(new ModelError('Fixture econnreset')));
+      } else {
+        complete.mockRejectedValueOnce(new Error('Fixture econnreset'));
+      }
+      const result = await executeWorkerDispatch({
+        agentPlan: plan(),
+        taskDescription: TASK,
+        modelAdapter: fixture.adapter,
+        logger,
+        maxWorkerCalls: 1,
+      });
+      expect(complete).toHaveBeenCalledOnce();
+      expect(fixture.requests).toHaveLength(0);
+      expect(result.totalModelCalls).toBe(1);
+      expect(result.successCount).toBe(0);
+      expect(result.results[0]?.error).toContain('budget exhausted');
+      expect(result.results[0]?.subTask).toContain('Fixture econnreset');
+      expect(result.results[0]?.resolvedCli).toBeUndefined();
+      expect(result.results[0]?.accessMode).toBeUndefined();
+    }
+  );
+
+  it('shares the maximum with the alternate adapter rather than granting a retry allowance', async () => {
+    const primary = boundary();
+    const alternate = boundary('codex');
+    routing.alternate = alternate.adapter;
+    routing.chain = ['codex'];
+    const complete = vi
+      .spyOn(primary.adapter, 'complete')
+      .mockResolvedValueOnce(err(new ModelError('Fixture rate limit')));
+    const altComplete = vi.spyOn(alternate.adapter, 'complete');
+    const result = await executeWorkerDispatch({
+      agentPlan: plan(),
+      taskDescription: TASK,
+      modelAdapter: primary.adapter,
+      logger,
+      maxWorkerCalls: 1,
+    });
+    expect(complete).toHaveBeenCalledOnce();
+    expect(altComplete).not.toHaveBeenCalled();
+    expect(result.totalModelCalls).toBe(1);
+    expect(result.successCount).toBe(0);
+    expect(result.results[0]?.resolvedCli).toBeUndefined();
+  });
+
+  it('reserves a shared maximum across concurrent failed workers and their retries', async () => {
+    const fixture = boundary();
+    const complete = vi
+      .spyOn(fixture.adapter, 'complete')
+      .mockResolvedValue(err(new ModelError('Fixture econnreset')));
+    const result = await executeWorkerDispatch({
+      agentPlan: plan(2),
+      taskDescription: TASK,
+      modelAdapter: fixture.adapter,
+      logger,
+      maxWorkerCalls: 2,
+      maxConcurrency: 2,
+    });
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.totalModelCalls).toBe(2);
+    expect(result.errorCount).toBe(2);
+    expect(fixture.requests).toHaveLength(0);
+  });
+
   it('records zero completion attempts when the immediate per-call recheck refuses', async () => {
     const { complete, requests, result } = await refuseAfterPreflight();
     expect(complete).not.toHaveBeenCalled();

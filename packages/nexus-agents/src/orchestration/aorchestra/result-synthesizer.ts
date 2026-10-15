@@ -268,25 +268,36 @@ function isSynthesisLowQuality(synthesisText: string, inputLength: number): bool
   return synthesisText.length < inputLength * SYNTHESIS_QUALITY_MIN_RATIO;
 }
 
-/** Call LLM and return text or null on failure. Non-null may be empty string. */
+/** A denied reservation is not an attempted model-quality observation. */
+type SynthesisAttempt =
+  { readonly attempted: false } | { readonly attempted: true; readonly text: string | null };
+
+/** Call LLM and distinguish actual failures from the private orchestration budget refusal. */
 async function callLlm(
   adapter: IModelAdapter,
   prompt: string,
   signal: AbortSignal | undefined
-): Promise<string | null> {
+): Promise<SynthesisAttempt> {
   try {
     const response = await adapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: SYNTHESIS_MAX_TOKENS,
       ...(signal !== undefined ? { signal } : {}),
     });
-    if (!response.ok) return null;
-    return extractTextFromBlocks(response.value.content);
+    if (!response.ok) {
+      if (
+        response.error.context?.['operation'] === 'orchestrate-call-budget' &&
+        response.error.context['attempted'] === false
+      )
+        return { attempted: false };
+      return { attempted: true, text: null };
+    }
+    return { attempted: true, text: extractTextFromBlocks(response.value.content) };
   } catch (error) {
     logger.debug('Synthesis LLM call failed', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return null;
+    return { attempted: true, text: null };
   }
 }
 
@@ -347,8 +358,10 @@ async function synthesizeTier2(
   const tracker = getSynthesisHistoryTracker();
   const prompt = buildSynthesisPrompt({ results, conflicts, taskDescription });
 
-  const tier2Text = await callLlm(modelAdapter, prompt, input.signal);
-  if (isCancelled(input.signal)) return mkFallback(results, conflicts, excludedWorkerCount);
+  const attempt = await callLlm(modelAdapter, prompt, input.signal);
+  if (isCancelled(input.signal) || !attempt.attempted)
+    return mkFallback(results, conflicts, excludedWorkerCount);
+  const tier2Text = attempt.text;
   if (tier2Text === null) {
     tracker.record(patternKey, 2, false);
     logger.warn('Synthesis LLM call failed, using fallback');
@@ -382,8 +395,10 @@ async function synthesizeTier3(
   const { results, conflicts, taskDescription, modelAdapter } = input;
   const tracker = getSynthesisHistoryTracker();
   const reimaginePrompt = buildReimaginePr({ results, conflicts, taskDescription });
-  const tier3Text = await callLlm(modelAdapter, reimaginePrompt, input.signal);
-  if (isCancelled(input.signal)) return mkFallback(results, conflicts, excludedWorkerCount);
+  const attempt = await callLlm(modelAdapter, reimaginePrompt, input.signal);
+  if (isCancelled(input.signal) || !attempt.attempted)
+    return mkFallback(results, conflicts, excludedWorkerCount);
+  const tier3Text = attempt.text;
 
   if (tier3Text !== null && !isSynthesisLowQuality(tier3Text, inputLength)) {
     tracker.record(patternKey, 3, true);
