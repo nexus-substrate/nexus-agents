@@ -415,7 +415,7 @@ function extractTag(entry: string, tag: string): string {
 }
 
 /** Marked provider preview, bounded in UTF-16 units without splitting a valid pair. */
-function truncate(text: string, maxLen = 200): string {
+export function truncate(text: string, maxLen = 200): string {
   if (text.length <= maxLen) return text;
   let end = maxLen - 3;
   // codePointAt sees the full pair even when the cut would retain only its high half.
