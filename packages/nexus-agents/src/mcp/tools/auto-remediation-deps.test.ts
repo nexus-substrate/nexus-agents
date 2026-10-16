@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { buildAutoRemediationDeps } from './auto-remediation-deps.js';
 import { runAutoRemediation } from './improvement-remediation-enforce.js';
+import { buildProposalDoc } from './remediation-proposal-pr.js';
 import { RemediationGuard } from './improvement-remediation-guard.js';
 import { parseRemediationPlan, CapabilityLedger } from './improvement-remediation-capability.js';
 import type { ImprovementSignal } from './improvement-review.js';
@@ -168,5 +169,62 @@ describe('buildAutoRemediationDeps', () => {
     expect(r.plans).toHaveLength(1); // research+vote ran
     expect(r.remediated).toEqual([]); // no writes in audit
     expect(implementSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('retained signal context at the actual default handoff (#7429)', () => {
+  it('keeps named constraints in the strict plan, original rejecting vote and actual proposal doc', async () => {
+    const input = signal({
+      body: '#4656 dependency; retain workspace attribution; bound append cost.',
+      evidence: { samples: 7, window: 'TEST window', observedValue: 0, threshold: 1 },
+    });
+    const captured: string[] = [];
+    const deps = buildAutoRemediationDeps({
+      voteRunner: (proposal) => {
+        captured.push(proposal);
+        return Promise.resolve({ approved: false, approvalPercentage: 0 });
+      },
+    });
+    deps.audit = vi.fn();
+    const implement = vi.spyOn(deps, 'implement');
+    const plan = parseRemediationPlan(await deps.research(input, new CapabilityLedger()));
+    const result = await runAutoRemediation([input], deps, {
+      mode: 'audit',
+      now: 0,
+      guard: new RemediationGuard(),
+    });
+    expect(captured).toHaveLength(1);
+    for (const constraint of ['#4656 dependency', 'workspace attribution', 'append cost']) {
+      expect(captured[0]).toContain(constraint);
+      expect(buildProposalDoc(plan)).toContain(constraint);
+    }
+    expect(captured[0]).toContain('"samples":7');
+    expect(captured[0]).toContain('"observedValue":0');
+    expect(result.remediated).toEqual([]);
+    expect(implement).not.toHaveBeenCalled();
+  });
+
+  it('makes body-only and evidence-only counterfactuals observable with the same key/title', async () => {
+    const deps = buildAutoRemediationDeps({
+      voteRunner: () => Promise.resolve({ approved: false, approvalPercentage: 0 }),
+    });
+    const original = signal({ body: 'TEST constraint one', evidence: { samples: 1 } });
+    const plan = await deps.research(original, new CapabilityLedger());
+    const changedBody = await deps.research(
+      { ...original, body: 'TEST constraint two' },
+      new CapabilityLedger()
+    );
+    const changedEvidence = await deps.research(
+      { ...original, evidence: { samples: 0 } },
+      new CapabilityLedger()
+    );
+    expect(changedBody).not.toEqual(plan);
+    expect(changedEvidence).not.toEqual(plan);
+    expect(buildProposalDoc(parseRemediationPlan(changedBody))).not.toEqual(
+      buildProposalDoc(parseRemediationPlan(plan))
+    );
+    expect(buildProposalDoc(parseRemediationPlan(changedEvidence))).not.toEqual(
+      buildProposalDoc(parseRemediationPlan(plan))
+    );
   });
 });

@@ -15,6 +15,7 @@ import {
   RemediationPlanSchema,
   untrustedInputGuardFor,
   renderPlanAsResearch,
+  computeSourceContextDigest,
   type RemediationPlan,
 } from './improvement-remediation-capability.js';
 import type { SignalCategory } from './improvement-review.js';
@@ -164,5 +165,173 @@ describe('dev-pipeline boundary glue (#3643)', () => {
     expect(text).toContain(plan.summary);
     expect(text).toContain('[adjust-routing]');
     expect(text).toContain('target: src/x.ts');
+  });
+
+  it('renders sourceContext with description, evidence, and digest', () => {
+    const desc = 'retained constraint body';
+    const evid = { samples: 10, window: '14d', observedValue: 0.5, threshold: 0.8 };
+    const withCtx: RemediationPlan = {
+      ...plan,
+      sourceContext: {
+        description: desc,
+        evidence: evid,
+        digest: computeSourceContextDigest(desc, evid),
+      },
+    };
+    const text = renderPlanAsResearch(withCtx);
+    expect(text).toContain('Source context:\nretained constraint body');
+    const digest = withCtx.sourceContext?.digest ?? '';
+    expect(text).toContain(`Context digest: ${digest}`);
+  });
+
+  it('renderPlanAsResearch rejects a mismatched digest (tamper-evident)', () => {
+    const withBadDigest: RemediationPlan = {
+      ...plan,
+      sourceContext: {
+        description: 'original',
+        digest: '0'.repeat(64),
+      },
+    };
+    expect(() => renderPlanAsResearch(withBadDigest)).toThrow(RuleOfTwoViolation);
+  });
+});
+
+describe('RemediationPlanSchema sourceContext & provenance (#7429)', () => {
+  const basePlan: RemediationPlan = {
+    signalKey: 'routing:cli-floor:codex:docs',
+    category: 'routing',
+    summary: 'Restore routing.',
+    steps: [{ kind: 'adjust-routing', description: 'update weights' }],
+  };
+
+  it('accepts complete, valid sourceContext with matching digest', () => {
+    const desc = 'dependency: #4656; workspace attribution';
+    const evid = { samples: 5, window: '7d', observedValue: 0.2, threshold: 0.7 };
+    const p: RemediationPlan = {
+      ...basePlan,
+      sourceContext: {
+        description: desc,
+        evidence: evid,
+        digest: computeSourceContextDigest(desc, evid),
+      },
+    };
+    const parsed = parseRemediationPlan(p);
+    expect(parsed.sourceContext).toBeDefined();
+    expect(parsed.sourceContext?.description).toBe(desc);
+    expect(parsed.sourceContext?.evidence).toEqual(evid);
+  });
+
+  it('accepts empty sourceContext object {}', () => {
+    const p = { ...basePlan, sourceContext: {} };
+    expect(() => parseRemediationPlan(p)).not.toThrow();
+  });
+
+  it('accepts missing sourceContext (legacy plan)', () => {
+    const p = { ...basePlan };
+    delete (p as Partial<RemediationPlan>).sourceContext;
+    expect(() => parseRemediationPlan(p)).not.toThrow();
+  });
+
+  it('accepts zero values and empty strings in sourceContext', () => {
+    const evid = { samples: 0, window: '', observedValue: 0, threshold: 0 };
+    const p: RemediationPlan = {
+      ...basePlan,
+      sourceContext: {
+        description: '',
+        evidence: evid,
+        digest: computeSourceContextDigest('', evid),
+      },
+    };
+    expect(() => parseRemediationPlan(p)).not.toThrow();
+  });
+
+  it('rejects description exceeding 1200 UTF-16 units', () => {
+    const bad = {
+      ...basePlan,
+      sourceContext: { description: 'a'.repeat(1201) },
+    };
+    expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects evidence window exceeding 200 UTF-16 units', () => {
+    const bad = {
+      ...basePlan,
+      sourceContext: { evidence: { window: 'w'.repeat(201) } },
+    };
+    expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects non-finite numbers in evidence (NaN, Infinity, -Infinity)', () => {
+    const badNaN = {
+      ...basePlan,
+      sourceContext: { evidence: { samples: NaN } },
+    };
+    expect(() => parseRemediationPlan(badNaN)).toThrow(RuleOfTwoViolation);
+
+    const badInf = {
+      ...basePlan,
+      sourceContext: { evidence: { observedValue: Infinity } },
+    };
+    expect(() => parseRemediationPlan(badInf)).toThrow(RuleOfTwoViolation);
+
+    const badNegInf = {
+      ...basePlan,
+      sourceContext: { evidence: { threshold: -Infinity } },
+    };
+    expect(() => parseRemediationPlan(badNegInf)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects unknown keys in sourceContext (strict schema)', () => {
+    const bad = {
+      ...basePlan,
+      sourceContext: { description: 'ok', unknownField: true },
+    };
+    expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects unknown keys in sourceContext.evidence (strict schema)', () => {
+    const bad = {
+      ...basePlan,
+      sourceContext: { evidence: { samples: 5, extra: 'bad' } },
+    };
+    expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects malformed UTF-16 in sourceContext.description', () => {
+    const bad = {
+      ...basePlan,
+      sourceContext: { description: 'lone surrogate: \uD800' },
+    };
+    expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects malformed UTF-16 in sourceContext.evidence.window', () => {
+    const bad = {
+      ...basePlan,
+      sourceContext: { evidence: { window: 'lone surrogate: \uD800' } },
+    };
+    expect(() => parseRemediationPlan(bad)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects malformed UTF-16 in plan summary or step', () => {
+    const badSummary = { ...basePlan, summary: 'bad \uD800' };
+    expect(() => parseRemediationPlan(badSummary)).toThrow(RuleOfTwoViolation);
+
+    const badStep = {
+      ...basePlan,
+      steps: [{ kind: 'adjust-routing' as const, description: 'bad \uD800' }],
+    };
+    expect(() => parseRemediationPlan(badStep)).toThrow(RuleOfTwoViolation);
+  });
+
+  it('rejects modified/mismatched digest in parseRemediationPlan', () => {
+    const p = {
+      ...basePlan,
+      sourceContext: {
+        description: 'real context',
+        digest: 'f'.repeat(64),
+      },
+    };
+    expect(() => parseRemediationPlan(p)).toThrow(/digest mismatch/);
   });
 });

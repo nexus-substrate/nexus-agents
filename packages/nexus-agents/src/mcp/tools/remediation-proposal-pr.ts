@@ -59,7 +59,10 @@ export interface PrCreator {
   }): Promise<string>;
 }
 
-/** Render the proposal doc (markdown) from the typed plan. Inert; no untrusted text. */
+/**
+ * Render the proposal doc (markdown) from the typed plan. Inert, bounded
+ * markdown preserving retained signal context and provenance (#7429).
+ */
 export function buildProposalDoc(plan: RemediationPlan): string {
   return (
     `# Auto-remediation proposal — \`${plan.signalKey}\`\n\n` +

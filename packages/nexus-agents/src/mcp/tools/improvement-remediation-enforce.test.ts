@@ -16,7 +16,11 @@ import { RemediationGuard } from './improvement-remediation-guard.js';
 import { RemediationCircuitBreaker } from './remediation-circuit-breaker.js';
 import type { ImprovementSignal } from './improvement-review.js';
 import type { EnforceReadinessEvidence } from './improvement-enforce-readiness.js';
-import type { RemediationPlan } from './improvement-remediation-capability.js';
+import {
+  renderPlanAsResearch,
+  type RemediationPlan,
+} from './improvement-remediation-capability.js';
+import { FAKE_GITHUB_PAT } from '../../testing/test-secrets.js';
 
 function signal(over: Partial<ImprovementSignal> = {}): ImprovementSignal {
   return {
@@ -381,5 +385,114 @@ describe('runAutoRemediation — enforce', () => {
     });
     await expect(runAutoRemediation([signal()], deps, enf())).rejects.toThrow('pipeline boom');
     expect(released.n).toBe(1);
+  });
+
+  describe('pre-audit safety gates (#7429)', () => {
+    it('enforces 4000-character proposal bound: 4000 passes, 4001 is refused', async () => {
+      const makePlanWithProposalLen = (targetLen: number): unknown => {
+        const dummyPlan = {
+          signalKey: 'routing:cli-floor:codex:docs',
+          category: 'routing' as const,
+          summary: 'x'.repeat(600),
+          steps: [
+            { kind: 'add-test' as const, description: 's'.repeat(400) },
+            { kind: 'add-test' as const, description: 's'.repeat(400) },
+            { kind: 'add-test' as const, description: 's'.repeat(400) },
+            { kind: 'add-test' as const, description: 's'.repeat(400) },
+            { kind: 'add-test' as const, description: 's'.repeat(400) },
+            { kind: 'add-test' as const, description: 's'.repeat(400) },
+            { kind: 'add-test' as const, description: 'x' },
+          ],
+          sourceContext: {
+            description: 'd'.repeat(600),
+          },
+        };
+        const current =
+          `Auto-remediation for '${dummyPlan.signalKey}'.\n\n${renderPlanAsResearch(dummyPlan)}`
+            .length;
+        const diff = targetLen - current;
+        dummyPlan.steps[6]!.description = 'x'.repeat(1 + diff);
+        return dummyPlan;
+      };
+
+      const exact4000Plan = makePlanWithProposalLen(4000);
+      const { deps: passDeps } = makeDeps({
+        research: vi.fn(async () => Promise.resolve(exact4000Plan)),
+      });
+      const passResult = await runAutoRemediation([signal()], passDeps, enf());
+      expect(passResult.remediated).toHaveLength(1);
+      expect(passDeps.vote).toHaveBeenCalledTimes(1);
+
+      // 2. 4001 characters is refused BEFORE plan audit and vote
+      const over4000Plan = makePlanWithProposalLen(4001);
+      const onPlanProduced = vi.fn();
+      const { deps: failDeps } = makeDeps({
+        research: vi.fn(async () => Promise.resolve(over4000Plan)),
+        onPlanProduced,
+      });
+      const failResult = await runAutoRemediation([signal()], failDeps, enf());
+      expect(failResult.remediated).toHaveLength(0);
+      expect(failResult.skipped[0]?.reason).toMatch(/exceeds maximum length of 4000 characters/);
+      expect(failDeps.vote).not.toHaveBeenCalled();
+      expect(failDeps.implement).not.toHaveBeenCalled();
+      expect(onPlanProduced).not.toHaveBeenCalled();
+      expect(failDeps.audit).not.toHaveBeenCalledWith(expect.objectContaining({ step: 'plan' }));
+    });
+
+    it('refuses signals with detected secrets in body or title BEFORE audit/observer/vote', async () => {
+      const secretSig = signal({ body: `Contains secret: ${FAKE_GITHUB_PAT}` });
+      const onPlanProduced = vi.fn();
+      const { deps } = makeDeps({ onPlanProduced });
+      const r = await runAutoRemediation([secretSig], deps, enf());
+      expect(r.remediated).toHaveLength(0);
+      expect(r.skipped[0]?.reason).toMatch(/secrets detected in remediation request/);
+      expect(deps.vote).not.toHaveBeenCalled();
+      expect(deps.implement).not.toHaveBeenCalled();
+      expect(onPlanProduced).not.toHaveBeenCalled();
+      expect(deps.audit).not.toHaveBeenCalledWith(expect.objectContaining({ step: 'plan' }));
+    });
+
+    it('refuses signals with malformed UTF-16 content BEFORE audit/observer/vote', async () => {
+      const badSig = signal({ body: 'lone surrogate \uD800' });
+      const onPlanProduced = vi.fn();
+      const { deps } = makeDeps({ onPlanProduced });
+      const r = await runAutoRemediation([badSig], deps, enf());
+      expect(r.remediated).toHaveLength(0);
+      expect(r.skipped[0]?.reason).toMatch(/malformed UTF-16/);
+      expect(deps.vote).not.toHaveBeenCalled();
+      expect(deps.implement).not.toHaveBeenCalled();
+      expect(onPlanProduced).not.toHaveBeenCalled();
+    });
+
+    it('protects observer: supports legacy 1-arg observer(plan) and 2-arg observer(signal, plan)', async () => {
+      // Legacy 1-arg observer
+      let receivedPlan: unknown;
+      const legacyObserver = (p: RemediationPlan): void => {
+        receivedPlan = p;
+      };
+      const { deps: legacyDeps } = makeDeps({ onPlanProduced: legacyObserver });
+      await runAutoRemediation([signal()], legacyDeps, enf());
+      expect((receivedPlan as RemediationPlan).signalKey).toBe(signal().signalKey);
+
+      // Standard 2-arg observer
+      let receivedSig: unknown;
+      let receivedPlan2: unknown;
+      const stdObserver = (s: ImprovementSignal, p: RemediationPlan): void => {
+        receivedSig = s;
+        receivedPlan2 = p;
+      };
+      const { deps: stdDeps } = makeDeps({ onPlanProduced: stdObserver });
+      await runAutoRemediation([signal()], stdDeps, enf());
+      expect((receivedSig as ImprovementSignal).signalKey).toBe(signal().signalKey);
+      expect((receivedPlan2 as RemediationPlan).signalKey).toBe(signal().signalKey);
+
+      // Throwing observer is safely swallowed
+      const throwingObserver = vi.fn(() => {
+        throw new Error('observer boom');
+      });
+      const { deps: throwDeps } = makeDeps({ onPlanProduced: throwingObserver });
+      const throwResult = await runAutoRemediation([signal()], throwDeps, enf());
+      expect(throwResult.remediated).toHaveLength(1);
+    });
   });
 });
