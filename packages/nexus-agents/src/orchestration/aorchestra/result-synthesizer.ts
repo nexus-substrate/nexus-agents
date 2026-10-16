@@ -282,6 +282,7 @@ async function callLlm(
     const response = await adapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: SYNTHESIS_MAX_TOKENS,
+      accessMode: 'read-only-analysis',
       ...(signal !== undefined ? { signal } : {}),
     });
     if (!response.ok) {
