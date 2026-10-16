@@ -23,6 +23,8 @@ import {
   validateDocumentation,
   validateDevOps,
 } from './release-validate-helpers.js';
+import { composeMergeReadinessEvidence } from './merge-readiness-evidence.js';
+import type { LocalGateReceipt, MergeReadinessEvidenceEnvelope } from './merge-readiness-types.js';
 
 /**
  * Default options for the release-validate command.
@@ -94,6 +96,60 @@ function buildValidators(
 }
 
 /**
+ * Composes merge readiness evidence if candidate identity was provided (#7445).
+ */
+function composeReadinessIfRequested(
+  opts: ReleaseValidateOptions,
+  experts: readonly ExpertValidationResult[]
+): MergeReadinessEvidenceEnvelope | undefined {
+  if (opts.candidate === undefined) {
+    return undefined;
+  }
+  const receipts: LocalGateReceipt[] = experts.map((e) => ({
+    name: e.expert,
+    passed: e.passed,
+    durationMs: e.durationMs,
+    ...(e.findings.length > 0 && !e.passed
+      ? { error: e.findings.find((f) => f.severity === 'error')?.title ?? 'Validator failed' }
+      : {}),
+  }));
+  return composeMergeReadinessEvidence({
+    candidate: opts.candidate,
+    artifact: opts.artifact,
+    review: opts.review,
+    localGates: { receipts },
+    remoteCi: opts.remoteCi,
+  });
+}
+
+/**
+ * Logs swarm start message in verbose mode.
+ */
+function logVerboseStart(version: string): void {
+  console.log(`${colors.cyan}${colors.bold}Release Validation Swarm${colors.reset}`);
+  console.log(`${colors.dim}Validating version ${version}...${colors.reset}`);
+  console.log('');
+}
+
+/**
+ * Determines whether the release validation run passed.
+ */
+function determinePassStatus(
+  expertsCount: number,
+  strict: boolean,
+  summary: { errors: number; warnings: number },
+  readinessEvidence?: MergeReadinessEvidenceEnvelope
+): boolean {
+  if (expertsCount === 0) {
+    return false;
+  }
+  const localPassed = strict
+    ? summary.errors === 0 && summary.warnings === 0
+    : summary.errors === 0;
+  return readinessEvidence !== undefined ? localPassed && readinessEvidence.isReady : localPassed;
+}
+
+/**
  * Runs all expert validations in parallel.
  */
 export async function runReleaseValidate(
@@ -104,20 +160,15 @@ export async function runReleaseValidate(
   const version = opts.version ?? readVersionFromPackage();
 
   if (opts.verbose) {
-    console.log(`${colors.cyan}${colors.bold}Release Validation Swarm${colors.reset}`);
-    console.log(`${colors.dim}Validating version ${version}...${colors.reset}`);
-    console.log('');
+    logVerboseStart(version);
   }
 
   const validators = buildValidators(opts.skip ?? [], { version, verbose: opts.verbose });
   const experts = await Promise.all(validators);
   const summary = aggregateFindings(experts);
 
-  // Zero findings cannot establish readiness when no validator measured anything.
-  const passed =
-    experts.length > 0 &&
-    (opts.strict ? summary.errors === 0 && summary.warnings === 0 : summary.errors === 0);
-
+  const readinessEvidence = composeReadinessIfRequested(opts, experts);
+  const passed = determinePassStatus(experts.length, opts.strict, summary, readinessEvidence);
   const fitnessScore = extractFitnessScore(experts);
 
   return {
@@ -127,6 +178,7 @@ export async function runReleaseValidate(
     experts,
     summary,
     ...(fitnessScore !== undefined && { fitnessScore }),
+    ...(readinessEvidence !== undefined && { readinessEvidence }),
     durationMs: Date.now() - startTime,
   };
 }
@@ -163,6 +215,31 @@ function printExpertFindings(expert: ExpertValidationResult, verbose: boolean): 
 }
 
 /**
+ * Prints merge readiness evidence envelope to console.
+ */
+function printReadinessReport(evidence: MergeReadinessEvidenceEnvelope): void {
+  console.log(`${colors.dim}${'─'.repeat(50)}${colors.reset}`);
+  console.log(`${colors.bold}Merge Readiness Envelope:${colors.reset}`);
+  console.log(`  Candidate: ${evidence.candidate.baseRef} @ ${evidence.candidate.headSha}`);
+  console.log(
+    `  Artifact:  [${evidence.artifact.status.toUpperCase()}] ${evidence.artifact.detail}`
+  );
+  console.log(`  Review:    [${evidence.review.status.toUpperCase()}] ${evidence.review.detail}`);
+  console.log(
+    `  Local:     [${evidence.localGates.status.toUpperCase()}] ${evidence.localGates.detail}`
+  );
+  console.log(
+    `  Remote CI: [${evidence.remoteCi.status.toUpperCase()}] ${evidence.remoteCi.detail}`
+  );
+  if (!evidence.isReady && evidence.blockingReasons.length > 0) {
+    console.log(`  ${colors.red}Blocking reasons:${colors.reset}`);
+    for (const reason of evidence.blockingReasons) {
+      console.log(`    ${colors.red}• ${reason}${colors.reset}`);
+    }
+  }
+}
+
+/**
  * Prints the validation result to console.
  */
 export function printReleaseValidateResult(result: ReleaseValidateResult, verbose = false): void {
@@ -187,6 +264,10 @@ export function printReleaseValidateResult(result: ReleaseValidateResult, verbos
       `${colors.yellow}${String(result.summary.warnings)} warnings${colors.reset}, ` +
       `${String(result.summary.infos)} infos`
   );
+
+  if (result.readinessEvidence !== undefined) {
+    printReadinessReport(result.readinessEvidence);
+  }
 
   if (result.experts.length === 0) {
     console.log(

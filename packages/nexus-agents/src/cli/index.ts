@@ -480,6 +480,37 @@ export type {
   ValidationSeverity,
 } from './release-validate-types.js';
 
+// Merge Readiness Evidence (#7445)
+export {
+  composeMergeReadinessEvidence,
+  evaluateCandidateIdentity,
+  evaluateArtifactEvidence,
+  evaluateReviewEvidence,
+  evaluateLocalGatesEvidence,
+  evaluateRemoteCiEvidence,
+} from './merge-readiness-evidence.js';
+export type {
+  CandidateIdentity,
+  EvaluatedCandidateIdentity,
+  ArtifactEvidence,
+  EvaluatedArtifactEvidence,
+  ArtifactEvidenceStatus,
+  ReviewEvidence,
+  EvaluatedReviewEvidence,
+  ReviewEvidenceStatus,
+  ReviewerDisposition,
+  LocalGateReceipt,
+  LocalGatesEvidence,
+  EvaluatedLocalGatesEvidence,
+  LocalGatesEvidenceStatus,
+  RemoteCiCheck,
+  RemoteCiEvidence,
+  EvaluatedRemoteCiEvidence,
+  RemoteCiEvidenceStatus,
+  MergeReadinessInput,
+  MergeReadinessEvidenceEnvelope,
+} from './merge-readiness-types.js';
+
 // Release Announce (Issue #641)
 export {
   releaseAnnounceCommand,
