@@ -16,7 +16,6 @@ import { createToolObservabilityProxy } from './tool-observability-proxy.js';
 
 // Capture only the SDK registration boundary; dispatch uses the production proxy.
 type Callback = (args: unknown, extra: unknown) => Promise<unknown>;
-const TIMEOUT_MS = roots.WORKSPACE_ROOT_READY_TIMEOUT_MS;
 
 describe('workspace readiness at tool dispatch (#4002)', () => {
   let fixture: string;
@@ -38,6 +37,7 @@ describe('workspace readiness at tool dispatch (#4002)', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fallbackRepo);
     vi.stubEnv('NEXUS_DATA_DIR', '');
     vi.stubEnv('CLAUDE_PROJECT_DIR', undefined);
+    vi.stubEnv('NEXUS_PROJECT_DIR', undefined);
     vi.stubEnv('NEXUS_TMPDIR', join(fixture, 'tmp'));
     vi.stubEnv('NEXUS_SANDBOX', '');
     vi.stubEnv('NEXUS_REPO_PREFERRED', '1');
@@ -56,7 +56,7 @@ describe('workspace readiness at tool dispatch (#4002)', () => {
       answer = resolve;
     });
     server = {
-      server: { getClientCapabilities: () => ({ roots: {} }), listRoots: () => response },
+      server: { getClientCapabilities: () => ({ roots: {} }), listRoots: vi.fn(() => response) },
       registerTool: (_name: string, _config: unknown, cb: Callback) => {
         callback = cb;
       },
@@ -87,6 +87,51 @@ describe('workspace readiness at tool dispatch (#4002)', () => {
     vi.stubEnv('CLAUDE_PROJECT_DIR', projectDir);
     roots.beginWorkspaceRootResolution(logger);
   }
+
+  async function restartWithNexusProjectDir(projectDir: string | undefined): Promise<void> {
+    answer({ roots: [] });
+    await resolution;
+    vi.stubEnv('NEXUS_PROJECT_DIR', projectDir);
+    roots.beginWorkspaceRootResolution(logger);
+  }
+
+  it.each(['repo', 'nested', 'symlink', 'worktree'])(
+    'resolves NEXUS_PROJECT_DIR (%s) synchronously before initialization and dispatch',
+    async (kind) => {
+      let projectDir = repo;
+      if (kind === 'nested') {
+        projectDir = join(repo, 'src');
+        mkdirSync(projectDir);
+      } else if (kind === 'symlink') {
+        projectDir = join(fixture, 'link-nexus');
+        symlinkSync(repo, projectDir, 'dir');
+      } else if (kind === 'worktree') {
+        rmSync(join(repo, '.git'), { recursive: true });
+        writeFileSync(join(repo, '.git'), 'gitdir: /unused-fixture-admin-dir\n');
+      }
+      await restartWithNexusProjectDir(projectDir);
+      expect(getActiveWorkspaceRoot()).toBe(realpathSync(repo));
+      const ready = vi.fn();
+      void roots.workspaceRootReady.then(ready);
+      await Promise.resolve();
+      expect(ready).toHaveBeenCalledOnce();
+      const call = callback({}, {});
+      expect(vi.getTimerCount()).toBe(0);
+      await call;
+      expect(readFileSync(join(repo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe('written');
+      expect(logger.warn).not.toHaveBeenCalled();
+    }
+  );
+
+  it('prefers NEXUS_PROJECT_DIR over CLAUDE_PROJECT_DIR and process.cwd()', () => {
+    vi.stubEnv('NEXUS_PROJECT_DIR', repo);
+    vi.stubEnv('CLAUDE_PROJECT_DIR', fallbackRepo);
+    roots.beginWorkspaceRootResolution(logger);
+    expect(getActiveWorkspaceRoot()).toBe(realpathSync(repo));
+    expect(logger.info).toHaveBeenCalledWith('Resolved workspace root from NEXUS_PROJECT_DIR', {
+      workspaceRoot: realpathSync(repo),
+    });
+  });
 
   it.each(['repo', 'nested', 'symlink', 'worktree'])(
     'resolves CLAUDE_PROJECT_DIR (%s) synchronously before initialization and dispatch',
@@ -124,22 +169,17 @@ describe('workspace readiness at tool dispatch (#4002)', () => {
     expect(getActiveWorkspaceRoot()).toBe(realpathSync(repo));
   });
 
-  it.each([undefined, '.'])(
-    'retains the late-initialization roots path after timeout with project dir %s',
-    async (projectDir) => {
-      await restartWithProjectDir(projectDir);
-      const call = callback({}, {});
-      await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
-      await call;
-      server.server.listRoots = vi.fn(() =>
-        Promise.resolve({ roots: [{ uri: pathToFileURL(repo).href }] })
-      );
-      await roots.resolveWorkspaceRootFromClient(server, logger);
-      expect(server.server.listRoots).toHaveBeenCalledOnce();
-      expect(getActiveWorkspaceRoot()).toBe(realpathSync(fallbackRepo));
-      expect(nexusDataPath('sessions')).toBe(join(fallbackRepo, '.nexus-agents/sessions'));
-    }
-  );
+  it('resolves process.cwd() git-root discovery synchronously when no project dir env var is set', async () => {
+    await restartWithProjectDir(undefined);
+    expect(getActiveWorkspaceRoot()).toBe(realpathSync(fallbackRepo));
+    const call = callback({}, {});
+    expect(vi.getTimerCount()).toBe(0);
+    await call;
+    expect(readFileSync(join(fallbackRepo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe(
+      'written'
+    );
+    expect(server.server.listRoots).not.toHaveBeenCalled();
+  });
 
   it('preserves NEXUS_DATA_DIR precedence with a synchronous workspace root', async () => {
     const dataDir = join(fixture, 'data'); // Sibling of the fixture repos.
@@ -155,7 +195,7 @@ describe('workspace readiness at tool dispatch (#4002)', () => {
   });
 
   it.each(['relative', 'missing', 'file', 'non-repo', 'broken-symlink', 'empty'])(
-    'logs invalid CLAUDE_PROJECT_DIR (%s) once and retains the async roots path',
+    'logs invalid CLAUDE_PROJECT_DIR (%s) once and falls back to process.cwd() repo discovery',
     async (kind) => {
       const candidates: Record<string, string> = {
         relative: '.', // Exists inside fallbackRepo, but is not absolute.
@@ -168,153 +208,106 @@ describe('workspace readiness at tool dispatch (#4002)', () => {
       writeFileSync(candidates['file']!, 'fixture');
       symlinkSync(candidates['missing']!, candidates['broken-symlink']!);
       await restartWithProjectDir(candidates[kind]);
-      expect(getActiveWorkspaceRoot()).toBeUndefined();
+      expect(getActiveWorkspaceRoot()).toBe(realpathSync(fallbackRepo));
       expect(logger.warn).toHaveBeenCalledOnce();
       expect(logger.warn).toHaveBeenCalledWith(
-        'Invalid CLAUDE_PROJECT_DIR; falling back to MCP client roots'
+        'Invalid CLAUDE_PROJECT_DIR; falling back to process.cwd() repo discovery'
       );
-      const ready = vi.fn();
-      void roots.workspaceRootReady.then(ready);
-      const call = callback({}, {});
-      expect(vi.getTimerCount()).toBe(1);
-      await Promise.resolve();
-      expect(ready).not.toHaveBeenCalled();
-      server.server.listRoots = vi.fn(() =>
-        Promise.resolve({ roots: [{ uri: pathToFileURL(repo).href }] })
-      );
+      server.server.listRoots = vi.fn();
       await roots.resolveWorkspaceRootFromClient(server, logger);
-      await call;
-      expect(server.server.listRoots).toHaveBeenCalledOnce();
-      expect(readFileSync(join(repo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe('written');
-      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(server.server.listRoots).not.toHaveBeenCalled();
+      const call = callback({}, {});
       expect(vi.getTimerCount()).toBe(0);
+      await call;
+      expect(readFileSync(join(fallbackRepo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe(
+        'written'
+      );
     }
   );
 
-  it('waits before dispatch then writes under the resolved repo root', async () => {
-    const call = callback({}, {});
-    await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
-    expect(() => readFileSync(join(fallbackRepo, '.nexus-agents/sessions/probe.txt'))).toThrow();
-    answer({ roots: [{ uri: pathToFileURL(repo).href }] });
-    await resolution;
-    await call;
-    expect(readFileSync(join(repo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe('written');
-    expect(vi.getTimerCount()).toBe(0);
-  });
+  it.each(['relative', 'missing', 'file', 'non-repo', 'broken-symlink', 'empty'])(
+    'logs invalid NEXUS_PROJECT_DIR (%s) once and falls back to alternative project root channels',
+    async (kind) => {
+      const candidates: Record<string, string> = {
+        relative: '.',
+        missing: join(fixture, 'missing-nexus'),
+        file: join(repo, 'file-nexus.txt'),
+        'non-repo': fixture,
+        'broken-symlink': join(fixture, 'broken-link-nexus'),
+        empty: '',
+      };
+      writeFileSync(candidates['file']!, 'fixture');
+      symlinkSync(candidates['missing']!, candidates['broken-symlink']!);
+      await restartWithNexusProjectDir(candidates[kind]);
+      expect(getActiveWorkspaceRoot()).toBe(realpathSync(fallbackRepo));
+      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Invalid NEXUS_PROJECT_DIR; falling back to alternative project root channels'
+      );
+      server.server.listRoots = vi.fn();
+      await roots.resolveWorkspaceRootFromClient(server, logger);
+      expect(server.server.listRoots).not.toHaveBeenCalled();
+      const call = callback({}, {});
+      expect(vi.getTimerCount()).toBe(0);
+      await call;
+      expect(readFileSync(join(fallbackRepo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe(
+        'written'
+      );
+    }
+  );
 
-  it('bounds an unanswered roots request and logs the root used on every fallback call', async () => {
+  it('never calls server.server.listRoots even when client declares roots capability', async () => {
+    await restartWithProjectDir(undefined);
+    server.server.getClientCapabilities = () => ({ roots: { listChanged: true } });
+    server.server.listRoots = vi.fn(() =>
+      Promise.resolve({ roots: [{ uri: pathToFileURL(repo).href }] })
+    );
+    await roots.resolveWorkspaceRootFromClient(server, logger);
+    expect(server.server.listRoots).not.toHaveBeenCalled();
     const call = callback({}, {});
-    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+    expect(vi.getTimerCount()).toBe(0);
     await call;
     expect(readFileSync(join(fallbackRepo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe(
       'written'
     );
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Tool dispatch using workspace root fallback',
-      expect.objectContaining({
-        toolName: 'root_write_probe',
-        workspaceRoot: fallbackRepo,
-        dataDir: join(fallbackRepo, '.nexus-agents'),
-        reason: 'timeout',
-        timeoutMs: TIMEOUT_MS,
-      })
+  });
+
+  it('resolveWorkspaceRootFromClient is a no-op that resolves immediately without querying roots', async () => {
+    server.server.listRoots = vi.fn();
+    await roots.resolveWorkspaceRootFromClient(server, logger);
+    expect(server.server.listRoots).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      'MCP client roots capability is retired; workspace root is resolved synchronously'
     );
-    await callback({}, {});
-    expect(logger.warn).toHaveBeenCalledTimes(2);
-    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps the timed-out fallback when a late roots response arrives', async () => {
-    const call = callback({}, {});
-    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
-    await call;
-    answer({ roots: [{ uri: pathToFileURL(repo).href }] });
-    await resolution;
-    await callback({}, {});
-    expect(nexusDataPath('sessions')).toBe(join(fallbackRepo, '.nexus-agents/sessions'));
-  });
-
-  it('shares one bounded wait across concurrent calls', async () => {
+  it('shares immediate synchronous readiness across concurrent tool calls', async () => {
     const first = callback({}, {});
     const second = callback({}, {});
-    expect(vi.getTimerCount()).toBe(1);
-    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+    expect(vi.getTimerCount()).toBe(0);
     await Promise.all([first, second]);
-    expect(logger.warn).toHaveBeenCalledTimes(2);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('logs the effective directory when NEXUS_DATA_DIR overrides the fallback root', async () => {
-    const dataDir = join(fixture, 'data'); // Sibling of both fixture repos.
-    vi.stubEnv('NEXUS_DATA_DIR', dataDir);
-    const call = callback({}, {});
-    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
-    await call;
-    expect(readFileSync(join(dataDir, 'sessions/probe.txt'), 'utf8')).toBe('written');
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Tool dispatch using workspace root fallback',
-      expect.objectContaining({ workspaceRoot: fallbackRepo, dataDir, governanceDataDir: dataDir })
+    expect(readFileSync(join(fallbackRepo, '.nexus-agents/sessions/probe.txt'), 'utf8')).toBe(
+      'written'
     );
   });
 
-  it('releases dispatch on a roots/list transport error', async () => {
-    answer({ roots: [] });
-    await resolution;
-    roots.beginWorkspaceRootResolution(logger);
-    server.server.listRoots = () => Promise.reject(new Error('disconnected'));
-    await roots.resolveWorkspaceRootFromClient(server, logger);
-    await callback({}, {});
-    expect(vi.getTimerCount()).toBe(0);
-    expect(logger.debug).toHaveBeenCalledWith(
-      'roots/list request failed; using cwd/homedir for data dir',
-      { error: 'disconnected' }
-    );
-  });
-
-  it('does not wait when the client has no roots capability', async () => {
-    answer({ roots: [] });
-    await resolution;
-    roots.beginWorkspaceRootResolution(logger);
-    server.server.getClientCapabilities = () => ({});
-    server.server.listRoots = vi.fn(
-      () =>
-        new Promise<never>(() => {
-          // A client without roots must never be asked to answer this request.
-        })
-    );
-    await roots.resolveWorkspaceRootFromClient(server, logger);
-    await callback({}, {});
+  it('falls back to homedir synchronously when process.cwd() is outside any repo and no project dir is set', async () => {
+    const nonRepo = join(fixture, 'non-repo-dir');
+    mkdirSync(nonRepo);
+    vi.spyOn(process, 'cwd').mockReturnValue(nonRepo);
+    await restartWithProjectDir(undefined);
+    expect(getActiveWorkspaceRoot()).toBeUndefined();
     expect(server.server.listRoots).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
-    expect(logger.warn).not.toHaveBeenCalled();
+    const call = callback({}, {});
+    await call;
+    expect(server.server.listRoots).not.toHaveBeenCalled();
   });
 
   it('does not wait on calls after resolution', async () => {
-    answer({ roots: [{ uri: pathToFileURL(repo).href }] });
-    await resolution;
     await callback({}, {});
     await callback({}, {});
     expect(vi.getTimerCount()).toBe(0);
     expect(logger.warn).not.toHaveBeenCalled();
-  });
-
-  it('names empty roots as fallback and releases dispatch without a timer', async () => {
-    answer({ roots: [] });
-    await resolution;
-    await callback({}, {});
-    expect(nexusDataPath('sessions')).toBe(join(fallbackRepo, '.nexus-agents/sessions'));
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('releases dispatch when capability lookup throws', async () => {
-    answer({ roots: [] });
-    await resolution;
-    roots.beginWorkspaceRootResolution(logger);
-    server.server.getClientCapabilities = () => {
-      throw new Error('transport unavailable');
-    };
-    await roots.resolveWorkspaceRootFromClient(server, logger);
-    await callback({}, {});
-    expect(vi.getTimerCount()).toBe(0);
   });
 });

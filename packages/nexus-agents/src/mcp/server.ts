@@ -26,6 +26,7 @@ import { claimGlobalRegistry } from '../adapters/unified-registry.js';
 import { initDataDirectories } from '../cli/setup-data-dir.js';
 import { recordServerTransport, type McpServerTransport } from './middleware/request-context.js';
 import { parseBoolEnv } from '../config/defaults-env.js';
+import { beginWorkspaceRootResolution } from './workspace-roots.js';
 
 /**
  * Server configuration options.
@@ -96,6 +97,8 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
   const logger = config?.logger ?? createLogger({ component: 'mcp-server' });
 
   try {
+    // Resolve workspace root synchronously before initializing data directories (#5166)
+    beginWorkspaceRootResolution(logger);
     // Ensure data directories exist on first MCP server startup (#1398)
     initDataDirectories();
 
