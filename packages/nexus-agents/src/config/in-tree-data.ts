@@ -731,6 +731,8 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 65_536,
       cliName: 'opencode',
       cliModelName: 'openai/gpt-6-luna-pro',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
     },
     {
       id: 'openrouter-nemotron-super',

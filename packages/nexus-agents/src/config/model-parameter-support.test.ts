@@ -63,6 +63,11 @@ describe('DATA path — registered codex models read capability data, not just r
     // agree here); this asserts the registry data is wired and surfaced.
     expect(getMaxTokensParamForModel(id)).toBe('max_completion_tokens');
   });
+
+  it('gpt-6-luna-pro rejects temperature and expects max_completion_tokens (#7458)', () => {
+    expect(modelSupportsParameter('gpt-6-luna-pro', 'temperature')).toBe(false);
+    expect(getMaxTokensParamForModel('gpt-6-luna-pro')).toBe('max_completion_tokens');
+  });
 });
 
 describe('FALLBACK path — UNREGISTERED ids resolve via regex', () => {
