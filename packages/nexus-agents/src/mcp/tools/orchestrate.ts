@@ -933,9 +933,10 @@ async function tryWorkerDispatch(
      * `orchestration` boundary gate after it turns the cancel into the job's error.
      */
     readonly signal: AbortSignal | undefined;
+    readonly relevantFiles?: readonly string[] | undefined;
   }
 ): Promise<Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined> {
-  const { logger, notifier, signal } = io;
+  const { logger, notifier, signal, relevantFiles } = io;
   const adapter = deps.modelAdapter;
   if (agentPlan === undefined || !isWorkerDispatchEnabled() || adapter === undefined) {
     return undefined;
@@ -960,6 +961,7 @@ async function tryWorkerDispatch(
         refine: true,
         perWorkerRouting: true,
         ...(signal !== undefined ? { signal } : {}),
+        ...(relevantFiles !== undefined ? { relevantFiles } : {}),
       })
     );
   } catch (dispatchError: unknown) {
@@ -1154,8 +1156,7 @@ function isOrchestrateCancelled(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
-/** Body of the depth-guarded orchestration pipeline (extracted for line limit). */
-async function runOrchestratePipeline(params: {
+interface OrchestratePipelineParams {
   readonly input: OrchestrateInput;
   readonly deps: OrchestrateDeps;
   readonly notifier: ReturnType<typeof createMcpNotifier>;
@@ -1171,7 +1172,27 @@ async function runOrchestratePipeline(params: {
    * `orchestrator.execute` completes the current call.
    */
   readonly signal?: AbortSignal;
-}): Promise<ToolResult> {
+}
+
+function resolveWorkerPlan(
+  v2Config: ReturnType<typeof resolveV2Config>,
+  input: OrchestrateInput,
+  logger: ILogger
+): {
+  readonly relevantFiles?: readonly string[] | undefined;
+  readonly agentPlan?: ReturnType<typeof computeAgentPlan> | undefined;
+} {
+  if (!v2Config.aorchestraEnabled) {
+    return {};
+  }
+  const relevantFiles =
+    typeof filePathsFromContext === 'function' ? filePathsFromContext(input.context) : undefined;
+  const agentPlan = computeAgentPlan(input.task, logger, { filePaths: relevantFiles });
+  return { relevantFiles, agentPlan };
+}
+
+/** Body of the depth-guarded orchestration pipeline (extracted for line limit). */
+async function runOrchestratePipeline(params: OrchestratePipelineParams): Promise<ToolResult> {
   const { input, deps, notifier, logger, trustTier, taskId, signal } = params;
   logger.debug('Starting orchestration', { taskLength: input.task.length });
   notifier.info('orchestrate', { event: 'orchestrate_start', taskLength: input.task.length });
@@ -1187,14 +1208,13 @@ async function runOrchestratePipeline(params: {
   // measured change pending a bake (see #2921).
   await injectMemoryContextForOrchestrate(input, logger);
 
-  const agentPlan = v2Config.aorchestraEnabled
-    ? computeAgentPlan(input.task, logger, { filePaths: filePathsFromContext(input.context) })
-    : undefined;
+  const { relevantFiles, agentPlan } = resolveWorkerPlan(v2Config, input, logger);
   throwIfOrchestrateCancelled(signal, 'worker-dispatch');
   const workerDispatchResult = await tryWorkerDispatch(agentPlan, input.task, deps, {
     logger,
     notifier,
     signal,
+    relevantFiles,
   });
   // #6305: checked before the reflection call and the orchestrator run, both
   // of which spend model calls. A dispatch that finished is left unrecorded:

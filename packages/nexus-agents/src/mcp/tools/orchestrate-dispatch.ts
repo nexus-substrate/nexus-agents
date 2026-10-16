@@ -37,6 +37,10 @@ import {
   preflightWorkerPrompts,
   WORKER_OUTPUT_RESERVE_TOKENS,
 } from '../../orchestration/aorchestra/worker-input-preflight.js';
+import {
+  isCodexTransport,
+  inlineWorkerArtifacts,
+} from '../../orchestration/aorchestra/worker-artifact.js';
 import type {
   WorkerLearning,
   WorkerPromptEvidence,
@@ -149,6 +153,8 @@ export interface WorkerDispatchExecutionOptions {
    * result. An adapter that ignores the signal completes the current call.
    */
   readonly signal?: AbortSignal | undefined;
+  /** Relevant files/artifacts to inline or provide to workers (#7413) */
+  readonly relevantFiles?: readonly string[] | undefined;
 }
 
 /**
@@ -270,6 +276,7 @@ interface WorkerExecutorConfig {
   readonly perWorkerRouting?: boolean;
   readonly resolvedAdapters?: ReadonlyMap<AgentPlanEntry, ResolvedWorkerAdapter>;
   readonly modeUnsupported?: string;
+  readonly relevantFiles?: readonly string[] | undefined;
 }
 
 /** Options for executeOnAdapter — bundled to stay within max-params (5). */
@@ -289,6 +296,7 @@ interface AdapterExecutionOptions {
    * instead of running to completion and posting a late result.
    */
   readonly signal?: AbortSignal | undefined;
+  readonly relevantFiles?: readonly string[] | undefined;
 }
 
 /** Per-invocation evidence prevents concurrent attempts from labeling a refused worker. */
@@ -304,14 +312,50 @@ async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerRe
   return { ...result, requestedCli: opts.cliName, requestedAccessMode: WORKER_ACCESS_MODE };
 }
 
+function resolveAdapterInlinedArtifacts(
+  cliName: string,
+  relevantFiles?: readonly string[]
+): { ok: true; value: string | undefined } | { ok: false; error: string } {
+  if (relevantFiles === undefined || relevantFiles.length === 0 || !isCodexTransport(cliName)) {
+    return { ok: true, value: undefined };
+  }
+  const inlined = inlineWorkerArtifacts(relevantFiles);
+  if (!inlined.ok) {
+    return {
+      ok: false,
+      error: `unsupported inline delivery: worker transport lacks permitted artifact reader (${inlined.error})`,
+    };
+  }
+  return { ok: true, value: inlined.value };
+}
+
+async function validateExpandedBudget(
+  adapter: IModelAdapter,
+  prompt: string,
+  signal?: AbortSignal
+): Promise<string | undefined> {
+  try {
+    await warmModelMetadata([adapter], signal);
+  } catch {
+    return 'unsupported inline delivery: model metadata preflight failed';
+  }
+  return checkExpandedPromptBudget(adapter, prompt, 0, signal);
+}
+
 /** {@link executeOnAdapter}'s model call under {@link WORKER_ACCESS_MODE}. */
 async function prepareAdapterPrompt(
   opts: AdapterExecutionOptions
 ): Promise<ReturnType<typeof prepareWorkerPrompt>> {
+  const inlinedArtifacts = resolveAdapterInlinedArtifacts(opts.cliName, opts.relevantFiles);
+  if (!inlinedArtifacts.ok) return inlinedArtifacts;
+
   const prepared = prepareWorkerPrompt({
     entry: opts.entry,
     accessMode: WORKER_ACCESS_MODE,
     taskDescription: opts.taskDescription,
+    cli: opts.cliName,
+    ...(opts.relevantFiles !== undefined ? { relevantFiles: opts.relevantFiles } : {}),
+    ...(inlinedArtifacts.value !== undefined ? { inlinedArtifacts: inlinedArtifacts.value } : {}),
     ...(opts.priorWaveResults !== undefined ? { priorWaveResults: opts.priorWaveResults } : {}),
     ...(opts.learnings !== undefined && opts.learnings.length > 0
       ? { learnings: opts.learnings }
@@ -319,17 +363,7 @@ async function prepareAdapterPrompt(
   });
   if (!prepared.ok) return prepared;
   if (isExpandedWorkerInput(opts.taskDescription, opts.entry.subTask)) {
-    try {
-      await warmModelMetadata([opts.adapter], opts.signal);
-    } catch {
-      return { ok: false, error: 'unsupported inline delivery: model metadata preflight failed' };
-    }
-    const reason = await checkExpandedPromptBudget(
-      opts.adapter,
-      prepared.value.prompt,
-      0,
-      opts.signal
-    );
+    const reason = await validateExpandedBudget(opts.adapter, prepared.value.prompt, opts.signal);
     if (reason !== undefined) return { ok: false, error: reason };
   }
   return prepared;
@@ -502,7 +536,7 @@ function createWorkerExecutor(
   priorWaveResults?: readonly WorkerResult[],
   signal?: AbortSignal
 ) => Promise<WorkerResult> {
-  const { taskDescription, learnings } = config;
+  const { taskDescription, learnings, relevantFiles } = config;
   return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
     const resolved =
@@ -524,6 +558,7 @@ function createWorkerExecutor(
       ...(learnings !== undefined ? { learnings } : {}),
       ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
       ...(signal !== undefined ? { signal } : {}),
+      ...(relevantFiles !== undefined ? { relevantFiles } : {}),
     });
   };
 }
@@ -556,7 +591,7 @@ function createAltWorkerExecutor(
   priorWaveResults?: readonly WorkerResult[],
   signal?: AbortSignal
 ) => Promise<WorkerResult> {
-  const { taskDescription, logger: log, learnings } = config;
+  const { taskDescription, logger: log, learnings, relevantFiles } = config;
 
   return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
@@ -584,6 +619,7 @@ function createAltWorkerExecutor(
       ...(learnings !== undefined ? { learnings } : {}),
       ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
       ...(signal !== undefined ? { signal } : {}),
+      ...(relevantFiles !== undefined ? { relevantFiles } : {}),
     });
   };
 }
@@ -837,6 +873,7 @@ async function createPinnedExecutorConfig(
     ...(options.perWorkerRouting !== undefined
       ? { perWorkerRouting: options.perWorkerRouting }
       : {}),
+    ...(options.relevantFiles !== undefined ? { relevantFiles: options.relevantFiles } : {}),
   };
   const resolvedAdapters = new Map<AgentPlanEntry, ResolvedWorkerAdapter>();
   for (const entry of entries) {
@@ -870,6 +907,7 @@ async function prepareDispatchPreflight(
     ),
     learnings: options.learnings,
     signal: options.signal,
+    ...(options.relevantFiles !== undefined ? { relevantFiles: options.relevantFiles } : {}),
   });
   throwIfDispatchCancelled(options.signal, 'inline preflight');
   return { pinnedConfig, unsupported };

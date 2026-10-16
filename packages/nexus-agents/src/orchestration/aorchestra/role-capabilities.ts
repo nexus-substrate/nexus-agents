@@ -105,32 +105,57 @@ export function getRoleCapability(role: string): RoleCapability {
   return ROLE_CAPABILITIES[role] ?? DEFAULT_CAPABILITY;
 }
 
+/** Options for customizing tool restriction generation based on transport capabilities (#7413). */
+interface ToolRestrictionOptions {
+  readonly cli?: string;
+  readonly allowedTools?: readonly string[];
+}
+
+function buildReadOnlyAnalysisBlock(options?: ToolRestrictionOptions): string {
+  const isCodex = options?.cli === 'codex' || options?.cli === 'cli-codex';
+  const tools = options?.allowedTools ?? (isCodex ? [] : READ_TOOLS);
+  const permittedLine =
+    tools.length > 0
+      ? `Only permitted tools, if available: ${tools.join(', ')}.`
+      : 'No tool calls or shell commands are permitted.';
+  return [
+    '## Tool Restrictions',
+    '',
+    'You are read-only. Analyze and report without modifying files or running shell commands.',
+    permittedLine,
+  ].join('\n');
+}
+
+function buildWorkspaceEditBlock(cap: RoleCapability): string {
+  const tools = cap.allowedTools.filter((tool) => tool !== 'Bash' && !tool.startsWith('Bash '));
+  const restriction =
+    cap.tier === 'write' || cap.tier === 'full'
+      ? 'You may read and edit files in the working directory. Shell, network and MCP tools are unavailable.'
+      : 'You are read-only. Analyze and report without modifying files or running shell commands.';
+  return [
+    '## Tool Restrictions',
+    '',
+    restriction,
+    `Only permitted tools, if available: ${tools.join(', ')}.`,
+  ].join('\n');
+}
+
 /**
  * Build a tool restriction prompt block for a worker role and its enforced mode.
  * An omitted mode retains the role-based block; full-access roles then return empty.
+ * Derives advertised reader tools from the canonical transport/access contract (#7413).
  */
-export function buildToolRestrictionBlock(role: string, accessMode?: ExecutionAccessMode): string {
+export function buildToolRestrictionBlock(
+  role: string,
+  accessMode?: ExecutionAccessMode,
+  options?: ToolRestrictionOptions
+): string {
   if (accessMode === 'read-only-analysis') {
-    return [
-      '## Tool Restrictions',
-      '',
-      'You are read-only. Analyze and report without modifying files or running shell commands.',
-      'Only permitted tools, if available: Read, Grep, Glob.',
-    ].join('\n');
+    return buildReadOnlyAnalysisBlock(options);
   }
   const cap = getRoleCapability(role);
   if (accessMode === 'workspace-edit') {
-    const tools = cap.allowedTools.filter((tool) => tool !== 'Bash' && !tool.startsWith('Bash '));
-    const restriction =
-      cap.tier === 'write' || cap.tier === 'full'
-        ? 'You may read and edit files in the working directory. Shell, network and MCP tools are unavailable.'
-        : 'You are read-only. Analyze and report without modifying files or running shell commands.';
-    return [
-      '## Tool Restrictions',
-      '',
-      restriction,
-      `Only permitted tools, if available: ${tools.join(', ')}.`,
-    ].join('\n');
+    return buildWorkspaceEditBlock(cap);
   }
   if (cap.tier === 'full') return '';
 

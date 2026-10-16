@@ -67,6 +67,7 @@ vi.mock('../../pipeline/v2-config.js', () => ({
 // Mock orchestrate-aorchestra
 vi.mock('./orchestrate-aorchestra.js', () => ({
   computeAgentPlan: vi.fn(),
+  filePathsFromContext: vi.fn(),
 }));
 
 describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
