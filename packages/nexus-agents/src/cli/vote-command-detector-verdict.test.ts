@@ -65,7 +65,7 @@ describe('CLI votes persist detector verdicts (#5422)', () => {
   }
 
   it('records fired with pattern and a full-proposal excerpt, correlated to the audit record', async () => {
-    const proposal = `${'context. '.repeat(70)}\nOption A — keep it. Option B — migrate.`;
+    const proposal = `${'context. '.repeat(70)}\n\nOption A — keep it.\nOption B — migrate.`;
     expect(await voteCommand({ proposal, strategy: 'simple_majority' })).toBe(0);
     const costs = readCosts();
     expect(costs).toHaveLength(1);
@@ -73,7 +73,9 @@ describe('CLI votes persist detector verdicts (#5422)', () => {
     expect(costs[0]?.undeclaredOptionsDetector).toMatchObject({
       fired: true,
       source: 'cli',
-      pattern: String(/\b(?:Option|OPTION) [A-Z0-9]\b/),
+      pattern: String(
+        /(?:^|\n)[ \t]*(?:Option|OPTION) A\b[\s\S]{1,1500}\n[ \t]*(?:Option|OPTION) B\b/
+      ),
       declaredOptionCount: 0,
     });
     expect(costs[0]?.undeclaredOptionsDetector?.excerpt).toContain('Option A');
