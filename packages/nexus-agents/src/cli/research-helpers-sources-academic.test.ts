@@ -166,6 +166,40 @@ describe('discoverSemanticScholar', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toHaveLength(1);
   });
+
+  it.each([
+    ['pair crossing the cut', `${'a'.repeat(196)}😀tail`, `${'a'.repeat(196)}...`],
+    ['pair fitting the cut', `${'a'.repeat(195)}😀tail`, `${'a'.repeat(195)}😀...`],
+    ['exact limit', 'a'.repeat(200), 'a'.repeat(200)],
+    ['short', 'Short description', 'Short description'],
+    ['empty', '', ''],
+  ])(
+    'keeps the Semantic Scholar preview bounded and well-formed for %s (#7438)',
+    async (_name, input, expected) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                paperId: 'paper1',
+                title: 'Semantic Scholar Astral Test',
+                abstract: input,
+                citationCount: 10,
+              },
+            ],
+          }),
+      });
+
+      const result = await discoverSemanticScholar('test', 1);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.description).toBe(expected);
+      expect(result.value[0]?.description.isWellFormed()).toBe(true);
+      expect(result.value[0]?.description.length).toBeLessThanOrEqual(200);
+    }
+  );
 });
 
 describe('discoverPapersWithCode', () => {
@@ -251,6 +285,42 @@ describe('discoverPapersWithCode', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value[0]?.relevance).toBe('medium');
   });
+
+  it.each([
+    ['pair crossing the cut', `${'a'.repeat(196)}😀tail`, `${'a'.repeat(196)}...`],
+    ['pair fitting the cut', `${'a'.repeat(195)}😀tail`, `${'a'.repeat(195)}😀...`],
+    ['exact limit', 'a'.repeat(200), 'a'.repeat(200)],
+    ['short', 'Short description', 'Short description'],
+    ['empty', '', ''],
+  ])(
+    'keeps the Papers with Code preview bounded and well-formed for %s (#7438)',
+    async (_name, input, expected) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: jsonHeaders,
+        json: () =>
+          Promise.resolve({
+            results: [
+              {
+                id: 'paper1',
+                title: 'Papers with Code Astral Test',
+                url_abs: 'https://paperswithcode.com/paper/test',
+                abstract: input,
+                repository_count: 1,
+              },
+            ],
+          }),
+      });
+
+      const result = await discoverPapersWithCode('test', 1);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.description).toBe(expected);
+      expect(result.value[0]?.description.isWellFormed()).toBe(true);
+      expect(result.value[0]?.description.length).toBeLessThanOrEqual(200);
+    }
+  );
 });
 
 describe('discoverOpenAlex', () => {
@@ -401,4 +471,37 @@ describe('discoverOpenAlex', () => {
       expect(result.value[2]?.relevance).toBe('low');
     }
   });
+
+  it.each([
+    ['pair crossing the cut', `${'a'.repeat(196)}😀tail`, `${'a'.repeat(196)}...`],
+    ['pair fitting the cut', `${'a'.repeat(195)}😀tail`, `${'a'.repeat(195)}😀...`],
+    ['exact limit', 'a'.repeat(200), 'a'.repeat(200)],
+    ['short', 'Short description', 'Short description'],
+    ['empty', '', ''],
+  ])(
+    'keeps the OpenAlex preview bounded and well-formed for %s (#7438)',
+    async (_name, input, expected) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            results: [
+              {
+                id: 'https://openalex.org/W1234567890',
+                title: 'OpenAlex Astral Test',
+                abstract_inverted_index: { [input]: [0] },
+              },
+            ],
+          }),
+      });
+
+      const result = await discoverOpenAlex('test', 1);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.error.message);
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.description).toBe(expected);
+      expect(result.value[0]?.description.isWellFormed()).toBe(true);
+      expect(result.value[0]?.description.length).toBeLessThanOrEqual(200);
+    }
+  );
 });

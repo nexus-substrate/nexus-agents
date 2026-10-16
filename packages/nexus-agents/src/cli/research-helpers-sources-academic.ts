@@ -12,7 +12,7 @@
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import type { DiscoverError, DiscoveredSource } from './research-helpers-sources.js';
-import { fetchSource } from './research-helpers-sources.js';
+import { fetchSource, truncate } from './research-helpers-sources.js';
 
 // =============================================================================
 // HELPERS
@@ -21,11 +21,6 @@ import { fetchSource } from './research-helpers-sources.js';
 /** Gets today's date in YYYY-MM-DD format. */
 function getToday(): string {
   return new Date().toISOString().split('T')[0] ?? '';
-}
-
-/** Truncate text to max length. */
-function truncate(text: string, maxLen = 200): string {
-  return text.length > maxLen ? text.slice(0, maxLen - 3) + '...' : text;
 }
 
 // =============================================================================
