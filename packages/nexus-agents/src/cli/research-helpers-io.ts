@@ -22,6 +22,7 @@ import { findRepoRoot, isRepoRoot } from '../config/repo-root-detection.js';
 import { ParseError } from '../core/types/workflow.js';
 import type { TechniquesRegistry, PapersRegistry } from './research-types.js';
 import { ensureRegistryFile } from './research-scaffold.js';
+import { backfillPaperQualities } from '../research/quality-assessor.js';
 
 // =============================================================================
 // CONSTANTS
@@ -253,7 +254,12 @@ export async function loadPapersRegistry(
 
   try {
     const content = await fs.readFile(pathValidation.value, 'utf-8');
-    return { ok: true, value: parseYaml(content) as PapersRegistry };
+    const parsed = parseYaml(content) as PapersRegistry;
+    const shouldBackfill =
+      process.env['NEXUS_BACKFILL_RESEARCH_QUALITY'] === '1' ||
+      process.env['NEXUS_BACKFILL_RESEARCH_QUALITY'] === 'true';
+    const registry = shouldBackfill ? backfillPaperQualities(parsed).registry : parsed;
+    return { ok: true, value: registry };
   } catch (error) {
     const message = getErrorMessage(error);
     return { ok: false, error: new ParseError(`Failed to load papers registry: ${message}`) };
