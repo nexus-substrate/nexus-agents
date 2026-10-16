@@ -108,16 +108,46 @@ Notify the reporter the fix is ready for review on the private fork. Give them a
 
 ## Phase 5 — Simultaneous Publication
 
-**Zero-disclosure-window discipline**: advisory publish, release, and public commit all land in the same window (ideally <5 minutes apart) so users never see the public vulnerability without the fix being available.
+**Zero-disclosure-window discipline**: code merge, patched release, and advisory publication all land in the same tight window (ideally <5 minutes apart) so users never see the public vulnerability without the fix being available.
 
-Order within the window:
+> [!WARNING]
+> **Advisory publication permanently deletes the temporary private fork.**
+> GitHub does _not_ auto-merge the temporary private fork when you publish an advisory. You must merge all eligible private pull requests into the base branch _before_ publishing the advisory. Once an advisory is published, GitHub permanently deletes the temporary private fork; any unmerged private PRs or commits can no longer be merged through the advisory.
 
-1. **Update advisory metadata**: patched version range, credits, CVSS vector. `gh api -X PATCH "repos/${REPO}/security-advisories/${GHSA}" -f severity=high -f patched_versions=">=X.Y.Z"`
-2. **Publish advisory** — this auto-merges the private fork into the default branch and triggers CVE assignment: `gh api -X POST "repos/${REPO}/security-advisories/${GHSA}/publish"`
-3. **Cut the release** — our changesets pipeline then publishes to npm. The changeset entry should say "security: patch CVE-YYYY-NNNNN (see GHSA-xxxx)" — full details only appear after CVE propagates.
-4. **Post release announcement** — release notes + any user-action-required messaging (e.g., "update to X.Y.Z immediately if you use feature Z").
+Sequence within the window:
 
-If step 2 succeeds but step 3 fails, users see the advisory with no fix available. Rehearse this sequence before the live run.
+1. **Locally verify private-fork PRs** — GitHub Actions workflows do _not_ run on temporary private forks. Before merging, check out the private PR branch and validate locally:
+   ```bash
+   pnpm install --frozen-lockfile
+   pnpm lint && pnpm typecheck && pnpm test && pnpm build
+   ```
+2. **Merge private-fork PRs into the base branch** — merge all private pull requests via the GitHub Security Advisory interface into the target base branch (e.g., `main`) _before_ publishing the advisory. Confirm the merge commit is present on the public branch.
+3. **Cut and verify the patched release** — run the changesets pipeline to publish the patched release to npm. Verify registry accessibility before disclosing:
+   ```bash
+   npm view nexus-agents versions --json | jq -r '.[-1]'
+   ```
+   The changeset entry should say "security: patch CVE-YYYY-NNNNN (see GHSA-xxxx)" — full details only appear after CVE propagates.
+4. **Publish the advisory** — publish the advisory by updating its state to `"published"` via `PATCH /repos/{owner}/{repo}/security-advisories/{ghsa_id}`, nesting `patched_versions` under each `vulnerabilities` entry:
+   ```bash
+   gh api -X PATCH "repos/${REPO}/security-advisories/${GHSA}" \
+     --input - <<< '{
+       "state": "published",
+       "vulnerabilities": [
+         {
+           "package": {
+             "ecosystem": "npm",
+             "name": "nexus-agents"
+           },
+           "vulnerable_version_range": "< X.Y.Z",
+           "patched_versions": "X.Y.Z"
+         }
+       ]
+     }'
+   ```
+   _Note_: Do not use `POST /repos/{owner}/{repo}/security-advisories/{GHSA}/publish` (an unsupported route), and do not pass `patched_versions` as a top-level field (an unsupported schema).
+5. **Post release announcement** — release notes + any user-action-required messaging (e.g., "update to X.Y.Z immediately if you use feature Z").
+
+Because the release is cut and verified (step 3) before the advisory is published (step 4), users never see a public vulnerability disclosure before the fix is available on npm. Rehearse this operational sequence before the coordinated publication window (do not perform a real advisory publication merely to test documentation).
 
 ## Phase 6 — Post-Mortem
 
@@ -129,11 +159,10 @@ If step 2 succeeds but step 3 fails, users see the advisory with no fix availabl
 
 ## Explicitly NOT Adapted from paperclip
 
-| Concept                           | Why not                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------ |
-| Heartbeat-scheduled advisory work | We're synchronous — advisory response is human-driven                          |
-| Company-wide advisory board       | Single-repo scope                                                              |
-| Auto-merge-on-publish hook        | We ship via changesets manually; explicit human step is safer for sec releases |
+| Concept                           | Why not                                               |
+| --------------------------------- | ----------------------------------------------------- |
+| Heartbeat-scheduled advisory work | We're synchronous — advisory response is human-driven |
+| Company-wide advisory board       | Single-repo scope                                     |
 
 ## Anti-rationalization — Coordinated disclosure
 
@@ -149,6 +178,7 @@ If step 2 succeeds but step 3 fails, users see the advisory with no fix availabl
 
 - Branch name or commit message describes the vuln class (e.g., `fix/dns-rebinding`)
 - Private-fork patches CI doesn't run on (must verify locally)
+- Advisory published before private-fork PR is merged (deletes temporary private fork and loses merge path)
 - Advisory published before release is on npm (zero-disclosure-window violation)
 - Reporter contacted on a non-private channel
 - CVE not assigned (`gh api ... .cve_id` empty) at publish time
@@ -158,6 +188,9 @@ If step 2 succeeds but step 3 fails, users see the advisory with no fix availabl
 - [ ] Branch + commit names use generic language (no vuln class)
 - [ ] Patch tested locally (`pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test && pnpm build`)
 - [ ] Reporter notified on private advisory thread; review window provided
+- [ ] Private-fork PR merged into base branch before publishing advisory
+- [ ] Patched release cut and verified on npm before advisory publication
+- [ ] Advisory published via `PATCH` with `{"state":"published"}` and nested `patched_versions`
 - [ ] Advisory + release published in same window (<5 min apart)
 - [ ] CVE assigned and propagated; `npm view nexus-agents version` shows patched version
 - [ ] Post-mortem recorded; class-level mitigation issue filed if applicable
