@@ -15,6 +15,7 @@ import {
   unsupportedParametersForModel,
   modelSupportsParameter,
   getMaxTokensParamForModel,
+  getMaxTokensParamName,
   KNOWN_PARAMETER_INCOMPATIBILITIES,
 } from './model-parameter-support.js';
 import { temperatureUnsupportedForModel } from './temperature-support.js';
@@ -62,6 +63,11 @@ describe('DATA path — registered codex models read capability data, not just r
     // `codex-5.3` (regexIsOpenAiReasoning matches on `codex`, so data + fallback
     // agree here); this asserts the registry data is wired and surfaced.
     expect(getMaxTokensParamForModel(id)).toBe('max_completion_tokens');
+  });
+
+  it('gpt-6-luna-pro rejects temperature and expects max_completion_tokens (#7458)', () => {
+    expect(modelSupportsParameter('gpt-6-luna-pro', 'temperature')).toBe(false);
+    expect(getMaxTokensParamName('gpt-6-luna-pro')).toBe('max_completion_tokens');
   });
 });
 

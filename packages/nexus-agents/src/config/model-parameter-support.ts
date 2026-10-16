@@ -89,14 +89,14 @@ function claudeTemperatureUnsupported(bare: string): boolean {
  * - o-series: `o1`/`o3`/`o3-mini`/`o4-mini` — `o` + digit at the START of the last
  *   path segment (so `claude-opus`/`openrouter-*` cannot match).
  * - codex: all current `codex…` routes are GPT-5-reasoning-based.
- * - GPT-5 family: `gpt-5` / `gpt5` (anchored after the `5` so `gpt-50`/`gpt-512`
+ * - GPT-5/6 family: `gpt-5` / `gpt-6` / `gpt5` / `gpt6` (anchored after the digit so `gpt-50`/`gpt-512`
  *   do NOT match) — EXCEPT the non-reasoning `gpt-5-chat` variant.
  */
 function openAiReasoning(id: string): boolean {
   const segment = id.includes('/') ? id.slice(id.lastIndexOf('/') + 1) : id;
   if (/^o[0-9]/.test(segment)) return true;
   if (segment.includes('codex')) return true;
-  if (/gpt-?5(?![0-9])/.test(segment) && !segment.includes('gpt-5-chat')) return true;
+  if (/gpt-?[56](?![0-9])/.test(segment) && !segment.includes('gpt-5-chat')) return true;
   return false;
 }
 
@@ -155,6 +155,9 @@ export function getMaxTokensParamForModel(modelId: string): 'max_tokens' | 'max_
   return regexIsOpenAiReasoning(modelId) ? 'max_completion_tokens' : 'max_tokens';
 }
 
+/** Alias for {@link getMaxTokensParamForModel}. */
+export const getMaxTokensParamName = getMaxTokensParamForModel;
+
 // ---------------------------------------------------------------------------
 // Known-incompatibility registry — the drift guard's source of truth (#4070)
 // ---------------------------------------------------------------------------
@@ -203,6 +206,9 @@ export const KNOWN_PARAMETER_INCOMPATIBILITIES: readonly KnownParameterIncompati
   // #6842 — GPT-6.1 Sol carries gpt-5.6-sol parameter support; registry data covers GPT-6 without broadening the regex.
   { modelId: 'gpt-6.1-sol', param: 'temperature', issue: 6842 },
   { modelId: 'gpt-6.1-sol', maxTokensParam: 'max_completion_tokens', issue: 6842 },
+  // #7458 — GPT-6 Luna Pro parameter support (reconciles with OpenRouter catalog).
+  { modelId: 'gpt-6-luna-pro', param: 'temperature', issue: 7458 },
+  { modelId: 'gpt-6-luna-pro', maxTokensParam: 'max_completion_tokens', issue: 7458 },
   // #4049 — OpenAI reasoning models expect `max_completion_tokens`, not `max_tokens` (codex via registry; o-series via fallback).
   { modelId: 'codex-5.3', maxTokensParam: 'max_completion_tokens', issue: 4049 },
   { modelId: 'o3-mini', maxTokensParam: 'max_completion_tokens', issue: 4049 },
