@@ -36,11 +36,13 @@ vi.mock('../../adapters/unified-registry.js', () => ({
     }),
   })),
 }));
+const mockResolveAdapterForRole = vi.hoisted(() => vi.fn());
 vi.mock('./create-expert-routing.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./create-expert-routing.js')>();
   return {
     ...actual,
     getExpertFallbackChain: vi.fn(() => []),
+    resolveAdapterForRole: mockResolveAdapterForRole,
   };
 });
 
@@ -140,6 +142,8 @@ describe('executeWorkerDispatch', () => {
   let mockAdapter: IModelAdapter;
 
   beforeEach(() => {
+    mockResolveAdapterForRole.mockReset();
+    mockResolveAdapterForRole.mockReturnValue(undefined);
     mockAdapter = makeMockAdapter('Worker output here');
   });
 
@@ -233,6 +237,73 @@ describe('executeWorkerDispatch', () => {
     expect(result.errorCount).toBe(1);
     // Error may be original or from alt CLI retry (#1535 — altExecuteWorker)
     expect(result.results[0]?.error).toBeDefined();
+  });
+
+  it('excludes the actual failed role adapter on retry_different_cli when role-resolved adapter differs from default modelAdapter (#1535)', async () => {
+    const defaultAdapter = {
+      providerId: 'cli-claude',
+      modelId: 'claude-3-5-sonnet',
+      capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
+      complete: vi.fn().mockResolvedValue(makeSuccessResponse('retry success from default claude')),
+      stream: vi.fn(),
+      countTokens: vi.fn().mockResolvedValue(100),
+      validate: vi.fn().mockResolvedValue(ok(undefined)),
+    } as unknown as IModelAdapter;
+
+    const roleAdapter = {
+      providerId: 'cli-codex',
+      modelId: 'o3-mini',
+      capabilities: ['text_generation'] as const,
+      supportsAccessMode: vi.fn().mockResolvedValue(true),
+      complete: vi
+        .fn()
+        .mockResolvedValue(
+          err(new ModelError('Rate limited: 429', { code: ErrorCode.MODEL_RATE_LIMITED }))
+        ),
+      stream: vi.fn(),
+      countTokens: vi.fn().mockResolvedValue(100),
+      validate: vi.fn().mockResolvedValue(ok(undefined)),
+    } as unknown as IModelAdapter;
+
+    mockResolveAdapterForRole.mockImplementation((role: string) => {
+      if (role === 'security_expert') return roleAdapter;
+      return undefined;
+    });
+
+    const plan: AgentPlan = {
+      entries: [
+        {
+          role: 'security',
+          subTask: 'Audit authentication endpoints',
+          priority: 1,
+          reasoning: 'Security audit',
+          wave: 1,
+        },
+      ],
+      totalExperts: 1,
+      taskType: 'code_implementation',
+      complexity: 'moderate',
+      reasoning: 'Plan for security audit',
+      suggestedWaveSize: 1,
+    };
+
+    const result = await executeWorkerDispatch({
+      agentPlan: plan,
+      taskDescription: 'Security check',
+      modelAdapter: defaultAdapter,
+      perWorkerRouting: true,
+      logger,
+    });
+
+    expect(result.totalWorkers).toBe(1);
+    expect(result.successCount).toBe(1);
+    expect(result.errorCount).toBe(0);
+    expect(result.results[0]?.status).toBe('success');
+    expect(result.results[0]?.wasRetried).toBe(true);
+    expect(result.results[0]?.resolvedCli).toBe('cli-claude');
+    expect(roleAdapter.complete).toHaveBeenCalledTimes(1);
+    expect(defaultAdapter.complete).toHaveBeenCalledTimes(1);
   });
 
   it('respects maxConcurrency option', async () => {
