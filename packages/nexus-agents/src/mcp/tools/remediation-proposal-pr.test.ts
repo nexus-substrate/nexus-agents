@@ -65,6 +65,18 @@ describe('buildProposalDoc', () => {
     expect(doc).toContain('proposal');
     expect(doc).toContain('[adjust-routing]');
   });
+
+  it('renders sourceContext constraints and evidence in proposal doc (#7429)', () => {
+    const p = plan({
+      sourceContext: {
+        description: 'named dependency #4656; workspace attribution',
+        evidence: { samples: 7, window: '14d', observedValue: 0.1, threshold: 0.8 },
+      },
+    });
+    const doc = buildProposalDoc(p);
+    expect(doc).toContain('named dependency #4656; workspace attribution');
+    expect(doc).toContain('"samples":7');
+  });
 });
 
 describe('makeProposalPrImplementAdapter', () => {

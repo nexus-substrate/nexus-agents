@@ -54,6 +54,10 @@ import {
 import { planTouchesProtectedPath } from './remediation-protected-paths.js';
 import { retryOnNoQuorum, type VoteVerdict } from './remediation-vote-adapter.js';
 import type { ConsensusAlgorithm } from '../../consensus/types-core.js';
+import { scanForSecrets, describeSecretFindings } from './diff-secret-scan.js';
+
+/** Maximum proposal length in characters (matches MAX_PROPOSAL_LENGTH in consensus-vote-types). */
+const MAX_PROPOSAL_LENGTH = 4000;
 
 /**
  * #4138: bounded re-runs of an `absolute_quorum` `no_quorum` void in the
@@ -156,11 +160,11 @@ export interface AutoRemediationDeps {
    * Optional observer fired in EVERY mode right after a signal's typed
    * {@link RemediationPlan} is produced (post-RESEARCH, pre-consensus). Best-effort
    * and side-effect-only — the orchestrator ignores its return and never lets it
-   * throw into the control flow. The AUDIT-mode cycle uses this to drive the
-   * dry-run code-PR guards-green soak (#3670 Stage 2.5) over the proposed change
-   * set; it MUST NOT push, open a PR, or write the live tree.
+   * throw into the control flow. Supports both (signal, plan) and legacy (plan) signatures (#7429).
    */
-  onPlanProduced?(signal: ImprovementSignal, plan: RemediationPlan): void;
+  onPlanProduced?:
+    | ((signal: ImprovementSignal, plan: RemediationPlan) => void)
+    | ((plan: RemediationPlan) => void);
   readonly logger?: ILogger;
 }
 
@@ -419,6 +423,7 @@ async function consensusGate(
  * Fire the optional best-effort {@link AutoRemediationDeps.onPlanProduced} observer
  * (#3670 Stage 2.5). Side-effect-only and fully isolated — a throw is swallowed
  * (logged WARN) so the observer can never break the remediation control flow.
+ * Supports legacy single-argument (plan) observers as well as (signal, plan) (#7429).
  */
 function firePlanObserver(
   deps: AutoRemediationDeps,
@@ -427,13 +432,93 @@ function firePlanObserver(
 ): void {
   if (deps.onPlanProduced === undefined) return;
   try {
-    deps.onPlanProduced(signal, plan);
+    const observer = deps.onPlanProduced as unknown as (...args: unknown[]) => void;
+    if (observer.length === 1) {
+      observer(plan);
+    } else {
+      observer(signal, plan);
+    }
   } catch (err: unknown) {
     deps.logger?.warn('onPlanProduced observer threw (swallowed)', {
       signalKey: signal.signalKey,
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+function checkStringsForSecrets(texts: readonly (string | undefined)[]): string | undefined {
+  for (const text of texts) {
+    if (typeof text !== 'string' || text.length === 0) continue;
+    const scanResult = scanForSecrets(text);
+    if (!scanResult.clean) {
+      return `secrets detected in remediation request: ${describeSecretFindings(scanResult)}`;
+    }
+  }
+  return undefined;
+}
+
+function isSignalUtf16WellFormed(signal: ImprovementSignal, proposal: string): boolean {
+  if (!proposal.isWellFormed()) return false;
+  if (!signal.signalKey.isWellFormed()) return false;
+  if (!signal.title.isWellFormed()) return false;
+  if (typeof signal.body === 'string' && !signal.body.isWellFormed()) return false;
+  return true;
+}
+
+function scanRemediationSecrets(
+  signal: ImprovementSignal,
+  plan: RemediationPlan,
+  proposal: string
+): string | undefined {
+  const sourceContext = plan.sourceContext;
+  return checkStringsForSecrets([
+    proposal,
+    signal.title,
+    signal.body,
+    signal.signalKey,
+    sourceContext?.description,
+    sourceContext?.evidence?.window,
+  ]);
+}
+
+function validateProposalSafety(
+  signal: ImprovementSignal,
+  plan: RemediationPlan
+): { ok: true; proposal: string } | { ok: false; reason: string } {
+  let proposal: string;
+  try {
+    proposal = `Auto-remediation for '${signal.signalKey}'.\n\n${renderPlanAsResearch(plan)}`;
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      reason: `proposal rendering failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  if (!isSignalUtf16WellFormed(signal, proposal)) {
+    return { ok: false, reason: 'malformed UTF-16 content in signal or rendered proposal' };
+  }
+
+  if (proposal.length > MAX_PROPOSAL_LENGTH) {
+    return {
+      ok: false,
+      reason: `rendered proposal exceeds maximum length of ${String(MAX_PROPOSAL_LENGTH)} characters (${String(proposal.length)})`,
+    };
+  }
+
+  try {
+    const secretError = scanRemediationSecrets(signal, plan, proposal);
+    if (secretError !== undefined) {
+      return { ok: false, reason: secretError };
+    }
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      reason: `secret scanner error: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  return { ok: true, proposal };
 }
 
 /**
@@ -458,6 +543,16 @@ async function executeOne(
     deps.audit({ step: 'research-failed', signalKey: signal.signalKey, detail: reason });
     return { error: reason }; // neutral for the breaker (transient/adapter, not sustained wrongness)
   }
+
+  // Pre-audit safety checks (#7429): safe rendering, UTF-16 well-formedness,
+  // complete 4000-unit bound, and canonical source string secret scanning BEFORE
+  // content-bearing plan audit and onPlanProduced. Refusal is a neutral skip.
+  const safety = validateProposalSafety(signal, plan);
+  if (!safety.ok) {
+    deps.audit({ step: 'research-failed', signalKey: signal.signalKey, detail: safety.reason });
+    return { error: safety.reason };
+  }
+
   deps.audit({
     step: 'plan',
     signalKey: signal.signalKey,

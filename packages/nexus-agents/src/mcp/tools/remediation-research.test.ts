@@ -48,4 +48,55 @@ describe('buildRemediationPlanFromSignal', () => {
   it('is deterministic (no untrusted read / randomness)', () => {
     expect(buildRemediationPlanFromSignal(sig())).toEqual(buildRemediationPlanFromSignal(sig()));
   });
+
+  it('populates sourceContext with bounded description and valid digest (#7429)', () => {
+    const s = sig({
+      body: 'a'.repeat(1500),
+    });
+    const plan = buildRemediationPlanFromSignal(s);
+    expect(plan.sourceContext?.description).toHaveLength(1200);
+    expect(plan.sourceContext?.digest).toBeDefined();
+    expect(() => parseRemediationPlan(plan)).not.toThrow();
+  });
+
+  it('populates sourceContext with bounded evidence fields (#7429)', () => {
+    const s = sig({
+      evidence: {
+        samples: 42,
+        window: 'w'.repeat(300),
+        observedValue: 0.12,
+        threshold: 0.9,
+      },
+    });
+    const plan = buildRemediationPlanFromSignal(s);
+    const evid = plan.sourceContext?.evidence;
+    expect(evid?.window).toHaveLength(200);
+    expect(evid?.samples).toBe(42);
+    expect(evid?.observedValue).toBe(0.12);
+    expect(evid?.threshold).toBe(0.9);
+    expect(() => parseRemediationPlan(plan)).not.toThrow();
+  });
+
+  it('drops non-finite evidence values during normalization', () => {
+    const s = sig({
+      body: 'valid body',
+      evidence: {
+        samples: NaN,
+        observedValue: Infinity,
+        threshold: -Infinity,
+      },
+    });
+    const plan = buildRemediationPlanFromSignal(s);
+    expect(plan.sourceContext?.evidence?.samples).toBeUndefined();
+    expect(plan.sourceContext?.evidence?.observedValue).toBeUndefined();
+    expect(plan.sourceContext?.evidence?.threshold).toBeUndefined();
+    expect(() => parseRemediationPlan(plan)).not.toThrow();
+  });
+
+  it('omits sourceContext when body is empty and evidence is empty', () => {
+    const s = sig({ body: '', evidence: {} });
+    const plan = buildRemediationPlanFromSignal(s);
+    expect(plan.sourceContext).toBeUndefined();
+    expect(() => parseRemediationPlan(plan)).not.toThrow();
+  });
 });

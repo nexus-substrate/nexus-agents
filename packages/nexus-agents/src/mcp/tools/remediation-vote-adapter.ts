@@ -5,7 +5,8 @@
  * (live voters, never simulated) at the priority-required algorithm (#3653) via
  * the canonical {@link executeVoting} path, and maps the result to the orchestrator's
  * `{ approved, approvalPercentage }` shape. The proposal handed to voters is the
- * strict typed plan rendering (#3613) — no untrusted free-form text.
+ * strict typed plan rendering (#3613), preserving bounded signal context and
+ * evidence (#7429) without untrusted executable text.
  *
  * `simulateVotes` is hard-forced to false here: auto-remediation must never gate
  * on random simulated votes (CLAUDE.md / #2319).

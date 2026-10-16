@@ -29,6 +29,7 @@
  * @module mcp/tools/improvement-remediation-capability
  */
 
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
 /** The three Rule-of-Two legs. No single phase may hold all three. */
@@ -139,6 +140,54 @@ export const RemediationStepSchema = z
   .strict();
 export type RemediationStep = z.infer<typeof RemediationStepSchema>;
 
+export const RemediationSourceEvidenceSchema = z
+  .object({
+    samples: z.number().optional(),
+    window: z.string().max(200).optional(),
+    observedValue: z.number().optional(),
+    threshold: z.number().optional(),
+  })
+  .strict();
+export type RemediationSourceEvidence = z.infer<typeof RemediationSourceEvidenceSchema>;
+
+/**
+ * Strict schema for source context retained with a remediation plan (#7429).
+ * Description is bounded to 1200 UTF-16 units; digest binds provenance.
+ */
+export const RemediationSourceContextSchema = z
+  .object({
+    description: z.string().max(1200).optional(),
+    evidence: RemediationSourceEvidenceSchema.optional(),
+    digest: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+  })
+  .strict();
+export type RemediationSourceContext = z.infer<typeof RemediationSourceContextSchema>;
+
+/**
+ * Compute the canonical SHA-256 digest of source context for content linkage (#7429).
+ * A digest binds content provenance; it is never authentication.
+ */
+export function computeSourceContextDigest(
+  description?: string,
+  evidence?: RemediationSourceEvidence
+): string {
+  const normDescription = description ?? '';
+  const normEvidence = evidence
+    ? JSON.stringify({
+        observedValue: evidence.observedValue ?? null,
+        samples: evidence.samples ?? null,
+        threshold: evidence.threshold ?? null,
+        window: evidence.window ?? null,
+      })
+    : '';
+  return createHash('sha256')
+    .update(`desc:${normDescription}\nevid:${normEvidence}`, 'utf8')
+    .digest('hex');
+}
+
 /**
  * The typed plan crossing the boundary. `.strict()` rejects unknown keys so no
  * extra free-form field can smuggle untrusted/executable content across.
@@ -159,14 +208,65 @@ export const RemediationPlanSchema = z
     ]),
     summary: z.string().min(1).max(1000),
     steps: z.array(RemediationStepSchema).min(1).max(20),
+    /** Retained, bounded signal context and evidence (#7429). Optional for legacy compatibility. */
+    sourceContext: RemediationSourceContextSchema.optional(),
   })
   .strict();
 export type RemediationPlan = z.infer<typeof RemediationPlanSchema>;
 
+function assertStepsUtf16WellFormed(steps: readonly RemediationStep[]): void {
+  for (const step of steps) {
+    if (
+      !step.description.isWellFormed() ||
+      (step.targetPath !== undefined && !step.targetPath.isWellFormed())
+    ) {
+      throw new RuleOfTwoViolation(
+        'RemediationPlan contains malformed UTF-16 in step description or targetPath'
+      );
+    }
+  }
+}
+
+function assertSourceContextUtf16WellFormed(sourceContext?: RemediationSourceContext): void {
+  if (sourceContext === undefined) return;
+  if (sourceContext.description !== undefined && !sourceContext.description.isWellFormed()) {
+    throw new RuleOfTwoViolation(
+      'RemediationPlan sourceContext.description is not well-formed UTF-16'
+    );
+  }
+  if (
+    sourceContext.evidence?.window !== undefined &&
+    !sourceContext.evidence.window.isWellFormed()
+  ) {
+    throw new RuleOfTwoViolation(
+      'RemediationPlan sourceContext.evidence.window is not well-formed UTF-16'
+    );
+  }
+}
+
+function assertPlanUtf16WellFormed(plan: RemediationPlan): void {
+  if (!plan.signalKey.isWellFormed() || !plan.summary.isWellFormed()) {
+    throw new RuleOfTwoViolation('RemediationPlan contains malformed UTF-16 in key or summary');
+  }
+  assertStepsUtf16WellFormed(plan.steps);
+  assertSourceContextUtf16WellFormed(plan.sourceContext);
+}
+
+function assertPlanDigestValid(sourceContext?: RemediationSourceContext): void {
+  if (sourceContext?.digest === undefined) return;
+  const expected = computeSourceContextDigest(sourceContext.description, sourceContext.evidence);
+  if (sourceContext.digest !== expected) {
+    throw new RuleOfTwoViolation(
+      `RemediationPlan sourceContext digest mismatch: expected ${expected}, received ${sourceContext.digest}`
+    );
+  }
+}
+
 /**
  * Parse + validate a plan crossing the boundary. Fail-closed: throws
  * {@link RuleOfTwoViolation} on any schema violation (unknown key, free-form
- * overflow, bad action kind), so malformed/smuggled plans never reach IMPLEMENT.
+ * overflow, bad action kind, malformed UTF-16, digest mismatch), so
+ * malformed/smuggled plans never reach IMPLEMENT.
  */
 export function parseRemediationPlan(raw: unknown): RemediationPlan {
   const result = RemediationPlanSchema.safeParse(raw);
@@ -177,7 +277,10 @@ export function parseRemediationPlan(raw: unknown): RemediationPlan {
         .join('; ')}`
     );
   }
-  return result.data;
+  const plan = result.data;
+  assertPlanUtf16WellFormed(plan);
+  assertPlanDigestValid(plan.sourceContext);
+  return plan;
 }
 
 // ============================================================================
@@ -198,17 +301,47 @@ export function untrustedInputGuardFor(ledger: CapabilityLedger): () => void {
 }
 
 /**
- * Render a typed {@link RemediationPlan} as plan-only research text (#3643), so
+ * Render a typed {@link RemediationPlan} as plan-only research text (#3643, #7429), so
  * the IMPLEMENT phase can run the dev-pipeline from the plan with NO fresh
  * untrusted read (passed as `DevPipelineOptions.researchOverride`). All content
- * is inert plan data — never re-fetched.
+ * is inert plan data — never re-fetched. Consumes and verifies any provenance fields.
  */
 export function renderPlanAsResearch(plan: RemediationPlan): string {
+  if (plan.sourceContext?.digest !== undefined) {
+    const expected = computeSourceContextDigest(
+      plan.sourceContext.description,
+      plan.sourceContext.evidence
+    );
+    if (plan.sourceContext.digest !== expected) {
+      throw new RuleOfTwoViolation(
+        `RemediationPlan sourceContext digest mismatch in renderer: expected ${expected}, received ${plan.sourceContext.digest}`
+      );
+    }
+  }
+
   const steps = plan.steps
     .map((s, i) => {
       const target = s.targetPath !== undefined ? ` (target: ${s.targetPath})` : '';
       return `${String(i + 1)}. [${s.kind}] ${s.description}${target}`;
     })
     .join('\n');
-  return `Remediation plan for signal '${plan.signalKey}' (category: ${plan.category}).\n\n${plan.summary}\n\nSteps:\n${steps}`;
+
+  let contextBlock = '';
+  if (plan.sourceContext !== undefined) {
+    const sections: string[] = [];
+    if (plan.sourceContext.description !== undefined && plan.sourceContext.description.length > 0) {
+      sections.push(`Source context:\n${plan.sourceContext.description}`);
+    }
+    if (plan.sourceContext.evidence !== undefined) {
+      sections.push(`Evidence:\n${JSON.stringify(plan.sourceContext.evidence)}`);
+    }
+    if (plan.sourceContext.digest !== undefined) {
+      sections.push(`Context digest: ${plan.sourceContext.digest}`);
+    }
+    if (sections.length > 0) {
+      contextBlock = `\n\n${sections.join('\n\n')}`;
+    }
+  }
+
+  return `Remediation plan for signal '${plan.signalKey}' (category: ${plan.category}).\n\n${plan.summary}${contextBlock}\n\nSteps:\n${steps}`;
 }
