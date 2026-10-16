@@ -33,7 +33,7 @@ export interface ChangedFile {
   /** The repo-relative path of the changed file. */
   path: string;
   /** Git diff status code (e.g. 'A' for added, 'M' for modified, 'D' for deleted). */
-  status?: string;
+  status?: string | undefined;
 }
 
 /** Accepted input element for file change classification: either a raw path string or a ChangedFile object. */
@@ -66,7 +66,9 @@ function isPresentChangeset(entry: ChangedFile): boolean {
  */
 export function normalizeChangeEntry(entry: ChangeInput): ChangedFile {
   if (typeof entry === 'object') {
-    return { path: entry.path, status: entry.status };
+    return entry.status !== undefined
+      ? { path: entry.path, status: entry.status }
+      : { path: entry.path };
   }
   const tabIndex = entry.indexOf('\t');
   if (tabIndex !== -1) {
@@ -77,7 +79,7 @@ export function normalizeChangeEntry(entry: ChangeInput): ChangedFile {
     return { status, path };
   }
   const match = entry.match(/^([A-Z])\d*\s+(.+)$/);
-  if (match !== null && (match[1] === 'D' || match[1] === 'A' || match[1] === 'M')) {
+  if (match?.[2] !== undefined && (match[1] === 'D' || match[1] === 'A' || match[1] === 'M')) {
     return {
       status: match[1],
       path: match[2].trim(),
