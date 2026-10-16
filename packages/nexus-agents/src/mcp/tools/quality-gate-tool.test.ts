@@ -96,6 +96,24 @@ describe('RunQualityGateInputSchema', () => {
   it('rejects iteration below 1', () => {
     expect(RunQualityGateInputSchema.safeParse({ iteration: 0 }).success).toBe(false);
   });
+
+  it('rejects iteration > 100', () => {
+    expect(RunQualityGateInputSchema.safeParse({ iteration: 101 }).success).toBe(false);
+  });
+
+  it('accepts iteration <= 100', () => {
+    expect(RunQualityGateInputSchema.safeParse({ iteration: 100 }).success).toBe(true);
+  });
+
+  it('rejects projectDir > 500 characters', () => {
+    expect(RunQualityGateInputSchema.safeParse({ projectDir: 'a'.repeat(501) }).success).toBe(
+      false
+    );
+  });
+
+  it('accepts projectDir <= 500 characters', () => {
+    expect(RunQualityGateInputSchema.safeParse({ projectDir: 'a'.repeat(500) }).success).toBe(true);
+  });
 });
 
 describe('run_quality_gate handler', () => {

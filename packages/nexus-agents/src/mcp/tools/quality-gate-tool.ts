@@ -56,6 +56,7 @@ export const RunQualityGateInputSchema = z.object({
   /** Project directory to run checks against. Must resolve inside the repo/cwd root. */
   projectDir: z
     .string()
+    .max(500)
     .optional()
     .describe(
       'Project directory to run checks against (default: cwd). Must stay inside the repo root.'
@@ -67,7 +68,13 @@ export const RunQualityGateInputSchema = z.object({
     .default([...DEFAULT_CHECKS])
     .describe("Allowlisted checks to run (default: ['typecheck','lint','tests'])."),
   /** 1-based iteration counter, forwarded to the engine for feedback context. */
-  iteration: z.number().int().min(1).default(1).describe('1-based iteration number (default 1).'),
+  iteration: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(1)
+    .describe('1-based iteration number (default 1).'),
 });
 export type RunQualityGateInput = z.infer<typeof RunQualityGateInputSchema>;
 
@@ -175,6 +182,7 @@ export function registerRunQualityGateTool(server: McpServer, deps: RunQualityGa
   const toolSchema = {
     projectDir: z
       .string()
+      .max(500)
       .optional()
       .describe(
         'Project directory to run checks against (default: cwd). Must stay inside the repo root.'
@@ -184,7 +192,13 @@ export function registerRunQualityGateTool(server: McpServer, deps: RunQualityGa
       .nonempty()
       .optional()
       .describe("Allowlisted checks to run (default: ['typecheck','lint','tests'])."),
-    iteration: z.number().int().min(1).optional().describe('1-based iteration number (default 1).'),
+    iteration: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('1-based iteration number (default 1).'),
   };
 
   const secureHandler = createSecureHandler(

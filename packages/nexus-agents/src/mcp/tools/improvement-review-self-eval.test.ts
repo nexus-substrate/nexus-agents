@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createLogger,
@@ -92,7 +91,7 @@ describe('detectSelfEvalSignals (#3224)', () => {
 describe('loadSelfEvalSignals (#3224 — fail-soft)', () => {
   let dir: string;
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'nexus-selfeval-'));
+    dir = await mkdtemp(join(process.cwd(), '.tmp-selfeval-'));
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });

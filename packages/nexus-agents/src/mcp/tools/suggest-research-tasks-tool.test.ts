@@ -104,6 +104,14 @@ describe('SuggestResearchTasksInputSchema', () => {
   it('rejects non-integer maxTriggers', () => {
     expect(SuggestResearchTasksInputSchema.safeParse({ maxTriggers: 1.5 }).success).toBe(false);
   });
+
+  it('rejects maxTriggers > 50', () => {
+    expect(SuggestResearchTasksInputSchema.safeParse({ maxTriggers: 51 }).success).toBe(false);
+  });
+
+  it('accepts maxTriggers <= 50', () => {
+    expect(SuggestResearchTasksInputSchema.safeParse({ maxTriggers: 50 }).success).toBe(true);
+  });
 });
 
 describe('registerSuggestResearchTasksTool — handler', () => {

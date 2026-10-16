@@ -51,6 +51,7 @@ export const RunWorkflowInputSchema = z.object({
     .number()
     .int()
     .positive()
+    .max(10_000_000)
     .optional()
     .describe(
       'Token ceiling for the whole run. The ONLY source of a run_workflow cap: enforced when NEXUS_BUDGET_ENFORCE is on and this is set (no estimated default). Checked before each phase and before each step is dispatched; steps already running are not halted.'

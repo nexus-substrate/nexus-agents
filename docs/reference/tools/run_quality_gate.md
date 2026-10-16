@@ -18,6 +18,6 @@ MCP surface over the runQualityGate QA engine (#1684, #3356). Runs an allowliste
 
 | Parameter | Type | Required | Constraints | Description |
 | --------- | ---- | -------- | ----------- | ----------- |
-| `projectDir` | string | no | — | Project directory to run checks against (default: cwd). Must stay inside the repo root. |
+| `projectDir` | string | no | maxLength 500 | Project directory to run checks against (default: cwd). Must stay inside the repo root. |
 | `checks` | array of enum | no | default ["typecheck","lint","tests"] | Allowlisted checks to run (default: ['typecheck','lint','tests']). |
-| `iteration` | integer | no | min 1; max 9007199254740991; default 1 | 1-based iteration number (default 1). |
+| `iteration` | integer | no | min 1; max 100; default 1 | 1-based iteration number (default 1). |
