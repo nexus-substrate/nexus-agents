@@ -835,7 +835,10 @@ describe('loadSelfEvalSignals path traversal containment (S-1 / CWE-22)', () => 
   let outOfRootReportPath: string;
 
   beforeEach(async () => {
-    inRootDir = await mkdtemp(join(process.cwd(), '.tmp-selfeval-test-'));
+    // Use two sibling temp directories and point process.cwd() at inRootDir so
+    // outOfRootDir is strictly outside the workspace root even when vitest sets
+    // TMPDIR inside the repository root in CI (#4412 / #6615).
+    inRootDir = await mkdtemp(join(tmpdir(), 'nexus-in-root-'));
     validReportPath = join(inRootDir, 'report.json');
     const validReportContent = JSON.stringify({
       results: [
@@ -849,17 +852,17 @@ describe('loadSelfEvalSignals path traversal containment (S-1 / CWE-22)', () => 
     });
     await writeFile(validReportPath, validReportContent);
 
-    // Create a real file containing valid self-eval data OUTSIDE the workspace root (/tmp).
-    // An unfixed reader would read and surface signals; a contained reader refuses before read.
     outOfRootDir = await mkdtemp(join(tmpdir(), 'nexus-out-of-root-'));
     outOfRootReportPath = join(outOfRootDir, 'report.json');
     await writeFile(outOfRootReportPath, validReportContent);
+
+    vi.spyOn(process, 'cwd').mockReturnValue(inRootDir);
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(inRootDir, { recursive: true, force: true });
     await rm(outOfRootDir, { recursive: true, force: true });
-    vi.restoreAllMocks();
   });
 
   it('rejects path escaping workspace root (../../../etc/passwd) without reading file', async () => {
@@ -925,6 +928,8 @@ describe('loadSelfEvalSignals path traversal containment (S-1 / CWE-22)', () => 
       selfEvalReportPath: outOfRootReportPath,
     });
     const result = await runImprovementReview(input);
-    expect(result.signals.filter((s) => s.category === 'tech-debt')).toEqual([]);
+    expect(result.signals.filter((s) => s.signalKey.startsWith('tech-debt:self-eval:'))).toEqual(
+      []
+    );
   });
 });
