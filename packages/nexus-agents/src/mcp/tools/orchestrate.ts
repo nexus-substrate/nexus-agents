@@ -1179,8 +1179,8 @@ function resolveWorkerPlan(
   input: OrchestrateInput,
   logger: ILogger
 ): {
-  readonly relevantFiles?: readonly string[];
-  readonly agentPlan?: ReturnType<typeof computeAgentPlan>;
+  readonly relevantFiles?: readonly string[] | undefined;
+  readonly agentPlan?: ReturnType<typeof computeAgentPlan> | undefined;
 } {
   if (!v2Config.aorchestraEnabled) {
     return {};
