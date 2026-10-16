@@ -155,9 +155,6 @@ export function getMaxTokensParamForModel(modelId: string): 'max_tokens' | 'max_
   return regexIsOpenAiReasoning(modelId) ? 'max_completion_tokens' : 'max_tokens';
 }
 
-/** Alias for {@link getMaxTokensParamForModel}. */
-export const getMaxTokensParamName = getMaxTokensParamForModel;
-
 // ---------------------------------------------------------------------------
 // Known-incompatibility registry — the drift guard's source of truth (#4070)
 // ---------------------------------------------------------------------------

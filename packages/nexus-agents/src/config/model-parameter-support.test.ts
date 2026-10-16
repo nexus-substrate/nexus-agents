@@ -15,7 +15,6 @@ import {
   unsupportedParametersForModel,
   modelSupportsParameter,
   getMaxTokensParamForModel,
-  getMaxTokensParamName,
   KNOWN_PARAMETER_INCOMPATIBILITIES,
 } from './model-parameter-support.js';
 import { temperatureUnsupportedForModel } from './temperature-support.js';
@@ -67,7 +66,7 @@ describe('DATA path — registered codex models read capability data, not just r
 
   it('gpt-6-luna-pro rejects temperature and expects max_completion_tokens (#7458)', () => {
     expect(modelSupportsParameter('gpt-6-luna-pro', 'temperature')).toBe(false);
-    expect(getMaxTokensParamName('gpt-6-luna-pro')).toBe('max_completion_tokens');
+    expect(getMaxTokensParamForModel('gpt-6-luna-pro')).toBe('max_completion_tokens');
   });
 });
 
