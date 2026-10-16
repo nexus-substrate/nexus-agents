@@ -673,4 +673,20 @@ describe('synthesizeResults', () => {
     // After reimagine also returns short output, falls back to concatenation
     expect(result.synthesisSource).toBe('fallback');
   });
+
+  it('requests read-only-analysis accessMode on complete (sec-20261015-internal-review-01)', async () => {
+    const adapter = makeMockAdapter('Synthesized output');
+    await synthesizeResults({
+      results: [makeResult('code', 'A'.repeat(50)), makeResult('testing', 'B'.repeat(50))],
+      conflicts: [makeConflict('src/app.ts', ['code', 'testing'])],
+      taskDescription: 'Implement feature',
+      modelAdapter: adapter,
+    });
+
+    expect(adapter.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessMode: 'read-only-analysis',
+      })
+    );
+  });
 });

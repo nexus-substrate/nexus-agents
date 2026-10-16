@@ -264,6 +264,20 @@ describe('generateReflection', () => {
     expect(result?.learnings).toHaveLength(2); // All extracted
     expect(result?.written).toBe(1); // Only high-confidence persisted
   });
+
+  it('requests read-only-analysis accessMode on complete (sec-20261015-internal-review-02)', async () => {
+    const { isReflectiveMemoryEnabled } = await import('./reflective-retriever.js');
+    vi.mocked(isReflectiveMemoryEnabled).mockReturnValue(true);
+
+    const adapter = makeMockAdapter('[]');
+    await generateReflection('Task', [makeWorkerResult({})], adapter);
+
+    expect(adapter.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessMode: 'read-only-analysis',
+      })
+    );
+  });
 });
 
 // ============================================================================

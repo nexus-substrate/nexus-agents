@@ -48,6 +48,7 @@ export async function generateSummary(
     messages,
     temperature: 0.3,
     maxTokens: 1024,
+    accessMode: 'read-only-analysis',
   });
 
   if (!result.ok) {

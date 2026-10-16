@@ -288,6 +288,7 @@ export class ReflectiveRetriever {
         ],
         maxTokens: REFLECTION_MAX_TOKENS,
         temperature: 0.1,
+        accessMode: 'read-only-analysis',
       }),
       this.timeoutMs,
       `Reflection timeout after ${String(this.timeoutMs)}ms`

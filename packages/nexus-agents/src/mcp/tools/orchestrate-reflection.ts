@@ -145,6 +145,7 @@ export async function generateReflection(
     const response = await modelAdapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: REFLECTION_MAX_TOKENS,
+      accessMode: 'read-only-analysis',
     });
 
     if (!response.ok) {
