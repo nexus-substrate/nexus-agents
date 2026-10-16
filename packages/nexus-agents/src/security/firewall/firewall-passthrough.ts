@@ -8,7 +8,6 @@
 
 import { mapAuthorAssociation } from '../trust-classifier.js';
 import type { ClassifyResult } from '../trust-classifier.js';
-import { ROLE_DEFAULT_TRUST } from '../trust-types.js';
 import type { SanitizedInput } from '../trust-types.js';
 import type { SourceMetadata } from './firewall-types.js';
 
@@ -17,7 +16,6 @@ export function createPassthroughSanitized(meta: SourceMetadata): SanitizedInput
   return {
     content: meta.content,
     originalLength: meta.content.length,
-    trustTier: ROLE_DEFAULT_TRUST[userRole],
     contentTierMeasured: false,
     userRole,
     injectionFlags: [],

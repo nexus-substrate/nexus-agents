@@ -164,7 +164,7 @@ describe('HostileInputFirewall', () => {
       if (!result.ok) return;
 
       expect(result.value.trust.trustTier).toBe('1');
-      expect(result.value.sanitized.trustTier).toBe('1');
+      expect(result.value.sanitized.trustTier).toBeUndefined();
       expect(result.value.sanitized.contentTierMeasured).toBe(false);
     });
 
@@ -177,7 +177,8 @@ describe('HostileInputFirewall', () => {
       if (!result.ok) return;
 
       const role = mapAuthorAssociation('NONE');
-      expect(result.value.sanitized.trustTier).toBe(ROLE_DEFAULT_TRUST[role]);
+      expect(result.value.trust.trustTier).toBe(ROLE_DEFAULT_TRUST[role]);
+      expect(result.value.sanitized.trustTier).toBeUndefined();
       expect(result.value.sanitized.contentTierMeasured).toBe(false);
     });
 

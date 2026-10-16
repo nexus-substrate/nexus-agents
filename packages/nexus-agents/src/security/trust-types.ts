@@ -114,11 +114,10 @@ export const SanitizedInputSchema = z.object({
   originalLength: z.number().int().nonnegative(),
   /**
    * Assigned trust tier based on user role and content analysis.
-   *
-   * Deprecation note: required today; a future major makes it absent when
-   * unmeasured (see the next-major issue named in the changeset).
+   * Present when the sanitizer measured the content; absent (`undefined`)
+   * on an unmeasured passthrough (`contentTierMeasured: false`).
    */
-  trustTier: TrustTierSchema,
+  trustTier: TrustTierSchema.optional(),
   /**
    * True when `trustTier` is the sanitizer's measured content tier; false when
    * the sanitization stage was disabled and `trustTier` is only the
