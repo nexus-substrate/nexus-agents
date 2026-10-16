@@ -237,6 +237,9 @@ jobs:
       - name: Tool-output consistency (#2653)
         run: pnpm exec tsx scripts/check-tool-output-consistency.ts
 
+      - name: Security enforcement-point gate (#5041)
+        run: pnpm exec tsx scripts/check-security-enforcement-points.ts
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest

@@ -63,6 +63,7 @@
     "check:pricing-drift": "pnpm exec tsx scripts/check-pricing-drift.ts",
     "check:parameter-drift": "pnpm exec tsx scripts/check-parameter-drift.ts",
     "check:model-drift": "pnpm exec tsx scripts/check-model-string-drift.ts",
+    "check:security-enforcement": "pnpm exec tsx scripts/check-security-enforcement-points.ts",
     "build:registry": "pnpm exec tsx scripts/build-model-registry.ts",
     "build:registry:dry": "pnpm exec tsx scripts/build-model-registry.ts --dry",
     "review": "pnpm exec tsx scripts/review-pr.ts",
