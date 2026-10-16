@@ -39,15 +39,17 @@ import {
  * print a per-pattern count, zero-hit patterns included.
  */
 export const UNDECLARED_OPTION_PATTERNS: readonly RegExp[] = Object.freeze([
-  // `Option A` and `OPTION A`, but NOT `option a` — the lowercase form appears
-  // in ordinary prose ("there is no option a caller can set"), the capitalised
-  // form is a heading. The motivating proposal used `Option A`; an
-  // uppercase-only pattern would have missed the instance this exists for.
-  /\b(?:Option|OPTION) [A-Z0-9]\b/,
+  // Line-anchored paired option headings (`Option A` ... `Option B` or `Option 1` ... `Option 2`),
+  // bounded (`[\s\S]{1,1500}`, no nested quantifiers). Rejects single inline mentions
+  // (`(#7151, OPTION B)`, `Option C decision`) and diff lines (`+ // Option C:`, `# Option 2:`)
+  // that caused 8/8 false positives in the first live measurement (#5422).
+  /(?:^|\n)[ \t]*(?:Option|OPTION) A\b[\s\S]{1,1500}\n[ \t]*(?:Option|OPTION) B\b/,
+  /(?:^|\n)[ \t]*(?:Option|OPTION) 1\b[\s\S]{1,1500}\n[ \t]*(?:Option|OPTION) 2\b/,
   /\bchoose between\b/i,
   /\bwhich of (?:the )?(?:these|those|the following)\b/i,
   /\bpick exactly one\b/i,
   /\bvote for exactly one\b/i,
+  /\bchoose (?:exactly )?one\b/i,
 ]);
 
 /** Outcome of the check. A discriminated union so "not checked" cannot read as "clean". */

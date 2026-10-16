@@ -158,7 +158,9 @@ describe('the detector verdict reaches the decision-cost record on every vote (#
 
     const verdict = readStore().all()[0]?.undeclaredOptionsDetector;
     expect(verdict?.fired).toBe(true);
-    expect(verdict?.pattern).toBe(String(/\b(?:Option|OPTION) [A-Z0-9]\b/));
+    expect(verdict?.pattern).toBe(
+      String(/(?:^|\n)[ \t]*(?:Option|OPTION) A\b[\s\S]{1,1500}\n[ \t]*(?:Option|OPTION) B\b/)
+    );
     expect(verdict?.excerpt).toContain('Option A');
     expect(verdict?.declaredOptionCount).toBe(0);
   });

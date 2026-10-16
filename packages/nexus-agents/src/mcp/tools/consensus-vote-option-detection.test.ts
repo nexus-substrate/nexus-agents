@@ -80,8 +80,8 @@ describe('checkUndeclaredOptions', () => {
     const flags = (p: string): boolean => checkUndeclaredOptions(p, undefined).flagged;
 
     it('matches the phrasings a caller uses to ask for a CHOICE', () => {
-      expect(flags('Option A — do this. Option B — do that.')).toBe(true);
-      expect(flags('OPTION A — do this. OPTION B — do that.')).toBe(true);
+      expect(flags('Should we do this?\nOption A — do this.\nOption B — do that.')).toBe(true);
+      expect(flags('Should we do this?\nOPTION A — do this.\nOPTION B — do that.')).toBe(true);
       expect(flags('Please choose between the two designs.')).toBe(true);
       expect(flags('Which of these should we adopt?')).toBe(true);
       expect(flags('Pick exactly one.')).toBe(true);
@@ -111,7 +111,10 @@ describe('the warning reaches the response (#5360 composition)', () => {
    */
   it('surfaces the warning on panelWarning for a prose fork with no options', () => {
     const response = buildResponse(
-      { proposal: 'Option A — keep it. Option B — migrate.', strategy: 'higher_order' } as never,
+      {
+        proposal: 'Should we do this?\nOption A — keep it.\nOption B — migrate.',
+        strategy: 'higher_order',
+      } as never,
       {
         strategy: 'higher_order',
         votes: [okVote('architect'), okVote('security')],
@@ -175,28 +178,54 @@ describe('detectUndeclaredOptions — the verdict the telemetry records (#5422)'
   it('fires on record 137 and names the pattern and the excerpt', () => {
     const verdict = detectUndeclaredOptions(RECORD_137, undefined);
     expect(verdict.fired).toBe(true);
-    expect(verdict.pattern).toBe(String(/\b(?:Option|OPTION) [A-Z0-9]\b/));
-    expect(verdict.excerpt).toContain('OPTION A');
+    expect(verdict.pattern).toBe(String(/\bchoose (?:exactly )?one\b/i));
+    expect(verdict.excerpt).toContain('choose exactly one');
   });
 
-  it('does NOT fire on "choose exactly one" alone — a recall gap the measurement must not hide', () => {
-    // Record 137 is caught by its `OPTION A` heading, not by this phrase. The
-    // patterns cover `pick exactly one` and `vote for exactly one` but not
-    // `choose exactly one`; widening them is a pattern change, and this PR is
-    // the measurement, not the tuning. Pinned so a later widening is deliberate.
-    expect(detectUndeclaredOptions('please choose exactly one option.', undefined)).toEqual({
-      fired: false,
-    });
+  it('fires on "choose exactly one" and "Choose ONE:" after closing the #5422 recall gap', () => {
+    expect(detectUndeclaredOptions('please choose exactly one option.', undefined).fired).toBe(
+      true
+    );
+    expect(
+      detectUndeclaredOptions('Choose ONE:\n\nOPTION A — Age-based alarm.', undefined).fired
+    ).toBe(true);
   });
 
-  it('still fires on the #4362 mention — the KNOWN false positive, pinned so it is counted, not hidden', () => {
-    // Deliberately NOT fixed here: the whole point of the increment is to
-    // measure precision on real fired rows. Tightening the pattern before the
-    // measurement exists would move the number without a denominator.
-    const verdict = detectUndeclaredOptions(KNOWN_FALSE_POSITIVE, undefined);
+  it('does NOT fire on single inline option mentions or diff comments (#5422 0/8 precision fix)', () => {
+    expect(detectUndeclaredOptions(KNOWN_FALSE_POSITIVE, undefined)).toEqual({ fired: false });
+    expect(
+      detectUndeclaredOptions(
+        'in to registered gateway endpoint routing arms (#7151, OPTION B).',
+        undefined
+      )
+    ).toEqual({ fired: false });
+    expect(
+      detectUndeclaredOptions(
+        'Option B was previously selected 7/7: retain primary voter.model',
+        undefined
+      )
+    ).toEqual({ fired: false });
+    expect(
+      detectUndeclaredOptions(
+        '# Option 2: Use a Node version manager (nvm, fnm)\n-nvm install 22',
+        undefined
+      )
+    ).toEqual({ fired: false });
+    expect(
+      detectUndeclaredOptions(
+        '-      // Option C: renaming is what opts into the gateway path.',
+        undefined
+      )
+    ).toEqual({ fired: false });
+  });
+
+  it('fires on Option 1 / Option 2 paired headings', () => {
+    const proposal = 'Please choose:\nOption 1 — first.\nOption 2 — second.';
+    const verdict = detectUndeclaredOptions(proposal, undefined);
     expect(verdict.fired).toBe(true);
-    expect(verdict.pattern).toBe(String(/\b(?:Option|OPTION) [A-Z0-9]\b/));
-    expect(verdict.excerpt).toContain('Option C');
+    expect(verdict.pattern).toBe(
+      String(/(?:^|\n)[ \t]*(?:Option|OPTION) 1\b[\s\S]{1,1500}\n[ \t]*(?:Option|OPTION) 2\b/)
+    );
   });
 
   it('marks declared options not applicable, with no fired verdict', () => {
