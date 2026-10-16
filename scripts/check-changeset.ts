@@ -28,38 +28,106 @@ function isTestFile(file: string): boolean {
   return /\.(test|spec)\.tsx?$/.test(file) || file.includes('/__tests__/');
 }
 
+/** A changed file entry with an optional Git diff status (e.g. 'A', 'M', 'D'). */
+export interface ChangedFile {
+  /** The repo-relative path of the changed file. */
+  path: string;
+  /** Git diff status code (e.g. 'A' for added, 'M' for modified, 'D' for deleted). */
+  status?: string;
+}
+
+/** Accepted input element for file change classification: either a raw path string or a ChangedFile object. */
+export type ChangeInput = string | ChangedFile;
+
 export interface ChangesetClassification {
   /** Shippable source files the PR touches (drives the requirement). */
   shippable: string[];
-  /** Whether the PR adds at least one `.changeset/*.md` file. */
+  /** Whether the PR adds or retains at least one `.changeset/*.md` file (deleted changesets do not satisfy presence). */
   hasChangeset: boolean;
 }
 
-/** Classify a changed-file list into shippable-source + changeset-presence. */
-export function classifyChange(files: string[]): ChangesetClassification {
-  const shippable = files.filter(
-    (f) => SHIPPABLE.test(f) && !isTestFile(f) && !f.endsWith('.d.ts')
-  );
-  const hasChangeset = files.some(
-    (f) => /^\.changeset\/.+\.md$/.test(f) && !f.endsWith('README.md')
-  );
+/** True if a file path represents a shippable source file requiring a changeset. */
+function isShippableSource(file: string): boolean {
+  return SHIPPABLE.test(file) && !isTestFile(file) && !file.endsWith('.d.ts');
+}
+
+/** True if a changed file entry represents an added or retained (non-deleted) changeset. */
+function isPresentChangeset(entry: ChangedFile): boolean {
+  const isChangesetPath =
+    /^\.changeset\/.+\.md$/.test(entry.path) && !entry.path.endsWith('README.md');
+  const isDeleted = entry.status === 'D' || entry.status?.startsWith('D') === true;
+  return isChangesetPath && !isDeleted;
+}
+
+/**
+ * Normalizes an input entry (either a string or a ChangedFile object) into a ChangedFile.
+ * Supports lines formatted from `git diff --name-status` (e.g. "M\tpath" or "D\tpath")
+ * as well as plain file paths.
+ */
+export function normalizeChangeEntry(entry: ChangeInput): ChangedFile {
+  if (typeof entry === 'object') {
+    return { path: entry.path, status: entry.status };
+  }
+  const tabIndex = entry.indexOf('\t');
+  if (tabIndex !== -1) {
+    const status = entry.slice(0, tabIndex).trim();
+    const rest = entry.slice(tabIndex + 1).trim();
+    const secondTab = rest.indexOf('\t');
+    const path = secondTab === -1 ? rest : rest.slice(secondTab + 1).trim();
+    return { status, path };
+  }
+  const match = entry.match(/^([A-Z])\d*\s+(.+)$/);
+  if (match !== null && (match[1] === 'D' || match[1] === 'A' || match[1] === 'M')) {
+    return {
+      status: match[1],
+      path: match[2].trim(),
+    };
+  }
+  return { path: entry.trim() };
+}
+
+/**
+ * Classify a changed-file list into shippable-source + changeset-presence.
+ *
+ * A changeset is considered present only if at least one `.changeset/*.md` file
+ * (excluding `README.md`) is added or retained (i.e. not deleted).
+ * Deleted changesets (`status: 'D'`) do not satisfy changeset presence (#7448).
+ */
+export function classifyChange(files: readonly ChangeInput[]): ChangesetClassification {
+  const normalized = files.map(normalizeChangeEntry);
+  const shippable: string[] = [];
+  let hasChangeset = false;
+
+  for (const f of normalized) {
+    if (isShippableSource(f.path) && !shippable.includes(f.path)) {
+      shippable.push(f.path);
+    }
+    if (isPresentChangeset(f)) {
+      hasChangeset = true;
+    }
+  }
+
   return { shippable, hasChangeset };
 }
 
-/** List files changed since `base` (three-dot diff = since merge-base). */
-function changedFiles(base: string): string[] {
-  const out = execSync(`git diff --name-only ${base}...HEAD`, { encoding: 'utf-8' });
+/** List files changed since `base` (three-dot diff = since merge-base) with diff status. */
+function changedFiles(base: string, cwd?: string): ChangedFile[] {
+  const out = execSync(`git diff --name-status --no-renames ${base}...HEAD`, {
+    cwd,
+    encoding: 'utf-8',
+  });
   return out
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+    .filter((line) => line.length > 0)
+    .map((line) => normalizeChangeEntry(line));
 }
 
-function main(): number {
-  const base = process.argv[2] ?? 'origin/main';
-  let files: string[];
+/** Main CLI entry point for the changeset presence check. */
+export function main(base = process.argv[2] ?? 'origin/main', cwd?: string): number {
+  let files: ChangedFile[];
   try {
-    files = changedFiles(base);
+    files = changedFiles(base, cwd);
   } catch (err) {
     // A git-diff failure (shallow clone, missing ref) must not block CI —
     // the gate is advisory infrastructure, not a correctness check.
