@@ -96,7 +96,6 @@ function createMockArgs(
       skipHooks: false,
       skipConfig: false,
       skipOpencode: false,
-      skipGemini: false,
       skipCodex: false,
       mock: false,
       deep: false,

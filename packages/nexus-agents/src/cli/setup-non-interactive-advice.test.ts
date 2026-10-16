@@ -37,7 +37,6 @@ const BASE_ARGV = [
   '--skip-hooks',
   '--skip-config',
   '--skip-opencode',
-  '--skip-gemini',
   '--skip-codex',
 ];
 

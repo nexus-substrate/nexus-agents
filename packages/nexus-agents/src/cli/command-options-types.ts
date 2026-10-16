@@ -69,7 +69,6 @@ export interface SetupCliOptions extends Partial<BaseCliOptions> {
   skipHooks?: boolean;
   skipConfig?: boolean;
   skipOpencode?: boolean;
-  skipGemini?: boolean;
   skipCodex?: boolean;
   scope?: 'user' | 'project';
   customApiConfig?: CustomApiConfig;
