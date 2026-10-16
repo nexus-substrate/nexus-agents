@@ -18,52 +18,6 @@
 export type TaskComplexity = 'simple' | 'moderate' | 'complex';
 
 // =============================================================================
-// Default Configuration
-// =============================================================================
-
-// =============================================================================
-// Confidence Indicators
-// =============================================================================
-
-/**
- * Hedging phrases that indicate low confidence in responses.
- * Static patterns only (no user-provided RegExp - ReDoS prevention).
- */
-export const HEDGING_PHRASES = [
-  'i think',
-  'i believe',
-  'probably',
-  'maybe',
-  'might be',
-  'could be',
-  'possibly',
-  'not sure',
-  'uncertain',
-  'i guess',
-  "i'm not certain",
-  'it seems',
-  'appears to',
-  'likely',
-  'unlikely',
-] as const;
-
-/**
- * Uncertainty indicators that suggest the model lacks confidence.
- */
-export const UNCERTAINTY_INDICATORS = [
-  'however',
-  'although',
-  'but',
-  'on the other hand',
-  'alternatively',
-  'caveat',
-  'note that',
-  'be aware',
-  'keep in mind',
-  'disclaimer',
-] as const;
-
-// =============================================================================
 // Complexity Indicators
 // =============================================================================
 
@@ -96,26 +50,3 @@ export const SIMPLE_TASK_INDICATORS = [
   'basic',
   'quick',
 ] as const;
-
-// =============================================================================
-// Confidence Weights
-// =============================================================================
-
-/**
- * Weights for confidence factor calculation (from SATER paper).
- */
-export const CONFIDENCE_WEIGHTS = {
-  length: 0.2,
-  hedging: 0.3,
-  structure: 0.25,
-  uncertainty: 0.25,
-} as const;
-
-/**
- * Expected word count ranges by task complexity.
- */
-export const EXPECTED_WORD_COUNTS: Record<TaskComplexity, { min: number; max: number }> = {
-  simple: { min: 20, max: 200 },
-  moderate: { min: 50, max: 500 },
-  complex: { min: 100, max: 1000 },
-} as const;

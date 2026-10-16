@@ -361,14 +361,6 @@ export function summarizeOwnerSample(
   return { n, disagreements };
 }
 
-/** Current-panel disagreements only; superseded-ref disagreements are separately moot. */
-export function summarizeOwnerSampleHistory(
-  samples: readonly ReviewSample[],
-  records: readonly ReviewRecord[]
-): number {
-  return evaluateOwnerSampleHistory(samples, records).disagreements;
-}
-
 function snapshotForOwnerMark(
   draws: ReadonlyMap<string, ReviewSample>,
   mark: ReviewRecord
