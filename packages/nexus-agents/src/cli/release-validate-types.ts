@@ -7,6 +7,14 @@
  * (Source: Issue #640 - Multi-model release validation swarm)
  */
 
+import type {
+  CandidateIdentity,
+  ArtifactEvidence,
+  ReviewEvidence,
+  RemoteCiEvidence,
+  MergeReadinessEvidenceEnvelope,
+} from './merge-readiness-types.js';
+
 /**
  * Options for the release-validate command.
  */
@@ -19,6 +27,14 @@ export interface ReleaseValidateOptions {
   strict: boolean;
   /** Skip specific validations. */
   skip?: string[];
+  /** Optional candidate identity for merge-readiness evidence composition (#7445). */
+  candidate?: CandidateIdentity | undefined;
+  /** Optional built artifact evidence (#7445). */
+  artifact?: ArtifactEvidence | undefined;
+  /** Optional review evidence (#7445). */
+  review?: ReviewEvidence | undefined;
+  /** Optional remote CI check inventory (#7445). */
+  remoteCi?: RemoteCiEvidence | undefined;
 }
 
 /**
@@ -80,6 +96,8 @@ export interface ReleaseValidateResult {
   fitnessScore?: number;
   /** Duration in milliseconds. */
   durationMs: number;
+  /** Composed merge-readiness evidence envelope when candidate is provided (#7445). */
+  readinessEvidence?: MergeReadinessEvidenceEnvelope;
 }
 
 /**

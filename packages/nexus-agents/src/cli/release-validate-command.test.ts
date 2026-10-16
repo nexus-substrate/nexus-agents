@@ -299,4 +299,112 @@ describe('releaseValidateCommand', () => {
 
     expect(validateSecurity).not.toHaveBeenCalled();
   });
+
+  describe('merge readiness evidence integration (#7445)', () => {
+    const HEAD = '1111111111111111111111111111111111111111';
+    const TREE = '2222222222222222222222222222222222222222';
+
+    it('composes readiness evidence when candidate is provided and reflects readiness in passed', async () => {
+      const result = await runReleaseValidate({
+        candidate: {
+          baseRef: 'main',
+          headSha: HEAD,
+          treeSha: TREE,
+        },
+        artifact: {
+          artifactHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          reviewedBytes: 10_000,
+          totalBytes: 10_000,
+          isTruncated: false,
+        },
+        review: {
+          verdict: 'approved',
+          selectedOption: 'MERGE',
+          headSha: HEAD,
+          reviewers: [{ reviewer: 'security', decision: 'approve' }],
+        },
+        remoteCi: {
+          checks: [
+            {
+              name: 'ci-check',
+              headSha: HEAD,
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
+        },
+      });
+
+      expect(result.readinessEvidence).toBeDefined();
+      expect(result.readinessEvidence?.isReady).toBe(true);
+      expect(result.passed).toBe(true);
+    });
+
+    it('fails passed when candidate readiness blocks merge despite passing expert swarm', async () => {
+      const result = await runReleaseValidate({
+        candidate: {
+          baseRef: 'main',
+          headSha: HEAD,
+          treeSha: TREE,
+        },
+        artifact: {
+          artifactHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          reviewedBytes: 10_000,
+          totalBytes: 10_000,
+          isTruncated: false,
+        },
+        review: {
+          verdict: 'approved',
+          selectedOption: 'HOLD',
+          headSha: HEAD,
+        },
+        remoteCi: {
+          checks: [
+            {
+              name: 'ci-check',
+              headSha: HEAD,
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
+        },
+      });
+
+      expect(result.readinessEvidence).toBeDefined();
+      expect(result.readinessEvidence?.isReady).toBe(false);
+      expect(result.passed).toBe(false);
+    });
+
+    it('prints readiness report when readinessEvidence is present in result', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const sampleResult: ReleaseValidateResult = {
+        success: true,
+        version: '1.0.0',
+        passed: false,
+        experts: [],
+        summary: { errors: 0, warnings: 0, infos: 0 },
+        durationMs: 50,
+        readinessEvidence: {
+          candidate: { baseRef: 'main', headSha: HEAD, treeSha: TREE, isValid: true },
+          artifact: {
+            status: 'verified',
+            reviewedBytes: 100,
+            totalBytes: 100,
+            isTruncated: false,
+            detail: 'All bytes bound',
+          },
+          review: { status: 'hold', verdict: 'approved', detail: 'HOLD selected' },
+          localGates: { status: 'unmeasured', receipts: [], detail: 'No receipts' },
+          remoteCi: { status: 'unmeasured', checks: [], detail: 'No checks' },
+          isReady: false,
+          summary: 'Candidate not ready',
+          blockingReasons: ['HOLD selected', 'No receipts'],
+        },
+      };
+
+      printReleaseValidateResult(sampleResult);
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Merge Readiness Envelope:'));
+      consoleSpy.mockRestore();
+    });
+  });
 });
