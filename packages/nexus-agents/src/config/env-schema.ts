@@ -155,6 +155,8 @@ const NexusEnvSchema = z.object({
   // until #4722 — so setting the documented variable made `validateNexusEnv`
   // report it as an UNKNOWN NEXUS_* var, typo suggestion and all.
   NEXUS_DATA_DIR: z.string().optional(),
+  // Explicit workspace project directory override (#5166; replaces deprecated MCP roots).
+  NEXUS_PROJECT_DIR: z.string().optional(),
   // `0` opts out of the per-repo data dir (epic #2872; default ON).
   NEXUS_REPO_PREFERRED: boolLooseStr.optional(),
   // Scratch root for short-lived working files (#4412, getNexusTmpDir). Unset
