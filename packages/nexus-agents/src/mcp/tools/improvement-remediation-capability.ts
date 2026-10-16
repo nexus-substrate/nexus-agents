@@ -140,7 +140,7 @@ export const RemediationStepSchema = z
   .strict();
 export type RemediationStep = z.infer<typeof RemediationStepSchema>;
 
-export const RemediationSourceEvidenceSchema = z
+const RemediationSourceEvidenceSchema = z
   .object({
     samples: z.number().optional(),
     window: z.string().max(200).optional(),
@@ -154,7 +154,7 @@ export type RemediationSourceEvidence = z.infer<typeof RemediationSourceEvidence
  * Strict schema for source context retained with a remediation plan (#7429).
  * Description is bounded to 1200 UTF-16 units; digest binds provenance.
  */
-export const RemediationSourceContextSchema = z
+const RemediationSourceContextSchema = z
   .object({
     description: z.string().max(1200).optional(),
     evidence: RemediationSourceEvidenceSchema.optional(),
