@@ -495,22 +495,17 @@ describe('startServer', () => {
     );
   });
 
-  it('prepares workspace readiness before connect and resolves it from initialized (#4002)', async () => {
+  it('prepares workspace readiness synchronously before connect (#5166)', async () => {
     const roots = await import('./mcp/workspace-roots.js');
     const previous = roots.workspaceRootReady;
     const mcpModule = await import('./mcp/index.js');
-    vi.mocked(mcpModule.connectTransport).mockImplementation(async (server) => {
+    vi.mocked(mcpModule.connectTransport).mockImplementation(async () => {
       expect(roots.workspaceRootReady).not.toBe(previous);
       let released = false;
       void roots.workspaceRootReady.then(() => {
         released = true;
       });
       await Promise.resolve();
-      expect(released).toBe(false);
-      server.server.getClientCapabilities = () => ({});
-      expect(server.server.oninitialized).toBeTypeOf('function');
-      server.server.oninitialized?.();
-      await roots.workspaceRootReady;
       expect(released).toBe(true);
       return { ok: true, value: undefined };
     });

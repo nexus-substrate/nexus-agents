@@ -16,10 +16,7 @@ import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, type ILogger, type LogDestination } from './core/index.js';
-import {
-  beginWorkspaceRootResolution,
-  resolveWorkspaceRootFromClient,
-} from './mcp/workspace-roots.js';
+import { beginWorkspaceRootResolution } from './mcp/workspace-roots.js';
 import { VERSION } from './version.js';
 import { warnIfVersionStale } from './cli/version-check.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
@@ -244,13 +241,9 @@ async function connectToStdioTransport(
   logger.setDestination?.('stderr');
   serverLogger.setDestination?.('stderr');
   logger.info('Connecting to stdio transport');
-  // Resolve CLAUDE_PROJECT_DIR synchronously (#7044), or prepare the readiness
-  // barrier for MCP roots after initialized (#3991/#4002). Both are wired
-  // before connect so the first tool call uses the session's workspace root.
+  // Resolve workspace root synchronously before transport opens (#5166).
+  // Precedence: NEXUS_PROJECT_DIR > CLAUDE_PROJECT_DIR (#7044) > process.cwd() > homedir.
   beginWorkspaceRootResolution(serverLogger);
-  server.server.oninitialized = () => {
-    void resolveWorkspaceRootFromClient(server, serverLogger);
-  };
   const transport = new StdioServerTransport();
   const connectResult = await connectTransport(server, transport, serverLogger);
 
