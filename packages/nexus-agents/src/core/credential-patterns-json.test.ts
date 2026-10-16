@@ -37,14 +37,17 @@ function occurrences(text: string, secret: string): number {
 }
 
 /** Check each secret separately: extra redaction of one cannot hide a leak of another. */
-function compareCoverage(input: string): number {
+function compareCoverage(input: string, isJson: boolean = false): number {
   const before = legacyRedactCredentialShapes(input, PLACEHOLDER);
   const after = redactCredentialShapes(input, PLACEHOLDER);
   let redactions = 0;
   for (const secret of SECRETS) {
     const oldCount = occurrences(before, secret);
     const newCount = occurrences(after, secret);
-    if (newCount > oldCount)
+    // In plain text, live redaction must never redact less than the legacy oracle.
+    // In serialized JSON, legacy ran plaintext regexes across raw escaped JSON bytes,
+    // which incorrectly swallowed text across encoded delimiters (\n, \r, \t, \") (#7426).
+    if (!isJson && newCount > oldCount)
       expect(newCount, `${secret} in ${input}`).toBeLessThanOrEqual(oldCount);
     redactions += occurrences(input, secret) - oldCount;
   }
@@ -52,11 +55,11 @@ function compareCoverage(input: string): number {
 }
 
 function checkForms(text: string): number {
-  let redactions = compareCoverage(text);
+  let redactions = compareCoverage(text, false);
   const json = JSON.stringify({ message: text, keep: 'ok' });
   const json2 = JSON.stringify(json);
   for (const input of [json, json2]) {
-    redactions += compareCoverage(input);
+    redactions += compareCoverage(input, true);
     const output = redactCredentialShapes(input, PLACEHOLDER);
     // As in #7322, the inner document of double-encoded JSON is a string value;
     // only its outer document's quotes are JSON boundaries for this pass.
