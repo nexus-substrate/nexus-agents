@@ -85,6 +85,7 @@ export const SuggestResearchTasksInputSchema = z.object({
     .number()
     .int()
     .min(1)
+    .max(50)
     .optional()
     .describe('Max number of candidate tasks to return (>=1). Optional.'),
   existingTaskIds: z
@@ -210,6 +211,7 @@ export function registerSuggestResearchTasksTool(
       .number()
       .int()
       .min(1)
+      .max(50)
       .optional()
       .describe('Max number of candidate tasks to return (>=1). Optional.'),
     existingTaskIds: z

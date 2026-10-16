@@ -22,6 +22,7 @@ import { readFile } from 'node:fs/promises';
 /* eslint-disable max-lines -- 721 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); signal detection (floor, rejection, failure concentration, fitness dimensions, self-eval) for one tool — gh issue filing moved to improvement-review-issue-filing.ts (#6148 row 2); further split tracked in #6148 */
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -109,6 +110,7 @@ export const ImprovementReviewInputSchema = z.object({
     .describe('Fitness score below this threshold triggers a tech-debt signal.'),
   selfEvalReportPath: z
     .string()
+    .max(500)
     .optional()
     .describe(
       'Optional path to a self-eval JSON report (from `self-eval --json`). When set, ' +
@@ -763,20 +765,29 @@ export function detectSelfEvalSignals(
 
 /**
  * Read + parse a self-eval JSON report and convert it to signals. Fail-soft:
- * an unreadable or malformed report yields NO signals (logged at warn) rather
- * than breaking the review.
+ * an unreadable, malformed, or out-of-root report yields NO signals (logged at warn)
+ * rather than breaking the review. Path traversal guard enforces workspace root
+ * containment (CWE-22).
  */
 export async function loadSelfEvalSignals(
   reportPath: string,
   windowLabel: string,
-  logger: ReturnType<typeof createLogger>
+  logger: ReturnType<typeof createLogger>,
+  root: string = process.cwd()
 ): Promise<readonly ImprovementSignal[]> {
   try {
-    const raw = await readFile(reportPath, 'utf8');
+    const resolved = resolveInsideRoot(reportPath, root);
+    if (resolved === null) {
+      logger.warn('Self-eval report ignored — path escapes workspace root', {
+        reportPath,
+      });
+      return [];
+    }
+    const raw = await readFile(resolved, 'utf8');
     const parsed = SelfEvalReportSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
       logger.warn('Self-eval report ignored — schema mismatch', {
-        reportPath,
+        reportPath: resolved,
         error: formatZodError(parsed.error),
       });
       return [];

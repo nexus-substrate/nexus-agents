@@ -180,6 +180,7 @@ export const PrReviewInputSchema = z.object({
     .number()
     .int()
     .positive()
+    .max(1_000_000)
     .optional()
     .describe('PR number — with baseSha, enables Option-C audit-record persistence (#4031)'),
   baseSha: z

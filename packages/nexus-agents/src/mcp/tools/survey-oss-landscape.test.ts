@@ -187,6 +187,16 @@ describe('SurveyOssLandscapeInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects minStars > 1_000_000', () => {
+    const result = SurveyOssLandscapeInputSchema.safeParse({ query: 'x', minStars: 1_000_001 });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts minStars <= 1_000_000', () => {
+    const result = SurveyOssLandscapeInputSchema.safeParse({ query: 'x', minStars: 1_000_000 });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts optional language filter', () => {
     const result = SurveyOssLandscapeInputSchema.safeParse({ query: 'x', language: 'rust' });
     expect(result.success).toBe(true);

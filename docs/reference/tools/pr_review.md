@@ -24,7 +24,7 @@ Run multi-voter consensus review on a PR diff (#2233). 5 voters (architect, secu
 | `repoContext` | string | no | maxLength 2000 | Optional one-paragraph repo context (architecture, conventions; max 2000 chars; trim before calling) |
 | `baseRef` | string | no | maxLength 200 | Base branch ref (e.g. main) |
 | `headRef` | string | no | maxLength 200 | Head branch ref |
-| `prNumber` | integer | no | max 9007199254740991; > 0 | PR number — with baseSha, enables Option-C audit-record persistence (#4031) |
+| `prNumber` | integer | no | max 1000000; > 0 | PR number — with baseSha, enables Option-C audit-record persistence (#4031) |
 | `baseSha` | string | no | pattern `^[0-9a-f]{40}$` | 40-hex base commit sha the reviewed diff was computed from — pass `git merge-base origin/<base> <head>`, the base the gate recomputes (Option-C binding, #4031, #5692) |
 | `repoPath` | string | no | maxLength 1024 | Repo root path for persisting the governance pr-review record (overrides cwd auto-detection). Must contain a .git ancestor — relative paths are resolved against cwd; ignored (falls back to cwd auto-detection) if it is not a real repo root. Env NEXUS_PR_REVIEW_RECORDS_PATH still takes precedence and is unrestricted. |
 | `simulate` | boolean | no | default false | Use simulated voters (testing only; never ship live with this true) |

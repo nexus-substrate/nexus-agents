@@ -10,7 +10,10 @@
  * the environment-reading detectors silenced.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import {
   ImprovementReviewInputSchema,
@@ -21,6 +24,7 @@ import {
   detectFitnessDimensionSignals,
   detectConsensusRejectionSignals,
   runImprovementReview,
+  loadSelfEvalSignals,
   type PerfRegressionInput,
 } from './improvement-review.js';
 import { FITNESS_DIMENSION_MAX } from '../../governance/fitness-score.js';
@@ -28,7 +32,7 @@ import type { FitnessFinding } from '../../governance/fitness-score.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import type { FitnessAudit } from '../../governance/fitness-score.js';
 import type { VoteRejectedSignalEvent } from '../../pipeline/event-types.js';
-import type { createLogger } from '../../core/index.js';
+import { createLogger } from '../../core/index.js';
 import type {
   BenchmarkSuiteResult,
   LatencyMetrics,
@@ -96,6 +100,18 @@ describe('ImprovementReviewInputSchema', () => {
 
   it('rejects fitnessFloor > 100', () => {
     expect(ImprovementReviewInputSchema.safeParse({ fitnessFloor: 101 }).success).toBe(false);
+  });
+
+  it('rejects selfEvalReportPath > 500 characters', () => {
+    expect(
+      ImprovementReviewInputSchema.safeParse({ selfEvalReportPath: 'a'.repeat(501) }).success
+    ).toBe(false);
+  });
+
+  it('accepts selfEvalReportPath <= 500 characters', () => {
+    expect(
+      ImprovementReviewInputSchema.safeParse({ selfEvalReportPath: 'a'.repeat(500) }).success
+    ).toBe(true);
   });
 });
 
@@ -805,5 +821,115 @@ describe('runImprovementReview — issue-filing seam', () => {
     expect(result.issueTarget).toEqual({ repo: null, source: 'not-filing' });
     expect(result.issuesFiled).toEqual([]);
     expect(gh.calls).toEqual([]);
+  });
+});
+
+// ============================================================================
+// Path traversal containment (S-1 / CWE-22)
+// ============================================================================
+
+describe('loadSelfEvalSignals path traversal containment (S-1 / CWE-22)', () => {
+  let inRootDir: string;
+  let validReportPath: string;
+  let outOfRootDir: string;
+  let outOfRootReportPath: string;
+
+  beforeEach(async () => {
+    // Use two sibling temp directories and point process.cwd() at inRootDir so
+    // outOfRootDir is strictly outside the workspace root even when vitest sets
+    // TMPDIR inside the repository root in CI (#4412 / #6615).
+    inRootDir = await mkdtemp(join(tmpdir(), 'nexus-in-root-'));
+    validReportPath = join(inRootDir, 'report.json');
+    const validReportContent = JSON.stringify({
+      results: [
+        {
+          component: 'src/foo.ts',
+          finalRecommendation: 'deprecate',
+          confidence: 0.95,
+          dissent: [],
+        },
+      ],
+    });
+    await writeFile(validReportPath, validReportContent);
+
+    outOfRootDir = await mkdtemp(join(tmpdir(), 'nexus-out-of-root-'));
+    outOfRootReportPath = join(outOfRootDir, 'report.json');
+    await writeFile(outOfRootReportPath, validReportContent);
+
+    vi.spyOn(process, 'cwd').mockReturnValue(inRootDir);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(inRootDir, { recursive: true, force: true });
+    await rm(outOfRootDir, { recursive: true, force: true });
+  });
+
+  it('rejects path escaping workspace root (../../../etc/passwd) without reading file', async () => {
+    const mockLogger = {
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    } as unknown as ReturnType<typeof createLogger>;
+    const signals = await loadSelfEvalSignals('../../../etc/passwd', '7d', mockLogger);
+    expect(signals).toEqual([]);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Self-eval report ignored — path escapes workspace root',
+      expect.objectContaining({ reportPath: '../../../etc/passwd' })
+    );
+  });
+
+  it('rejects absolute path escaping workspace root (/etc/hosts) without reading file', async () => {
+    const mockLogger = {
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    } as unknown as ReturnType<typeof createLogger>;
+    const signals = await loadSelfEvalSignals('/etc/hosts', '7d', mockLogger);
+    expect(signals).toEqual([]);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Self-eval report ignored — path escapes workspace root',
+      expect.objectContaining({ reportPath: '/etc/hosts' })
+    );
+  });
+
+  it('rejects valid report located outside workspace root without parsing it', async () => {
+    const mockLogger = {
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    } as unknown as ReturnType<typeof createLogger>;
+    const signals = await loadSelfEvalSignals(outOfRootReportPath, '7d', mockLogger);
+    expect(signals).toEqual([]);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Self-eval report ignored — path escapes workspace root',
+      expect.objectContaining({ reportPath: outOfRootReportPath })
+    );
+  });
+
+  it('loads valid in-root report path properly', async () => {
+    const mockLogger = {
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    } as unknown as ReturnType<typeof createLogger>;
+    const relativePath = relative(process.cwd(), validReportPath);
+    const signals = await loadSelfEvalSignals(relativePath, '7d', mockLogger);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.signalKey).toBe('tech-debt:self-eval:src/foo.ts:deprecate');
+  });
+
+  it('runImprovementReview ignores out-of-root selfEvalReportPath safely without reading file', async () => {
+    const input = ImprovementReviewInputSchema.parse({
+      selfEvalReportPath: outOfRootReportPath,
+    });
+    const result = await runImprovementReview(input);
+    expect(result.signals.filter((s) => s.signalKey.startsWith('tech-debt:self-eval:'))).toEqual(
+      []
+    );
   });
 });

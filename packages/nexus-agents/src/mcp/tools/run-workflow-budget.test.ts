@@ -88,6 +88,14 @@ describe('run_workflow maxTokens input', () => {
       expect(RunWorkflowInputSchema.safeParse({ ...base, maxTokens: bad }).success).toBe(false);
     }
   });
+
+  it('accepts a positive integer up to 10_000_000 and rejects values above ceiling', () => {
+    const base = { template: 'wf', inputs: {} };
+    expect(RunWorkflowInputSchema.safeParse({ ...base, maxTokens: 10_000_000 }).success).toBe(true);
+    expect(RunWorkflowInputSchema.safeParse({ ...base, maxTokens: 10_000_001 }).success).toBe(
+      false
+    );
+  });
 });
 
 describe('run_workflow budget resolution (#4754)', () => {

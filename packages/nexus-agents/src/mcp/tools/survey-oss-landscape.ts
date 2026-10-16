@@ -66,6 +66,7 @@ export const SurveyOssLandscapeInputSchema = z.object({
     .number()
     .int()
     .min(0)
+    .max(1_000_000)
     .optional()
     .default(0)
     .describe('Minimum star count to include (default 0; useful for filtering noise)'),

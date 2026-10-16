@@ -871,6 +871,23 @@ describe('pr_review tool', () => {
         PrReviewInputSchema.parse({ prTitle: 'x', prDiff: VALID_DIFF, dispatch: 'bogus' })
       ).toThrow();
     });
+
+    it('accepts prNumber <= 1_000_000 and rejects prNumber > 1_000_000', () => {
+      expect(
+        PrReviewInputSchema.safeParse({
+          prTitle: 'x',
+          prDiff: VALID_DIFF,
+          prNumber: 1_000_000,
+        }).success
+      ).toBe(true);
+      expect(
+        PrReviewInputSchema.safeParse({
+          prTitle: 'x',
+          prDiff: VALID_DIFF,
+          prNumber: 1_000_001,
+        }).success
+      ).toBe(false);
+    });
   });
 });
 

@@ -20,5 +20,5 @@ SUGGEST-ONLY surface over checkForResearchTriggers + checkForCapabilityGapTrigge
 | --------- | ---- | -------- | ----------- | ----------- |
 | `topic` | string | no | — | Topic filter passed to research_discover. Optional. |
 | `qualityThreshold` | number | no | min 0; max 10 | Minimum quality score (0-10) a discovery must meet to be suggested. Optional. |
-| `maxTriggers` | integer | no | min 1; max 9007199254740991 | Max number of candidate tasks to return (>=1). Optional. |
+| `maxTriggers` | integer | no | min 1; max 50 | Max number of candidate tasks to return (>=1). Optional. |
 | `existingTaskIds` | array of string | no | — | Known task IDs to skip (dedup). Optional. |
