@@ -113,9 +113,10 @@ export async function runReleaseValidate(
   const experts = await Promise.all(validators);
   const summary = aggregateFindings(experts);
 
-  const passed = opts.strict
-    ? summary.errors === 0 && summary.warnings === 0
-    : summary.errors === 0;
+  // Zero findings cannot establish readiness when no validator measured anything.
+  const passed =
+    experts.length > 0 &&
+    (opts.strict ? summary.errors === 0 && summary.warnings === 0 : summary.errors === 0);
 
   const fitnessScore = extractFitnessScore(experts);
 
@@ -187,7 +188,11 @@ export function printReleaseValidateResult(result: ReleaseValidateResult, verbos
       `${String(result.summary.infos)} infos`
   );
 
-  if (result.passed) {
+  if (result.experts.length === 0) {
+    console.log(
+      `${colors.yellow}${colors.bold}Release validation UNMEASURED: all validators skipped${colors.reset}`
+    );
+  } else if (result.passed) {
     console.log(`${colors.green}${colors.bold}✓ Release validation PASSED${colors.reset}`);
   } else {
     console.log(`${colors.red}${colors.bold}✗ Release validation FAILED${colors.reset}`);
