@@ -12,7 +12,7 @@ import {
   createSecurityStageWrapper,
   createDevStageRegistry,
   createParseSpecStageWrapper,
-  createScaffoldStageWrapper,
+  createGreenfieldStageRegistry,
   createAuditStageRegistry,
 } from './stage-wrappers.js';
 import { getPipelineEventBus } from './event-bus.js';
@@ -255,9 +255,9 @@ describe('Stage Wrappers', () => {
     });
   });
 
-  describe('createScaffoldStageWrapper', () => {
+  describe('scaffold stage (via createGreenfieldStageRegistry)', () => {
     it('scaffolds successfully when plan is present', async () => {
-      const wrapper = createScaffoldStageWrapper();
+      const wrapper = createGreenfieldStageRegistry(createMockStages()).get('scaffold')!;
       const ctx = makeContext({ [K.PLAN]: 'Step 1: Create files\nStep 2: Add tests' });
 
       const result = await wrapper.execute(ctx);
@@ -272,7 +272,7 @@ describe('Stage Wrappers', () => {
       ['empty plan', ''],
       ['whitespace-only plan', '   \n  \t  '],
     ])('returns success: false via failOutput when plan is %s', async (_desc, planValue) => {
-      const wrapper = createScaffoldStageWrapper();
+      const wrapper = createGreenfieldStageRegistry(createMockStages()).get('scaffold')!;
       const ctx = makeContext({ [K.PLAN]: planValue });
 
       const result = await wrapper.execute(ctx);

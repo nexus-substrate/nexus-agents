@@ -253,7 +253,7 @@ export function createSecurityStageWrapper(stages: DevPipelineStages): IPipeline
 }
 
 /** Scaffold stage — generates project structure from approved plan. */
-export function createScaffoldStageWrapper(): IPipelineStage {
+function createScaffoldStageWrapper(): IPipelineStage {
   return {
     id: 'scaffold',
     name: 'Scaffold',
