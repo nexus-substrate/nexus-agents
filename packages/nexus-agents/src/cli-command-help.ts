@@ -222,10 +222,6 @@ const SETUP_HELP: CommandHelpEntry = {
     { flag: '--skip-rules', description: 'Skip .rules generation' },
     { flag: '--skip-hooks', description: 'Skip hook configuration' },
     { flag: '--skip-opencode', description: 'Skip OpenCode MCP setup' },
-    {
-      flag: '--skip-gemini',
-      description: 'Deprecated, no effect: the Gemini MCP step was removed',
-    },
     { flag: '--skip-codex', description: 'Skip Codex MCP setup' },
     {
       flag: '--scope=<scope>',

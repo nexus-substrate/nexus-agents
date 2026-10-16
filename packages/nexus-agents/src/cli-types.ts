@@ -282,8 +282,6 @@ export interface ParsedCliArgs {
     skipHooks: boolean;
     skipConfig: boolean;
     skipOpencode: boolean;
-    /** Deprecated no-op, still parsed so existing invocations do not fail: the Gemini MCP step was removed (#4389). */
-    skipGemini: boolean;
     skipCodex: boolean;
     scope?: 'user' | 'project';
     // Setup --custom-api for OpenAI-compatible gateway configuration (#2124, #5129)
@@ -575,10 +573,6 @@ export const PARSE_ARGS_CONFIG = {
       default: false,
     },
     'skip-opencode': {
-      type: 'boolean' as const,
-      default: false,
-    },
-    'skip-gemini': {
       type: 'boolean' as const,
       default: false,
     },

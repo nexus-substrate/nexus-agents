@@ -119,7 +119,6 @@ describe('per-command CLI options and CustomApiConfig (#5129 Item 2)', () => {
           skipHooks: false,
           skipConfig: false,
           skipOpencode: false,
-          skipGemini: false,
           skipCodex: false,
           customApiConfig,
         },
