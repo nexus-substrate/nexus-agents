@@ -116,7 +116,11 @@ export function classifyTrust(input: ClassifyInput): ClassifyResult {
 
   // Explicit false means the sanitization stage did not measure content.
   // Absence is legacy sanitizer output and remains measured fail-closed.
-  if (input.sanitizedInput !== undefined && input.sanitizedInput.contentTierMeasured !== false) {
+  if (
+    input.sanitizedInput !== undefined &&
+    input.sanitizedInput.contentTierMeasured !== false &&
+    input.sanitizedInput.trustTier !== undefined
+  ) {
     const contentTier = input.sanitizedInput.trustTier;
     const downgraded = TRUST_TIER_NUMERIC[contentTier] > TRUST_TIER_NUMERIC[baseTier];
 

@@ -30,6 +30,20 @@ describe('sanitizeInput', () => {
     expect(result.contentTierMeasured).toBe(true);
   });
 
+  it('parses unmeasured passthrough records with omitted trustTier', () => {
+    const record = {
+      content: 'Normal text',
+      originalLength: 11,
+      contentTierMeasured: false,
+      userRole: 'contributor',
+      injectionFlags: [],
+      strippedElements: [],
+      wasModified: false,
+      sanitizedAt: new Date().toISOString(),
+    };
+    expect(SanitizedInputSchema.safeParse(record).success).toBe(true);
+  });
+
   // ========================================================================
   // 1. HTML Stripping (Trail of Bits vectors)
   // ========================================================================
