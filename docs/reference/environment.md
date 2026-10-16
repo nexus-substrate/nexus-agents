@@ -82,6 +82,7 @@ or source comments. Custom validation may impose additional restrictions.
 | `NEXUS_PERSIST_LEARNING` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_POLICY_GATE_MODE` | `off` \| `warn` \| `block` | Not declared in schema | Not described in schema |
 | `NEXUS_PORTABLE_MODE` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
+| `NEXUS_PROJECT_DIR` | string | Not declared in schema | Not described in schema |
 | `NEXUS_PR_REVIEW_RECORDS_PATH` | string | Not declared in schema | Not described in schema |
 | `NEXUS_REFLECTIVE_MEMORY` | `true` \| `false` \| `shadow` | Not declared in schema | Not described in schema |
 | `NEXUS_REPO_MAP` | `0` \| `1` | Not declared in schema | Not described in schema |
