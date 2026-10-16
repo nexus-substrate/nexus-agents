@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  checkGovernanceFiles,
   checkSecurity,
   checkTempDirCleanup,
   checkTestHygiene,
@@ -9,7 +12,7 @@ import {
   lintVerdict,
   type Violation,
 } from './arch-lint.js';
-import { SRC_ROOT } from './script-paths.js';
+import { DOCS_ROOT, SRC_ROOT } from './script-paths.js';
 
 const srcFile = (rel: string): string => join(SRC_ROOT, rel);
 
@@ -230,5 +233,29 @@ describe('lintVerdict — zero files scanned is not a pass (#4586)', () => {
 
     expect(result.unmeasured).toBeUndefined();
     expect(result.passed).toBe(false);
+  });
+});
+
+describe('checkGovernanceFiles (#7443)', () => {
+  it('produces no completeness-score warning on a valid checkout without the retired completeness-score.md', () => {
+    const violations: Violation[] = [];
+    checkGovernanceFiles(violations, DOCS_ROOT);
+    expect(violations).toEqual([]);
+  });
+
+  it('still reports an error when architecture/wiring-graph.json is missing', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'arch-lint-test-'));
+    try {
+      const violations: Violation[] = [];
+      checkGovernanceFiles(violations, tmp);
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toMatchObject({
+        file: 'docs/architecture/wiring-graph.json',
+        message: 'wiring-graph.json not found',
+        severity: 'error',
+      });
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

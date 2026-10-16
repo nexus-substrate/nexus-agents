@@ -438,13 +438,10 @@ function checkClaudeMd(violations: Violation[]): void {
 }
 
 /** Check required governance files exist. */
-function checkGovernanceFiles(violations: Violation[]): void {
-  const files = [
-    { path: 'architecture/wiring-graph.json', severity: 'error' as const },
-    { path: 'metrics/completeness-score.md', severity: 'warning' as const },
-  ];
+export function checkGovernanceFiles(violations: Violation[], docsRoot: string = DOCS_ROOT): void {
+  const files = [{ path: 'architecture/wiring-graph.json', severity: 'error' as const }];
   for (const { path, severity } of files) {
-    if (!existsSync(join(DOCS_ROOT, path))) {
+    if (!existsSync(join(docsRoot, path))) {
       violations.push(
         govViolation(`docs/${path}`, `${path.split('/').pop() ?? path} not found`, severity)
       );
