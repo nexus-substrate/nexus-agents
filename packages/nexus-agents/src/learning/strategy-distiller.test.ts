@@ -782,6 +782,19 @@ describe('StrategyDistiller', () => {
     expect(rules[0]).not.toHaveProperty('tainted');
   });
 
+  it('does not train distilled rules on API-arm outcomes (#6555)', () => {
+    populateStore({
+      store,
+      cli: 'api:anthropic',
+      category: 'code_generation',
+      count: 40,
+      success: false,
+    });
+    distiller.distill();
+    expect(distiller.getRules()).toHaveLength(0);
+    expect(distiller.getStats().eligibleOutcomesAtLastDistill).toBe(0);
+  });
+
   describe('getStats()', () => {
     it('returns zeroed stats initially', () => {
       const stats = distiller.getStats();
