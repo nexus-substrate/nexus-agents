@@ -132,6 +132,15 @@ export {
   computeSourceEvidenceTier,
 } from './source-quality.js';
 
+export type { QualityAssessmentResult, QualityAssessor } from './quality-assessor.js';
+export {
+  PaperQualityAssessor,
+  SourceQualityAssessor,
+  paperQualityAssessor,
+  sourceQualityAssessor,
+  backfillPaperQualities,
+} from './quality-assessor.js';
+
 // ============================================================================
 // Topic Taxonomy
 // ============================================================================

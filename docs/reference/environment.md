@@ -27,6 +27,7 @@ or source comments. Custom validation may impose additional restrictions.
 | `NEXUS_AORCHESTRA_DISPATCH` | `true` \| `false` | Not declared in schema | Not described in schema |
 | `NEXUS_AUTH_ENABLED` | `true` \| `false` | Not declared in schema | Not described in schema |
 | `NEXUS_AUTO_REMEDIATE` | `off` \| `audit` \| `enforce` | Not declared in schema | Not described in schema |
+| `NEXUS_BACKFILL_RESEARCH_QUALITY` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Backfill missing research paper quality scores and evidence tiers on load (#4288). |
 | `NEXUS_BILLING_MODE` | `plan` \| `api` | Not declared in schema | Not described in schema |
 | `NEXUS_BUDGET_ENFORCE` | string; custom validation (Must be one of: true, false, 1, 0) | Not declared in schema | Not described in schema |
 | `NEXUS_BUDGET_TOLERANCE` | string; pattern /^\\d+(\\.\\d+)?$/ | Not declared in schema | Not described in schema |

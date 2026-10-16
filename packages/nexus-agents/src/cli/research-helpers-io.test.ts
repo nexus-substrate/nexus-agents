@@ -34,8 +34,8 @@ vi.mock('yaml', () => ({
 // the existing IO tests continue verifying read/parse logic in isolation
 // against unmockable paths like `/test/root`.
 vi.mock('./research-scaffold.js', () => ({
-  ensureRegistryFile: vi.fn(
-    (): Promise<{ ok: true; value: string }> => Promise.resolve({ ok: true, value: '/test/path' })
+  ensureRegistryFile: vi.fn((): Promise<{ ok: true; value: string }> =>
+    Promise.resolve({ ok: true, value: '/test/path' })
   ),
 }));
 

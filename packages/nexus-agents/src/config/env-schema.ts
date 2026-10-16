@@ -224,6 +224,8 @@ const NexusEnvSchema = z.object({
   NEXUS_SESSIONS_DB: z.string().optional(),
   NEXUS_DISABLE_SESSIONS: boolLooseStr.optional(),
   NEXUS_DISABLE_METRICS: boolLooseStr.optional(),
+  /** Backfill missing research paper quality scores and evidence tiers on load (#4288). */
+  NEXUS_BACKFILL_RESEARCH_QUALITY: boolLooseStr.optional(),
 
   // --- Read by production code but previously unregistered (#5142) ---
   // Each type below was verified against the consuming call site, not inferred
