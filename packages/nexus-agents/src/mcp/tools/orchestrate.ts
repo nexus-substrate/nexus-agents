@@ -933,9 +933,10 @@ async function tryWorkerDispatch(
      * `orchestration` boundary gate after it turns the cancel into the job's error.
      */
     readonly signal: AbortSignal | undefined;
+    readonly relevantFiles?: readonly string[] | undefined;
   }
 ): Promise<Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined> {
-  const { logger, notifier, signal } = io;
+  const { logger, notifier, signal, relevantFiles } = io;
   const adapter = deps.modelAdapter;
   if (agentPlan === undefined || !isWorkerDispatchEnabled() || adapter === undefined) {
     return undefined;
@@ -960,6 +961,7 @@ async function tryWorkerDispatch(
         refine: true,
         perWorkerRouting: true,
         ...(signal !== undefined ? { signal } : {}),
+        ...(relevantFiles !== undefined ? { relevantFiles } : {}),
       })
     );
   } catch (dispatchError: unknown) {
@@ -1187,14 +1189,16 @@ async function runOrchestratePipeline(params: {
   // measured change pending a bake (see #2921).
   await injectMemoryContextForOrchestrate(input, logger);
 
+  const relevantFiles = filePathsFromContext(input.context);
   const agentPlan = v2Config.aorchestraEnabled
-    ? computeAgentPlan(input.task, logger, { filePaths: filePathsFromContext(input.context) })
+    ? computeAgentPlan(input.task, logger, { filePaths: relevantFiles })
     : undefined;
   throwIfOrchestrateCancelled(signal, 'worker-dispatch');
   const workerDispatchResult = await tryWorkerDispatch(agentPlan, input.task, deps, {
     logger,
     notifier,
     signal,
+    relevantFiles,
   });
   // #6305: checked before the reflection call and the orchestrator run, both
   // of which spend model calls. A dispatch that finished is left unrecorded:

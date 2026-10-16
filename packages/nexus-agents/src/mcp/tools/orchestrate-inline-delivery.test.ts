@@ -1,6 +1,6 @@
 /** Real worker composition and CLI bridge, with only the CLI process mocked (#7413). */
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -75,14 +75,15 @@ function makePlan(subTasks = [SUBTASK]): AgentPlan {
 
 function cliBoundary(
   modelId = 'claude-sonnet',
-  supported = true
+  supported = true,
+  cliName = 'claude'
 ): {
   adapter: CliToModelAdapter;
   requests: CliTask[];
 } {
   const requests: CliTask[] = [];
   const cli = {
-    name: 'claude',
+    name: cliName,
     transport: 'stdio',
     enforcesReadOnlyAnalysis: supported,
     capabilities: { reasoning: 9, contextWindow: 200_000, codeGeneration: 9, speed: 7, cost: 5 },
@@ -466,5 +467,71 @@ describe('complete inline worker delivery (#7413)', () => {
     expect(boundary.requests).toHaveLength(0);
     expect(result.successCount).toBe(0);
     expect(result.results[0]?.promptEvidence?.rawInputCoverage).toBe('UNSUPPORTED');
+  });
+
+  describe('Codex worker artifact inline delivery (#7413)', () => {
+    it('inlines external artifact and sets tool restrictions to no tools for codex worker', async () => {
+      const owned = mkdtempSync(join(tmpdir(), 'nexus-codex-artifact-'));
+      const artifactPath = join(owned, 'solution.ts');
+      writeFileSync(artifactPath, 'export const answer = 42;\n', 'utf-8');
+      try {
+        const boundary = cliBoundary('o3-mini', true, 'codex');
+        const result = await executeWorkerDispatch({
+          agentPlan: makePlan(),
+          taskDescription: INLINE_TASK,
+          modelAdapter: boundary.adapter,
+          logger,
+          relevantFiles: [artifactPath],
+        });
+        expect(result.successCount).toBe(1);
+        expect(boundary.requests).toHaveLength(1);
+        const prompt = boundary.requests[0]?.content ?? '';
+        expect(prompt).toContain('===== BEGIN ARTIFACT: solution.ts =====');
+        expect(prompt).toContain('export const answer = 42;');
+        expect(prompt).toContain('No tool calls or shell commands are permitted.');
+        expect(prompt).not.toContain('Read, Grep, Glob');
+      } finally {
+        rmSync(owned, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses codex dispatch before any call when relevant artifact is missing', async () => {
+      const boundary = cliBoundary('o3-mini', true, 'codex');
+      const missingPath = join(tmpdir(), 'nexus-nonexistent-artifact-7413.ts');
+      const result = await executeWorkerDispatch({
+        agentPlan: makePlan(),
+        taskDescription: INLINE_TASK,
+        modelAdapter: boundary.adapter,
+        logger,
+        relevantFiles: [missingPath],
+      });
+      expect(boundary.requests).toHaveLength(0);
+      expect(result.totalModelCalls).toBe(0);
+      expect(result.unsupportedReason).toContain(
+        'unsupported inline delivery: worker transport lacks permitted artifact reader'
+      );
+    });
+
+    it('preserves Read, Grep, Glob tool restriction for claude worker with relevantFiles', async () => {
+      const owned = mkdtempSync(join(tmpdir(), 'nexus-claude-artifact-'));
+      const artifactPath = join(owned, 'solution.ts');
+      writeFileSync(artifactPath, 'export const answer = 42;\n', 'utf-8');
+      try {
+        const boundary = cliBoundary('claude-sonnet', true, 'claude');
+        const result = await executeWorkerDispatch({
+          agentPlan: makePlan(),
+          taskDescription: INLINE_TASK,
+          modelAdapter: boundary.adapter,
+          logger,
+          relevantFiles: [artifactPath],
+        });
+        expect(result.successCount).toBe(1);
+        expect(boundary.requests).toHaveLength(1);
+        const prompt = boundary.requests[0]?.content ?? '';
+        expect(prompt).toContain('Only permitted tools, if available: Read, Grep, Glob.');
+      } finally {
+        rmSync(owned, { recursive: true, force: true });
+      }
+    });
   });
 });

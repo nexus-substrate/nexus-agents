@@ -80,4 +80,30 @@ describe('buildToolRestrictionBlock', () => {
     const block = buildToolRestrictionBlock('research');
     expect(block).toContain('Read, Grep, Glob');
   });
+
+  describe('read-only-analysis transport derivation (#7413)', () => {
+    it('advertises no tool calls or shell commands when cli is codex', () => {
+      const block = buildToolRestrictionBlock('code', 'read-only-analysis', { cli: 'codex' });
+      expect(block).toContain('## Tool Restrictions');
+      expect(block).toContain('You are read-only');
+      expect(block).toContain('No tool calls or shell commands are permitted.');
+      expect(block).not.toContain('Read, Grep, Glob');
+    });
+
+    it('advertises no tool calls when allowedTools is empty', () => {
+      const block = buildToolRestrictionBlock('code', 'read-only-analysis', { allowedTools: [] });
+      expect(block).toContain('No tool calls or shell commands are permitted.');
+      expect(block).not.toContain('Read, Grep, Glob');
+    });
+
+    it('advertises Read, Grep, Glob when cli is claude', () => {
+      const block = buildToolRestrictionBlock('code', 'read-only-analysis', { cli: 'claude' });
+      expect(block).toContain('Only permitted tools, if available: Read, Grep, Glob.');
+    });
+
+    it('defaults to Read, Grep, Glob when cli is omitted for backward compatibility', () => {
+      const block = buildToolRestrictionBlock('code', 'read-only-analysis');
+      expect(block).toContain('Only permitted tools, if available: Read, Grep, Glob.');
+    });
+  });
 });
