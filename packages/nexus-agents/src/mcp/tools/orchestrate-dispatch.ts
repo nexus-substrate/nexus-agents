@@ -444,6 +444,57 @@ function servedCallOf(
   };
 }
 
+/**
+ * Look up a resolved worker adapter from the preflight map (#1535).
+ *
+ * `worker-dispatcher`'s `buildRetryEntry()` clones the entry to append failure context,
+ * creating a new object reference. A strict reference lookup fails for retried entries,
+ * causing `createAltWorkerExecutor` to fall back to `modelAdapter` and exclude the default
+ * rather than the failed role adapter. We fall back to matching by role and subTask prefix,
+ * then by role.
+ */
+function lookupResolvedAdapter(
+  resolvedAdapters: ReadonlyMap<AgentPlanEntry, ResolvedWorkerAdapter> | undefined,
+  entry: AgentPlanEntry
+): ResolvedWorkerAdapter | undefined {
+  if (resolvedAdapters === undefined) return undefined;
+  const direct = resolvedAdapters.get(entry);
+  if (direct !== undefined) return direct;
+  for (const [candidate, resolved] of resolvedAdapters) {
+    if (candidate.role === entry.role && entry.subTask.startsWith(candidate.subTask)) {
+      return resolved;
+    }
+  }
+  for (const [candidate, resolved] of resolvedAdapters) {
+    if (candidate.role === entry.role) {
+      return resolved;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolves the primary adapter assigned to this worker entry (#1535).
+ * Falls back from preflight resolution to role routing, then default model adapter.
+ */
+function resolvePrimaryAdapter(config: WorkerExecutorConfig, entry: AgentPlanEntry): IModelAdapter {
+  const resolved = lookupResolvedAdapter(config.resolvedAdapters, entry);
+  if (resolved !== undefined) return resolved.adapter;
+  if (config.perWorkerRouting === true) {
+    try {
+      const rolePrimary = resolveAdapterForRole(
+        `${entry.role}_expert`,
+        config.modelAdapter,
+        config.logger
+      );
+      if (rolePrimary !== undefined) return rolePrimary;
+    } catch {
+      // Fall back to modelAdapter
+    }
+  }
+  return config.modelAdapter;
+}
+
 function createWorkerExecutor(
   config: WorkerExecutorConfig
 ): (
@@ -455,7 +506,8 @@ function createWorkerExecutor(
   return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
     const resolved =
-      config.resolvedAdapters?.get(entry) ?? (await resolveWorkerAdapter(entry, config, signal));
+      lookupResolvedAdapter(config.resolvedAdapters, entry) ??
+      (await resolveWorkerAdapter(entry, config, signal));
     if (typeof resolved === 'string') {
       config.unsupportedEntries.add(entry);
       return makeErrorResult(entry, workerStartMs, resolved);
@@ -504,11 +556,11 @@ function createAltWorkerExecutor(
   priorWaveResults?: readonly WorkerResult[],
   signal?: AbortSignal
 ) => Promise<WorkerResult> {
-  const { taskDescription, modelAdapter, logger: log, learnings } = config;
+  const { taskDescription, logger: log, learnings } = config;
 
   return async (entry, priorWaveResults, signal): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
-    const primary = config.resolvedAdapters?.get(entry)?.adapter ?? modelAdapter;
+    const primary = resolvePrimaryAdapter(config, entry);
     const alt = await resolveWorkerAdapter(
       entry,
       { ...config, perWorkerRouting: true },
