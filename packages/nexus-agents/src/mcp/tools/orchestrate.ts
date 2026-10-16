@@ -1156,8 +1156,7 @@ function isOrchestrateCancelled(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
-/** Body of the depth-guarded orchestration pipeline (extracted for line limit). */
-async function runOrchestratePipeline(params: {
+interface OrchestratePipelineParams {
   readonly input: OrchestrateInput;
   readonly deps: OrchestrateDeps;
   readonly notifier: ReturnType<typeof createMcpNotifier>;
@@ -1173,7 +1172,27 @@ async function runOrchestratePipeline(params: {
    * `orchestrator.execute` completes the current call.
    */
   readonly signal?: AbortSignal;
-}): Promise<ToolResult> {
+}
+
+function resolveWorkerPlan(
+  v2Config: ReturnType<typeof resolveV2Config>,
+  input: OrchestrateInput,
+  logger: ILogger
+): {
+  readonly relevantFiles?: readonly string[];
+  readonly agentPlan?: ReturnType<typeof computeAgentPlan>;
+} {
+  if (!v2Config.aorchestraEnabled) {
+    return {};
+  }
+  const relevantFiles =
+    typeof filePathsFromContext === 'function' ? filePathsFromContext(input.context) : undefined;
+  const agentPlan = computeAgentPlan(input.task, logger, { filePaths: relevantFiles });
+  return { relevantFiles, agentPlan };
+}
+
+/** Body of the depth-guarded orchestration pipeline (extracted for line limit). */
+async function runOrchestratePipeline(params: OrchestratePipelineParams): Promise<ToolResult> {
   const { input, deps, notifier, logger, trustTier, taskId, signal } = params;
   logger.debug('Starting orchestration', { taskLength: input.task.length });
   notifier.info('orchestrate', { event: 'orchestrate_start', taskLength: input.task.length });
@@ -1189,10 +1208,7 @@ async function runOrchestratePipeline(params: {
   // measured change pending a bake (see #2921).
   await injectMemoryContextForOrchestrate(input, logger);
 
-  const relevantFiles = filePathsFromContext(input.context);
-  const agentPlan = v2Config.aorchestraEnabled
-    ? computeAgentPlan(input.task, logger, { filePaths: relevantFiles })
-    : undefined;
+  const { relevantFiles, agentPlan } = resolveWorkerPlan(v2Config, input, logger);
   throwIfOrchestrateCancelled(signal, 'worker-dispatch');
   const workerDispatchResult = await tryWorkerDispatch(agentPlan, input.task, deps, {
     logger,

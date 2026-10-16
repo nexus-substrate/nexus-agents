@@ -48,6 +48,7 @@ vi.mock('../../pipeline/v2-config.js', () => ({
 }));
 vi.mock('./orchestrate-aorchestra.js', () => ({
   computeAgentPlan: vi.fn(),
+  filePathsFromContext: vi.fn(),
 }));
 
 async function callOrchestrate(): Promise<void> {
