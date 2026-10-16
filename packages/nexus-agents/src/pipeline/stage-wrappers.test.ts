@@ -12,6 +12,7 @@ import {
   createSecurityStageWrapper,
   createDevStageRegistry,
   createParseSpecStageWrapper,
+  createScaffoldStageWrapper,
   createAuditStageRegistry,
 } from './stage-wrappers.js';
 import { getPipelineEventBus } from './event-bus.js';
@@ -251,6 +252,35 @@ describe('Stage Wrappers', () => {
 
       expect(result.success).toBe(false);
       expect(result.value).toBe(false);
+    });
+  });
+
+  describe('createScaffoldStageWrapper', () => {
+    it('scaffolds successfully when plan is present', async () => {
+      const wrapper = createScaffoldStageWrapper();
+      const ctx = makeContext({ [K.PLAN]: 'Step 1: Create files\nStep 2: Add tests' });
+
+      const result = await wrapper.execute(ctx);
+
+      expect(result.stateKey).toBe(K.SCAFFOLD_OUTPUT);
+      expect(result.success).toBe(true);
+      expect(result.value).toContain('Scaffolded project from plan');
+    });
+
+    it.each([
+      ['missing plan', undefined],
+      ['empty plan', ''],
+      ['whitespace-only plan', '   \n  \t  '],
+    ])('returns success: false via failOutput when plan is %s', async (_desc, planValue) => {
+      const wrapper = createScaffoldStageWrapper();
+      const ctx = makeContext({ [K.PLAN]: planValue });
+
+      const result = await wrapper.execute(ctx);
+
+      expect(result.stateKey).toBe(K.SCAFFOLD_OUTPUT);
+      expect(result.success).toBe(false);
+      expect(result.value).toBeNull();
+      expect(result.error).toBe('No plan to scaffold');
     });
   });
 });

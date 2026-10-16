@@ -253,17 +253,19 @@ export function createSecurityStageWrapper(stages: DevPipelineStages): IPipeline
 }
 
 /** Scaffold stage — generates project structure from approved plan. */
-function createScaffoldStageWrapper(): IPipelineStage {
+export function createScaffoldStageWrapper(): IPipelineStage {
   return {
     id: 'scaffold',
     name: 'Scaffold',
     execute(ctx: PipelineContext): Promise<StageOutput> {
       const start = getTimeProvider().now();
       const plan = typeof ctx.state[K.PLAN] === 'string' ? (ctx.state[K.PLAN] as string) : '';
-      const result =
-        plan.length > 0
-          ? `Scaffolded project from plan (${String(plan.length)} chars)`
-          : 'No plan to scaffold';
+      if (plan.trim().length === 0) {
+        return Promise.resolve(
+          failOutput(K.SCAFFOLD_OUTPUT, 'No plan to scaffold', getTimeProvider().now() - start)
+        );
+      }
+      const result = `Scaffolded project from plan (${String(plan.length)} chars)`;
       return Promise.resolve(
         output(K.SCAFFOLD_OUTPUT, result, getTimeProvider().now() - start, true)
       );
