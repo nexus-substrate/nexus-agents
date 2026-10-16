@@ -54,11 +54,45 @@ function isJsonEscape(char: string, json: boolean, quoted: boolean): boolean {
   return json && quoted && char === '\\';
 }
 
+/** Encoded whitespace/delimiters and escaped quotes terminate contextual scanning (#7426). */
+function isEncodedDelimiter(text: string, index: number, limit: number): boolean {
+  const next = text[index + 1];
+  if (next === 'n' || next === 'r' || next === 't') return true;
+  if (next === '"') {
+    // A legacy match limit never splits an opening escape pair (#7315).
+    return index + 1 < limit;
+  }
+  return false;
+}
+
+/** Whether an escape terminates contextual scanning at an encoded delimiter (#7426). */
+function isTerminatingEscape(text: string, end: number, field: boolean, limit: number): boolean {
+  return !field && isEncodedDelimiter(text, end, limit);
+}
+
+/** Resolves the effective scan limit for contextValueEnd. */
+function scanLimit(boundary: number | 'json-field', length: number): number {
+  return typeof boundary === 'number' ? Math.min(boundary, length) : length;
+}
+
+/** Resolves the stop condition for a character during value scanning. */
+function stepBoundary(
+  char: string,
+  field: boolean,
+  state: ValueScanState,
+  query: boolean,
+  json: boolean
+): ValueBoundary {
+  return field ? fieldValueBoundary(char, state) : contextValueBoundary(char, query, json);
+}
+
 /**
  * End of a context value. Plain text keeps the pre-#7296 extent: the whole
  * non-whitespace run (`&`-bounded for a query value). Inside a JSON string the
  * value also ends at the unescaped `"` that closes the string, and an escape is
- * consumed as an indivisible pair, so the redaction never splits one (#7296).
+ * consumed as an indivisible pair, so the redaction never splits one (#7296),
+ * while encoded whitespace/delimiters (`\n`, `\r`, `\t`) and escaped quotes (`\"`)
+ * terminate contextual value scanning (#7426).
  * A legacy match limit never splits an escape. `json-field` instead scans a
  * complete unquoted field value, keeping structural commas and braces outside
  * the value; nesting and strings inside containers use the same escape scan.
@@ -71,16 +105,17 @@ export function contextValueEnd(
   boundary: number | 'json-field' = text.length
 ): number {
   const field = json && boundary === 'json-field';
-  const limit = typeof boundary === 'number' ? Math.min(boundary, text.length) : text.length;
+  const limit = scanLimit(boundary, text.length);
   const state: ValueScanState = { depth: 0, quoted: !field };
   let end = start;
   while (end < limit) {
-    const char = text[end] ?? '';
+    const char = text.charAt(end);
     if (isJsonEscape(char, json, state.quoted)) {
+      if (isTerminatingEscape(text, end, field, limit)) break;
       end += 2;
       continue;
     }
-    const stop = field ? fieldValueBoundary(char, state) : contextValueBoundary(char, query, json);
+    const stop = stepBoundary(char, field, state, query, json);
     if (stop === 'before') break;
     end++;
     if (stop === 'after') break;

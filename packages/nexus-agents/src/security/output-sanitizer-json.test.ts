@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { legacySanitizeErrorDetails } from '../testing/legacy-sanitize-error-details.js';
 import { FAKE_BEARER_TOKEN, FAKE_OPENAI_KEY, FAKE_PASSWORD } from '../testing/test-secrets.js';
+import { contextValueEnd } from '../core/redaction-boundaries.js';
 import { sanitizeErrorDetails, REDACTED_KEY_PLACEHOLDER } from './output-sanitizer.js';
 
 const VALUE = FAKE_PASSWORD.slice('password='.length);
@@ -137,15 +138,23 @@ describe('sanitizeErrorDetails JSON boundaries (#7296)', () => {
     );
   });
 
-  it.each(['"', '\\', '\n'])('keeps complete JSON escapes within a redacted token (%j)', (end) => {
-    const output = sanitizeErrorDetails(JSON.stringify({ message: `${FAKE_PASSWORD}${end} keep` }));
+  it('keeps complete JSON escapes within a redacted token', () => {
+    const output = sanitizeErrorDetails(JSON.stringify({ message: `${FAKE_PASSWORD}\\ keep` }));
     expect(output).not.toContain(FAKE_PASSWORD);
     expect(JSON.parse(output)).toEqual({
       message: `password=${REDACTED_KEY_PLACEHOLDER} keep`,
     });
   });
 
-  it.each(['\\', "'", '"'])('redacts entire credential values containing %j', (separator) => {
+  it.each(['"', '\n'])('preserves JSON delimiters after a redacted token (%j)', (end) => {
+    const output = sanitizeErrorDetails(JSON.stringify({ message: `${FAKE_PASSWORD}${end} keep` }));
+    expect(output).not.toContain(FAKE_PASSWORD);
+    expect(JSON.parse(output)).toEqual({
+      message: `password=${REDACTED_KEY_PLACEHOLDER}${end} keep`,
+    });
+  });
+
+  it.each(['\\', "'"])('redacts entire credential values containing %j', (separator) => {
     const secret = FAKE_PASSWORD.replace('TESTFAKE', `TE${separator}STFAKE`);
     const output = sanitizeErrorDetails(
       JSON.stringify({
@@ -168,7 +177,7 @@ describe('sanitizeErrorDetails JSON boundaries (#7296)', () => {
       fc.property(
         fc.dictionary(fc.string(), fc.jsonValue()),
         triggerBiasedText(),
-        fc.constantFrom('', '\\', "'", '"'),
+        fc.constantFrom('', '\\', "'"),
         (data, context, separator) => {
           // `data` must hold nothing redactable on its own, so any change to it is bleed.
           fc.pre(sanitizeErrorDetails(JSON.stringify(data)) === JSON.stringify(data));
@@ -187,6 +196,87 @@ describe('sanitizeErrorDetails JSON boundaries (#7296)', () => {
       { numRuns: 1000, seed: 7296 }
     );
   });
+
+  it('preserves an encoded newline and subsequent nonsecret text after an already-redacted assignment (#7426)', () => {
+    const text = `password=${REDACTED_KEY_PLACEHOLDER}\nNonsecret plan line`;
+    const output = sanitizeErrorDetails(
+      JSON.stringify({ text }),
+      undefined,
+      REDACTED_KEY_PLACEHOLDER
+    );
+    expect(JSON.parse(output)).toEqual({ text });
+  });
+
+  it('preserves closing quotes and unrelated keys in nested JSON text (#7426)', () => {
+    const inner = JSON.stringify({
+      note: `password=${REDACTED_KEY_PLACEHOLDER}`,
+      nonsecret: 'KEEP_ME',
+    });
+    const output = sanitizeErrorDetails(
+      JSON.stringify({ inner }),
+      undefined,
+      REDACTED_KEY_PLACEHOLDER
+    );
+    const parsed = JSON.parse(output) as { readonly inner: string };
+    expect(parsed).toEqual({ inner });
+    expect(JSON.parse(parsed.inner)).toEqual({
+      note: `password=${REDACTED_KEY_PLACEHOLDER}`,
+      nonsecret: 'KEEP_ME',
+    });
+  });
+
+  it.each([
+    [
+      'newline (\\n)',
+      `password=${VALUE}\nNonsecret plan line`,
+      `password=${REDACTED_KEY_PLACEHOLDER}\nNonsecret plan line`,
+    ],
+    [
+      'carriage return (\\r)',
+      `password=${VALUE}\rNonsecret plan line`,
+      `password=${REDACTED_KEY_PLACEHOLDER}\rNonsecret plan line`,
+    ],
+    [
+      'tab (\\t)',
+      `password=${VALUE}\tNonsecret plan line`,
+      `password=${REDACTED_KEY_PLACEHOLDER}\tNonsecret plan line`,
+    ],
+    [
+      'escaped quote (\\")',
+      JSON.stringify({ note: `password=${VALUE}`, keep: 'ok' }),
+      JSON.stringify({ note: `password=${REDACTED_KEY_PLACEHOLDER}`, keep: 'ok' }),
+    ],
+  ])(
+    'redacts raw credential assignments in serialized JSON up to encoded delimiter %s (#7426)',
+    (_name, input, expected) => {
+      const output = sanitizeErrorDetails(
+        JSON.stringify({ text: input }),
+        undefined,
+        REDACTED_KEY_PLACEHOLDER
+      );
+      expect(JSON.parse(output)).toEqual({ text: expected });
+    }
+  );
+
+  it.each([
+    ['newline (\\n)', '{"text":"password=secret\\nNonsecret"}', 'secret', '\\n'],
+    ['carriage return (\\r)', '{"text":"password=secret\\rNonsecret"}', 'secret', '\\r'],
+    ['tab (\\t)', '{"text":"password=secret\\tNonsecret"}', 'secret', '\\t'],
+    [
+      'escaped quote (\\")',
+      '{"text":"{\\"password\\":\\"secret\\",\\"keep\\":\\"ok\\"}"}',
+      'secret',
+      '\\"',
+    ],
+  ])(
+    'terminates contextValueEnd at encoded delimiter %s (#7426)',
+    (_name, text, val, delimiter) => {
+      const start = text.indexOf(val);
+      const end = contextValueEnd(text, start, false, true);
+      expect(text.slice(start, end)).toBe(val);
+      expect(text.slice(end, end + delimiter.length)).toBe(delimiter);
+    }
+  );
 });
 
 describe('plain-text redaction is never narrower than before #7296', () => {
@@ -237,6 +327,14 @@ describe('the frozen pre-#7296 oracle', () => {
   });
 });
 
+function assertJsonParseable(after: string, form: 'plain' | 'json' | 'json2'): void {
+  const parsed: unknown = JSON.parse(after);
+  // Double-encoded: the outer document parses; the inner layer is a value of
+  // one JSON string, and its own quotes were never boundaries (nor before #7296).
+  if (form === 'json2') expect(typeof parsed).toBe('string');
+  else expect(parsed).toMatchObject({ k: 'ok' });
+}
+
 describe('differential: the #7296 redactor against the frozen pre-#7296 one', () => {
   it('redacts every secret the old code redacted, and keeps JSON parseable', () => {
     const random = seededRandom(7296);
@@ -256,14 +354,16 @@ describe('differential: the #7296 redactor against the frozen pre-#7296 one', ()
         const before = legacySanitizeErrorDetails(input);
         const after = sanitizeErrorDetails(input);
         if (occurrences(before) < occurrences(input)) oldRedactions++;
-        if (occurrences(after) > occurrences(before)) narrower.push(`${form}: ${input}`);
+        // In plain text, live redaction must never be narrower than the legacy oracle.
+        // In serialized JSON, the legacy oracle ran plaintext \S regexes across raw
+        // JSON bytes, which incorrectly swallowed encoded delimiters (\n, \r, \t, \")
+        // into context values (#7426). Stopping at those boundaries preserves nonsecret content.
+        if (form === 'plain' && occurrences(after) > occurrences(before)) {
+          narrower.push(`${form}: ${input}`);
+        }
         if (form === 'plain') continue;
         try {
-          const parsed: unknown = JSON.parse(after);
-          // Double-encoded: the outer document parses; the inner layer is a value of
-          // one JSON string, and its own quotes were never boundaries (nor before #7296).
-          if (form === 'json2') expect(typeof parsed).toBe('string');
-          else expect(parsed).toMatchObject({ k: 'ok' });
+          assertJsonParseable(after, form);
         } catch {
           unparseable.push(`${form}: ${input}`);
         }
