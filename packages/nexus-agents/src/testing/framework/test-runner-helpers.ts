@@ -12,12 +12,11 @@ import { getTimeProvider } from '../../core/index.js';
 import type { ITaskRouter } from '../../cli-adapters/router-types.js';
 import type {
   EvaluationTask,
-  TaskFilter,
   TestRunResult,
   TaskTestResult,
   RoutingDecisionDetails,
 } from './types.js';
-import type { TaskRegistry } from './task-registry.js';
+
 import type { RubricScorer } from './rubric-scorer.js';
 import type { RoutingScorer } from './routing-scorer.js';
 import { estimateCost } from './test-metrics.js';
@@ -227,27 +226,6 @@ export async function executeTaskCore(options: ExecuteTaskOptions): Promise<Task
   }
 
   return buildSuccessResult(successOpts);
-}
-
-/**
- * Options for getting tasks for a run.
- */
-export interface GetTasksOptions {
-  readonly taskRegistry: TaskRegistry;
-  readonly filter?: TaskFilter;
-}
-
-/**
- * Gets filtered tasks from the registry.
- */
-export function getFilteredTasks(options: GetTasksOptions): EvaluationTask[] {
-  const { taskRegistry, filter } = options;
-
-  const tasks = taskRegistry.getFiltered(filter);
-  if (filter?.clis !== undefined && filter.clis.length > 0) {
-    return filterTasksByCli(tasks, filter.clis);
-  }
-  return [...tasks];
 }
 
 /**

@@ -355,31 +355,3 @@ function gatewayHeaders(
   }
   return headers;
 }
-
-/** The AI-SDK `createOpenAI` settings a gateway transport contributes. */
-interface GatewayAiSdkOptions {
-  readonly headers?: Readonly<Record<string, string | undefined>>;
-  readonly fetch?: typeof fetch;
-}
-
-/**
- * The same transport as {@link gatewayClientOptions}, shaped for consumers
- * of the AI-SDK `createOpenAI` factory (retained compatibility surface):
- * `headers` (a removed header is `undefined`, the AI SDK's spelling) and a
- * `fetch` that carries the proxy dispatcher. Only the keys that apply.
- */
-export function gatewayAiSdkOptions(
-  transport: GatewayTransport & { readonly apiKey: string }
-): GatewayAiSdkOptions {
-  const headers = Object.fromEntries(
-    Object.entries(gatewayHeaders(transport)).map(([name, value]) => [name, value ?? undefined])
-  );
-  const proxyUrl = transport.proxyUrl;
-  return {
-    ...(Object.keys(headers).length > 0 && { headers }),
-    ...(proxyUrl !== undefined && {
-      fetch: (input: string | URL | Request, init?: RequestInit) =>
-        fetch(input, { ...init, dispatcher: proxyAgentFor(proxyUrl) }),
-    }),
-  };
-}

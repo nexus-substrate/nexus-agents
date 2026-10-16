@@ -24,14 +24,10 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 
-import { createLogger } from '../core/index.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
 import { discoverModels } from '../adapters/openai-compat-adapter.js';
 import { readModelAllowlist } from '../adapters/gateway-catalog-filter.js';
-
-const logger = createLogger({ component: 'init-opencode' });
 
 export interface InitOpencodeOptions {
   /** Absolute or relative path to opencode.json. */
@@ -243,16 +239,6 @@ function simpleDiff(before: string, after: string): string {
     }
   }
   return out.join('\n');
-}
-
-export function ensureOpencodeDirExists(path: string): void {
-  const dir = dirname(path);
-  if (!existsSync(dir)) {
-    throw new Error(
-      `Parent directory does not exist: ${dir}. Create it first or pass a path under an existing dir.`
-    );
-  }
-  logger.debug('opencode.json target directory exists', { dir });
 }
 
 /**

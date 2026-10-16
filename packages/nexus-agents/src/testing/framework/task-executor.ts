@@ -24,8 +24,6 @@ import type {
   RubricScore,
   RoutingScore,
 } from './types.js';
-import type { RubricScorer } from './rubric-scorer.js';
-import type { RoutingScorer } from './routing-scorer.js';
 
 /** Module-level singleton — SharedTaskAnalyzer is stateless. */
 const sharedAnalyzer = createSharedTaskAnalyzer();
@@ -225,50 +223,4 @@ export async function routeTask(
   if (!isCliName(decision.adapter.name)) return null;
   const details = createRoutingDecisionDetails(decision, agentTask);
   return { decision, details };
-}
-
-/**
- * Executes the CLI task and returns the response.
- */
-export async function executeCliTask(
-  adapter: ICliAdapter,
-  cliTask: CliTask
-): Promise<{ text: string; tokenUsage: { inputTokens: number; outputTokens: number } } | null> {
-  const execResult = await adapter.execute(cliTask);
-  if (!execResult.ok) {
-    return null;
-  }
-  return {
-    text: execResult.value.text,
-    tokenUsage: execResult.value.usage ?? { inputTokens: 0, outputTokens: 0 },
-  };
-}
-
-/**
- * Scores a task result using the rubric and routing scorers.
- */
-export function scoreTaskResult(
-  task: EvaluationTask,
-  response: string,
-  rubricScorer: RubricScorer,
-  routingScorer: RoutingScorer,
-  routingDetails?: RoutingDecisionDetails
-): { rubricScore: RubricScore; routingScore?: RoutingScore } {
-  const rubricScore = rubricScorer.score(task, response);
-
-  if (routingDetails === undefined) {
-    return { rubricScore };
-  }
-
-  // Score routing decision
-  const routingScore = routingScorer.score(task, {
-    selectedCli: routingDetails.selectedCli,
-    confidence: routingDetails.confidence,
-    reason: routingDetails.reason,
-    alternatives: routingDetails.alternatives,
-    decisionTimeMs: routingDetails.decisionTimeMs,
-    taskProfile: routingDetails.taskProfile,
-  });
-
-  return { rubricScore, routingScore };
 }

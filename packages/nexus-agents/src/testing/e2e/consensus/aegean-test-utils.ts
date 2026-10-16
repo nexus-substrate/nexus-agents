@@ -101,11 +101,6 @@ export function createAcceptingAgent(id: string, proposalOutput: unknown): IAgen
   return createConfigurableAgent(id, { proposalOutput, voteOutput: 'ACCEPT' });
 }
 
-/** Creates a mock agent that rejects all proposals. */
-export function createRejectingAgent(id: string, proposalOutput: unknown): IAgent {
-  return createConfigurableAgent(id, { proposalOutput, voteOutput: 'REJECT' });
-}
-
 /** Creates a failing agent that returns an error. */
 export function createFailingAgent(id: string): IAgent {
   return {
@@ -163,10 +158,4 @@ export function extractAegeanOutput(result: unknown): AegeanOutput | null {
 export function wasConsensusReached(result: unknown): boolean {
   const output = extractAegeanOutput(result);
   return output?.aegean?.consensusReached === true;
-}
-
-/** Gets the number of rounds from the result. */
-export function getRoundCount(result: unknown): number {
-  const output = extractAegeanOutput(result);
-  return output?.aegean?.rounds ?? 0;
 }
