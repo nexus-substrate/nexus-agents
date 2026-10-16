@@ -47,7 +47,10 @@ function makeQa(overrides: Partial<QaEvaluation> = {}): QaEvaluation {
   };
 }
 
-function makeTrial(arm: 'baseline' | 'candidate', overrides: Partial<CohortTrial> = {}): CohortTrial {
+function makeTrial(
+  arm: 'baseline' | 'candidate',
+  overrides: Partial<CohortTrial> = {}
+): CohortTrial {
   return {
     taskId: 'task-1',
     arm,
@@ -71,7 +74,10 @@ function makePairedTask(id: string, overrides: Partial<PairedTask> = {}): Paired
   };
 }
 
-function makeCohort(count: number, modifier?: (task: PairedTask, index: number) => PairedTask): PairedTask[] {
+function makeCohort(
+  count: number,
+  modifier?: (task: PairedTask, index: number) => PairedTask
+): PairedTask[] {
   const tasks: PairedTask[] = [];
   for (let i = 0; i < count; i++) {
     const task = makePairedTask(`task-${String(i)}`);
@@ -189,8 +195,18 @@ describe('paired-context-efficiency-gate', () => {
             baseline: {
               ...t.baseline,
               attempts: [
-                makeAttempt({ attemptId: 'att-1-1', inputTokens: 500, outputTokens: 100, totalTokens: 600 }),
-                makeAttempt({ attemptId: 'att-1-2', inputTokens: 700, outputTokens: 150, totalTokens: 850 }),
+                makeAttempt({
+                  attemptId: 'att-1-1',
+                  inputTokens: 500,
+                  outputTokens: 100,
+                  totalTokens: 600,
+                }),
+                makeAttempt({
+                  attemptId: 'att-1-2',
+                  inputTokens: 700,
+                  outputTokens: 150,
+                  totalTokens: 850,
+                }),
               ],
             },
           };
@@ -212,12 +228,11 @@ describe('paired-context-efficiency-gate', () => {
             candidate: {
               ...t.candidate,
               attempts: [
-                makeAttempt({
+                {
+                  attemptId: 'att-1',
+                  wallTimeMs: 1500,
                   usageReported: false,
-                  inputTokens: undefined,
-                  outputTokens: undefined,
-                  totalTokens: undefined,
-                }),
+                },
               ],
             },
           };
@@ -295,7 +310,9 @@ describe('paired-context-efficiency-gate', () => {
 
       const result = evaluatePairedContextEfficiency(tasks);
       expect(result.verdict).toBe('default_on');
-      expect(result.candidate.tokensPerValidatedSuccess).toBeLessThan(result.baseline.tokensPerValidatedSuccess!);
+      expect(result.candidate.tokensPerValidatedSuccess).toBeLessThan(
+        result.baseline.tokensPerValidatedSuccess!
+      );
       expect(result.candidate.successRate).toBeGreaterThanOrEqual(result.baseline.successRate);
     });
 
