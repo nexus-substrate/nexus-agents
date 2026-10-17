@@ -4,7 +4,7 @@
  * @module mcp/tools/pr-review-findings.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { findRepoRoot } from '../../config/repo-root-detection.js';
 import {
@@ -218,14 +218,34 @@ describe('pr-review-findings', () => {
       expect(parseFindings(reasoning)).toEqual([]);
     });
 
-    it('returns empty array when YAML is malformed', () => {
+    it('returns empty array and logs warning when YAML is malformed', () => {
+      const mockLogger = {
+        warn: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+      };
       const reasoning = `\`\`\`yaml findings\nthis: is: not: valid: yaml: at: all\n\`\`\``;
-      expect(parseFindings(reasoning)).toEqual([]);
+      expect(parseFindings(reasoning, mockLogger)).toEqual([]);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Failed to parse YAML findings block in PR review reasoning',
+        expect.objectContaining({ yamlLength: expect.any(Number) })
+      );
     });
 
-    it('returns empty array when YAML is not an array', () => {
+    it('returns empty array and logs warning when YAML is not an array', () => {
+      const mockLogger = {
+        warn: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+      };
       const reasoning = `\`\`\`yaml findings\nsummary: just a string\n\`\`\``;
-      expect(parseFindings(reasoning)).toEqual([]);
+      expect(parseFindings(reasoning, mockLogger)).toEqual([]);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'YAML findings block in PR review reasoning is not an array',
+        expect.objectContaining({ type: 'object' })
+      );
     });
 
     it('parses a single verified finding', () => {
