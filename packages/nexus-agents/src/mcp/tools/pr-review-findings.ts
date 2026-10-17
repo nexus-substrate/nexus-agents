@@ -25,6 +25,9 @@
 import { posix } from 'node:path';
 import { findRepoRoot } from '../../config/repo-root-detection.js';
 import { parse as parseYaml } from 'yaml';
+import { createLogger, getErrorMessage, type ILogger } from '../../core/index.js';
+
+const defaultLogger = createLogger({ component: 'pr-review-findings' });
 
 /** The 4-point verification gate (#2225). Each check is either `passed`
  * (the voter applied it and cleared) or a non-empty string explaining what
@@ -169,18 +172,32 @@ function extractFindingsBlock(reasoning: string): string | undefined {
  * returns an empty array: no structured findings. The vote decision remains
  * eligible for the soft-block tier even without findings.
  */
-export function parseFindings(reasoning: string): readonly Finding[] {
+export function parseFindings(
+  reasoning: string,
+  logger?: Pick<ILogger, 'warn'>
+): readonly Finding[] {
   const yamlBody = extractFindingsBlock(reasoning);
   if (yamlBody === undefined || yamlBody.trim() === '') return [];
+
+  const log = logger ?? defaultLogger;
 
   let parsed: unknown;
   try {
     parsed = parseYaml(yamlBody);
-  } catch {
+  } catch (error) {
+    log.warn('Failed to parse YAML findings block in PR review reasoning', {
+      error: getErrorMessage(error),
+      yamlLength: yamlBody.length,
+    });
     return [];
   }
 
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) {
+    log.warn('YAML findings block in PR review reasoning is not an array', {
+      type: typeof parsed,
+    });
+    return [];
+  }
   return parsed.map(coerceFinding).filter((f): f is Finding => f !== null);
 }
 
