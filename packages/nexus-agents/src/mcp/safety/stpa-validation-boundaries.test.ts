@@ -361,39 +361,27 @@ describe('STPA Validation - Security Boundaries', () => {
       createConstraint('SC-001', 'Prevent command injection', ConstraintEnforcement.PREVENT),
     ];
 
-    // Repointed in #4592. The old assertion summed three array lengths and
-    // compared to 0 — true for every possible result, including one that
-    // measured nothing. `evaluated` alone is not enough either: the constraint
-    // applies via the ('command', 'execut') description pattern, so it stays
-    // evaluated even when `classifyTool` fails entirely. Only the violation
-    // depends on classification, which is what this test is named for.
-    it.each(['execute', 'run_command', 'exec'])(
-      'detects %s as a shell tool and flags an unrestricted command property',
-      (toolName) => {
-        const tool = createTool(toolName, 'Execute commands', { command: { type: 'string' } });
-
-        const result = validateToolAgainstConstraints(tool, executeConstraint());
-
-        expect(result.evaluated).toContain('SC-001');
-        expect(result.violations.map((v) => v.constraintId)).toContain('SC-001');
-      }
-    );
-
-    it('does NOT yet detect shell_exec — recorded classifier gap', () => {
-      // `shell_exec` was in this test's own fixture list and the old assertion
-      // could not see that it fails to classify: `classifyTool` returns UNKNOWN
-      // for it, so `checkPreventionViolation` returns early and the injection
-      // constraint is recorded as satisfied without being enforced. Pinned as
-      // the current behaviour rather than quietly dropped from the list, so
-      // widening the matcher will break this test and force the update.
-      // Logged to .security-discoveries.jsonl as
-      // 2026-08-23-stpa-classifytool-shell-exec-gap.
-      const tool = createTool('shell_exec', 'Execute commands', { command: { type: 'string' } });
+    // Repointed in #4592; expanded in remediation of 2026-08-23-stpa-classifytool-shell-exec-gap.
+    // The violation depends on classification, so widening classifyTool to include
+    // shell_exec, run_shell, terminal, powershell, zsh, sh ensures unrestricted
+    // command properties trigger SC-001 prevention violations.
+    it.each([
+      'execute',
+      'run_command',
+      'exec',
+      'shell_exec',
+      'run_shell',
+      'terminal',
+      'powershell',
+      'zsh',
+      'sh',
+    ])('detects %s as a shell tool and flags an unrestricted command property', (toolName) => {
+      const tool = createTool(toolName, 'Execute commands', { command: { type: 'string' } });
 
       const result = validateToolAgainstConstraints(tool, executeConstraint());
 
-      expect(result.violations).toHaveLength(0);
-      expect(result.passed).toContain('SC-001');
+      expect(result.evaluated).toContain('SC-001');
+      expect(result.violations.map((v) => v.constraintId)).toContain('SC-001');
     });
   });
 
