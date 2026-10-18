@@ -169,6 +169,61 @@ describe('tool-wrapper', () => {
       expect(result.isError).toBe(true);
     });
 
+    it('enforces uriValidation on tool arguments when enabled', async () => {
+      const security: SecurityConfig = {
+        allowedPaths: ['./'],
+        blockedPatterns: [],
+        rateLimit: { enabled: true, requestsPerMinute: 60 },
+        timeout: {
+          defaultTimeoutMs: 5000,
+          maxTimeoutMs: 10000,
+          enableLogging: true,
+          uriValidation: true,
+        },
+      };
+
+      const factory = createToolFactory({ security });
+      const handler = vi.fn().mockResolvedValue({
+        content: [{ type: 'text', text: 'success' }],
+      });
+
+      const wrapped = factory('uri_enforced_tool', handler);
+      const result = await wrapped({
+        url: 'https://example.com/{path*}/{other*}',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain('URI validation failed');
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('allows suspicious URIs when uriValidation is disabled in security config', async () => {
+      const security: SecurityConfig = {
+        allowedPaths: ['./'],
+        blockedPatterns: [],
+        rateLimit: { enabled: true, requestsPerMinute: 60 },
+        timeout: {
+          defaultTimeoutMs: 5000,
+          maxTimeoutMs: 10000,
+          enableLogging: true,
+          uriValidation: false,
+        },
+      };
+
+      const factory = createToolFactory({ security });
+      const handler = vi.fn().mockResolvedValue({
+        content: [{ type: 'text', text: 'success' }],
+      });
+
+      const wrapped = factory('uri_disabled_tool', handler);
+      const result = await wrapped({
+        url: 'https://example.com/{path*}/{other*}',
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(handler).toHaveBeenCalled();
+    });
+
     it('should allow per-tool timeout override', async () => {
       const factory = createToolFactory({});
       const slowHandler = vi.fn().mockImplementation(async () => {

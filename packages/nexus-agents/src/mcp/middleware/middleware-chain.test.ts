@@ -733,6 +733,72 @@ describe('timeout middleware', () => {
 
     expect(result.isError).toBeUndefined();
   });
+
+  it('validates URI arguments when uriValidation is enabled (default)', async () => {
+    const chain = createMiddlewareChain({
+      toolName: 'uri_tool',
+      timeout: { defaultTimeoutMs: 5000 },
+      logger: mockLogger,
+    });
+    const wrapped = chain(successHandler);
+
+    const result = await wrapped({
+      url: 'https://example.com/{path*}/{other*}',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('URI validation failed');
+    expect(successHandler).not.toHaveBeenCalled();
+  });
+
+  it('rejects deeply nested template URI arguments', async () => {
+    const chain = createMiddlewareChain({
+      toolName: 'uri_tool',
+      timeout: { defaultTimeoutMs: 5000 },
+      logger: mockLogger,
+    });
+    const wrapped = chain(successHandler);
+
+    const result = await wrapped({
+      targetUri: 'https://example.com/{{{{{nested}}}}}',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('URI validation failed');
+    expect(successHandler).not.toHaveBeenCalled();
+  });
+
+  it('accepts valid URIs without error', async () => {
+    const chain = createMiddlewareChain({
+      toolName: 'uri_tool',
+      timeout: { defaultTimeoutMs: 5000 },
+      logger: mockLogger,
+    });
+    const wrapped = chain(successHandler);
+
+    const result = await wrapped({
+      url: 'https://example.com/api/v1/users',
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(successHandler).toHaveBeenCalled();
+  });
+
+  it('allows suspicious URIs when uriValidation is explicitly disabled', async () => {
+    const chain = createMiddlewareChain({
+      toolName: 'uri_tool',
+      timeout: { defaultTimeoutMs: 5000, uriValidation: false },
+      logger: mockLogger,
+    });
+    const wrapped = chain(successHandler);
+
+    const result = await wrapped({
+      url: 'https://example.com/{path*}/{other*}',
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(successHandler).toHaveBeenCalled();
+  });
 });
 
 // =============================================================================

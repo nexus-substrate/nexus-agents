@@ -51,6 +51,8 @@ export interface TimeoutGuardConfig {
   readonly maxTimeoutMs?: number;
   /** Whether to log timeout events (default: true) */
   readonly enableLogging?: boolean;
+  /** Whether to validate URIs against ReDoS patterns (default: true) */
+  readonly uriValidation?: boolean | undefined;
   /** Logger instance */
   readonly logger?: ILogger;
 }
@@ -145,13 +147,17 @@ export class TimeoutGuard {
   private readonly defaultTimeoutMs: number;
   private readonly maxTimeoutMs: number;
   private readonly enableLogging: boolean;
+  /** Whether URI validation against ReDoS patterns is enabled. */
+  readonly uriValidation: boolean;
   private readonly logger: ILogger;
 
   constructor(config?: TimeoutGuardConfig) {
-    this.defaultTimeoutMs = config?.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.maxTimeoutMs = config?.maxTimeoutMs ?? MAX_TIMEOUT_MS;
-    this.enableLogging = config?.enableLogging ?? true;
-    this.logger = config?.logger ?? createLogger({ component: 'timeout-guard' });
+    const cfg = config ?? {};
+    this.defaultTimeoutMs = cfg.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.maxTimeoutMs = cfg.maxTimeoutMs ?? MAX_TIMEOUT_MS;
+    this.enableLogging = cfg.enableLogging ?? true;
+    this.uriValidation = cfg.uriValidation ?? true;
+    this.logger = cfg.logger ?? createLogger({ component: 'timeout-guard' });
   }
 
   /** Resolves effective timeout and operation name from options. */
@@ -333,6 +339,13 @@ export class TimeoutGuard {
     return async (...args: TArgs): Promise<Result<GuardedResult<TResult>, TimeoutError>> => {
       return this.execute(() => fn(...args), options);
     };
+  }
+
+  /**
+   * Validates a URI against ReDoS patterns and length limits.
+   */
+  validateUri(uri: string): Result<string, TimeoutError> {
+    return UriValidation.validate(uri);
   }
 }
 

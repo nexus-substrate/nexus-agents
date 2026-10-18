@@ -209,12 +209,73 @@ function createRateLimitMiddleware(limiter: RateLimiter): Middleware {
   };
 }
 
+interface DiscoveredUri {
+  readonly key: string;
+  readonly value: string;
+}
+
+const URI_FIELD_KEY_PATTERN = /(?:^|_|[a-z])(?:uri|url)(?:$|_|[A-Z])/i;
+const URI_SCHEME_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/|\/|\{)/i;
+
+function appendDiscoveredUris(key: string, value: unknown, results: DiscoveredUri[]): void {
+  if (typeof value === 'string') {
+    if (URI_FIELD_KEY_PATTERN.test(key) || (URI_SCHEME_PATTERN.test(value) && value.includes('{'))) {
+      results.push({ key, value });
+    }
+  } else if (Array.isArray(value) && URI_FIELD_KEY_PATTERN.test(key)) {
+    for (const item of value) {
+      if (typeof item === 'string') {
+        results.push({ key, value: item });
+      }
+    }
+  }
+}
+
+function extractUrisFromArgs(args: unknown): DiscoveredUri[] {
+  if (args === null || typeof args !== 'object') {
+    return [];
+  }
+  const results: DiscoveredUri[] = [];
+  for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
+    appendDiscoveredUris(key, value, results);
+  }
+  return results;
+}
+
+function validateArgsUris(
+  guard: TimeoutGuard,
+  args: unknown,
+  requestId: string,
+  logger: ILogger
+): ToolResult | null {
+  const uris = extractUrisFromArgs(args);
+  for (const { key, value } of uris) {
+    const valResult = guard.validateUri(value);
+    if (!valResult.ok) {
+      logger.warn('URI validation failed', { field: key, error: valResult.error.message });
+      return errorResult(
+        'validation',
+        `URI validation failed for '${key}': ${valResult.error.message}`,
+        requestId
+      );
+    }
+  }
+  return null;
+}
+
 /**
  * Creates timeout middleware.
  * Reads AbortSignal from AsyncLocalStorage for client cancellation support.
  */
 function createTimeoutMiddleware(guard: TimeoutGuard, toolName: string): Middleware {
   return async (args, ctx, next) => {
+    if (guard.uriValidation) {
+      const uriError = validateArgsUris(guard, args, ctx.requestContext.requestId, ctx.logger);
+      if (uriError !== null) {
+        return uriError;
+      }
+    }
+
     const signal = abortSignalStorage.getStore();
     const result = await guard.execute(() => next(args, ctx), {
       operationName: toolName,

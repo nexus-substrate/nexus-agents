@@ -190,6 +190,24 @@ describe('TimeoutGuard', () => {
     });
   });
 
+  describe('uriValidation', () => {
+    it('defaults uriValidation to true', () => {
+      const guard = new TimeoutGuard();
+      expect(guard.uriValidation).toBe(true);
+    });
+
+    it('respects explicit uriValidation: false', () => {
+      const guard = new TimeoutGuard({ uriValidation: false });
+      expect(guard.uriValidation).toBe(false);
+    });
+
+    it('validates URIs via validateUri method', () => {
+      const guard = new TimeoutGuard();
+      expect(guard.validateUri('https://example.com/ok').ok).toBe(true);
+      expect(guard.validateUri('https://example.com/{path*}/{other*}').ok).toBe(false);
+    });
+  });
+
   describe('createDefaultTimeoutGuard', () => {
     it('should create guard with default settings', () => {
       const guard = createDefaultTimeoutGuard();
