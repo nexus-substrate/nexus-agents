@@ -17,6 +17,7 @@
  */
 
 import { sanitizeToolInput } from '../middleware/tool-input-sanitizer.js';
+import { fenceExternalContent } from '../../dogfooding/pr-diff-fence.js';
 import { FINDINGS_FORMAT_INSTRUCTIONS } from './pr-review-findings.js';
 import type { PrReviewInput } from './pr-review-tool.js';
 
@@ -170,7 +171,8 @@ export function buildPrReviewProposal(
     parts.push(`\n**Repo context:**\n${safe.repoContext}\n`);
   }
   if (safe.prDescription !== undefined && safe.prDescription !== '') {
-    parts.push(`\n**Description:**\n${safe.prDescription}\n`);
+    const fencedDescription = fenceExternalContent(safe.prDescription).text;
+    parts.push(`\n**Description:**\n${fencedDescription}\n`);
   }
 
   parts.push(`\n## Diff\n\n\`\`\`diff\n${safe.prDiff}\n\`\`\`\n`);
