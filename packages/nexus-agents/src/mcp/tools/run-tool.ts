@@ -23,7 +23,7 @@
 import { z } from 'zod';
 import { asyncDispatchInput } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import type { IModelAdapter } from '../../core/index.js';
 
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';

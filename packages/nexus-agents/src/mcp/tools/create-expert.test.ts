@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import type { ILogger } from '../../core/index.js';
 import { Expert, BuiltInExpertTypeSchema, type BuiltInExpertType } from '../../agents/index.js';
 import { RateLimiter } from '../middleware/index.js';

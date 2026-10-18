@@ -161,13 +161,10 @@ describe('memory-query', () => {
         getState: () => ({ remaining: 99, nextTokenMs: 0 }),
       };
 
-      registerMemoryQueryTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        {
-          rateLimiter:
-            mockRateLimiter as unknown as import('../middleware/rate-limiter.js').RateLimiter,
-        }
-      );
+      registerMemoryQueryTool(mockServer as unknown as import('../sdk-types.js').McpServer, {
+        rateLimiter:
+          mockRateLimiter as unknown as import('../middleware/rate-limiter.js').RateLimiter,
+      });
     });
 
     it('returns results for a valid query', async () => {

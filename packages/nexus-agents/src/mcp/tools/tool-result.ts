@@ -9,12 +9,7 @@
  */
 
 import { z } from 'zod';
-import type {
-  McpServer,
-  RegisteredTool,
-  ToolCallback,
-} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { McpServer, RegisteredTool, ToolCallback, ToolAnnotations } from '../sdk-types.js';
 import type { ILogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';

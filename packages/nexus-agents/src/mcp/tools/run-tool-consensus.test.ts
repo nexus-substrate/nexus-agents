@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { getVoterRoles } from '../../cli/voter-roles.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';

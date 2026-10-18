@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { toolErrorResponse } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -64,7 +64,9 @@ export function registerRepoAnalyzeTool(server: McpServer, deps: RepoAnalyzeDeps
     depth: z
       .enum(['shallow', 'deep'])
       .optional()
-      .describe('Currently a no-op — the handler always runs the full analysis (both values identical)'),
+      .describe(
+        'Currently a no-op — the handler always runs the full analysis (both values identical)'
+      ),
   };
 
   const description =

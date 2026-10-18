@@ -294,29 +294,20 @@ describe('registerRunWorkflowTool', () => {
   });
 
   it('should register the run_workflow tool', () => {
-    registerRunWorkflowTool(
-      mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-      deps
-    );
+    registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     expect(mockServer.tools).toHaveLength(1);
     expect(mockServer.tools[0]?.name).toBe('run_workflow');
   });
 
   it('should have description in config', () => {
-    registerRunWorkflowTool(
-      mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-      deps
-    );
+    registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     const tool = mockServer.tools[0];
     expect(tool?.config.description).toBeDefined();
     expect(tool?.config.description).toContain('workflow');
   });
 
   it('should have inputSchema in config', () => {
-    registerRunWorkflowTool(
-      mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-      deps
-    );
+    registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     const tool = mockServer.tools[0];
     expect(tool?.config.inputSchema).toBeDefined();
   });
@@ -351,10 +342,7 @@ describe('run_workflow tool execution', () => {
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should execute a built-in template successfully', async () => {
@@ -387,10 +375,7 @@ describe('run_workflow tool execution', () => {
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
       const response = await getToolHandler()({
         template: 'code-review',
         inputs: { target: 'src/main.ts' },
@@ -450,10 +435,7 @@ describe('run_workflow tool execution', () => {
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should return error for missing template', async () => {
@@ -475,10 +457,7 @@ describe('run_workflow tool execution', () => {
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should validate without executing in dry run mode', async () => {
@@ -541,10 +520,7 @@ describe('run_workflow tool execution', () => {
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should return error when workflow execution fails', async () => {
@@ -588,10 +564,7 @@ describe('run_workflow tool execution', () => {
           rateLimit: { enabled: false, requestsPerMinute: 100 },
         },
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should load template from file path', async () => {
@@ -642,10 +615,7 @@ describe('run_workflow tool execution', () => {
           rateLimit: { enabled: false, requestsPerMinute: 100 },
         },
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should return error when template fails to load', async () => {
@@ -677,10 +647,7 @@ describe('run_workflow tool execution', () => {
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should reject invalid input schema', async () => {
@@ -709,10 +676,7 @@ describe('run_workflow tool execution', () => {
         resolveExecutionEngine: () => mockEngine,
         rateLimiter: createTestRateLimiter(),
       };
-      registerRunWorkflowTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        deps
-      );
+      registerRunWorkflowTool(mockServer as unknown as import('../sdk-types.js').McpServer, deps);
     });
 
     it('should work without logger', async () => {

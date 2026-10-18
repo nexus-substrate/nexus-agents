@@ -9,7 +9,7 @@
  */
 
 import { resolve } from 'node:path';
-import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { RegisteredTool } from '../sdk-types.js';
 import { toolError, toolStructuredError, toolSuccess } from './tool-result.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';

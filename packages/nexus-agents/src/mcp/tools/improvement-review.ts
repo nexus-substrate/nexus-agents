@@ -21,7 +21,7 @@
 import { readFile } from 'node:fs/promises';
 /* eslint-disable max-lines -- 721 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); signal detection (floor, rejection, failure concentration, fitness dimensions, self-eval) for one tool — gh issue filing moved to improvement-review-issue-filing.ts (#6148 row 2); further split tracked in #6148 */
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
