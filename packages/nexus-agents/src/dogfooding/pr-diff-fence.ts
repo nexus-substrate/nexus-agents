@@ -42,6 +42,21 @@ function neutralizeFenceMarkers(content: string): { text: string; forged: boolea
 }
 
 /**
+ * Wraps untrusted text in the mandated EXTERNAL CONTENT envelope after neutralizing
+ * any embedded fence markers.
+ *
+ * @param content - Untrusted text to fence
+ * @returns The enveloped text and whether forged markers were neutralized
+ */
+export function fenceExternalContent(content: string): { text: string; forged: boolean } {
+  const neutralized = neutralizeFenceMarkers(content);
+  return {
+    text: `${FENCE_OPEN}\n${neutralized.text}\n${FENCE_CLOSE}`,
+    forged: neutralized.forged,
+  };
+}
+
+/**
  * Format fetched patches for the expert prompt.
  *
  * The patch text is attacker-controlled (anyone can open a PR), and it is the
