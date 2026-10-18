@@ -131,6 +131,7 @@ function getTimeoutConfig(
     defaultTimeoutMs: overrideMs ?? timeoutConfig.defaultTimeoutMs,
     maxTimeoutMs: timeoutConfig.maxTimeoutMs,
     enableLogging: timeoutConfig.enableLogging,
+    uriValidation: timeoutConfig.uriValidation,
   };
 }
 
