@@ -1257,14 +1257,6 @@ describe('inject-governance one render for inject and check (#6099)', () => {
       to: '_Governance Version: stale',
       inside: true,
     },
-    {
-      name: 'model list',
-      start: MARKERS.modelListStart,
-      end: MARKERS.modelListEnd,
-      from: 'claude-opus, ',
-      to: '',
-      inside: false,
-    },
   ] as const;
 
   it.each(SECTIONS)(
@@ -1305,6 +1297,22 @@ describe('inject-governance one render for inject and check (#6099)', () => {
       for (const [rel, content] of first) {
         expect(readFileSync(box(rel), 'utf-8'), rel).toBe(content);
       }
+    });
+  });
+
+  it('(h) CLAUDE.md does not contain GOVERNANCE:MODEL_LIST markers and is decoupled from in-tree-data.ts', async () => {
+    await withInjectSnapshot(async () => {
+      const claude = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(claude).not.toContain('<!-- GOVERNANCE:MODEL_LIST:START -->');
+      expect(claude).not.toContain('<!-- GOVERNANCE:MODEL_LIST:END -->');
+
+      // Modifying in-tree-data.ts should not produce CLAUDE.md drift
+      const inTreeDataPath = box('packages/nexus-agents/src/config/in-tree-data.ts');
+      const originalInTree = readFileSync(inTreeDataPath, 'utf-8');
+      writeFileSync(inTreeDataPath, originalInTree + '\n// Added comment or new model test');
+
+      const checkResult = await runCheck();
+      expect(checkResult.ok).toBe(true);
     });
   });
 });

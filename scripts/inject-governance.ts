@@ -63,7 +63,6 @@ const EXPERT_CONFIG = join(ROOT, 'packages/nexus-agents/src/agents/experts/exper
 const TEMPLATE_TYPES = join(ROOT, 'packages/nexus-agents/src/workflows/template-types.ts');
 const SKILLS_DIR = join(ROOT, 'skills');
 const AGENTS_DIR = join(ROOT, 'agents');
-const MODEL_CAPS = join(ROOT, 'packages/nexus-agents/src/config/in-tree-data.ts');
 const PACKAGE_JSON_PATH = join(ROOT, 'packages/nexus-agents/package.json');
 
 // Additional inject targets for #1837 count-drift prevention.
@@ -401,43 +400,6 @@ function extractAgents(): string[] {
     .filter((f) => f.endsWith('.md') && f !== 'index.yaml')
     .map((f) => f.replace(/\.md$/, ''))
     .sort();
-}
-
-/**
- * Extract model IDs from in-tree-data.ts.
- * Parses the models array for id, displayName, cliName, and contextWindow.
- */
-interface ModelMetadata {
-  id: string;
-  displayName: string;
-  cliName: string;
-  contextWindow: number;
-}
-
-function extractModels(): ModelMetadata[] {
-  if (!existsSync(MODEL_CAPS)) {
-    console.error('Model capabilities not found: ' + MODEL_CAPS);
-    return [];
-  }
-
-  const content = readFileSync(MODEL_CAPS, 'utf-8');
-  const models: ModelMetadata[] = [];
-
-  // Match each model block
-  const modelBlocks = content.matchAll(
-    /id:\s*'([^']+)'[\s\S]*?displayName:\s*'([^']+)'[\s\S]*?contextWindow:\s*([\d_]+)[\s\S]*?cliName:\s*'([^']+)'/g
-  );
-
-  for (const match of modelBlocks) {
-    models.push({
-      id: match[1] ?? '',
-      displayName: match[2] ?? '',
-      contextWindow: parseInt((match[3] ?? '0').replace(/_/g, ''), 10),
-      cliName: match[4] ?? '',
-    });
-  }
-
-  return models;
 }
 
 // ============================================================================
@@ -840,14 +802,6 @@ function generateWorkflowIndex(rows: readonly WorkflowRow[]): string {
   ];
 
   return lines.join('\n');
-}
-
-/**
- * Generate the supported models list for CLAUDE.md billing mode section.
- */
-function generateModelList(models: ModelMetadata[]): string {
-  const ids = models.map((m) => m.id).join(', ');
-  return `${MARKERS.modelListStart}Supported models: ${ids}.${MARKERS.modelListEnd}`;
 }
 
 // ============================================================================
@@ -1552,10 +1506,9 @@ function describeInBlockLoss(firstIsInside: boolean, inBlockLine: number | undef
  * differ, which is why the distinction is kept:
  * - inside the GENERATED:FROM_AGENTS markers: the prose is owned by AGENTS.md,
  *   so a hand edit here is reverted by `inject`; a wanted change goes there.
- * - outside them (the model list, the end-of-file newline, prose prettier
- *   reshapes): `inject` alone puts the file right. CI's idempotency step
- *   (`inject`, then `git diff --exit-code CLAUDE.md`) diffs the whole file, so
- *   this is drift there too (#6087).
+ * - outside them (the end-of-file newline, prose prettier reshapes): `inject`
+ *   alone puts the file right. CI's idempotency step (`inject`, then `git diff
+ *   --exit-code CLAUDE.md`) diffs the whole file, so this is drift there too (#6087).
  */
 function describeClaudeMdDrift(expected: string, content: string): string {
   const diff = firstDifferingLine(expected, content);
@@ -1589,16 +1542,9 @@ function describeClaudeMdDrift(expected: string, content: string): string {
  * staleness check in release-validate-helpers.ts:222 keeps working
  * because the format is unchanged.
  *
- * `config/in-tree-data.ts` (MODEL_CAPS) is deliberately NOT a source (#5491,
+ * `config/in-tree-data.ts` is deliberately NOT a source (#5491,
  * panel option b): model pricing and slug data is not governance content, and
- * including it forced every routine data PR — a pricing sync, a dead-slug
- * repoint — to commit a regenerated stamp into AGENTS.md/CLAUDE.md and so
- * through the governor ratification gate, diluting the signal the owner is
- * asked to review. Consequence to know: a model ADDITION does change generated
- * governance text (the supported-models line) while leaving this stamp where it
- * was, so the stamp can read older than the block above it. The idempotency
- * check still fails on that generated-text drift, which is the gate that
- * matters; the stamp is a date, not the measurement.
+ * is decoupled from CLAUDE.md so routine model updates never touch governance paths.
  */
 export const GOVERNANCE_STAMP_SOURCES: readonly string[] = [
   TOOLS_INDEX,
@@ -2334,7 +2280,6 @@ function printGovernanceSummary(
     experts: ExpertMetadata[];
     workflows: WorkflowMetadata[];
     skills: SkillMetadata[];
-    models: unknown[];
   },
   agentCount: number,
   probeCount: number
@@ -2345,7 +2290,6 @@ function printGovernanceSummary(
   console.log(`  Workflow Templates: ${String(actual.workflows.length)}`);
   console.log(`  Skills: ${String(actual.skills.length)}`);
   console.log(`  Agents: ${String(agentCount)}`);
-  console.log(`  Models: ${String(actual.models.length)}`);
   // #5882: the registry counts above say what the tree holds; this says how
   // much of the plugin surface was actually probed for drift against them.
   console.log(`  Count-drift probes run: ${String(probeCount)}`);
@@ -2678,7 +2622,6 @@ interface GovernanceRegistries {
   experts: ExpertMetadata[];
   workflows: WorkflowMetadata[];
   skills: SkillMetadata[];
-  models: ModelMetadata[];
 }
 
 function loadAllRegistries(): GovernanceRegistries {
@@ -2687,7 +2630,6 @@ function loadAllRegistries(): GovernanceRegistries {
     experts: extractExpertTypes(),
     workflows: extractWorkflowTemplates(),
     skills: extractSkills(),
-    models: extractModels(),
   };
 }
 
@@ -2707,12 +2649,6 @@ function applyAllSectionInjections(
   // that `check` measures against this render.
   next = injectToolIndex(next, r.tools);
   next = injectWorkflowIndex(next, extractWorkflowRows());
-  next = injectSection(
-    next,
-    MARKERS.modelListStart,
-    MARKERS.modelListEnd,
-    generateModelList(r.models)
-  );
   next = applyInlineCountRewrites(next, {
     experts: r.experts.length,
     workflows: r.workflows.length,
@@ -2793,7 +2729,7 @@ export async function injectGovernance(): Promise<void> {
     process.exit(1);
   }
   const registries = loadAllRegistries();
-  const { tools, experts, workflows, skills, models } = registries;
+  const { tools, experts, workflows, skills } = registries;
   const agents = extractAgents();
 
   // Render AGENTS.md's generated text ONCE (#2657 rules index; #6105 workflow
@@ -2854,7 +2790,6 @@ export async function injectGovernance(): Promise<void> {
   console.log(`  Workflow Templates: ${String(workflows.length)}`);
   console.log(`  Skills: ${String(skills.length)}`);
   console.log(`  Agents: ${String(agents.length)}`);
-  console.log(`  Models: ${String(models.length)}`);
 }
 
 /**
