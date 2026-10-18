@@ -8,9 +8,8 @@
  * (Source: MCP Protocol 2025-11-25)
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { McpServer } from './sdk-types.js';
+import { StdioServerTransport, type Transport } from './sdk-facade/index.js';
 
 import {
   getErrorMessage,
@@ -181,7 +180,7 @@ export async function connectTransport(
   recordServerTransport(transportKind);
   try {
     log.info('Connecting server to transport', { transport: transportKind ?? 'unidentified' });
-    await server.connect(transport);
+    await server.connect(transport as unknown as Parameters<McpServer['connect']>[0]);
     log.debug('Server connected to transport successfully');
     return ok(undefined);
   } catch (error) {

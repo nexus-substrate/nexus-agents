@@ -13,7 +13,7 @@
  * (Source: Extracted from cli-server.ts for file size limits)
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from './mcp/sdk-types.js';
 import { registerPrompts } from './mcp/prompts/index.js';
 import { registerResources } from './mcp/resources/index.js';
 import {

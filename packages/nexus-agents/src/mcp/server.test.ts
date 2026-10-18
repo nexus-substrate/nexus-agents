@@ -5,8 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport, Client } from './sdk-facade/index.js';
 
 import { createServer, connectTransport, closeServer, type ServerConfig } from './server.js';
 

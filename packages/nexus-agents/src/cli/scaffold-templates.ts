@@ -28,7 +28,7 @@ function toolImportsAndSchema(name: string, pascal: string): string {
  */
 
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';

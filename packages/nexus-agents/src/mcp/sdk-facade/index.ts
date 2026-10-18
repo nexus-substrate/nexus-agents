@@ -32,6 +32,7 @@ export {
   type Tool,
   type ToolAnnotations,
   type Prompt,
+  type GetPromptResult,
   type Resource,
   type CancelledNotification,
   type ProgressNotification,
@@ -67,6 +68,8 @@ export {
   CallToolRequestSchema,
   CallToolResultSchema,
   CompatibilityCallToolResultSchema,
+  // JSON-RPC message schemas
+  JSONRPCMessageSchema,
   // Prompt & resource schemas
   GetPromptRequestSchema,
   GetPromptResultSchema,

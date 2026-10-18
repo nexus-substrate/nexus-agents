@@ -8,9 +8,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { InMemoryTransport, Client } from '../../../mcp/sdk-facade/index.js';
+import type { McpServer } from '../../../mcp/sdk-types.js';
 import { z } from 'zod';
 
 import {
@@ -87,7 +86,9 @@ describe('MCP Server Lifecycle E2E Tests', () => {
       const connectResult = await connectTransport(server, serverTransport, logger);
 
       expect(connectResult.ok).toBe(true);
-      expect(logger.info).toHaveBeenCalledWith('Connecting server to transport');
+      expect(logger.info).toHaveBeenCalledWith('Connecting server to transport', {
+        transport: 'unidentified',
+      });
     });
 
     it('should close server cleanly', async () => {

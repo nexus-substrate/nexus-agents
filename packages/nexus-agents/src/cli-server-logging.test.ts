@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { JSONRPCMessageSchema } from '@modelcontextprotocol/sdk/types.js';
+import { JSONRPCMessageSchema } from './mcp/sdk-facade/index.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoggingConfigSchema } from './config/schemas.js';
 import { createLogger } from './core/logger.js';
