@@ -175,6 +175,31 @@ describe('ToolRateLimiterFactory - fallback validation', () => {
     expect(limiter.getState().capacity).toBe(10);
   });
 
+  it('derives default tool bucket capacity and refill rate from requestsPerMinute', () => {
+    const factory = createToolRateLimiterFactory({ requestsPerMinute: 1 });
+    const limiter = factory.getForTool('unmapped_tool');
+
+    expect(limiter.getState().capacity).toBe(1);
+    expect(limiter.tryAcquire()).toBe(true);
+    // Second request is rejected because capacity is 1
+    expect(limiter.tryAcquire()).toBe(false);
+  });
+
+  it('preserves per-tool overrides when requestsPerMinute is configured', () => {
+    const factory = createToolRateLimiterFactory({
+      requestsPerMinute: 1,
+      perTool: {
+        custom_tool: { capacity: 5, refillRate: 5, refillIntervalMs: 60000 },
+      },
+    });
+
+    const unmappedLimiter = factory.getForTool('unmapped_tool');
+    const customLimiter = factory.getForTool('custom_tool');
+
+    expect(unmappedLimiter.getState().capacity).toBe(1);
+    expect(customLimiter.getState().capacity).toBe(5);
+  });
+
   it('logs debug when unknown tool falls back to default limits', () => {
     const mockLogger = {
       debug: vi.fn(),
