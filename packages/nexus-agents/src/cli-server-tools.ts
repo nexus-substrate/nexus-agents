@@ -497,7 +497,7 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
 }
 
 /** Dependencies required to initialize and securely register upstream MCP servers. */
-export interface UpstreamServerInitDeps {
+interface UpstreamServerInitDeps {
   readonly server: McpServer;
   readonly logger: ILogger;
   readonly rateLimiterFactory?: ReturnType<typeof createToolRateLimiterFactory> | undefined;

@@ -17,7 +17,7 @@ import type { IAuditLogger } from './audit/audit-types.js';
 import type { GatewayConfig } from './mcp/gateway/index.js';
 import type { UpstreamServerConfig } from './config/schemas-gateway.js';
 import { _initUpstreamServersForTests } from './cli-server-tools.js';
-import type { UpstreamServerInitDeps } from './cli-server-tools.js';
+type UpstreamServerInitDeps = Parameters<typeof _initUpstreamServersForTests>[1];
 
 // Hoist mock for UpstreamClientManager
 const { mockManager } = vi.hoisted(() => {
