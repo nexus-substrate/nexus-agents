@@ -730,6 +730,18 @@ describe('registerMcpTools - rate limiting', () => {
       expect.objectContaining({ enabled: false })
     );
   });
+
+  it('should forward requestsPerMinute from security config to rate limiter factory', () => {
+    const options = makeDefaultOptions({
+      securityConfig: {
+        rateLimit: { enabled: true, requestsPerMinute: 15 },
+      },
+    });
+    registerMcpTools(options);
+    expect(mockCreateToolRateLimiterFactory).toHaveBeenCalledWith(
+      expect.objectContaining({ requestsPerMinute: 15 })
+    );
+  });
 });
 
 // ============================================================================

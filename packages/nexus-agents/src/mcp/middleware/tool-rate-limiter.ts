@@ -46,6 +46,11 @@ class UnlimitedRateLimiter extends RateLimiter {
 export interface ToolRateLimiterFactoryConfig {
   /** Whether rate limiting is enabled (default: true) */
   readonly enabled?: boolean;
+  /**
+   * Default requests per minute for tools without a specific category or override.
+   * When specified, derives capacity and refill rate for the default tool bucket.
+   */
+  readonly requestsPerMinute?: number;
   /** Per-tool rate limit overrides */
   readonly perTool?: Record<string, ToolRateLimit>;
   /** Logger instance */
@@ -71,6 +76,28 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
 };
 
 /**
+ * Resolves the default rate limit for tools without a specific category or override.
+ * Derives capacity and refill rate from requestsPerMinute when configured.
+ */
+function resolveDefaultLimit(
+  config: Record<string, ToolRateLimit>,
+  factoryConfig: ToolRateLimiterFactoryConfig
+): ToolRateLimit {
+  const perToolDefault = factoryConfig.perTool?.['default'];
+  if (perToolDefault !== undefined) {
+    return perToolDefault;
+  }
+  if (factoryConfig.requestsPerMinute !== undefined) {
+    return {
+      capacity: factoryConfig.requestsPerMinute,
+      refillRate: factoryConfig.requestsPerMinute,
+      refillIntervalMs: 60000,
+    };
+  }
+  return config['orchestrate'] ?? DEFAULT_TOOL_RATE_LIMITS.orchestrate;
+}
+
+/**
  * Factory for creating per-tool rate limiters.
  *
  * This factory maintains a registry of rate limiters, one per tool,
@@ -94,6 +121,7 @@ export class ToolRateLimiterFactory {
   private readonly enabled: boolean;
   private readonly limiters = new Map<string, RateLimiter>();
   private readonly config: Record<string, ToolRateLimit>;
+  private readonly defaultLimit: ToolRateLimit;
   private readonly logger: ILogger;
 
   constructor(factoryConfig: ToolRateLimiterFactoryConfig = {}) {
@@ -105,6 +133,8 @@ export class ToolRateLimiterFactory {
       ...DEFAULT_TOOL_RATE_LIMITS,
       ...(factoryConfig.perTool ?? {}),
     };
+
+    this.defaultLimit = resolveDefaultLimit(this.config, factoryConfig);
 
     // Validate that the fallback category exists in merged config
     if (this.config['orchestrate'] === undefined) {
@@ -160,11 +190,11 @@ export class ToolRateLimiterFactory {
       }
     }
 
-    // Return default (orchestrate limits as fallback)
+    // Return default (orchestrate limits or requestsPerMinute fallback)
     this.logger.debug('No category match for tool, using fallback limits', {
       tool: toolName,
     });
-    return this.config['orchestrate'] ?? DEFAULT_TOOL_RATE_LIMITS.orchestrate;
+    return this.defaultLimit;
   }
 
   /**

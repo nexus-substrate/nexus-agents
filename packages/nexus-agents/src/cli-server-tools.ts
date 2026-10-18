@@ -1051,8 +1051,10 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
 
   const rateLimitConfig = securityConfig?.rateLimit;
   const perToolConfig = rateLimitConfig?.perTool;
+  const requestsPerMinute = rateLimitConfig?.requestsPerMinute;
   const rateLimiterFactory = createToolRateLimiterFactory({
     enabled: rateLimitConfig?.enabled ?? true,
+    ...(requestsPerMinute !== undefined && { requestsPerMinute }),
     ...(perToolConfig !== undefined && { perTool: perToolConfig }),
     logger: toolInfra.logger,
   });
