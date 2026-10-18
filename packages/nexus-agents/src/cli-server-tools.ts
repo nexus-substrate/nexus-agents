@@ -165,6 +165,8 @@ export interface RegisterMcpToolsOptions {
   executionMode?: import('./mcp/middleware/index.js').ExecutionMode;
   /** Allowed paths from security config (Issue #477) */
   allowedPaths?: readonly string[];
+  /** Blocked file patterns from security config */
+  blockedPatterns?: readonly string[];
   /** Security config for rate limiting and timeout (Issue #484) */
   securityConfig?: import('./config/index.js').SecurityConfig;
   /** Workflow config for engine settings (Issue #487) */
@@ -265,6 +267,8 @@ interface ToolRegistrationContext {
   executionMode?: import('./mcp/middleware/index.js').ExecutionMode;
   /** Allowed paths (Issue #477) */
   allowedPaths?: readonly string[];
+  /** Blocked file patterns from security config */
+  blockedPatterns?: readonly string[];
   /** Security config for timeout settings (Issue #482) */
   securityConfig?: import('./config/index.js').SecurityConfig;
   /** Workflow config for engine settings (Issue #487) */
@@ -650,6 +654,7 @@ const OPTIONAL_CONTEXT_KEYS = [
   'policyFirewall',
   'executionMode',
   'allowedPaths',
+  'blockedPatterns',
   'securityConfig',
   'workflowConfig',
   'auditLogger',

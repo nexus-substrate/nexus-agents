@@ -223,16 +223,40 @@ const SECRET_PATH_PATTERNS: readonly string[] = [
  * Absolute globs anchor at `^`. Inputs are this module's constants, never
  * user text, so the regexes are ReDoS-safe by construction.
  */
-function compileSecretGlob(pattern: string): RegExp {
+const PATH_PATTERN_CACHE = new Map<string, RegExp>();
+
+/**
+ * Compiles a path glob pattern to an anchored RegExp with memoization.
+ *
+ * `~/` anchors at `(^|/)` after resolving homedir.
+ * Relative globs anchor at `(^|/)`.
+ * Absolute globs anchor at `^`.
+ */
+export function compilePathPattern(pattern: string): RegExp {
+  const cached = PATH_PATTERN_CACHE.get(pattern);
+  if (cached !== undefined) return cached;
+
   const escaped = pattern
     .toLowerCase()
     .replace(/[\\.+^$()|[\]{}]/g, '\\$&')
     .replace(/\*\*/g, '__DOUBLESTAR__')
     .replace(/\*/g, '[^/]*')
     .replace(/__DOUBLESTAR__/g, '.*');
-  if (escaped.startsWith('~/')) return new RegExp(`(^|/)${escaped.slice(2)}$`);
-  if (escaped.startsWith('/')) return new RegExp(`^${escaped}$`);
-  return new RegExp(`(^|/)${escaped}$`);
+  let compiled: RegExp;
+  if (escaped.startsWith('~/')) {
+    compiled = new RegExp(`(^|/)${escaped.slice(2)}$`);
+  } else if (escaped.startsWith('/')) {
+    compiled = new RegExp(`^${escaped}$`);
+  } else {
+    compiled = new RegExp(`(^|/)${escaped}$`);
+  }
+  PATH_PATTERN_CACHE.set(pattern, compiled);
+  return compiled;
+}
+
+/** Compiles one secret-path glob to an anchored regex. */
+function compileSecretGlob(pattern: string): RegExp {
+  return compilePathPattern(pattern);
 }
 
 const COMPILED_SECRET_PATTERNS: ReadonlyArray<{
@@ -267,3 +291,21 @@ export function findSecretPathPattern(canonicalPath: string): string | undefined
   const lowered = canonicalPath.toLowerCase();
   return COMPILED_SECRET_PATTERNS.find((c) => c.regex.test(lowered))?.pattern;
 }
+
+/**
+ * Finds the first matching pattern in `patterns` for the given canonical path,
+ * or returns `undefined` if no pattern matches.
+ */
+export function findMatchingPathPattern(
+  canonicalPath: string,
+  patterns: readonly string[]
+): string | undefined {
+  const lowered = canonicalPath.toLowerCase();
+  for (const pattern of patterns) {
+    if (compilePathPattern(pattern).test(lowered)) {
+      return pattern;
+    }
+  }
+  return undefined;
+}
+

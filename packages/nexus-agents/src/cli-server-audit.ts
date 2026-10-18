@@ -165,7 +165,12 @@ function createConfiguredPolicyFirewall(
   config?: AppConfig
 ): ReturnType<typeof createDefaultPolicyFirewall> {
   const policyVals = getPolicyValues(config);
-  return createDefaultPolicyFirewall({ mode: policyVals.mode, logger });
+  const blockedPatterns = config?.security?.blockedPatterns;
+  return createDefaultPolicyFirewall({
+    mode: policyVals.mode,
+    logger,
+    ...(blockedPatterns !== undefined && blockedPatterns.length > 0 && { blockedPatterns }),
+  });
 }
 
 /**
@@ -194,6 +199,29 @@ function warnIfAuditDisabled(auditEnabled: boolean, logger: ILogger): void {
   );
 }
 
+/** Assembles the metadata payload logged for startup security configuration. */
+function buildSecurityLogContext(
+  config: AppConfig | undefined,
+  policyFirewall: ReturnType<typeof createDefaultPolicyFirewall>,
+  policyVals: ReturnType<typeof getPolicyValues>,
+  authVals: { enabled: boolean; method: string },
+  rateLimitVals: { enabled: boolean; rpm: number }
+): Record<string, unknown> {
+  const security = config?.security;
+  return {
+    policyMode: formatPolicyRolloutMode(resolvePolicyRolloutMode()),
+    defaultExecutionMode: policyVals.defaultExec,
+    policyRuleCount: policyFirewall.getRules().length,
+    authEnabled: authVals.enabled,
+    authMethod: authVals.method,
+    rateLimitEnabled: rateLimitVals.enabled,
+    rateLimitRequestsPerMinute: rateLimitVals.rpm,
+    auditEnabled: security?.audit?.enabled === true,
+    allowedPaths: security?.allowedPaths ?? ['./'],
+    blockedPatterns: security?.blockedPatterns ?? [],
+  };
+}
+
 /**
  * Logs security configuration at startup.
  * Returns the configured policy firewall for use in tool registration.
@@ -210,29 +238,10 @@ export function logSecurityConfig(
   const rateLimitVals = getRateLimitValues(config);
   const auditEnabled = config?.security?.audit?.enabled === true;
 
-  logger.info('Security configuration', {
-    // #4888 / #6431: the mode that will actually apply, resolved the same way
-    // `stagePolicyFirewallForRollout` resolves it, with the reason attached.
-    // This used to be `configuredPolicyMode: 'enforce'` — the config value the
-    // staging then overrode — which a spot-check reads as an enforcement that
-    // did not happen. `security.policy.policyMode` is not an input (#4988).
-    policyMode: formatPolicyRolloutMode(resolvePolicyRolloutMode()),
-    // The mode every secure handler evaluates under; the registry carries it
-    // (#6431, #6294). `read-only` is the operator's lock on mutation tools.
-    defaultExecutionMode: policyVals.defaultExec,
-    policyRuleCount: policyFirewall.getRules().length,
-    authEnabled: authVals.enabled,
-    authMethod: authVals.method,
-    rateLimitEnabled: rateLimitVals.enabled,
-    rateLimitRequestsPerMinute: rateLimitVals.rpm,
-    // #4990: audit was the only security control missing from this line, and
-    // `initializeAuditLogger` announces its absence at `debug` — dropped at the
-    // default level. So the tamper-evident chain the docs lead with could be
-    // off while the startup log confirmed four other controls and said nothing
-    // about this one, which reads as fine rather than absent.
-    auditEnabled,
-    allowedPaths: config?.security?.allowedPaths ?? ['./'],
-  });
+  logger.info(
+    'Security configuration',
+    buildSecurityLogContext(config, policyFirewall, policyVals, authVals, rateLimitVals)
+  );
 
   warnIfAuditDisabled(auditEnabled, logger);
 

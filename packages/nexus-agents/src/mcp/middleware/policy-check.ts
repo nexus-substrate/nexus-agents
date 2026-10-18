@@ -51,6 +51,7 @@ interface PolicyCheckOptions {
   args: unknown;
   mode: ExecutionMode;
   allowedPaths?: readonly string[] | undefined;
+  blockedPatterns?: readonly string[] | undefined;
   logger: ILogger;
   requestId: string;
 }
@@ -83,6 +84,7 @@ function checkPolicy(opts: PolicyCheckOptions): PolicyCheckOutcome {
   const ctxOpts = {
     mode: opts.mode,
     ...(opts.allowedPaths && { allowedPaths: opts.allowedPaths }),
+    ...(opts.blockedPatterns && { blockedPatterns: opts.blockedPatterns }),
   };
   const decision = opts.firewall.evaluate(createPolicyContext(opts.toolName, opts.args, ctxOpts));
 
@@ -122,6 +124,7 @@ export interface PolicyCheckTarget {
   readonly toolName: string;
   readonly policyFirewall?: IPolicyFirewall | undefined;
   readonly allowedPaths?: readonly string[] | undefined;
+  readonly blockedPatterns?: readonly string[] | undefined;
   readonly auditLogger?: IAuditLogger | undefined;
 }
 
@@ -149,6 +152,7 @@ export function runPolicyCheck(
     args: sanitizedArgs,
     mode,
     allowedPaths: config.allowedPaths,
+    blockedPatterns: config.blockedPatterns,
     logger,
     requestId: requestContext.requestId,
   });

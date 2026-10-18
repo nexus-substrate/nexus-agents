@@ -156,6 +156,7 @@ describe('PolicyFirewall evaluates a real registered tool call through the real 
     expect(firewall.getRules().map((r) => r.name)).toEqual([
       'deny-mutations-without-mode',
       'secret-paths',
+      'blocked-patterns',
       'safe-paths',
     ]);
 

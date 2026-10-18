@@ -23,7 +23,13 @@ import type {
   PolicyFirewallConfig,
 } from './policy-types.js';
 import { PolicyError } from './policy-types.js';
-import { denyMutationsWithoutModeRule, safePathsRule, secretPathsRule } from './policy-rules.js';
+import {
+  denyMutationsWithoutModeRule,
+  safePathsRule,
+  secretPathsRule,
+  blockedPatternsRule,
+  createBlockedPatternsRule,
+} from './policy-rules.js';
 
 // =============================================================================
 // PolicyFirewall Implementation
@@ -262,6 +268,11 @@ export function createDefaultPolicyFirewall(config?: PolicyFirewallConfig): Poli
   // Add default rules
   firewall.addRule(denyMutationsWithoutModeRule);
   firewall.addRule(secretPathsRule);
+  if (config?.blockedPatterns !== undefined && config.blockedPatterns.length > 0) {
+    firewall.addRule(createBlockedPatternsRule(config.blockedPatterns));
+  } else {
+    firewall.addRule(blockedPatternsRule);
+  }
   firewall.addRule(safePathsRule);
 
   return firewall;
@@ -308,6 +319,24 @@ export function evaluatePolicy(
  */
 const FAIL_CLOSED_MODE: ExecutionMode = 'read-only';
 
+function copyOptionalContextProps(
+  options:
+    | {
+        artifacts?: Map<string, Artifact>;
+        workflowId?: string;
+        allowedPaths?: readonly string[];
+        blockedPatterns?: readonly string[];
+      }
+    | undefined,
+  target: Record<string, unknown>
+): void {
+  if (options === undefined) return;
+  if (options.artifacts !== undefined) target['artifacts'] = options.artifacts;
+  if (options.workflowId !== undefined) target['workflowId'] = options.workflowId;
+  if (options.allowedPaths !== undefined) target['allowedPaths'] = options.allowedPaths;
+  if (options.blockedPatterns !== undefined) target['blockedPatterns'] = options.blockedPatterns;
+}
+
 export function createPolicyContext(
   toolName: string,
   args: unknown,
@@ -316,28 +345,16 @@ export function createPolicyContext(
     artifacts?: Map<string, Artifact>;
     workflowId?: string;
     allowedPaths?: readonly string[];
+    blockedPatterns?: readonly string[];
   }
 ): PolicyContext {
-  // Build base context with required properties
-  const base = {
+  const result: Record<string, unknown> = {
     toolName,
     args,
     mode: options?.mode ?? FAIL_CLOSED_MODE,
   };
 
-  // Use Object.assign to build result, only adding optional properties
-  // when they are actually defined (to satisfy exactOptionalPropertyTypes)
-  const result: Record<string, unknown> = { ...base };
-
-  if (options?.artifacts !== undefined) {
-    result['artifacts'] = options.artifacts;
-  }
-  if (options?.workflowId !== undefined) {
-    result['workflowId'] = options.workflowId;
-  }
-  if (options?.allowedPaths !== undefined) {
-    result['allowedPaths'] = options.allowedPaths;
-  }
+  copyOptionalContextProps(options, result);
 
   return result as unknown as PolicyContext;
 }

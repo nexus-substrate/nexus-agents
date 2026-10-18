@@ -12,6 +12,8 @@ import {
   isMutationTool,
   denyMutationsWithoutModeRule,
   safePathsRule,
+  blockedPatternsRule,
+  createBlockedPatternsRule,
 } from './policy-rules.js';
 import type { PolicyContext } from './policy-types.js';
 import { TOOL_MANIFEST, classifyRegisteredTool } from '../tools/tool-manifest.js';
@@ -338,3 +340,50 @@ describe('safePathsRule', () => {
     expect(result.reason).toBeTruthy();
   });
 });
+
+describe('blockedPatternsRule', () => {
+  it('has name and description', () => {
+    expect(blockedPatternsRule.name).toBe('blocked-patterns');
+    expect(blockedPatternsRule.description).toBeTruthy();
+  });
+
+  it('allows when no path argument found', () => {
+    const result = blockedPatternsRule.check(
+      makeCtx({ args: {}, blockedPatterns: ['**/*.secret'] })
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toContain('No path');
+  });
+
+  it('allows when no blocked patterns are configured', () => {
+    const result = blockedPatternsRule.check(
+      makeCtx({ args: { path: 'file.secret' }, blockedPatterns: [] })
+    );
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toContain('No blocked patterns');
+  });
+
+  it('denies access to paths matching blocked pattern', () => {
+    const result = blockedPatternsRule.check(
+      makeCtx({
+        args: { path: 'config/my.secret' },
+        blockedPatterns: ['**/*.secret'],
+      })
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain("matches blocked pattern '**/*.secret'");
+  });
+
+  it('denies paths matching blocked patterns even when inside allowedPaths', () => {
+    const rule = createBlockedPatternsRule(['**/custom-tokens/**']);
+    const result = rule.check(
+      makeCtx({
+        args: { path: 'custom-tokens/client.key' },
+        allowedPaths: ['./'],
+      })
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain("matches blocked pattern '**/custom-tokens/**'");
+  });
+});
+

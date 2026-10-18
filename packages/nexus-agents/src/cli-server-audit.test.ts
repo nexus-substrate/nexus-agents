@@ -458,6 +458,32 @@ describe('logSecurityConfig', () => {
     );
     expect(warned).toBe(false);
   });
+
+  it('reports configured blockedPatterns and wires them into the policy firewall', () => {
+    const logger = createMockLogger();
+
+    const firewall = logSecurityConfig(logger, {
+      security: {
+        blockedPatterns: ['**/*.env*', '**/credentials*'],
+      },
+    } as unknown as Parameters<typeof logSecurityConfig>[1]);
+
+    const line = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call: unknown[]) => call[0] === 'Security configuration'
+    );
+    expect((line as unknown[])[1]).toMatchObject({
+      blockedPatterns: ['**/*.env*', '**/credentials*'],
+    });
+
+    // Verify firewall returned by logSecurityConfig enforces the blocked patterns
+    const decision = firewall.evaluate({
+      toolName: 'read_file',
+      args: { path: './prod.env' },
+      mode: 'read-only',
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain("matches blocked pattern '**/*.env*'");
+  });
 });
 
 describe('startup records carry the package version (#6509)', () => {

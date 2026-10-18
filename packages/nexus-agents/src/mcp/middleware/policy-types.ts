@@ -76,6 +76,7 @@ export interface PolicyContext {
   readonly artifacts?: Map<string, Artifact>;
   readonly workflowId?: string;
   readonly allowedPaths?: readonly string[];
+  readonly blockedPatterns?: readonly string[];
 }
 
 /**
@@ -109,6 +110,8 @@ export interface PolicyFirewallConfig {
   readonly logger?: ILogger;
   /** Initial rules to register */
   readonly rules?: readonly PolicyRule[];
+  /** Blocked file-path patterns */
+  readonly blockedPatterns?: readonly string[];
 }
 
 // =============================================================================
