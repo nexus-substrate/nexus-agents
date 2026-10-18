@@ -337,6 +337,7 @@ export function registerCiHealthCheckTool(server: McpServer, deps: CiHealthCheck
 
   const secureHandler = createSecureHandler((args: unknown) => ciHealthCheckHandler(args, logger), {
     toolName: 'ci_health_check',
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });
