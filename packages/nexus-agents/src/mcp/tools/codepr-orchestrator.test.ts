@@ -241,6 +241,23 @@ describe('planCodePrRun — fail-closed', () => {
     expect(linkedWorktrees(repo.repoRoot)).toEqual([]);
   });
 
+  it('staged binary file containing NUL and secret → denied secret_detected, not clean', () => {
+    const { logger, events } = makeCapturingLogger();
+    const result = planCodePrRun(
+      baseInput([
+        { relPath: 'src/binary.dat', newContent: 'prefix\0AKIAIOSFODNN7EXAMPLE\nsuffix\n' },
+      ]),
+      logger,
+      { repoRoot: repo.repoRoot }
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected denial');
+    expect(result.reason).toBe('secret_detected');
+    expect(events.some((e) => e.metadata?.scanVerdict === 'clean')).toBe(false);
+    expect(events.some((e) => e.metadata?.scanVerdict === 'secret_detected')).toBe(true);
+    expect(linkedWorktrees(repo.repoRoot)).toEqual([]);
+  });
+
   it('over-budget change set (too many lines) → denied blast_radius_exceeded', () => {
     const { logger } = makeCapturingLogger();
     const bigContent = `${Array.from({ length: 50 }, (_, i) => `export const v${String(i)} = ${String(i)};`).join('\n')}\n`;
