@@ -11,7 +11,7 @@
  * (Source: Issue #993 — Document MCP tool side effects in schema metadata)
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { getMcpAnnotations } from './tool-annotations.js';
 
 /** Simplified tool config — matches the shape of registerTool's config param. */

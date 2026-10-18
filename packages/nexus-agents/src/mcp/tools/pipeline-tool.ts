@@ -13,7 +13,7 @@ import { VotingStrategySchema } from './consensus-vote-types.js';
 import { asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';

@@ -8,7 +8,7 @@
  * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import type { Result, WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import {
   getErrorMessage,

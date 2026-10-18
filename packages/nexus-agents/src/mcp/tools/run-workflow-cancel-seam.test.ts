@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import type { Task, WorkflowDefinition } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import type { Expert } from '../../agents/index.js';

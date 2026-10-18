@@ -145,13 +145,10 @@ describe('memory-stats', () => {
         getState: () => ({ remaining: 99, nextTokenMs: 0 }),
       };
 
-      registerMemoryStatsTool(
-        mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-        {
-          rateLimiter:
-            mockRateLimiter as unknown as import('../middleware/rate-limiter.js').RateLimiter,
-        }
-      );
+      registerMemoryStatsTool(mockServer as unknown as import('../sdk-types.js').McpServer, {
+        rateLimiter:
+          mockRateLimiter as unknown as import('../middleware/rate-limiter.js').RateLimiter,
+      });
     });
 
     it('returns stats with defaults', async () => {

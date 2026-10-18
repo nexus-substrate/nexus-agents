@@ -10,7 +10,7 @@ import {
   ResearchSynthesizeInputSchema,
 } from './research-synthesize.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 
 // ============================================================================
 // Mocks

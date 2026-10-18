@@ -15,7 +15,7 @@
  * @module mcp/tools/list-available-models-tool
  */
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 
 import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';

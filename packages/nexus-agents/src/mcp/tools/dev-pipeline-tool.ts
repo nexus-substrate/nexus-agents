@@ -12,7 +12,7 @@ import { VotingStrategySchema } from './consensus-vote-types.js';
 import { dispatchFieldDefaultSync, modeEnumErrorNamingDispatch } from './async-dispatch-input.js';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { truncateText } from '../../utils/text-utils.js';

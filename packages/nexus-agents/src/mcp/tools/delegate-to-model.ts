@@ -13,7 +13,7 @@ import { registerStructuredTool } from './tool-result.js';
  * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { getErrorMessage, createLogger, formatZodError, type ILogger } from '../../core/index.js';
 import { DEFAULTS } from '../../config/defaults.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';

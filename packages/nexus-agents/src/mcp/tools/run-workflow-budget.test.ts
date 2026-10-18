@@ -6,7 +6,7 @@
  * half: what reaches `engine.execute`, and what the caller is told.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 
 import type { IWorkflowEngine, WorkflowDefinition, WorkflowResult } from '../../core/index.js';
 import { WorkflowError } from '../../core/index.js';

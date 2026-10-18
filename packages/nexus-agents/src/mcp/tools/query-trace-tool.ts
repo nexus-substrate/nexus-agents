@@ -10,7 +10,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { nexusDataPath } from '../../config/nexus-data-dir.js';
 import { getDefaultRunsDir } from '../../pipeline/pipeline-runner.js';
