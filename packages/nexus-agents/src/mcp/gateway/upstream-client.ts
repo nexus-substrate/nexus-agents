@@ -8,9 +8,7 @@
  * @module mcp/gateway/upstream-client
  */
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { Client, StdioClientTransport, type Tool } from '../sdk-facade/index.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { UpstreamServerConfig } from '../../config/schemas-gateway.js';
