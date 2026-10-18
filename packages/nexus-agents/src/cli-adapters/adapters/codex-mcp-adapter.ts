@@ -10,8 +10,7 @@
  * SECURITY: All spawn() calls use array-based args without shell interpolation.
  */
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client, StdioClientTransport } from '../../mcp/sdk-facade/index.js';
 import type {
   CliName,
   CliTransport,

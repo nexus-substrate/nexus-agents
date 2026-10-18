@@ -19,12 +19,10 @@ const mocks = vi.hoisted(() => {
   return { mockClient, mockTransport, mockExecAsync };
 });
 
-// Mock the MCP SDK modules
-vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
+// Mock the MCP SDK modules via sdk-facade
+vi.mock('../../mcp/sdk-facade/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../mcp/sdk-facade/index.js')>()),
   Client: mocks.mockClient,
-}));
-
-vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
   StdioClientTransport: mocks.mockTransport,
 }));
 

@@ -16,7 +16,7 @@
  * (Source: Issue #896, Epic #888)
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import {
   createGateway,
   type GatewayConfig,

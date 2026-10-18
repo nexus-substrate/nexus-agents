@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import { createGatewayServerProxy } from './gateway-server-proxy.js';
 import type { GatewayConfig } from './gateway-middleware.js';
 import type { ILogger } from '../../core/index.js';
