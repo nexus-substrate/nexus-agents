@@ -5,8 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from '../sdk-facade/index.js';
 import { McpServer } from '../sdk-types.js';
 
 import { RateLimiter } from '../middleware/index.js';

@@ -7,8 +7,7 @@
  * @module mcp/mcp-prompts-resources.test
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from './sdk-facade/index.js';
 
 import { createServer, connectTransport } from './server.js';
 import { registerPrompts } from './prompts/index.js';

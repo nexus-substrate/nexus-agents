@@ -41,10 +41,15 @@ export {
   type JSONRPCResponse,
   type JSONRPCNotification,
   type JSONRPCErrorResponse,
+  type JsonSchemaType,
+  type JsonSchemaValidator,
 } from '@modelcontextprotocol/server';
 
 // Stdio server transport (@modelcontextprotocol/server/stdio)
 export { StdioServerTransport, serveStdio } from '@modelcontextprotocol/server/stdio';
+
+// Validators (@modelcontextprotocol/server/validators/ajv)
+export { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 
 // ============================================================================
 // Client re-exports (@modelcontextprotocol/client)

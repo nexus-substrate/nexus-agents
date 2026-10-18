@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { getGlobalLogLevel, setGlobalLogLevel } from '../core/logger.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from './mcp-notifier.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from './sdk-types.js';
 
 // ============================================================================
 // Test Helpers

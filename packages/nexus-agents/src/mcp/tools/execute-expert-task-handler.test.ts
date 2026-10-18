@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type {
   CreateTaskRequestHandlerExtra,
   TaskRequestHandlerExtra,
-} from '@modelcontextprotocol/sdk/experimental/tasks';
+} from './execute-expert-task-handler.js';
 import type { ILogger } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { DEFAULT_TASK_TTL_MS } from '../task-store.js';
@@ -165,9 +165,9 @@ describe('createTaskHandler createTask', () => {
   it('rejects with a validation error before creating a task or running the expert', async () => {
     const h = createHarness(() => Promise.resolve({ ok: false, error: 'unreachable' }));
 
-    await expect(
-      h.handler.createTask({ expertId: '', task: 'x' } as CreateTaskArgs, h.extra)
-    ).rejects.toThrow(/^Validation error: /);
+    await expect(h.handler.createTask({ expertId: '', task: 'x' }, h.extra)).rejects.toThrow(
+      /^Validation error: /
+    );
 
     expect(h.createTaskInStore).not.toHaveBeenCalled();
     expect(h.execute).not.toHaveBeenCalled();

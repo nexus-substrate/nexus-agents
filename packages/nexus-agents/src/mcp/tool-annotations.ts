@@ -34,7 +34,7 @@
  * @module mcp/tool-annotations
  */
 
-import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { ToolAnnotations } from './sdk-facade/index.js';
 import { TOOL_ANNOTATIONS as TOOL_SIDE_EFFECTS } from './tools/tool-annotations.js';
 
 /**

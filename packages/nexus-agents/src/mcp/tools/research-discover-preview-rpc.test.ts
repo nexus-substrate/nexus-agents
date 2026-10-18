@@ -2,8 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { McpServer } from '../sdk-types.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from '../sdk-facade/index.js';
 import { registerResearchDiscoverTool } from './research-discover.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
 

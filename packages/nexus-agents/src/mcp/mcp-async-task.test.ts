@@ -9,9 +9,8 @@
  * (Source: Issue #1298 — Layer 2 MCP Tasks async execution)
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Client, InMemoryTransport } from './sdk-facade/index.js';
+import type { McpServer } from './sdk-types.js';
 import { createServer } from './server.js';
 import { RateLimiter } from './middleware/rate-limiter.js';
 import { registerCreateExpertTool, type IExpertFactory } from './tools/create-expert.js';

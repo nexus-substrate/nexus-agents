@@ -117,7 +117,8 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
           resources: {},
           tasks: {},
         },
-        taskStore: getTaskStore(),
+        // Native SubstrateTaskStore cast across SDK v1 exactOptionalPropertyTypes seam
+        taskStore: getTaskStore() as never,
       }
     );
 

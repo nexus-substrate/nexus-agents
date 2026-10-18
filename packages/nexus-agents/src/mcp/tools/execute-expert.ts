@@ -701,7 +701,7 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     createTaskHandler(depsWithNotifier, logger, {
       inputSchema: ExecuteExpertInputSchema,
       execute: handleExecuteExpert,
-    })
+    }) as never
   );
   logger.info('Registered execute_expert tool with MCP Tasks support (taskSupport: optional)');
 }

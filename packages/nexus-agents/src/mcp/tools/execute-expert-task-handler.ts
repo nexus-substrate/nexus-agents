@@ -1,3 +1,4 @@
+// @export-no-consumer-yet — see #4485
 /**
  * nexus-agents/mcp - Execute Expert Tool: MCP Tasks async handler
  *
@@ -17,14 +18,74 @@
  */
 
 import { z } from 'zod';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult } from '../sdk-facade/index.js';
 import type {
-  ToolTaskHandler,
-  CreateTaskRequestHandlerExtra,
-  TaskRequestHandlerExtra,
-} from '@modelcontextprotocol/sdk/experimental/tasks';
-import type { CreateTaskResult, GetTaskResult } from '@modelcontextprotocol/sdk/experimental/tasks';
+  CreateTaskOptions,
+  CreateTaskResult,
+  GetTaskResult,
+  Task,
+  TaskStatus,
+} from '../task-store.js';
 import type { ILogger } from '../../core/index.js';
+
+/**
+ * Task store methods required by the expert task handler.
+ */
+export interface HandlerTaskStore {
+  createTask: (
+    taskParams: CreateTaskOptions,
+    requestId?: unknown,
+    request?: unknown,
+    sessionId?: string
+  ) => Promise<Task>;
+  getTask: (taskId: string, sessionId?: string) => Promise<Task | null>;
+  storeTaskResult: (
+    taskId: string,
+    status: 'completed' | 'failed',
+    result: CallToolResult,
+    sessionId?: string
+  ) => Promise<void>;
+  getTaskResult: (taskId: string, sessionId?: string) => Promise<CallToolResult>;
+  updateTaskStatus?: (
+    taskId: string,
+    status: TaskStatus,
+    statusMessage?: string,
+    sessionId?: string
+  ) => Promise<void>;
+  listTasks?: (
+    cursor?: string,
+    sessionId?: string
+  ) => Promise<{ tasks: Task[]; nextCursor?: string | undefined }>;
+}
+
+/**
+ * Extended handler extra with task store for task creation.
+ */
+export interface CreateTaskRequestHandlerExtra {
+  taskStore: HandlerTaskStore;
+  sessionId?: string | undefined;
+}
+
+/**
+ * Extended handler extra with task ID and store for task operations.
+ */
+export interface TaskRequestHandlerExtra {
+  taskId: string;
+  taskStore: HandlerTaskStore;
+  sessionId?: string | undefined;
+}
+
+/**
+ * Interface for task-based tool handlers.
+ */
+export interface ToolTaskHandler<_Args = unknown> {
+  createTask: (
+    args: ExpertTaskArgs,
+    extra: CreateTaskRequestHandlerExtra
+  ) => Promise<CreateTaskResult>;
+  getTask: (args: ExpertTaskArgs, extra: TaskRequestHandlerExtra) => Promise<GetTaskResult>;
+  getTaskResult: (args: ExpertTaskArgs, extra: TaskRequestHandlerExtra) => Promise<CallToolResult>;
+}
 import { createLogger, formatZodError, getErrorMessage } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
@@ -115,66 +176,118 @@ export const EXECUTE_EXPERT_TOOL_SCHEMA = {
  * @param logger - Logger instance
  * @param executor - The parent's execute path and full input schema
  */
+interface CreateTaskContext<TDeps extends ExpertTaskDeps, TArgs extends ExpertTaskArgs> {
+  deps: TDeps;
+  logger: ILogger;
+  executor: ExpertTaskExecutor<TDeps, TArgs>;
+  notifier: IMcpNotifier;
+}
+
+async function handleCreateTask<TDeps extends ExpertTaskDeps, TArgs extends ExpertTaskArgs>(
+  ctx: CreateTaskContext<TDeps, TArgs>,
+  args: ExpertTaskArgs,
+  extra: CreateTaskRequestHandlerExtra
+): Promise<CreateTaskResult> {
+  // Validate input
+  const parsed = ctx.executor.inputSchema.safeParse(args);
+  if (!parsed.success) throw new Error(`Validation error: ${formatZodError(parsed.error)}`);
+
+  const validatedArgs = parsed.data;
+  const { taskStore } = extra;
+
+  // Both async surfaces occupy the same per-tool and global job slots (#4978).
+  if (!tryAcquire('execute_expert')) {
+    const busy = defaultBusyEnvelope(suggestRetryAfterMs('execute_expert'), 'execute_expert');
+    throw new Error(busy.content.map((content) => content.text).join('\n'));
+  }
+
+  // Create task with clamped TTL
+  const ttl = clampTaskTtl(DEFAULT_TASK_TTL_MS);
+  try {
+    const task =
+      extra.sessionId !== undefined
+        ? await taskStore.createTask(
+            { ttl, pollInterval: 5000 },
+            undefined,
+            undefined,
+            extra.sessionId
+          )
+        : await taskStore.createTask({ ttl, pollInterval: 5000 });
+    ctx.logger.info('Task created for execute_expert', {
+      taskId: task.taskId,
+      expertId: validatedArgs.expertId,
+    });
+
+    // Start background execution (fire-and-forget)
+    void runBackgroundExpertTask({
+      deps: ctx.deps,
+      args: validatedArgs,
+      taskId: task.taskId,
+      taskStore,
+      notifier: ctx.notifier,
+      execute: ctx.executor.execute,
+      sessionId: extra.sessionId,
+    });
+
+    return { task };
+  } catch (error: unknown) {
+    // The background runner only takes ownership after task creation succeeds.
+    release('execute_expert');
+    throw error;
+  }
+}
+
+async function handleGetTask(extra: TaskRequestHandlerExtra): Promise<GetTaskResult> {
+  const task =
+    extra.sessionId !== undefined
+      ? await extra.taskStore.getTask(extra.taskId, extra.sessionId)
+      : await extra.taskStore.getTask(extra.taskId);
+  if (task === null) {
+    throw new Error(`Task with ID ${extra.taskId} not found`);
+  }
+  return task;
+}
+
+/**
+ * Creates a ToolTaskHandler for execute_expert.
+ *
+ * Implements the MCP Tasks primitive (SEP-1686):
+ * - createTask: validates, acquires a shared job slot, starts background execution
+ * - getTask: returns current task status from store
+ * - getTaskResult: returns completed/failed result from store
+ *
+ * When the client supports tasks, createTask returns immediately and the client
+ * polls for status. When the client doesn't support tasks, the SDK internally
+ * polls until completion (handleAutomaticTaskPolling).
+ *
+ * @param deps - Tool dependencies
+ * @param logger - Logger instance
+ * @param executor - The parent's execute path and full input schema
+ */
 export function createTaskHandler<TDeps extends ExpertTaskDeps, TArgs extends ExpertTaskArgs>(
   deps: TDeps,
   logger: ILogger,
   executor: ExpertTaskExecutor<TDeps, TArgs>
 ): ToolTaskHandler<ExecuteExpertToolSchema> {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
+  const ctx: CreateTaskContext<TDeps, TArgs> = { deps, logger, executor, notifier };
 
   return {
-    createTask: async (
+    createTask: (
       args: ExpertTaskArgs,
       extra: CreateTaskRequestHandlerExtra
-    ): Promise<CreateTaskResult> => {
-      // Validate input
-      const parsed = executor.inputSchema.safeParse(args);
-      if (!parsed.success) throw new Error(`Validation error: ${formatZodError(parsed.error)}`);
-
-      const validatedArgs = parsed.data;
-      const { taskStore } = extra;
-
-      // Both async surfaces occupy the same per-tool and global job slots (#4978).
-      if (!tryAcquire('execute_expert')) {
-        const busy = defaultBusyEnvelope(suggestRetryAfterMs('execute_expert'), 'execute_expert');
-        throw new Error(busy.content.map((content) => content.text).join('\n'));
-      }
-
-      // Create task with clamped TTL
-      const ttl = clampTaskTtl(DEFAULT_TASK_TTL_MS);
-      try {
-        const task = await taskStore.createTask({ ttl, pollInterval: 5000 });
-        logger.info('Task created for execute_expert', {
-          taskId: task.taskId,
-          expertId: validatedArgs.expertId,
-        });
-
-        // Start background execution (fire-and-forget)
-        void runBackgroundExpertTask({
-          deps,
-          args: validatedArgs,
-          taskId: task.taskId,
-          taskStore,
-          notifier,
-          execute: executor.execute,
-        });
-
-        return { task };
-      } catch (error: unknown) {
-        // The background runner only takes ownership after task creation succeeds.
-        release('execute_expert');
-        throw error;
-      }
-    },
+    ): Promise<CreateTaskResult> => handleCreateTask(ctx, args, extra),
 
     getTask: (_args: ExpertTaskArgs, extra: TaskRequestHandlerExtra): Promise<GetTaskResult> =>
-      extra.taskStore.getTask(extra.taskId),
+      handleGetTask(extra),
 
     getTaskResult: (
       _args: ExpertTaskArgs,
       extra: TaskRequestHandlerExtra
     ): Promise<CallToolResult> => {
-      return extra.taskStore.getTaskResult(extra.taskId) as Promise<CallToolResult>;
+      return extra.sessionId !== undefined
+        ? extra.taskStore.getTaskResult(extra.taskId, extra.sessionId)
+        : extra.taskStore.getTaskResult(extra.taskId);
     },
   };
 }
@@ -187,6 +300,7 @@ interface BackgroundExpertTaskOpts<TDeps extends ExpertTaskDeps, TArgs extends E
   taskStore: CreateTaskRequestHandlerExtra['taskStore'];
   notifier: IMcpNotifier;
   execute: ExpertTaskExecutor<TDeps, TArgs>['execute'];
+  sessionId?: string | undefined;
 }
 
 /** Report a completed background expert task with token provenance. */
@@ -205,6 +319,44 @@ function notifyExpertComplete(
   });
 }
 
+/** Store background failure result safely. */
+async function recordBackgroundFailure(
+  taskStore: HandlerTaskStore,
+  taskId: string,
+  message: string,
+  sessionId?: string
+): Promise<void> {
+  await storeResult(
+    taskStore,
+    taskId,
+    'failed',
+    {
+      ...toolStructuredError({
+        errorCategory: 'internal',
+        message,
+      }),
+    },
+    sessionId
+  );
+}
+
+/** Store background success result safely. */
+async function recordBackgroundSuccess<TDeps extends ExpertTaskDeps, TArgs extends ExpertTaskArgs>(
+  opts: BackgroundExpertTaskOpts<TDeps, TArgs>,
+  completion: ExpertTaskCompletion
+): Promise<void> {
+  notifyExpertComplete(opts.notifier, opts.taskId, completion);
+  await storeResult(
+    opts.taskStore,
+    opts.taskId,
+    'completed',
+    {
+      ...toolSuccess(JSON.stringify(completion, null, 2)),
+    },
+    opts.sessionId
+  );
+}
+
 /**
  * Runs expert execution in the background, updating task store on completion.
  * Fire-and-forget — errors are caught and stored as task failures.
@@ -212,7 +364,7 @@ function notifyExpertComplete(
 async function runBackgroundExpertTask<TDeps extends ExpertTaskDeps, TArgs extends ExpertTaskArgs>(
   opts: BackgroundExpertTaskOpts<TDeps, TArgs>
 ): Promise<void> {
-  const { deps, args, taskId, taskStore, notifier, execute } = opts;
+  const { deps, args, taskId, taskStore, notifier, execute, sessionId } = opts;
   const logger = deps.logger ?? createLogger({ tool: 'execute_expert' });
   try {
     notifier.info('execute_expert', {
@@ -226,30 +378,26 @@ async function runBackgroundExpertTask<TDeps extends ExpertTaskDeps, TArgs exten
     );
 
     if (!result.ok) {
-      await taskStore.storeTaskResult(taskId, 'failed', {
-        ...toolStructuredError({
-          errorCategory: 'internal',
-          message: `Failed to execute expert: ${result.error}`,
-        }),
-      });
+      await recordBackgroundFailure(
+        taskStore,
+        taskId,
+        `Failed to execute expert: ${result.error}`,
+        sessionId
+      );
       return;
     }
 
-    notifyExpertComplete(notifier, taskId, result.value);
-
-    await taskStore.storeTaskResult(taskId, 'completed', {
-      ...toolSuccess(JSON.stringify(result.value, null, 2)),
-    });
+    await recordBackgroundSuccess(opts, result.value);
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     logger.warn('Background expert task failed', { taskId, error: message });
     try {
-      await taskStore.storeTaskResult(taskId, 'failed', {
-        ...toolStructuredError({
-          errorCategory: 'internal',
-          message: `Expert execution error: ${message}`,
-        }),
-      });
+      await recordBackgroundFailure(
+        taskStore,
+        taskId,
+        `Expert execution error: ${message}`,
+        sessionId
+      );
     } catch (storeError: unknown) {
       logger.warn('Failed to store task failure result', {
         taskId,
@@ -258,5 +406,20 @@ async function runBackgroundExpertTask<TDeps extends ExpertTaskDeps, TArgs exten
     }
   } finally {
     release('execute_expert');
+  }
+}
+
+/** Helper to call storeTaskResult without passing undefined sessionId */
+async function storeResult(
+  taskStore: HandlerTaskStore,
+  taskId: string,
+  status: 'completed' | 'failed',
+  result: CallToolResult,
+  sessionId?: string
+): Promise<void> {
+  if (sessionId !== undefined) {
+    await taskStore.storeTaskResult(taskId, status, result, sessionId);
+  } else {
+    await taskStore.storeTaskResult(taskId, status, result);
   }
 }

@@ -29,8 +29,7 @@ import {
   type VoteDecisionStatus,
 } from './consensus-vote.js';
 import { z } from 'zod';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
-import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types';
+import { AjvJsonSchemaValidator, type JsonSchemaType } from '../sdk-facade/index.js';
 import {
   toAgentVoteSummary,
   buildResponse,
