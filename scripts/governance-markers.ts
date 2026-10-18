@@ -16,8 +16,6 @@
 export const MARKERS = {
   toolIndexStart: '<!-- GOVERNANCE:TOOL_INDEX:START -->',
   toolIndexEnd: '<!-- GOVERNANCE:TOOL_INDEX:END -->',
-  modelListStart: '<!-- GOVERNANCE:MODEL_LIST:START -->',
-  modelListEnd: '<!-- GOVERNANCE:MODEL_LIST:END -->',
   versionStart: '<!-- GOVERNANCE:VERSION:START -->',
   versionEnd: '<!-- GOVERNANCE:VERSION:END -->',
   readmeToolsStart: '<!-- GOVERNANCE:README_TOOLS:START -->',
