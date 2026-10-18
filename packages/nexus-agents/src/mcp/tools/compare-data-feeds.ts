@@ -381,6 +381,7 @@ export function registerCompareDataFeedsTool(server: McpServer, deps: CompareDat
   const logger = deps.logger ?? createLogger({ tool: 'compare_data_feeds' });
   const secureHandler = createSecureHandler(createCompareDataFeedsHandler(deps), {
     toolName: 'compare_data_feeds',
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });

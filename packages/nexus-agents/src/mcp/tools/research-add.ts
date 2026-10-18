@@ -233,6 +233,7 @@ export function registerResearchAddTool(server: McpServer, deps: ResearchAddDeps
 
   const secureHandler = createSecureHandler(createResearchAddHandler(deps), {
     toolName: 'research_add',
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });

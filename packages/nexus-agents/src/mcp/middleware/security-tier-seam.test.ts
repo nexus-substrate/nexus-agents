@@ -38,6 +38,11 @@ import { registerIssueTriageTool } from '../tools/issue-triage-tool.js';
 import { registerResearchAddSourceTool } from '../tools/research-add-source.js';
 import { registerOrchestrateTool } from '../tools/orchestrate.js';
 import { registerPrReviewTool } from '../tools/pr-review-tool.js';
+import { registerCiHealthCheckTool } from '../tools/ci-health-check-tool.js';
+import { registerCompareDataFeedsTool } from '../tools/compare-data-feeds.js';
+import { registerRepoAnalyzeTool } from '../tools/repo-analyze-tool.js';
+import { registerResearchAddTool } from '../tools/research-add.js';
+import { registerSurveyOssLandscapeTool } from '../tools/survey-oss-landscape.js';
 
 const TOOLS_DIRECTORY = fileURLToPath(new URL('../tools', import.meta.url));
 
@@ -97,6 +102,16 @@ function makeDeps(): unknown {
 // This table drives real registration tests and supplies their coverage set.
 const EXTERNAL_TOOL_CASES = [
   {
+    fileName: 'ci-health-check-tool.ts',
+    register: registerCiHealthCheckTool,
+    input: { repo: INJECTION_PAYLOAD },
+  },
+  {
+    fileName: 'compare-data-feeds.ts',
+    register: registerCompareDataFeedsTool,
+    input: { feedAPath: 'a.json', feedBPath: 'b.json', keyPath: INJECTION_PAYLOAD },
+  },
+  {
     fileName: 'issue-triage-tool.ts',
     register: registerIssueTriageTool,
     input: {
@@ -110,9 +125,24 @@ const EXTERNAL_TOOL_CASES = [
     input: { prDiff: 'diff --git a/a.ts b/a.ts', prDescription: INJECTION_PAYLOAD },
   },
   {
+    fileName: 'repo-analyze-tool.ts',
+    register: registerRepoAnalyzeTool,
+    input: { repo: INJECTION_PAYLOAD },
+  },
+  {
     fileName: 'research-add-source.ts',
     register: registerResearchAddSourceTool,
     input: { url: 'https://example.com/paper', title: INJECTION_PAYLOAD },
+  },
+  {
+    fileName: 'research-add.ts',
+    register: registerResearchAddTool,
+    input: { arxivId: '2401.12345', topic: INJECTION_PAYLOAD },
+  },
+  {
+    fileName: 'survey-oss-landscape.ts',
+    register: registerSurveyOssLandscapeTool,
+    input: { query: INJECTION_PAYLOAD },
   },
 ];
 

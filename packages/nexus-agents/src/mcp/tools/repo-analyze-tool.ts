@@ -77,6 +77,7 @@ export function registerRepoAnalyzeTool(server: McpServer, deps: RepoAnalyzeDeps
 
   const secureHandler = createSecureHandler(repoAnalyzeHandler, {
     toolName: 'repo_analyze',
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });

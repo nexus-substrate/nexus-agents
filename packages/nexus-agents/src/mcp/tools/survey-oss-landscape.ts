@@ -318,6 +318,7 @@ export function registerSurveyOssLandscapeTool(
   const logger = deps.logger ?? createLogger({ tool: 'survey_oss_landscape' });
   const secureHandler = createSecureHandler(createSurveyHandler(deps), {
     toolName: 'survey_oss_landscape',
+    securityTier: 'external',
     rateLimiter: deps.rateLimiter,
     logger,
   });
