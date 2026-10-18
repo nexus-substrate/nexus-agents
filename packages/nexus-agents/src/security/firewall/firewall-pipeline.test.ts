@@ -12,6 +12,7 @@ import { parseATL } from './agent-trust-labels.js';
 import type { FirewallProcessOptions } from './firewall-types.js';
 import type { AgentAction, SourceCitation } from '../action-schema.js';
 import { ACTION_SCOPED_POLICY_RULES } from '../policy-gate.js';
+import { blockingViolations } from './firewall-policy-stage.js';
 
 /** Helper to create a firewall with GitHub adapter. */
 function createFirewall(overrides: Record<string, unknown> = {}): HostileInputFirewall {
@@ -955,7 +956,7 @@ describe('policyEnforcement stage — the full evaluatePolicy set (#5380)', () =
       },
       {
         rule: 'SOURCE_TRUST_MISMATCH',
-        severity: 'warn',
+        severity: 'block',
         input: owner(),
         options: { context: READ_ONLY, action: { ...draftReply, sources: [lowTierComment] } },
       },
@@ -1050,8 +1051,26 @@ describe('policyEnforcement stage — the full evaluatePolicy set (#5380)', () =
       expect(result.value.wouldRefuse).toBe(false);
     });
 
-    it('a warn-only violation neither refuses under enforce nor counts as wouldRefuse under audit', () => {
-      const warnOnly: FirewallProcessOptions = {
+    it('a warn-only violation does not count as a blocking violation', () => {
+      const warnViolation = {
+        rule: 'WARN_ONLY_RULE',
+        message: 'informational warning',
+        severity: 'warn' as const,
+      };
+      expect(
+        blockingViolations({
+          scope: 'action',
+          actionType: 'DraftReply',
+          allowed: true,
+          requiresApproval: false,
+          violations: [warnViolation],
+          unmeasured: [],
+        })
+      ).toEqual([]);
+    });
+
+    it('SOURCE_TRUST_MISMATCH refuses under enforce and counts as wouldRefuse under audit', () => {
+      const mismatched: FirewallProcessOptions = {
         context: READ_ONLY,
         action: {
           ...draftReply,
@@ -1068,16 +1087,16 @@ describe('policyEnforcement stage — the full evaluatePolicy set (#5380)', () =
       };
       const ownerInput = issueInput({ username: 'owner', authorAssociation: 'OWNER' });
 
-      const enforced = createFirewall({ policyMode: 'enforce' }).process(ownerInput, warnOnly);
-      expect(enforced.ok).toBe(true);
+      const enforced = createFirewall({ policyMode: 'enforce' }).process(ownerInput, mismatched);
+      expect(enforced.ok).toBe(false);
 
-      const audited = createFirewall({ policyMode: 'audit' }).process(ownerInput, warnOnly);
+      const audited = createFirewall({ policyMode: 'audit' }).process(ownerInput, mismatched);
       expect(audited.ok).toBe(true);
       if (!audited.ok) return;
       expect(audited.value.policy?.violations.map((v) => v.rule)).toEqual([
         'SOURCE_TRUST_MISMATCH',
       ]);
-      expect(audited.value.wouldRefuse).toBe(false);
+      expect(audited.value.wouldRefuse).toBe(true);
     });
   });
 

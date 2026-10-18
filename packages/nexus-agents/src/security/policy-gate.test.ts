@@ -37,6 +37,18 @@ const tier3Comment: SourceCitation = {
   author: 'stranger',
   authorTrustTier: '3',
 };
+const tier4IssueBody: SourceCitation = {
+  type: 'issueBody',
+  issueNumber: 1,
+  author: 'stranger',
+  authorTrustTier: '4',
+};
+const tier1IssueBody: SourceCitation = {
+  type: 'issueBody',
+  issueNumber: 1,
+  author: 'admin',
+  authorTrustTier: '1',
+};
 
 // ============================================================================
 // Test Helpers - Action Factories
@@ -274,17 +286,42 @@ describe('evaluatePolicy', () => {
     });
   });
 
-  it('warns on source trust mismatch', () => {
+  it('blocks on source trust mismatch', () => {
     const action = makePatch([tier3Comment, tier3Comment]);
     const ctx = makeContext('1');
     const decision = evaluatePolicy(action, ctx);
 
-    const warnings = decision.violations.filter((v) => v.severity === 'warn');
-    expect(warnings).toContainEqual(
+    expect(decision.allowed).toBe(false);
+    expect(decision.violations).toContainEqual(
       expect.objectContaining({
         rule: 'SOURCE_TRUST_MISMATCH',
+        severity: 'block',
       })
     );
+  });
+
+  it('blocks when action cites an issueBody with insufficient trust tier', () => {
+    const action = makeDraft([tier4IssueBody]);
+    const ctx = makeContext('1');
+    const decision = evaluatePolicy(action, ctx);
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.violations).toContainEqual(
+      expect.objectContaining({
+        rule: 'SOURCE_TRUST_MISMATCH',
+        severity: 'block',
+        message: expect.stringContaining('insufficient for action requiring Tier 2'),
+      })
+    );
+  });
+
+  it('allows when action cites an issueBody with sufficient trust tier', () => {
+    const action = makeDraft([tier1IssueBody]);
+    const ctx = makeContext('1');
+    const decision = evaluatePolicy(action, ctx);
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.violations.map((v) => v.rule)).not.toContain('SOURCE_TRUST_MISMATCH');
   });
 
   it('collects multiple blocking violations', () => {

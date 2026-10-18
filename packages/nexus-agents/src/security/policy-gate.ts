@@ -249,13 +249,13 @@ function checkSourceTrustTiers(action: AgentAction): Violation | undefined {
   const requiredNumeric = TRUST_TIER_NUMERIC[requiredTier];
 
   for (const source of sources) {
-    if (source.type === 'issueComment') {
+    if (source.type === 'issueComment' || source.type === 'issueBody') {
       const sourceTierNumeric = TRUST_TIER_NUMERIC[source.authorTrustTier];
       if (sourceTierNumeric > requiredNumeric) {
         return {
           rule: 'SOURCE_TRUST_MISMATCH',
           message: `Source from '${source.author}' (Tier ${source.authorTrustTier}) insufficient for action requiring Tier ${requiredTier}`,
-          severity: 'warn',
+          severity: 'block',
         };
       }
     }

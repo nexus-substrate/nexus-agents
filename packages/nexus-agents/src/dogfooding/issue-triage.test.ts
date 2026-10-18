@@ -1141,6 +1141,7 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       expect(proposeLabels?.details['policyViolations']).toEqual([
         'INSUFFICIENT_TRUST',
         'UNTRUSTED_INFLUENCE',
+        'SOURCE_TRUST_MISMATCH',
         'INSUFFICIENT_CORROBORATION',
       ]);
       expect(proposeLabels?.details['refusedAtStage']).toBe('corroboration');
