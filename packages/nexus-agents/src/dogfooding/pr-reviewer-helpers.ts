@@ -28,7 +28,7 @@ import {
   DECISION_EMOJI,
 } from './pr-review-types.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
-export { formatDiffs } from './pr-diff-fence.js';
+export { formatDiffs, fenceExternalContent } from './pr-diff-fence.js';
 import { formatDiffs } from './pr-diff-fence.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import { assessReputation } from '../security/reputation-model.js';

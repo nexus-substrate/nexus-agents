@@ -52,6 +52,7 @@ import {
   assessPRReputation,
   fetchAccountAgeDays,
   formatDiffs,
+  fenceExternalContent,
   reviewPostingBlock,
 } from './pr-reviewer-helpers.js';
 import { buildReviewCitations } from './pr-review-citations.js';
@@ -302,17 +303,20 @@ export class PRReviewer {
     // Sanitize untrusted PR content before embedding in expert task (Issue #828)
     const safeTitle = this.sanitizePRContent(pr.title, pr.author);
     const safeBody = this.sanitizePRContent(pr.body, pr.author);
+    const fencedTitle = fenceExternalContent(safeTitle).text;
+    const fencedBody = fenceExternalContent(safeBody || 'No description provided.').text;
 
     return `Review this pull request for ${CATEGORY_DISPLAY_NAMES[category]} concerns:
 
-## PR: ${safeTitle}
+## PR:
+${fencedTitle}
 
 **Author:** ${pr.author}
 **Branch:** ${pr.head} → ${pr.base}
 **Changes:** +${String(pr.additions)} / -${String(pr.deletions)} lines
 
 ### Description
-${safeBody || 'No description provided.'}
+${fencedBody}
 
 ### Changed Files
 ${filesSummary}
