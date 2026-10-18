@@ -86,6 +86,8 @@ export interface MiddlewareChainConfig {
   executionMode?: ExecutionMode | undefined;
   /** Allowed paths for file operations */
   allowedPaths?: readonly string[] | undefined;
+  /** Blocked file-path patterns */
+  blockedPatterns?: readonly string[] | undefined;
   /** Rate limiter configuration (optional) */
   rateLimiter?: RateLimiterConfig | RateLimiter | undefined;
   /** Timeout configuration (optional) */
@@ -159,12 +161,14 @@ function createPolicyMiddleware(
   firewall: IPolicyFirewall,
   toolName: string,
   mode: ExecutionMode,
-  allowedPaths?: readonly string[]
+  allowedPaths?: readonly string[],
+  blockedPatterns?: readonly string[]
 ): Middleware {
   return async (args, ctx, next) => {
     const policyCtx = createPolicyContext(toolName, args, {
       mode,
       ...(allowedPaths !== undefined && { allowedPaths }),
+      ...(blockedPatterns !== undefined && { blockedPatterns }),
     });
     const decision = firewall.evaluate(policyCtx);
 
@@ -350,7 +354,8 @@ function addPolicyMiddleware(
         config.policyFirewall,
         config.toolName,
         mode,
-        config.allowedPaths
+        config.allowedPaths,
+        config.blockedPatterns
       ),
     });
   }

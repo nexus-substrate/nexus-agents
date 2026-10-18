@@ -100,6 +100,8 @@ export interface ToolFactoryConfig {
   rateLimiter?: RateLimiterConfig | RateLimiter | undefined;
   /** Allowed paths for file operations */
   allowedPaths?: readonly string[] | undefined;
+  /** Blocked file-path patterns */
+  blockedPatterns?: readonly string[] | undefined;
 }
 
 /**
@@ -158,7 +160,7 @@ export function createToolFactory(
   handler: ContextAwareToolHandler | ToolHandler,
   options?: ToolWrapperOptions
 ) => ToolHandler {
-  const { security, policyFirewall, rateLimiter, allowedPaths, logger } = config;
+  const { security, policyFirewall, rateLimiter, allowedPaths, blockedPatterns, logger } = config;
 
   return (toolName, handler, options) => {
     const skip = {
@@ -172,6 +174,7 @@ export function createToolFactory(
       // Unset falls through to the registry's process-wide mode (#6431).
       executionMode: options?.executionMode,
       allowedPaths,
+      blockedPatterns: blockedPatterns ?? security?.blockedPatterns,
       rateLimiter,
       timeout: skip.timeout === true ? undefined : getTimeoutConfig(security, options?.timeoutMs),
       skip,

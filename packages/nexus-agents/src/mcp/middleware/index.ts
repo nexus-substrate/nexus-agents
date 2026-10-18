@@ -61,6 +61,8 @@ export {
   denyMutationsWithoutModeRule,
   safePathsRule,
   secretPathsRule,
+  blockedPatternsRule,
+  createBlockedPatternsRule,
   // Factory functions
   createDefaultPolicyFirewall,
   evaluatePolicy,

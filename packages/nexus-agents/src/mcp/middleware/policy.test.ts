@@ -603,10 +603,20 @@ describe('createDefaultPolicyFirewall', () => {
     const firewall = createDefaultPolicyFirewall();
 
     const rules = firewall.getRules();
-    expect(rules).toHaveLength(3);
+    expect(rules).toHaveLength(4);
     expect(rules.map((r) => r.name)).toContain('deny-mutations-without-mode');
     expect(rules.map((r) => r.name)).toContain('secret-paths');
+    expect(rules.map((r) => r.name)).toContain('blocked-patterns');
     expect(rules.map((r) => r.name)).toContain('safe-paths');
+  });
+
+  it('should deny paths matching blockedPatterns configured at initialization', () => {
+    const firewall = createDefaultPolicyFirewall({ blockedPatterns: ['**/*.token'] });
+    const ctx = createPolicyContext('read_file', { path: './auth.token' });
+
+    const decision = firewall.evaluate(ctx);
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain("matches blocked pattern '**/*.token'");
   });
 
   it('should respect config options', () => {

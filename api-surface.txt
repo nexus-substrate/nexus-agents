@@ -2550,7 +2550,7 @@ FunctionDeclaration createOutcomeStorage
 FunctionDeclaration createOWVoting
   : (options?: OWVotingOptions | undefined) => IHigherOrderVoting
 FunctionDeclaration createPolicyContext
-  : (toolName: string, args: unknown, options?: undefined | { allowedPaths?: readonly string[]; artifacts?: Map<string, Artifact>; mode?: ExecutionMode; workflowId?: string; }) => PolicyContext
+  : (toolName: string, args: unknown, options?: undefined | { allowedPaths?: readonly string[]; artifacts?: Map<string, Artifact>; blockedPatterns?: readonly string[]; mode?: ExecutionMode; workflowId?: string; }) => PolicyContext
 FunctionDeclaration createPreferenceRouter
   : (config?: Partial<PreferenceRouterConfig> | undefined, dataStore?: IPreferenceDataStore | undefined) => PreferenceRouter
 FunctionDeclaration createProductionWorkflowEngine
@@ -6744,6 +6744,7 @@ InterfaceDeclaration PolicyContext @mcp/middleware/policy-types
   readonly allowedPaths?: readonly string[] | undefined
   readonly args: unknown
   readonly artifacts?: Map<string, Artifact<unknown>> | undefined
+  readonly blockedPatterns?: readonly string[] | undefined
   readonly mode: ExecutionMode
   readonly toolName: string
   readonly workflowId?: string | undefined
@@ -6808,6 +6809,7 @@ ClassDeclaration PolicyFirewall
   removeRule(name: string) => boolean
   setMode(mode: PolicyMode) => void
 InterfaceDeclaration PolicyFirewallConfig
+  readonly blockedPatterns?: readonly string[] | undefined
   readonly logger?: ILogger | undefined
   readonly mode?: PolicyMode | undefined
   readonly rules?: readonly PolicyRule[] | undefined

@@ -77,6 +77,8 @@ export interface SecureHandlerConfig {
   executionMode?: ExecutionMode;
   /** Allowed paths for file operations */
   allowedPaths?: readonly string[];
+  /** Blocked file-path patterns */
+  blockedPatterns?: readonly string[];
   /** Rate limiter instance (optional) */
   rateLimiter?: RateLimiter;
   /** Logger instance (optional - creates default if not provided) */

@@ -12,6 +12,7 @@ import {
   extractPathsFromArgs,
   canonicalizeToolPath,
   findSecretPathPattern,
+  findMatchingPathPattern,
 } from './policy-helpers.js';
 import { classifyRegisteredTool, type ToolExecutionClass } from '../tools/tool-manifest.js';
 
@@ -195,3 +196,50 @@ export const secretPathsRule: PolicyRule = {
     return { allowed: true, reason: 'Path matches no secret-path pattern' };
   },
 };
+
+// =============================================================================
+// Blocked patterns
+// =============================================================================
+
+/**
+ * Creates a policy rule that denies file paths matching configured blocked patterns.
+ */
+export function createBlockedPatternsRule(configuredPatterns: readonly string[]): PolicyRule {
+  return {
+    name: 'blocked-patterns',
+    description: 'Denies access to file paths matching configured blocked patterns',
+    check(ctx: PolicyContext): PolicyDecision {
+      const patterns = [
+        ...configuredPatterns,
+        ...(ctx.blockedPatterns ?? []),
+      ];
+      if (patterns.length === 0) {
+        return { allowed: true, reason: 'No blocked patterns configured' };
+      }
+
+      const targetPaths = extractPathsFromArgs(ctx.args);
+      if (targetPaths.length === 0) {
+        return { allowed: true, reason: 'No path argument found' };
+      }
+
+      for (const targetPath of targetPaths) {
+        const canonical = canonicalizeToolPath(targetPath);
+        const hit = findMatchingPathPattern(canonical, patterns);
+        if (hit !== undefined) {
+          return {
+            allowed: false,
+            reason: `Path '${canonical}' matches blocked pattern '${hit}'`,
+          };
+        }
+      }
+
+      return { allowed: true, reason: 'Path matches no blocked pattern' };
+    },
+  };
+}
+
+/**
+ * Policy rule that denies access to file paths matching blocked patterns in PolicyContext.
+ */
+export const blockedPatternsRule: PolicyRule = createBlockedPatternsRule([]);
+

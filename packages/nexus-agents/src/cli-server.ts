@@ -323,27 +323,63 @@ async function initializeAndRegisterTools(
   // still go to the tools below.
   const gatewayAdapters = await wireGateway(logger, adapterRegistry);
   const modelAdapter = resolveDefaultModelAdapter(gatewayAdapters, adapterRegistry);
+  const toolsOptions = buildToolsOptions({
+    server,
+    logger,
+    builtInTemplates,
+    policyFirewall,
+    config,
+    modelAdapter,
+    gatewayAdapters,
+    auditLogger,
+  });
+  registerMcpTools(toolsOptions);
+}
+
+interface BuildToolsOptionsArgs {
+  server: McpServer;
+  logger: ILogger;
+  builtInTemplates: Awaited<ReturnType<typeof initializeBuiltInTemplates>>;
+  policyFirewall: import('./mcp/middleware/index.js').IPolicyFirewall;
+  config: AppConfig;
+  modelAdapter: unknown;
+  gatewayAdapters: unknown;
+  auditLogger?: AuditLogger | null | undefined;
+}
+
+/** Assembles options for registerMcpTools. */
+function buildToolsOptions(args: BuildToolsOptionsArgs): Parameters<typeof registerMcpTools>[0] {
+  const {
+    server,
+    logger,
+    builtInTemplates,
+    policyFirewall,
+    config,
+    modelAdapter,
+    gatewayAdapters,
+    auditLogger,
+  } = args;
   const policyVals = getPolicyValues(config);
-  const allowedPaths = config.security?.allowedPaths;
-  const securityConfig = config.security;
-  const workflowConfig = config.workflows;
-  const toolsOptions = {
+  const options: Record<string, unknown> = {
     server,
     logger,
     builtInTemplates,
     policyFirewall,
     executionMode: policyVals.defaultExec,
     modelAdapter,
-    // Per-model gateway adapters routed to voters (#4040) — in-process, no subprocess.
-    ...(gatewayAdapters !== undefined && { gatewayAdapters }),
-    // Gateway middleware for tier-aware dispatch logging (Issue #896, #897)
     gatewayConfig: buildGatewayConfig(config, logger),
-    ...(allowedPaths !== undefined && { allowedPaths }),
-    ...(securityConfig !== undefined && { securityConfig }),
-    ...(workflowConfig !== undefined && { workflowConfig }),
-    ...(auditLogger !== null && auditLogger !== undefined && { auditLogger }),
   };
-  registerMcpTools(toolsOptions);
+  if (gatewayAdapters !== undefined) options['gatewayAdapters'] = gatewayAdapters;
+  if (config.security?.allowedPaths !== undefined) {
+    options['allowedPaths'] = config.security.allowedPaths;
+  }
+  if (config.security?.blockedPatterns !== undefined) {
+    options['blockedPatterns'] = config.security.blockedPatterns;
+  }
+  if (config.security !== undefined) options['securityConfig'] = config.security;
+  if (config.workflows !== undefined) options['workflowConfig'] = config.workflows;
+  if (auditLogger !== null && auditLogger !== undefined) options['auditLogger'] = auditLogger;
+  return options as unknown as Parameters<typeof registerMcpTools>[0];
 }
 
 /** Resolves the stdio log destination, warning once when stdout is requested. */
