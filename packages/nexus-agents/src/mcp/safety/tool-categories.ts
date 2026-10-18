@@ -50,7 +50,22 @@ const TOOL_CLASSIFICATION_PATTERNS: ReadonlyArray<{
   },
   {
     category: ToolCategory.SHELL_EXECUTE,
-    patterns: [/^bash$/i, /^shell$/i, /^exec/i, /^run_?command/i, /^execute/i, /^spawn/i],
+    patterns: [
+      /^bash/i,
+      /^zsh/i,
+      /^sh$/i,
+      /^powershell/i,
+      /^cmd$/i,
+      /^terminal/i,
+      /^shell/i,
+      /_shell$/i,
+      /^exec/i,
+      /_exec$/i,
+      /^run_?command/i,
+      /^run_?shell/i,
+      /^execute/i,
+      /^spawn/i,
+    ],
   },
   {
     category: ToolCategory.NETWORK_REQUEST,

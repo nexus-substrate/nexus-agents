@@ -90,6 +90,18 @@ describe('classifyTool - shell execution', () => {
   it('classifies run_command as SHELL_EXECUTE', () => {
     expect(classifyTool('run_command')).toBe(ToolCategory.SHELL_EXECUTE);
   });
+
+  it('classifies shell_exec and run_shell as SHELL_EXECUTE', () => {
+    expect(classifyTool('shell_exec')).toBe(ToolCategory.SHELL_EXECUTE);
+    expect(classifyTool('run_shell')).toBe(ToolCategory.SHELL_EXECUTE);
+  });
+
+  it('classifies terminal, powershell, zsh, and sh as SHELL_EXECUTE', () => {
+    expect(classifyTool('terminal')).toBe(ToolCategory.SHELL_EXECUTE);
+    expect(classifyTool('powershell')).toBe(ToolCategory.SHELL_EXECUTE);
+    expect(classifyTool('zsh')).toBe(ToolCategory.SHELL_EXECUTE);
+    expect(classifyTool('sh')).toBe(ToolCategory.SHELL_EXECUTE);
+  });
 });
 
 // ============================================================================
