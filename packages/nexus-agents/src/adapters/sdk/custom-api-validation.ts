@@ -15,10 +15,16 @@
 
 import { isIPv4, isIPv6 } from 'node:net';
 import { lookup as dnsLookup } from 'node:dns/promises';
-import { ConfigError, ok, err, createLogger, type Result } from '../../core/index.js';
+import { ConfigError, ok, err, createLogger, type Result, type ILogger } from '../../core/index.js';
 import { CUSTOM_API_ALLOW_PRIVATE_ENV } from './types.js';
 
 const logger = createLogger({ module: 'custom-api-validation' });
+
+/** Result of the host resolution check. */
+export interface CustomApiResolveCheckResult {
+  /** True if DNS resolution actually ran and checked returned addresses; false if bypassed, literal, or lookup failed. */
+  readonly resolveChecked: boolean;
+}
 
 /**
  * Why a given URL was rejected. Machine-readable so error messages can
@@ -206,11 +212,14 @@ function classifyLiteral(hostname: string, normalized: string): Result<void, Con
  */
 export async function assertCustomApiHostResolvesPublic(
   hostname: string,
-  opts: { readonly allowPrivate?: boolean } = {}
-): Promise<Result<void, ConfigError>> {
+  opts: {
+    readonly allowPrivate?: boolean;
+    readonly logger?: Pick<ILogger, 'warn' | 'debug'>;
+  } = {}
+): Promise<Result<CustomApiResolveCheckResult, ConfigError>> {
   const allowPrivate = opts.allowPrivate === true || resolveAllowPrivateFromEnv();
   if (allowPrivate) {
-    return ok(undefined);
+    return ok({ resolveChecked: false });
   }
 
   const normalized = normalizeHost(hostname);
@@ -223,23 +232,15 @@ export async function assertCustomApiHostResolvesPublic(
   // reached IMDS, from a base URL that can come from a file rather than from
   // operator intent.
   if (isIPv4(normalized) || isIPv6(normalized)) {
-    return classifyLiteral(hostname, normalized);
+    const literalResult = classifyLiteral(hostname, normalized);
+    if (!literalResult.ok) return literalResult;
+    return ok({ resolveChecked: false });
   }
 
-  // Only `address` is read; the resolver's `family` is intentionally NOT
-  // trusted — `classifyIpAddress` re-derives v4/v6 from the address string, so
-  // a mislabeled family in the lookup result cannot let a private IP slip past.
-  let addresses: ReadonlyArray<{ readonly address: string }>;
-  try {
-    addresses = await dnsLookup(hostname, { all: true });
-  } catch (error) {
-    // Fail OPEN: transient/NXDOMAIN/network errors must not break legit
-    // gateways. The sync string guard already ran; this is additive only.
-    logger.debug('custom-api SSRF resolve check: DNS lookup failed, skipping (fail-open)', {
-      hostname,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return ok(undefined);
+  const log = opts.logger ?? logger;
+  const addresses = await resolveHostAddresses(hostname, log);
+  if (addresses === null) {
+    return ok({ resolveChecked: false });
   }
 
   const rejection = firstPrivateAddress(addresses);
@@ -253,7 +254,24 @@ export async function assertCustomApiHostResolvesPublic(
     );
   }
 
-  return ok(undefined);
+  return ok({ resolveChecked: true });
+}
+
+async function resolveHostAddresses(
+  hostname: string,
+  log: Pick<ILogger, 'warn' | 'debug'>
+): Promise<ReadonlyArray<{ readonly address: string }> | null> {
+  try {
+    return await dnsLookup(hostname, { all: true });
+  } catch (error) {
+    // Fail OPEN: transient/NXDOMAIN/network errors must not break legit
+    // gateways. The sync string guard already ran; this is additive only.
+    log.warn('custom-api SSRF resolve check: DNS lookup failed, skipping (fail-open)', {
+      hostname,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 /**

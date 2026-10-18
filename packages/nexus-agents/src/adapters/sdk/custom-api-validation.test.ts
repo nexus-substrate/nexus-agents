@@ -469,11 +469,36 @@ describe('assertCustomApiHostResolvesPublic (DNS-resolve-time SSRF guard, #3426)
   });
 
   describe('fail-open on lookup error (additive defense-in-depth)', () => {
-    it('returns ok when dns.lookup throws (does not break legit gateways)', async () => {
+    it('returns ok with resolveChecked: false and logs warning when dns.lookup throws', async () => {
       lookupMock.mockRejectedValueOnce(new Error('ENOTFOUND transient'));
-      const result = await assertCustomApiHostResolvesPublic('flaky-resolver.example.com');
+      const mockLogger = {
+        warn: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        error: vi.fn(),
+      };
+      const result = await assertCustomApiHostResolvesPublic('flaky-resolver.example.com', {
+        logger: mockLogger,
+      });
       expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual({ resolveChecked: false });
+      }
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'custom-api SSRF resolve check: DNS lookup failed, skipping (fail-open)',
+        expect.objectContaining({ hostname: 'flaky-resolver.example.com' })
+      );
       expect(lookupMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns ok with resolveChecked: true when dns.lookup succeeds with public address', async () => {
+      lookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      const result = await assertCustomApiHostResolvesPublic('gateway.example.com');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual({ resolveChecked: true });
+      }
     });
   });
 });
+
