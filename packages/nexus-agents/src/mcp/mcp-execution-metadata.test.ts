@@ -36,10 +36,10 @@ describe('MCP SDK task support constraints', () => {
     }
   });
 
-  it('InMemoryTaskStore is available in SDK', async () => {
-    const { InMemoryTaskStore } = await import('@modelcontextprotocol/sdk/experimental/tasks');
-    expect(InMemoryTaskStore).toBeDefined();
-    const store = new InMemoryTaskStore();
+  it('SubstrateTaskStore is available and functional', async () => {
+    const { SubstrateTaskStore } = await import('./task-store.js');
+    expect(SubstrateTaskStore).toBeDefined();
+    const store = new SubstrateTaskStore();
     expect(typeof store.createTask).toBe('function');
     expect(typeof store.getTask).toBe('function');
     expect(typeof store.storeTaskResult).toBe('function');

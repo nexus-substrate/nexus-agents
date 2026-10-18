@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import type { McpServer } from '../sdk-types.js';
-import type { CreateTaskRequestHandlerExtra } from '@modelcontextprotocol/sdk/experimental/tasks';
+import type { CreateTaskRequestHandlerExtra } from './execute-expert-task-handler.js';
 import type { ILogger, IModelAdapter, CompletionResponse, StreamChunk } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import type { Expert } from '../../agents/index.js';

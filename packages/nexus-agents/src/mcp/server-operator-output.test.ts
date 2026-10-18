@@ -30,7 +30,7 @@ function collectResponse(stdout: PassThrough): Promise<string> {
 }
 
 /** A tool that emits operator events and a genuine progress heartbeat. */
-function registerProbe(server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer): void {
+function registerProbe(server: import('./sdk-types.js').McpServer): void {
   const notifier = createMcpNotifier(server);
   server.registerTool(
     TOOL,

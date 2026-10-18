@@ -12,10 +12,12 @@ import { join } from 'node:path';
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { z } from 'zod';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
-import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types';
+import {
+  Client,
+  InMemoryTransport,
+  AjvJsonSchemaValidator,
+  type JsonSchemaType,
+} from './sdk-facade/index.js';
 
 import { createServer, connectTransport } from './server.js';
 import {

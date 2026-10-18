@@ -1,9 +1,7 @@
 /** Protocol evidence for startup workflow availability (#7043 / #5132). */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { Client, InMemoryTransport, CallToolResultSchema } from './sdk-facade/index.js';
+import { McpServer } from './sdk-types.js';
 import { registerMcpTools } from '../cli-server-tools.js';
 import { SecurityConfigSchema } from '../config/schemas-security.js';
 import { createLogger, ok, type IModelAdapter, type WorkflowDefinition } from '../core/index.js';

@@ -7,8 +7,7 @@
  * @module mcp/mcp-expert-tools.test
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from './sdk-facade/index.js';
 
 import { createServer, connectTransport } from './server.js';
 import {

@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { Client, InMemoryTransport, CallToolResultSchema } from './sdk-facade/index.js';
+import { McpServer, type RegisteredTool } from './sdk-types.js';
 import { registerListExpertsTool } from './tools/list-experts.js';
 import { RateLimiter } from './middleware/rate-limiter.js';
 

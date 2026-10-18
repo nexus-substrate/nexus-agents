@@ -15,4 +15,4 @@ export {
   type ToolCallback,
 } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-export type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+export type { ToolAnnotations } from './sdk-facade/index.js';

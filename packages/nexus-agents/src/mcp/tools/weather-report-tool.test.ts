@@ -7,8 +7,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
-import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types';
+import { AjvJsonSchemaValidator, type JsonSchemaType } from '../sdk-facade/index.js';
 import { WeatherReportInputSchema } from './weather-report-types.js';
 import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 import type { ToolResult } from './tool-result.js';
