@@ -232,7 +232,7 @@ const PATH_PATTERN_CACHE = new Map<string, RegExp>();
  * Relative globs anchor at `(^|/)`.
  * Absolute globs anchor at `^`.
  */
-export function compilePathPattern(pattern: string): RegExp {
+function compilePathPattern(pattern: string): RegExp {
   const cached = PATH_PATTERN_CACHE.get(pattern);
   if (cached !== undefined) return cached;
 
