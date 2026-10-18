@@ -421,6 +421,8 @@ export interface ChangedFile {
   readonly path: string;
   readonly addedLines: number;
   readonly removedLines: number;
+  /** True when git classifies the file as binary (numstat outputs '-' for line counts). */
+  readonly isBinary?: boolean | undefined;
 }
 
 /** Zod schema for {@link BlastRadiusLimits} — validated, with documented defaults. */

@@ -440,6 +440,43 @@ describe('executeCodePrPush — pre-push guard re-check (step 3, defense-in-dept
     expect(linkedWorktrees(repo.repoRoot)).toEqual([]);
   });
 
+  it('binary file with secret injected before push → pre_push_guard_denied, gitPush NEVER called', () => {
+    vi.stubEnv(CODEPR_TOKEN_ENV, 'scoped-token-abc');
+    const m = makeMockDeps({ soak: 100 });
+    const result = executeCodePrPush(
+      baseInput({
+        run: {
+          runId: 'run-xyz',
+          sourceSignalHash: 'sig-hash-1',
+          changes: [{ relPath: 'src/binary.dat', newContent: 'bin\0AKIAIOSFODNN7EXAMPLE\n' }],
+        },
+      }),
+      {
+        ...m.deps,
+        // Force the dry-run plan to pass so ONLY the pre-push re-check stops it.
+        planRun: (_input, _logger, _options) => ({
+          ok: true as const,
+          plan: {
+            branchName: 'auto/codepr/run-xyz',
+            title: 't',
+            files: [],
+            filesTouched: 0,
+            linesTouched: 0,
+            diffHash: 'x',
+          },
+          auditRecorded: true,
+        }),
+      }
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected denial');
+    expect(result.reason).toBe('pre_push_guard_denied');
+    expect(result.detail).toContain('secret_detected');
+    expect(m.gitPush).not.toHaveBeenCalled();
+    expect(m.openPullRequest).not.toHaveBeenCalled();
+    expect(linkedWorktrees(repo.repoRoot)).toEqual([]);
+  });
+
   it('dry-run plan itself denies (real planCodePrRun on a sensitive path) → plan_denied, NO push', () => {
     vi.stubEnv(CODEPR_TOKEN_ENV, 'scoped-token-abc');
     const m = makeMockDeps({ soak: 100 }); // uses the real planCodePrRun default

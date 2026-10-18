@@ -159,20 +159,30 @@ function git(cwd: string, args: readonly string[]): string {
  * A binary file is reported as `-\t-\t<path>`; we count those as 0/0 (the secret
  * scan + blast radius already operate on the realized diff text and paths).
  */
+function parseCount(countStr: string | undefined): number {
+  if (countStr === undefined || countStr === '' || countStr === '-') return 0;
+  const parsed = Number.parseInt(countStr, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseNumstatLine(line: string): ChangedFile | undefined {
+  if (line.trim() === '') return undefined;
+  const parts = line.split('\t');
+  if (parts.length < 3) return undefined;
+  const isBinary = parts[0] === '-' && parts[1] === '-';
+  return {
+    path: parts.slice(2).join('\t'),
+    addedLines: parseCount(parts[0]),
+    removedLines: parseCount(parts[1]),
+    ...(isBinary ? { isBinary: true } : {}),
+  };
+}
+
 function parseNumstat(numstat: string): ChangedFile[] {
   const files: ChangedFile[] = [];
   for (const line of numstat.split('\n')) {
-    if (line.trim() === '') continue;
-    const parts = line.split('\t');
-    if (parts.length < 3) continue;
-    const added = parts[0] === '-' ? 0 : Number.parseInt(parts[0] ?? '0', 10);
-    const removed = parts[1] === '-' ? 0 : Number.parseInt(parts[1] ?? '0', 10);
-    const path = parts.slice(2).join('\t');
-    files.push({
-      path,
-      addedLines: Number.isFinite(added) ? added : 0,
-      removedLines: Number.isFinite(removed) ? removed : 0,
-    });
+    const file = parseNumstatLine(line);
+    if (file !== undefined) files.push(file);
   }
   return files;
 }
@@ -273,7 +283,7 @@ interface RealizedDiff {
 /** Stage all changes and realize the diff (files + line counts) from the worktree. */
 function realizeDiff(worktreeRoot: string): RealizedDiff {
   git(worktreeRoot, ['add', '-A']);
-  const diffText = git(worktreeRoot, ['diff', '--cached']);
+  const diffText = git(worktreeRoot, ['diff', '--cached', '-a']);
   const changedFiles = parseNumstat(git(worktreeRoot, ['diff', '--cached', '--numstat']));
   let linesTouched = 0;
   for (const f of changedFiles) linesTouched += f.addedLines + f.removedLines;
