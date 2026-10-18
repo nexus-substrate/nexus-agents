@@ -121,7 +121,18 @@ import {
   getGlobalExecutionMode,
   stagePolicyFirewallForRollout,
 } from './mcp/middleware/policy-registry.js';
-import { setSecureHandlerAuditLogger } from './mcp/middleware/secure-handler.js';
+import {
+  createSecureHandler,
+  setSecureHandlerAuditLogger,
+} from './mcp/middleware/secure-handler.js';
+import {
+  wrapToolWithTimeout,
+  toSdkCallback,
+  getToolTimeout,
+} from './mcp/middleware/tool-wrapper.js';
+import { sanitizeInput } from './security/input-sanitizer.js';
+import { fenceExternalContent } from './dogfooding/pr-diff-fence.js';
+import type { ToolResult } from './mcp/tools/tool-result.js';
 import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
 import { getSharedCliCache } from './mcp/middleware/adapter-availability.js';
 import { createAnnotationsProxy } from './mcp/tools/annotation-proxy.js';
@@ -485,12 +496,118 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
   }
 }
 
-/** Initialize upstream MCP servers and register their tools as proxies (#1498). */
+/** Dependencies required to initialize and securely register upstream MCP servers. */
+interface UpstreamServerInitDeps {
+  readonly server: McpServer;
+  readonly logger: ILogger;
+  readonly rateLimiterFactory?: ReturnType<typeof createToolRateLimiterFactory> | undefined;
+  readonly policyFirewall?: import('./mcp/middleware/index.js').IPolicyFirewall | undefined;
+  readonly executionMode?: import('./mcp/middleware/index.js').ExecutionMode | undefined;
+  readonly securityConfig?: import('./config/index.js').SecurityConfig | undefined;
+  readonly auditLogger?: import('./audit/audit-types.js').IAuditLogger | undefined;
+}
+
+/** Formats, sanitizes, and fences upstream MCP tool execution results (#untrusted-input). */
+function formatUpstreamResult(
+  toolName: string,
+  upstreamResult: unknown,
+  logger: ILogger
+): ToolResult {
+  if (upstreamResult === null) {
+    return {
+      content: [{ type: 'text' as const, text: 'Upstream tool not found' }],
+      isError: true,
+    };
+  }
+
+  const rawText =
+    typeof upstreamResult === 'string' ? upstreamResult : JSON.stringify(upstreamResult);
+
+  // Mandatory pre-fence sanitization and audit logging per .rules/untrusted-input.md
+  const sanitized = sanitizeInput(rawText, 'unknown', 'upstream-mcp');
+  const fenced = fenceExternalContent(sanitized.content);
+
+  if (
+    sanitized.strippedElements.length > 0 ||
+    sanitized.injectionFlags.length > 0 ||
+    fenced.forged
+  ) {
+    logger.warn('Upstream tool response contained stripped elements or injection patterns', {
+      toolName,
+      strippedCount: sanitized.strippedElements.length,
+      injectionFlags: sanitized.injectionFlags,
+      forgedFenceMarker: fenced.forged,
+    });
+  }
+
+  const isError =
+    typeof upstreamResult === 'object' &&
+    'isError' in upstreamResult &&
+    Boolean((upstreamResult as { isError?: unknown }).isError);
+
+  return {
+    content: [{ type: 'text' as const, text: fenced.text }],
+    ...(isError ? { isError: true } : {}),
+  };
+}
+
+/** Registers a single upstream tool as a secure proxy on the MCP server. */
+function registerSingleUpstreamTool(
+  tool: { name: string; description?: string | undefined },
+  manager: UpstreamClientManager,
+  passthroughSchema: import('zod').ZodType,
+  deps: UpstreamServerInitDeps
+): void {
+  const {
+    server,
+    logger,
+    rateLimiterFactory,
+    policyFirewall,
+    executionMode,
+    securityConfig,
+    auditLogger,
+  } = deps;
+  const toolName = tool.name;
+  const desc = tool.description ?? `Upstream tool: ${toolName}`;
+
+  const secureHandler = createSecureHandler(
+    async (args: unknown) => {
+      const rawArgs =
+        typeof args === 'object' && args !== null
+          ? (args as Record<string, unknown>)
+          : {};
+      const upstreamResult = await manager.callTool(toolName, rawArgs);
+      return formatUpstreamResult(toolName, upstreamResult, logger);
+    },
+    {
+      toolName,
+      securityTier: 'external',
+      logger,
+      ...(rateLimiterFactory !== undefined && {
+        rateLimiter: rateLimiterFactory.getForTool(toolName),
+      }),
+      ...(policyFirewall !== undefined && { policyFirewall }),
+      ...(executionMode !== undefined && { executionMode }),
+      ...(auditLogger !== undefined && { auditLogger }),
+    }
+  );
+
+  const timeoutMs = getToolTimeout(toolName, securityConfig);
+  const wrappedHandler = wrapToolWithTimeout(toolName, secureHandler, { timeoutMs, logger });
+
+  server.registerTool(
+    toolName,
+    { description: desc, inputSchema: passthroughSchema },
+    toSdkCallback(wrappedHandler)
+  );
+}
+
+/** Initialize upstream MCP servers and register their tools as secure proxies (#1498). */
 async function initUpstreamServers(
   gatewayConfig: GatewayConfig | undefined,
-  server: McpServer,
-  logger: ILogger
+  deps: UpstreamServerInitDeps
 ): Promise<void> {
+  const { logger } = deps;
   // GatewayConfig from the proxy module may include upstreamServers when Zod-parsed
   const upstreamServers = (gatewayConfig as Record<string, unknown> | undefined)?.[
     'upstreamServers'
@@ -508,22 +625,11 @@ async function initUpstreamServers(
   });
 
   // Register each upstream tool as a proxy on our server.
-  // Use z.object({}).passthrough() since upstream schemas are JSON Schema, not Zod.
+  // Use z.looseObject({}) since upstream schemas are JSON Schema, not Zod.
   const { z } = await import('zod');
   const passthroughSchema = z.looseObject({});
   for (const tool of tools) {
-    const toolName = tool.name;
-    const desc = tool.description ?? `Upstream tool: ${toolName}`;
-    server.registerTool(
-      toolName,
-      { description: desc, inputSchema: passthroughSchema },
-      async (args) => {
-        const upstreamResult = await manager.callTool(toolName, args);
-        const text =
-          upstreamResult !== null ? JSON.stringify(upstreamResult) : 'Upstream tool not found';
-        return { content: [{ type: 'text' as const, text }] };
-      }
-    );
+    registerSingleUpstreamTool(tool, manager, passthroughSchema, deps);
   }
 }
 
@@ -633,15 +739,13 @@ function logToolRegistration(
   // the registration record names the mode too.
   if (info.policyFirewall !== undefined) {
     const mode = info.policyFirewall.getMode();
-    // Not "all tools": upstream MCP proxies are registered with a raw handler
-    // (`initUpstreamServers`), so they never reach `createSecureHandler` and the
-    // firewall does not see them. Naming the covered set beats a claim a
-    // spot-check would find false.
-    logger.info('Policy firewall wired to locally registered tools', {
+    // Upstream MCP proxies are registered via createSecureHandler and evaluated
+    // by PolicyFirewall.
+    logger.info('Policy firewall wired to registered tools', {
       policyMode: mode,
       denialsApplied: mode === 'enforce',
       coveredTools: activeTools.length,
-      upstreamProxiesUncovered: true,
+      upstreamProxiesCovered: true,
     });
   }
 }
@@ -961,7 +1065,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   // rejections so an upstream-init failure surfaces in logs instead of
   // becoming an unhandled rejection (silent in default mode, crash in
   // --unhandled-rejections=strict).
-  void initUpstreamServers(gatewayConfig, observableServer, logger).catch((error: unknown) => {
+  void initUpstreamServers(gatewayConfig, ctx).catch((error: unknown) => {
     logger.error(
       'Upstream MCP init failed',
       error instanceof Error ? error : new Error(String(error))
@@ -982,3 +1086,5 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
 
   maybeRunStpaAnalysis(options, logger);
 }
+
+export { initUpstreamServers as _initUpstreamServersForTests };
