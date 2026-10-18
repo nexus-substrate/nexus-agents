@@ -20,7 +20,10 @@ import { CUSTOM_API_ALLOW_PRIVATE_ENV } from './types.js';
 
 const logger = createLogger({ module: 'custom-api-validation' });
 
-/** Result of the host resolution check. */
+/**
+ * Result of the host resolution check.
+ * // @export-no-consumer-yet — see #3426
+ */
 export interface CustomApiResolveCheckResult {
   /** True if DNS resolution actually ran and checked returned addresses; false if bypassed, literal, or lookup failed. */
   readonly resolveChecked: boolean;
