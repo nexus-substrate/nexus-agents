@@ -11,9 +11,8 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Client, InMemoryTransport } from './mcp/sdk-facade/index.js';
+import type { McpServer } from './mcp/sdk-types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {

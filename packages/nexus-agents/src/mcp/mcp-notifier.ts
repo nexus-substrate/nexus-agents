@@ -14,7 +14,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from './sdk-types.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 
 /**

@@ -1,8 +1,7 @@
 /** Regression coverage for operator output on the real stdio transport (#5167). */
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { JSONRPCMessageSchema } from '@modelcontextprotocol/sdk/types.js';
+import { StdioServerTransport, JSONRPCMessageSchema } from './sdk-facade/index.js';
 
 import { createServer, connectTransport } from './server.js';
 import { createMcpNotifier, withProgressHeartbeat } from './mcp-notifier.js';

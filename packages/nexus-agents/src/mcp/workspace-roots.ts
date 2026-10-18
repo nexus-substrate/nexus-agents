@@ -26,7 +26,7 @@ import { isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from './sdk-types.js';
 
 import {
   setActiveWorkspaceRoot,

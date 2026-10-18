@@ -1,5 +1,5 @@
 /** Server registration keeps pipeline events off the V1 bus (#5120, seam 5). */
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from './mcp/sdk-types.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { registerMcpTools } from './cli-server-tools.js';

@@ -10,7 +10,7 @@
  * @module cli-server-shutdown
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from './mcp/sdk-types.js';
 
 import { closeServer, type EventBusBridgeResult } from './mcp/index.js';
 import type { ILogger } from './core/index.js';

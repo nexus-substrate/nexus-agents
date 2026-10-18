@@ -13,8 +13,8 @@ import { MCP_TIMEOUTS } from './config/timeouts.js';
 import { exitIfNestedSubprocessServer } from './cli-server-nesting-guard.js';
 import { registerMcpTools } from './cli-server-tools.js';
 import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from './mcp/sdk-facade/index.js';
+import type { McpServer } from './mcp/sdk-types.js';
 import { createLogger, type ILogger, type LogDestination } from './core/index.js';
 import { beginWorkspaceRootResolution } from './mcp/workspace-roots.js';
 import { VERSION } from './version.js';
@@ -297,7 +297,7 @@ function buildGatewayConfig(config: AppConfig, logger: ILogger): GatewayConfig {
  * @param deps - Optional dependencies
  */
 async function initializeAndRegisterTools(
-  server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
+  server: McpServer,
   logger: ILogger,
   policyFirewall: import('./mcp/middleware/index.js').IPolicyFirewall,
   config: import('./config/index.js').AppConfig,
@@ -398,7 +398,7 @@ async function initializeSubsystems(
   config: AppConfig,
   logger: ILogger
 ): Promise<{
-  server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer;
+  server: McpServer;
   serverLogger: ILogger;
   observer: SwarmObserver;
   eventBusBridge: EventBusBridgeResult;

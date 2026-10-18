@@ -9,7 +9,7 @@
  * (Source: Issue #1288)
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '../sdk-types.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { registerModelsResource } from './models-resource.js';

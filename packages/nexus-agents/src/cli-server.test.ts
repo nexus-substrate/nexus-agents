@@ -33,7 +33,8 @@ vi.mock('./cli-server-tools.js', () => ({
   registerMcpTools: vi.fn(),
 }));
 
-vi.mock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+vi.mock('./mcp/sdk-facade/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./mcp/sdk-facade/index.js')>()),
   StdioServerTransport: vi.fn(),
 }));
 

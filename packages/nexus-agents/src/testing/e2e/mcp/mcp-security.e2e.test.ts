@@ -8,9 +8,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { InMemoryTransport, Client } from '../../../mcp/sdk-facade/index.js';
+import type { McpServer } from '../../../mcp/sdk-types.js';
 
 import { createServer, connectTransport } from '../../../mcp/server.js';
 import { TimeoutGuard, UriValidation } from '../../../mcp/middleware/timeout-guard.js';

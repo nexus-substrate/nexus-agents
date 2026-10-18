@@ -8,10 +8,8 @@
 
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { McpServer } from './sdk-types.js';
+import { StdioServerTransport, InMemoryTransport, Client } from './sdk-facade/index.js';
 import { z } from 'zod';
 
 import { connectTransport } from './server.js';
