@@ -1,5 +1,155 @@
 # nexus-agents
 
+## 12.0.0
+
+### Major Changes
+
+- [#7441](https://github.com/nexus-substrate/nexus-agents/pull/7441) [`5a15807`](https://github.com/nexus-substrate/nexus-agents/commit/5a158073768226c8d63c93ca273e91ba69a9daa9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - BREAKING: worker dispatch now requires explicit access-mode evidence from the actual selected adapter. A previously usable custom content-only adapter without `supportsAccessMode` can now return `UNSUPPORTED` with zero worker completion attempts when no measured compatible alternative exists. The method remains optional for structural compatibility; direct `complete` and `stream` calls retain their existing contract.
+
+  Known incompatible selections no longer consume a completion slot when an eligible fallback exists; late unsupported refusals do not repeat through refinement. Unknown support remains distinct from explicit `false`. Completion budgets, native permissions, and the final enforcement checks are unchanged. Concrete built-in API subclasses must declare their own behavior and may return `false`.
+
+  Migration: forward the query from the actual transport rather than asserting blanket `true`. These before/after wrappers retain the transport's normal completion behavior. The after wrapper preserves unknown support when the transport has no query; it does not make an unsupported transport eligible.
+
+  Before:
+
+  ```typescript
+  import type { IModelAdapter } from 'nexus-agents';
+
+  export function wrapTransport(transport: IModelAdapter): IModelAdapter {
+    return {
+      get providerId() {
+        return transport.providerId;
+      },
+      get modelId() {
+        return transport.modelId;
+      },
+      get capabilities() {
+        return transport.capabilities;
+      },
+      complete: (request) => transport.complete(request),
+      stream: (request) => transport.stream(request),
+      countTokens: (text) => transport.countTokens(text),
+      validateConfig: () => transport.validateConfig(),
+    };
+  }
+  ```
+
+  After:
+
+  ```typescript
+  import type { IModelAdapter } from 'nexus-agents';
+
+  export function wrapTransport(transport: IModelAdapter): IModelAdapter {
+    return {
+      get providerId() {
+        return transport.providerId;
+      },
+      get modelId() {
+        return transport.modelId;
+      },
+      get capabilities() {
+        return transport.capabilities;
+      },
+      complete: (request) => transport.complete(request),
+      stream: (request) => transport.stream(request),
+      countTokens: (text) => transport.countTokens(text),
+      validateConfig: () => transport.validateConfig(),
+      supportsAccessMode: (mode, signal) =>
+        transport.supportsAccessMode?.(mode, signal) ?? Promise.resolve(undefined),
+    };
+  }
+  ```
+
+  See `docs/interfaces/model-adapter.md` for the worker eligibility and subclass contract. A custom transport must implement truthful enforcement evidence before forwarding can return support; neither the wrapper nor the query grants host permissions.
+
+- [#7476](https://github.com/nexus-substrate/nexus-agents/pull/7476) [`e9e4146`](https://github.com/nexus-substrate/nexus-agents/commit/e9e4146138bcd3a4b0f964544d2bf3968ae798ef) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make `SanitizedInput.trustTier` optional at `SanitizedInputSchema` and omit `trustTier` on unmeasured firewall passthroughs ([#5517](https://github.com/nexus-substrate/nexus-agents/issues/5517)).
+
+- [#7475](https://github.com/nexus-substrate/nexus-agents/pull/7475) [`6ed636b`](https://github.com/nexus-substrate/nexus-agents/commit/6ed636b1431ee88c345004b82a9b13ac5ab73670) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the no-op `--skip-gemini` flag from `nexus-agents setup` ([#7218](https://github.com/nexus-substrate/nexus-agents/issues/7218)).
+
+### Minor Changes
+
+- [#7501](https://github.com/nexus-substrate/nexus-agents/pull/7501) [`01a1b51`](https://github.com/nexus-substrate/nexus-agents/commit/01a1b514569d9eb12b289688e9ed52cdb9725024) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce truthful voter readiness and cryptographically bound artifact evidence across consensus voting and dev-pipeline plan votes ([#7501](https://github.com/nexus-substrate/nexus-agents/issues/7501)).
+
+- [#7482](https://github.com/nexus-substrate/nexus-agents/pull/7482) [`a2f735a`](https://github.com/nexus-substrate/nexus-agents/commit/a2f735a853de940fbcd0a75b2c2e12bcf356ac59) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Phase 1 of MCP split v2 SDK migration (Epic [#4485](https://github.com/nexus-substrate/nexus-agents/issues/4485)): add `@modelcontextprotocol/core`, `@modelcontextprotocol/server`, and `@modelcontextprotocol/client` dependencies alongside `@modelcontextprotocol/sdk`, and provide internal compatibility facade in `src/mcp/sdk-facade/`.
+
+- [#7467](https://github.com/nexus-substrate/nexus-agents/pull/7467) [`dfca4e2`](https://github.com/nexus-substrate/nexus-agents/commit/dfca4e2c496138b8ee486f9b6ec1603f53715d7a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Compose canonical merge-readiness evidence for autonomous PRs and release lanes, binding candidate identity, built artifact hash with byte prefix disclosure, review evidence with option/head validation, local gate receipts, and remote CI inventory ([#7445](https://github.com/nexus-substrate/nexus-agents/issues/7445)).
+
+- [#7499](https://github.com/nexus-substrate/nexus-agents/pull/7499) [`b3d441f`](https://github.com/nexus-substrate/nexus-agents/commit/b3d441f54ba7ddd48979211a3dbfebf2dfba8d92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Retire deprecated `gpt-5.5` following its 2026-10-14 Codex retirement; preserve backward compatibility via legacy alias to `gpt-5.6-sol` ([#6526](https://github.com/nexus-substrate/nexus-agents/issues/6526)).
+
+- [#7440](https://github.com/nexus-substrate/nexus-agents/pull/7440) [`f89fa7b`](https://github.com/nexus-substrate/nexus-agents/commit/f89fa7b57c09763309a722de2b4404183b879781) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Capture alternative model descriptors when routing so gateway and API alternatives report their configured model identity. Omit alternatives whose identity is unknown, and label missing comparative quality metadata as unmeasured.
+
+- [#7498](https://github.com/nexus-substrate/nexus-agents/pull/7498) [`582c28d`](https://github.com/nexus-substrate/nexus-agents/commit/582c28d2cdefea5e58c3a7db2f95f63d06099d94) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Unblock Gemini 4 Argon (`gemini-4-argon-{high,medium,low}`) and enforce Linux bubblewrap (`bwrap`) read-only filesystem sandbox in `GeminiCliAdapter` ([#7498](https://github.com/nexus-substrate/nexus-agents/issues/7498)).
+
+### Patch Changes
+
+- [#7454](https://github.com/nexus-substrate/nexus-agents/pull/7454) [`24caca1`](https://github.com/nexus-substrate/nexus-agents/commit/24caca17877bd4c281f4f9fe02cfe60ba7b659a4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Avoid splitting Unicode surrogate pairs in academic research previews (Semantic Scholar, Papers with Code, OpenAlex) by reusing the canonical surrogate-safe preview truncation helper.
+
+- [#7494](https://github.com/nexus-substrate/nexus-agents/pull/7494) [`88093af`](https://github.com/nexus-substrate/nexus-agents/commit/88093afa0747b24f69a01e1d1a7aadfa79cb6f80) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce `security.blockedPatterns` in PolicyFirewall path authorization rules and report it in startup security posture logging.
+
+- [#7437](https://github.com/nexus-substrate/nexus-agents/pull/7437) [`65d4202`](https://github.com/nexus-substrate/nexus-agents/commit/65d4202ca17a1fd44d33f9c063bf3c96652096af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Bound GitHub research description previews to 200 UTF-16 units including the clipping marker, preserving valid surrogate pairs. CLI and MCP consumers now score relevance over the preview, consistently with arXiv previews.
+
+- [#7478](https://github.com/nexus-substrate/nexus-agents/pull/7478) [`e5fe1ae`](https://github.com/nexus-substrate/nexus-agents/commit/e5fe1aee068580af69c958469c0b9e86c58a0e4b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Inline bounded artifacts for Codex read-only workers lacking native file reader tools ([#7413](https://github.com/nexus-substrate/nexus-agents/issues/7413)).
+
+- [#7481](https://github.com/nexus-substrate/nexus-agents/pull/7481) [`a5d12ef`](https://github.com/nexus-substrate/nexus-agents/commit/a5d12efcb523c2de3bbe5ceba203fc2367c2d01c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Log warning and return `resolveChecked: false` marker when DNS lookup fails during SSRF resolve check for custom-openai API hosts.
+
+- [#7451](https://github.com/nexus-substrate/nexus-agents/pull/7451) [`53cb071`](https://github.com/nexus-substrate/nexus-agents/commit/53cb0711eec637af1fd8121a35a6aa9008a338e4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Clarify that `list_experts` with `format: names` returns compact expert metadata objects, including descriptions and an empty capabilities array.
+
+- [#7488](https://github.com/nexus-substrate/nexus-agents/pull/7488) [`e507de1`](https://github.com/nexus-substrate/nexus-agents/commit/e507de1d50574e380afa592242a36193299652de) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Pass `-a` to `git diff --cached` during CodePR diff realization so binary-classified files are scanned for secrets, and track `isBinary` in `parseNumstat`.
+
+- [#7487](https://github.com/nexus-substrate/nexus-agents/pull/7487) [`9e16911`](https://github.com/nexus-substrate/nexus-agents/commit/9e169118e1664bdfe7feffa485fa64f0f8e729b2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wrap PR title and description in the mandated EXTERNAL CONTENT envelope in dogfooding PR reviewer expert prompts.
+
+- [#7461](https://github.com/nexus-substrate/nexus-agents/pull/7461) [`1b14804`](https://github.com/nexus-substrate/nexus-agents/commit/1b14804941e2f53709426f04c86c0a440767a1ad) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add reasoning parameter constraints (rejects temperature, expects max_completion_tokens) for gpt-6-luna-pro and broaden OpenAI reasoning regex fallback ([#7458](https://github.com/nexus-substrate/nexus-agents/issues/7458)).
+
+- [#7462](https://github.com/nexus-substrate/nexus-agents/pull/7462) [`7af4eaa`](https://github.com/nexus-substrate/nexus-agents/commit/7af4eaac5deefbf5cc36ed314043061a5f1ea207) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Return failure from greenfield scaffold stage when plan is missing, empty, or whitespace-only ([#7459](https://github.com/nexus-substrate/nexus-agents/issues/7459)).
+
+- [#7493](https://github.com/nexus-substrate/nexus-agents/pull/7493) [`4ab821b`](https://github.com/nexus-substrate/nexus-agents/commit/4ab821bdc50c5bdbb8eb81859e0f23081117dbd8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Declare external securityTier on research_add, survey_oss_landscape, repo_analyze, ci_health_check, and compare_data_feeds MCP tools.
+
+- [#7483](https://github.com/nexus-substrate/nexus-agents/pull/7483) [`6b2da8f`](https://github.com/nexus-substrate/nexus-agents/commit/6b2da8f45b720f5846b54e4f92456d99eb846aee) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Batch 1 of MCP split v2 SDK migration (Epic [#4485](https://github.com/nexus-substrate/nexus-agents/issues/4485)): introduce internal SDK type seam `src/mcp/sdk-types.ts` and retarget all 67 tools in `src/mcp/tools/` from `@modelcontextprotocol/sdk/server/mcp.js` to `../sdk-types.js`.
+
+- [#7484](https://github.com/nexus-substrate/nexus-agents/pull/7484) [`ad091e2`](https://github.com/nexus-substrate/nexus-agents/commit/ad091e25a28442b212456f796664aee9d2a850c0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Batch 2 of MCP split v2 SDK migration (Epic [#4485](https://github.com/nexus-substrate/nexus-agents/issues/4485)): retarget client adapters and gateway components (`upstream-client.ts`, `codex-mcp-adapter.ts`, `gateway-server-proxy.ts`) to use `src/mcp/sdk-facade` and internal type seams.
+
+- [#7485](https://github.com/nexus-substrate/nexus-agents/pull/7485) [`72be125`](https://github.com/nexus-substrate/nexus-agents/commit/72be125c5f0645d4233b601d198d8b1a74a6d40d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Batch 3 of MCP split v2 SDK migration (Epic [#4485](https://github.com/nexus-substrate/nexus-agents/issues/4485)): retarget MCP server core (`server.ts`, `cli-server.ts`), transports (`StdioServerTransport`), prompts, resources, and lifecycle tests to internal `sdk-facade` and `sdk-types` seams.
+
+- [#7486](https://github.com/nexus-substrate/nexus-agents/pull/7486) [`72b0839`](https://github.com/nexus-substrate/nexus-agents/commit/72b0839f5e2b7c7446c97c757656b27f6d1982e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Batch 4 of MCP split v2 SDK migration (Epic [#4485](https://github.com/nexus-substrate/nexus-agents/issues/4485)): implement native SubstrateTaskStore with TTL enforcement and session scoping, and decouple experimental tasks across execute_expert and test suites.
+
+- [#7450](https://github.com/nexus-substrate/nexus-agents/pull/7450) [`8662b2c`](https://github.com/nexus-substrate/nexus-agents/commit/8662b2cd342dd698bf3a77316799add99ae61348) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report release validation as UNMEASURED and exit with a nonzero status when every validator is skipped. Preserve measured clean results and existing strict-mode behavior.
+
+- [#7470](https://github.com/nexus-substrate/nexus-agents/pull/7470) [`d8ebf3f`](https://github.com/nexus-substrate/nexus-agents/commit/d8ebf3f4334e31be535f57f0f560029d8f68eff8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add paired context-efficiency evaluation gate with validated success, attempt aggregation, percentiles, Wilson confidence intervals, and decision criteria.
+
+- [#7489](https://github.com/nexus-substrate/nexus-agents/pull/7489) [`f1b76bf`](https://github.com/nexus-substrate/nexus-agents/commit/f1b76bf9435de5625d508a23242fd7d455241904) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce source citation trust floors in policy gate by evaluating issueBody sources and emitting blocking severity for trust mismatches.
+
+- [#7492](https://github.com/nexus-substrate/nexus-agents/pull/7492) [`bbef87f`](https://github.com/nexus-substrate/nexus-agents/commit/bbef87f44a7b330905df22937c5fbe716627015a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wrap untrusted PR description in mandated EXTERNAL CONTENT envelope in pr_review proposal builder and neutralize forged fence markers.
+
+- [#7480](https://github.com/nexus-substrate/nexus-agents/pull/7480) [`09357cd`](https://github.com/nexus-substrate/nexus-agents/commit/09357cd3b08bda673eb2457dfb3c7bf26968dfc4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Log structured warning when YAML findings block in PR review reasoning fails to parse or is not an array, preventing silent drops of voter findings blocks.
+
+- [#7452](https://github.com/nexus-substrate/nexus-agents/pull/7452) [`45f1951`](https://github.com/nexus-substrate/nexus-agents/commit/45f195164b7f6bb16c36ac6cb65b7c08d768f1ce) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve bounded, validated signal context and provenance through the typed remediation plan and proposal handoff ([#7429](https://github.com/nexus-substrate/nexus-agents/issues/7429), [#7417](https://github.com/nexus-substrate/nexus-agents/issues/7417)).
+
+- [#7496](https://github.com/nexus-substrate/nexus-agents/pull/7496) [`dde2ecc`](https://github.com/nexus-substrate/nexus-agents/commit/dde2ecc563b21ef32e8e84d4d06d67e4a8e109e3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wire `security.rateLimit.requestsPerMinute` to derive the default tool bucket capacity and refill rate in `ToolRateLimiterFactory`.
+
+- [#7479](https://github.com/nexus-substrate/nexus-agents/pull/7479) [`e73775e`](https://github.com/nexus-substrate/nexus-agents/commit/e73775e4b5517c7c4830096410590eead5f15b33) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce read-only-analysis accessMode on synthesis, reflective memory, reflective retriever, and summarization model completion calls (sec-20261015-internal-review-01, sec-20261015-internal-review-02).
+
+- [#7472](https://github.com/nexus-substrate/nexus-agents/pull/7472) [`40322c4`](https://github.com/nexus-substrate/nexus-agents/commit/40322c4ba4b6fd1035cdc2151174350ebe6bcae8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove vestigial zero-consumer runtime exports across cli, adapters, mcp, and testing ([#7471](https://github.com/nexus-substrate/nexus-agents/issues/7471)).
+
+- [#7465](https://github.com/nexus-substrate/nexus-agents/pull/7465) [`ea4be86`](https://github.com/nexus-substrate/nexus-agents/commit/ea4be86e971c2ceb751e592202262f2e5149e461) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove orphaned `confidence-router-helpers` and the vestigial security triage triad (`finding-triage`, `severity-consensus`, `fix-generator`) which have 0 production callers.
+
+- [#7477](https://github.com/nexus-substrate/nexus-agents/pull/7477) [`4c8f67a`](https://github.com/nexus-substrate/nexus-agents/commit/4c8f67afbded9c420833a260d94090e96aed2751) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Consolidate quality assessors into `QualityAssessor<T>` interface and wire `NEXUS_BACKFILL_RESEARCH_QUALITY` for on-load research paper quality backfilling ([#4288](https://github.com/nexus-substrate/nexus-agents/issues/4288)).
+
+- [#7468](https://github.com/nexus-substrate/nexus-agents/pull/7468) [`3ca66a1`](https://github.com/nexus-substrate/nexus-agents/commit/3ca66a1f2039409df19c9a3311abe7082b303f8b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Migrate MCP workspace root resolution off deprecated client `roots` (`roots/list` and `notifications/roots/list_changed`) to explicit synchronous replacement channels (`NEXUS_PROJECT_DIR`, `CLAUDE_PROJECT_DIR`, and `process.cwd()` git discovery).
+
+- [#7457](https://github.com/nexus-substrate/nexus-agents/pull/7457) [`491ad83`](https://github.com/nexus-substrate/nexus-agents/commit/491ad833b13cac3b37a276a1975dfb36d1d37f0d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Exclude the actual failed role-specific adapter on `retry_different_cli` triage actions during worker dispatch, resolving preflight adapters by role and sub-task prefix when retried entries are cloned with failure context.
+
+- [#7466](https://github.com/nexus-substrate/nexus-agents/pull/7466) [`8bf385f`](https://github.com/nexus-substrate/nexus-agents/commit/8bf385f98d9793f373367b064f16ee78b78d2d7b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce workspace root containment on `selfEvalReportPath` in `loadSelfEvalSignals` via `resolveInsideRoot` (CWE-22) and add upper bounds across MCP tool input schemas (`selfEvalReportPath`, `projectDir`, `iteration`, `maxTokens`, `maxTriggers`, `prNumber`, and `minStars`) ([#7463](https://github.com/nexus-substrate/nexus-agents/issues/7463)).
+
+- [#7456](https://github.com/nexus-substrate/nexus-agents/pull/7456) [`c15b0e9`](https://github.com/nexus-substrate/nexus-agents/commit/c15b0e9247954f48f13291857268a777990c3f0d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Stop contextual value scanning at JSON-encoded whitespace/delimiters (`\n`, `\r`, `\t`) and escaped quotes (`\"`), preserving nonsecret decoded content across lines and within nested JSON text ([#7426](https://github.com/nexus-substrate/nexus-agents/issues/7426)).
+
+- [#7490](https://github.com/nexus-substrate/nexus-agents/pull/7490) [`91315dd`](https://github.com/nexus-substrate/nexus-agents/commit/91315dddf70b4fd42fe74816e587534179d2e7c0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Classify shell execution tool naming variants (`shell_exec`, `run_shell`, `terminal`, `powershell`, `zsh`, `sh`) as `ToolCategory.SHELL_EXECUTE` in STPA tool safety categorization.
+
+- [#7473](https://github.com/nexus-substrate/nexus-agents/pull/7473) [`8b2184e`](https://github.com/nexus-substrate/nexus-agents/commit/8b2184e2db0cc7cffdcb4ebcef28e49d2794ce8e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Tighten undeclared-options detector patterns after live precision measurement ([#5422](https://github.com/nexus-substrate/nexus-agents/issues/5422)).
+
+- [#7495](https://github.com/nexus-substrate/nexus-agents/pull/7495) [`a1c4e92`](https://github.com/nexus-substrate/nexus-agents/commit/a1c4e92176299c238a6b21a8125d9f0ed0c0fbaf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce `security.timeout.uriValidation` at the MCP argument boundary to mitigate ReDoS vectors (CVE-2026-0621).
+
+- [#7491](https://github.com/nexus-substrate/nexus-agents/pull/7491) [`299a2b8`](https://github.com/nexus-substrate/nexus-agents/commit/299a2b840a2c5716fd47ae1054d2989a5dd39cf1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Harden upstream MCP proxy tool registration with createSecureHandler, external securityTier, rate limiting, and output fencing.
+
 ## 11.7.0
 
 ### Minor Changes
