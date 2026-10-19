@@ -1108,5 +1108,41 @@ describe('ConsensusEngine - Edge Cases', () => {
         expect(closeResult.value.outcome).toBe('rejected');
       }
     });
+
+    it('refuses approval when seats approve without declaring ready artifact inspection (fails closed)', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch with required artifact',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 3 approve, but none declared artifactReadiness: 'ready' (absence of readiness)
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+      }
+    });
   });
 });

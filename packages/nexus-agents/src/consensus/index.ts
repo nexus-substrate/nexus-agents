@@ -222,25 +222,3 @@ export {
   calculateImprovement,
   buildReasoning,
 } from './higher-order-helpers.js';
-
-// Voter readiness preflight and evidence binding (#M1 connected autonomy)
-export type {
-  ArtifactDescriptor,
-  WorkerAccessProbe,
-  VoterArtifactReadinessStatus,
-  VoterArtifactReadiness,
-  ProbeVoterReadinessOptions,
-  ArtifactBindingOptions,
-  ArtifactBindingValidation,
-  SanitizedRemedyInstruction,
-  AttemptRecord,
-  ArtifactConsensusEligibilityParams,
-  ArtifactConsensusEligibilityResult,
-} from './voter-readiness.js';
-
-export {
-  sanitizeRemedyInstruction,
-  probeVoterArtifactReadiness,
-  validateArtifactBinding,
-  enforceArtifactConsensusEligibility,
-} from './voter-readiness.js';

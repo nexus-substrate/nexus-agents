@@ -41,7 +41,7 @@ import {
   strategyToAlgorithm,
 } from '../../consensus/decision/strategy.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
-import { inlineVoteArtifact } from '../../cli/vote-artifact.js';
+import { inlineVoteArtifact, extractBoundArtifact } from '../../cli/vote-artifact.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { resolvePanelWorkspace } from '../../cli/panel-workspace.js';
@@ -289,11 +289,19 @@ async function processVotesThroughEngine(
 ): Promise<ConsensusResult> {
   if (engineVotes.length === 0) return createEmptyConsensusResult(proposal, algorithm);
 
+  const boundArtifact = extractBoundArtifact(proposal);
   const engine = createConsensusEngine();
   const engineProposal: Proposal = {
     title: 'MCP Consensus Vote',
     description: proposal,
     algorithm,
+    ...(boundArtifact !== undefined
+      ? {
+          artifactDigest: boundArtifact.digest,
+          requireArtifact: true,
+          requiredVoters: engineVotes.map((v) => v.role),
+        }
+      : {}),
   };
   const proposalResult = await engine.propose(engineProposal);
   if (!proposalResult.ok)
@@ -302,7 +310,18 @@ async function processVotesThroughEngine(
     });
 
   const proposalId = proposalResult.value;
-  for (const { role, vote } of engineVotes) await engine.vote(proposalId, role, vote);
+  for (const { role, vote, source } of engineVotes) {
+    const boundVote: Vote =
+      boundArtifact !== undefined
+        ? {
+            ...vote,
+            artifactReadiness:
+              vote.artifactReadiness ?? (source === 'error' ? 'artifact_starved' : 'ready'),
+            boundArtifactDigest: vote.boundArtifactDigest ?? boundArtifact.digest,
+          }
+        : vote;
+    await engine.vote(proposalId, role, boundVote);
+  }
 
   const resultRes = await engine.close(proposalId);
   if (!resultRes.ok)
