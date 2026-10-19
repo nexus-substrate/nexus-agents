@@ -377,5 +377,14 @@ describe('pr-review-findings', () => {
       expect(FINDINGS_FORMAT_INSTRUCTIONS).toContain('named_assertion');
       expect(FINDINGS_FORMAT_INSTRUCTIONS).toContain('ruled_out_language_non_issue');
     });
+
+    it('instructs voters to flag only concrete, reachable medium+ defects (#4336)', () => {
+      expect(FINDINGS_FORMAT_INSTRUCTIONS).toContain(
+        'Flag ONLY concrete, reachable, medium-or-higher severity defects'
+      );
+      expect(FINDINGS_FORMAT_INSTRUCTIONS).toContain(
+        'forbid style preferences, formatting, nits, and speculative concerns'
+      );
+    });
   });
 });

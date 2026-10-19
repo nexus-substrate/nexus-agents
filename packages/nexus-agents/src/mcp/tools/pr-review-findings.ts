@@ -254,7 +254,7 @@ function coerceSeverity(raw: unknown): FindingSeverity {
 /** Findings prompt fragment — exact format the voter must emit if they
  * have findings. The proposal text in pr-review-tool.ts embeds this so
  * voters know what shape to produce. */
-export const FINDINGS_FORMAT_INSTRUCTIONS = `If you have one or more findings (claims that justify request_changes), emit them in a fenced YAML block at the END of your reasoning, exactly as below. If you're approving, OMIT the block entirely.
+export const FINDINGS_FORMAT_INSTRUCTIONS = `If you have one or more findings (claims that justify request_changes), emit them in a fenced YAML block at the END of your reasoning, exactly as below. Flag ONLY concrete, reachable, medium-or-higher severity defects; forbid style preferences, formatting, nits, and speculative concerns. If you're approving, OMIT the block entirely.
 
 \`\`\`yaml findings
 - summary: 'One-line summary of the issue'

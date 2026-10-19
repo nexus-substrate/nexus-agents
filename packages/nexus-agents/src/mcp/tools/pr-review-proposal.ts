@@ -180,7 +180,7 @@ export function buildPrReviewProposal(
   parts.push(`Review this PR from your role's perspective. Decide: should it be merged as-is?\n`);
   parts.push(`- **APPROVE** if the diff is correct, complete, and aligned with your role.\n`);
   parts.push(
-    `- **REJECT** (= "request changes") if there is at least one concrete defect, missing requirement, or violation that justifies blocking the merge.\n`
+    `- **REJECT** (= "request changes") if there is at least one concrete, reachable defect of medium or higher severity that justifies blocking the merge. Forbid style/formatting preferences, nitpicks, and speculative concerns.\n`
   );
   parts.push(`- **ABSTAIN** if the diff is outside your role's concerns.\n`);
   parts.push(`\n${FINDINGS_FORMAT_INSTRUCTIONS}\n`);

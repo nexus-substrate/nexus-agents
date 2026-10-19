@@ -35,6 +35,15 @@ describe('voter-prompts', () => {
       }
     });
 
+    it('instructs every seat to flag only concrete, reachable, medium+ defects and forbid style nits (#4336)', () => {
+      for (const role of allRoles) {
+        const prompt = VOTER_SYSTEM_PROMPTS[role];
+        expect(prompt).toContain('concrete, reachable');
+        expect(prompt).toContain('medium or higher');
+        expect(prompt).toContain('Forbid style');
+      }
+    });
+
     it('should have non-empty prompts for all roles', () => {
       for (const role of allRoles) {
         expect(VOTER_SYSTEM_PROMPTS[role]).toBeTruthy();
@@ -248,6 +257,11 @@ describe('voter-prompts', () => {
       it('should emphasize skeptical default posture', () => {
         expect(prompt).toContain('default posture is skeptical');
         expect(prompt).toContain('look for what others might miss');
+      });
+
+      it('tightens contrarian scrutiny to reachable defects and forbids speculative over-flagging (#4336)', () => {
+        expect(prompt).toContain('reachable concerns with concrete impact');
+        expect(prompt).toContain('Forbid style/nitpicking/theoretical concerns');
       });
     });
 

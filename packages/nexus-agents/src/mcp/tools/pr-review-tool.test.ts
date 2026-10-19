@@ -665,6 +665,14 @@ describe('pr_review tool', () => {
       expect(out).toContain('path/file.ext:LINE');
     });
 
+    it('instructs voters to reject only for concrete, reachable medium+ defects and forbid style/nits (#4336)', () => {
+      const out = buildPrReviewProposal(baseInput);
+      expect(out).toContain('concrete, reachable defect of medium or higher severity');
+      expect(out).toContain(
+        'Forbid style/formatting preferences, nitpicks, and speculative concerns'
+      );
+    });
+
     it('should include base/head refs only when both are provided', () => {
       const withRefs = buildPrReviewProposal({
         ...baseInput,
