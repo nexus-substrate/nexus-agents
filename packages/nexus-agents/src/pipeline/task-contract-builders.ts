@@ -120,5 +120,8 @@ export function buildBaseTaskContract(input: BaseTaskContractInput): TaskContrac
     metadata: { ...input.metadata },
     createdAt: now,
     updatedAt: now,
+    contractVersion: '1.0.0',
+    capabilityRequirements: [],
+    evidenceObligations: [],
   };
 }

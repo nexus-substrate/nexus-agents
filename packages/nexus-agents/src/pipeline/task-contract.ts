@@ -9,6 +9,46 @@
  * @module pipeline/task-contract
  */
 import { z } from 'zod';
+import { ok, err, type Result } from '../core/result.js';
+
+// ============================================================================
+// Enforcement Mode & Obligation Schemas (Task T05, Milestone M1)
+// ============================================================================
+
+/** Enforcement mode for capabilities and evidence obligations (#5129, Task T05). */
+export const EnforcementModeSchema = z.enum(['advisory', 'enforcing']);
+export type EnforcementMode = z.infer<typeof EnforcementModeSchema>;
+
+/** Explicit capability requirement specification (Task T05, Conformance Case C35). */
+export const CapabilityRequirementSchema = z.object({
+  id: z.string().min(1),
+  operation: z.string().min(1),
+  resourceRef: z.string().min(1).optional(),
+  scope: z.string().min(1).optional(),
+  mode: EnforcementModeSchema.default('enforcing'),
+});
+export type CapabilityRequirement = z.infer<typeof CapabilityRequirementSchema>;
+
+/** Explicit evidence obligation specification (Task T05, Conformance Case C07). */
+export const EvidenceObligationSchema = z.object({
+  id: z.string().min(1),
+  artifactRef: z.string().min(1),
+  claim: z.string().min(1).optional(),
+  required: z.boolean().default(true),
+  mode: EnforcementModeSchema.default('enforcing'),
+  receiptIssuer: z.string().min(1).optional(),
+});
+export type EvidenceObligation = z.infer<typeof EvidenceObligationSchema>;
+
+/** Verified evidence receipt issued by an executor or validation stage. */
+export interface EvidenceReceipt {
+  readonly obligationId: string;
+  readonly artifactRef: string;
+  readonly digest?: string;
+  readonly issuer?: string;
+  readonly verified: boolean;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}
 
 // ============================================================================
 // Constants
@@ -135,6 +175,9 @@ export const TaskContractSchema = z.object({
   updatedAt: z.number(),
   completedAt: z.number().optional(),
   error: z.string().optional(),
+  contractVersion: z.string().optional(),
+  capabilityRequirements: z.array(CapabilityRequirementSchema).optional(),
+  evidenceObligations: z.array(EvidenceObligationSchema).optional(),
 });
 
 /** Pipeline stage specification. */
@@ -199,3 +242,175 @@ export type StageSpec = z.infer<typeof StageSpecSchema>;
 export type PolicyGateSpec = z.infer<typeof PolicyGateSpecSchema>;
 export type CostEstimate = z.infer<typeof CostEstimateSchema>;
 export type ArtifactRef = z.infer<typeof ArtifactRefSchema>;
+
+// ============================================================================
+// Contract Verification & Obligation Helpers (Task T05, Milestone M1)
+// ============================================================================
+
+export interface ContractCompatibilityOptions {
+  readonly requireExplicitVersion?: boolean;
+}
+
+function parseSemverParts(version: string): [number, number, number] | null {
+  const parts = version.split('.').map((p) => Number(p));
+  if (parts.length !== 3 || parts.some((p) => Number.isNaN(p) || p < 0)) {
+    return null;
+  }
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+}
+
+function compareSemver(v1: string, v2: string): number {
+  const p1 = parseSemverParts(v1) ?? [0, 0, 0];
+  const p2 = parseSemverParts(v2) ?? [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    const diff = (p1[i] ?? 0) - (p2[i] ?? 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+function isVersionInRange(version: string, minVersion: string, maxVersion: string): boolean {
+  return compareSemver(version, minVersion) >= 0 && compareSemver(version, maxVersion) <= 0;
+}
+
+function validateContractInput(
+  contractInput: unknown,
+  requireExplicitVersion?: boolean
+): Result<Record<string, unknown>, string> {
+  if (typeof contractInput !== 'object' || contractInput === null) {
+    return err('InvalidContractFormat: contract must be an object');
+  }
+  const raw = contractInput as Record<string, unknown>;
+  if (requireExplicitVersion === true && !('contractVersion' in raw)) {
+    return err('UnversionedContractError: explicit contractVersion required');
+  }
+  return ok(raw);
+}
+
+/**
+ * Validates version compatibility for a TaskContract (Conformance Case C05).
+ * Unknown or unsupported contract versions fail closed.
+ */
+export function checkContractCompatibility(
+  contractInput: unknown,
+  supportedMinVersion = '1.0.0',
+  supportedMaxVersion = '1.9.9',
+  options: ContractCompatibilityOptions = {}
+): Result<TaskContract, string> {
+  const inputCheck = validateContractInput(contractInput, options.requireExplicitVersion);
+  if (!inputCheck.ok) {
+    return err(inputCheck.error);
+  }
+
+  const parsed = TaskContractSchema.safeParse(contractInput);
+  if (!parsed.success) {
+    return err(`InvalidTaskContract: ${parsed.error.message}`);
+  }
+
+  const version = parsed.data.contractVersion ?? '1.0.0';
+  if (!isVersionInRange(version, supportedMinVersion, supportedMaxVersion)) {
+    return err(
+      `UnsupportedContractVersion: version ${version} is outside supported range [${supportedMinVersion}, ${supportedMaxVersion}]`
+    );
+  }
+
+  return ok({
+    ...parsed.data,
+    contractVersion: version,
+  });
+}
+
+export interface ObligationCompletenessOptions {
+  readonly requireEnforcingObligations?: boolean;
+}
+
+export interface ObligationCompletenessResult {
+  readonly fulfilled: readonly string[];
+  readonly missing: readonly string[];
+  readonly unmetAdvisory: readonly string[];
+}
+
+/**
+ * Validates evidence obligation completeness against provided receipts (Conformance Case C07).
+ * A task cannot be declared eligible or complete while enforcing obligations remain unmet.
+ */
+export function validateObligationCompleteness(
+  contract: TaskContract,
+  receipts: readonly EvidenceReceipt[],
+  options: ObligationCompletenessOptions = {}
+): Result<ObligationCompletenessResult, string> {
+  const obligations = contract.evidenceObligations ?? [];
+  const enforcingObligations = obligations.filter((o) => o.mode === 'enforcing');
+  if (options.requireEnforcingObligations === true && enforcingObligations.length === 0) {
+    return err('ZeroObligationsRejectedInEnforcingMode: contract has zero enforcing obligations');
+  }
+
+  const fulfilled: string[] = [];
+  const missing: string[] = [];
+  const unmetAdvisory: string[] = [];
+
+  for (const obligation of obligations) {
+    const matchingReceipt = receipts.find(
+      (r) =>
+        r.obligationId === obligation.id &&
+        r.verified &&
+        (obligation.receiptIssuer === undefined || r.issuer === obligation.receiptIssuer)
+    );
+
+    if (matchingReceipt !== undefined) {
+      fulfilled.push(obligation.id);
+    } else if (obligation.mode === 'enforcing' && obligation.required) {
+      missing.push(obligation.id);
+    } else {
+      unmetAdvisory.push(obligation.id);
+    }
+  }
+
+  if (missing.length > 0) {
+    const missingDetails = missing
+      .map((id) => {
+        const ob = obligations.find((o) => o.id === id);
+        return ob !== undefined ? `${ob.id} (${ob.artifactRef})` : id;
+      })
+      .join(', ');
+    return err(
+      `MissingEnforcingObligationError: required obligations lack verified receipt: ${missingDetails}`
+    );
+  }
+
+  return ok({ fulfilled, missing: [], unmetAdvisory });
+}
+
+export interface CapabilityDetectionResult {
+  readonly satisfied: boolean;
+  readonly missingEnforcing: readonly CapabilityRequirement[];
+  readonly missingAdvisory: readonly CapabilityRequirement[];
+}
+
+/**
+ * Detects missing capability requirements against available worker operations (Conformance Case C35).
+ */
+export function detectMissingCapabilities(
+  required: readonly CapabilityRequirement[],
+  available: readonly string[]
+): CapabilityDetectionResult {
+  const availableSet = new Set(available);
+  const missingEnforcing: CapabilityRequirement[] = [];
+  const missingAdvisory: CapabilityRequirement[] = [];
+
+  for (const req of required) {
+    if (!availableSet.has(req.operation)) {
+      if (req.mode === 'enforcing') {
+        missingEnforcing.push(req);
+      } else {
+        missingAdvisory.push(req);
+      }
+    }
+  }
+
+  return {
+    satisfied: missingEnforcing.length === 0,
+    missingEnforcing,
+    missingAdvisory,
+  };
+}
