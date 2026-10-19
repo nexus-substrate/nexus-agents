@@ -8,11 +8,21 @@ import {
 } from './agy-model-map.js';
 import { getDefaultModelForCli, getCliModelName } from './model-config-helpers.js';
 
-const nativeGemini = ['gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low'];
+const nativeGeminiFlash = [
+  'gemini-3.8-flash-high',
+  'gemini-3.8-flash-medium',
+  'gemini-3.8-flash-low',
+];
+const nativeGeminiArgon = [
+  'gemini-4-argon-high',
+  'gemini-4-argon-medium',
+  'gemini-4-argon-low',
+];
+const nativeGemini = [...nativeGeminiArgon, ...nativeGeminiFlash];
 
 describe('measured AGY native models (#7423)', () => {
   it('advertises exactly the nonempty measured Gemini table', () => {
-    expect(nativeGemini).toHaveLength(3);
+    expect(nativeGemini).toHaveLength(6);
     expect([...AGY_MODEL_SLUGS].sort()).toEqual([...nativeGemini].sort());
   });
 
@@ -38,9 +48,19 @@ describe('measured AGY native models (#7423)', () => {
     expect(() => toAgyModelSlug(id)).toThrow(/unsupported.*agy|agy.*unsupported/i);
   });
 
-  it.each(nativeGemini)('preserves an exact supported native pin %s', (id) => {
+  it.each(nativeGeminiArgon)('preserves an exact supported Argon pin %s', (id) => {
+    expect(toAgyModelSlug(id)).toBe(id);
+    expect(fromAgyModelSlug(id)).toBe('gemini-4-argon');
+  });
+
+  it.each(nativeGeminiFlash)('preserves an exact supported Flash pin %s', (id) => {
     expect(toAgyModelSlug(id)).toBe(id);
     expect(fromAgyModelSlug(id)).toBe('gemini-3.8-flash');
+  });
+
+  it('maps canonical gemini-4-argon to gemini-4-argon-high', () => {
+    expect(toAgyModelSlug('gemini-4-argon')).toBe('gemini-4-argon-high');
+    expect(fromAgyModelSlug('gemini-4-argon-high')).toBe('gemini-4-argon');
   });
 
   it.each([

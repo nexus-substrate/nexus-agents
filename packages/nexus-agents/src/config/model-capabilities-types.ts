@@ -115,6 +115,7 @@ export const MODEL_IDS = [
   'claude-opus',
   'claude-sonnet',
   'claude-haiku',
+  'gemini-4-argon',
   'gemini-3-pro',
   'gemini-pro',
   'gemini-3.8-flash',

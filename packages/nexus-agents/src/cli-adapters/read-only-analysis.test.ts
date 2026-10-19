@@ -161,30 +161,52 @@ describe('opencode cannot enforce read-only analysis, so it refuses it (#6970)',
   });
 });
 
-describe('gemini (agy) cannot enforce read-only analysis, so it refuses it (#6962)', () => {
-  // Observed live 2026-10-02 (agy 1.2.15): `--mode plan --sandbox` wrote a new
-  // file and modified a committed one when the prompt asked it to.
-  it('does not declare the mode', () => {
-    expect(new GeminiProbe().enforcesReadOnlyAnalysis).not.toBe(true);
+describe('gemini (agy) enforces read-only analysis via bubblewrap sandbox (#6962)', () => {
+  it('declares enforcement', () => {
+    expect(new GeminiProbe().enforcesReadOnlyAnalysis).toBe(true);
   });
 
-  it('refuses a read-only task without running it', async () => {
-    const adapter = new GeminiProbe();
+  it('wraps the command in bwrap under read-only analysis mode', () => {
+    const cmd = new GeminiProbe().command(READ_ONLY);
+    expect(cmd.command).toBe('bwrap');
+    expect(cmd.args).toContain('--ro-bind');
+    expect(cmd.args).toContain('/');
+    expect(cmd.args).toContain('--bind');
+    expect(cmd.args).toContain('/tmp');
+    expect(cmd.args).toContain(process.cwd());
+    expect(cmd.args).toContain('--');
+    expect(cmd.args).toContain('agy');
+  });
+
+  it('runs directly as agy under default mode without bwrap', () => {
+    const cmd = new GeminiProbe().command(DEFAULT_MODE);
+    expect(cmd.command).toBe('agy');
+    expect(cmd.args).not.toContain('bwrap');
+    expect(cmd.args).not.toContain('--ro-bind');
+  });
+
+  it('refuses read-only task when bwrap sandbox is unavailable', async () => {
+    const adapter = new GeminiProbe({
+      sandboxProbe: () => Promise.resolve({ mode: 'best-effort', reason: 'bwrap missing' }),
+    });
     const spawn = vi.spyOn(adapter, 'executeTask');
     const result = await adapter.execute(READ_ONLY, { allowRetry: false });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.message).toMatch(/read-only analysis mode/);
-    expect(result.error.message).toMatch(/cannot enforce/);
+    expect(result.error.message).toMatch(/bubblewrap \(bwrap\) sandbox is unavailable/);
     expect(isCallerInputCliError(result.error)).toBe(true);
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('executeWithMetadata applies the refusal too (it bypasses the base execute)', async () => {
-    const result = await new GeminiProbe().executeWithMetadata(READ_ONLY);
+  it('executeWithMetadata applies the refusal when bwrap is unavailable', async () => {
+    const adapter = new GeminiProbe({
+      sandboxProbe: () => Promise.resolve({ mode: 'best-effort', reason: 'bwrap missing' }),
+    });
+    const result = await adapter.executeWithMetadata(READ_ONLY);
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.message).toMatch(/cannot enforce/);
+    expect(result.error.message).toMatch(/bubblewrap \(bwrap\) sandbox is unavailable/);
   });
 
   it('never passes the plan-mode flags it was found not to enforce', () => {

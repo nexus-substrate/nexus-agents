@@ -10,17 +10,25 @@ import { findCanonicalModel } from './model-config-helpers.js';
 
 /** Supported Gemini-family native pins; other AGY families use other arms. */
 export const AGY_MODEL_SLUGS = [
+  'gemini-4-argon-high',
+  'gemini-4-argon-medium',
+  'gemini-4-argon-low',
   'gemini-3.8-flash-high',
   'gemini-3.8-flash-medium',
   'gemini-3.8-flash-low',
 ] as const;
 export type AgyModelSlug = (typeof AGY_MODEL_SLUGS)[number];
 
-const AGY_CANONICAL_MODEL = 'gemini-3.8-flash';
+const AGY_FLASH_CANONICAL_MODEL = 'gemini-3.8-flash';
+const AGY_ARGON_CANONICAL_MODEL = 'gemini-4-argon';
 
-/** Explicit Flash-family migration preserves effort, never substitutes for Pro. */
+/** Explicit model migration and effort tier mappings, never substitutes for Pro. */
 const CANONICAL_TO_AGY: Readonly<Record<string, AgyModelSlug>> = {
-  [AGY_CANONICAL_MODEL]: 'gemini-3.8-flash-high',
+  [AGY_ARGON_CANONICAL_MODEL]: 'gemini-4-argon-high',
+  'gemini-4-argon-high': 'gemini-4-argon-high',
+  'gemini-4-argon-medium': 'gemini-4-argon-medium',
+  'gemini-4-argon-low': 'gemini-4-argon-low',
+  [AGY_FLASH_CANONICAL_MODEL]: 'gemini-3.8-flash-high',
   'gemini-3.7-flash': 'gemini-3.8-flash-high',
   'gemini-3.5-flash': 'gemini-3.8-flash-medium',
   'gemini-3-flash': 'gemini-3.8-flash-low',
@@ -28,9 +36,14 @@ const CANONICAL_TO_AGY: Readonly<Record<string, AgyModelSlug>> = {
 };
 
 /** Every native effort tier describes the selected model, not a migrated alias. */
-const AGY_TO_CANONICAL: ReadonlyMap<string, string> = new Map(
-  AGY_MODEL_SLUGS.map((slug) => [slug, AGY_CANONICAL_MODEL])
-);
+const AGY_TO_CANONICAL: ReadonlyMap<string, string> = new Map([
+  ['gemini-4-argon-high', AGY_ARGON_CANONICAL_MODEL],
+  ['gemini-4-argon-medium', AGY_ARGON_CANONICAL_MODEL],
+  ['gemini-4-argon-low', AGY_ARGON_CANONICAL_MODEL],
+  ['gemini-3.8-flash-high', AGY_FLASH_CANONICAL_MODEL],
+  ['gemini-3.8-flash-medium', AGY_FLASH_CANONICAL_MODEL],
+  ['gemini-3.8-flash-low', AGY_FLASH_CANONICAL_MODEL],
+]);
 
 /** Selected canonical identity; unknown/retired native names remain unknown. */
 export function fromAgyModelSlug(slug: string): string | null {
@@ -38,7 +51,7 @@ export function fromAgyModelSlug(slug: string): string | null {
 }
 
 /** Default native selection. Unsupported explicit pins do not fall back to it. */
-export const DEFAULT_AGY_MODEL: AgyModelSlug = AGY_MODEL_SLUGS[0];
+export const DEFAULT_AGY_MODEL: AgyModelSlug = 'gemini-3.8-flash-high';
 
 /** Whether a string is a supported native Gemini pin. */
 export function isAgyModelSlug(value: string): value is AgyModelSlug {

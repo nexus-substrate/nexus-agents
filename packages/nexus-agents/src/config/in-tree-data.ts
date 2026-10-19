@@ -189,6 +189,27 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     // ----- Google Gemini -----
     {
+      id: 'gemini-4-argon',
+      displayName: 'Gemini 4 Argon',
+      provider: 'google',
+      contextWindow: 1_048_576,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'structured_output',
+      ],
+      specialFeatures: ['extended_thinking', 'streaming', 'grounding'],
+      notes: 'Next-gen frontier reasoning Gemini (Argon); 1M context; native to AGY CLI',
+      pricing: { inputPer1M: 2.0, outputPer1M: 10.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 8, cost: 7 },
+      maxOutputTokens: 65_536,
+      cliName: 'gemini',
+      cliModelName: 'gemini-4-argon',
+    },
+    {
       id: 'gemini-3-pro',
       displayName: 'Gemini 3.1 Pro (Preview)',
       provider: 'google',
