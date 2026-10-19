@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { countMockGuardSites } from './source-scan.js';
+import { countMockGuardSites, countPatternInDir, TEST_FILE_EXCLUDES } from './source-scan.js';
 
 let root = '';
 
@@ -59,5 +59,30 @@ describe('countMockGuardSites (#5580)', () => {
 
     // Still 1: the production guard above, not the test.
     expect(countMockGuardSites(root)).toBe(1);
+  });
+});
+
+describe('TEST_FILE_EXCLUDES (#7446)', () => {
+  it('excludes test and spec files while including production files', () => {
+    writeFileSync(join(root, 'governance', 'feature.test.ts'), "from '../mcp/tools.js';\n");
+    writeFileSync(join(root, 'governance', 'feature.spec.ts'), "from '../mcp/tools.js';\n");
+    expect(
+      countPatternInDir(
+        join(root, 'governance'),
+        /\.ts$/,
+        /from ['"]\.\.\/mcp\//g,
+        TEST_FILE_EXCLUDES
+      )
+    ).toBe(0);
+
+    writeFileSync(join(root, 'governance', 'feature.ts'), "from '../mcp/tools.js';\n");
+    expect(
+      countPatternInDir(
+        join(root, 'governance'),
+        /\.ts$/,
+        /from ['"]\.\.\/mcp\//g,
+        TEST_FILE_EXCLUDES
+      )
+    ).toBe(1);
   });
 });

@@ -12,9 +12,11 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+/** Exclude test and spec files from production-only static analysis scans (#7446). */
+export const TEST_FILE_EXCLUDES: RegExp[] = [/\.test\.ts$/, /\.spec\.ts$/];
+
 export const DETERMINISM_EXCLUDES: RegExp[] = [
-  /\.test\.ts$/,
-  /\.spec\.ts$/,
+  ...TEST_FILE_EXCLUDES,
   /random-provider\.ts$/,
   /time-provider\.ts$/,
 ];

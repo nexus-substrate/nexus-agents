@@ -239,4 +239,12 @@ describe('Fitness score baseline', () => {
     // (Commits: cb81074 - routing pipeline migration)
     expect(taskAnalysisFinding).toBeUndefined();
   });
+
+  it('excludes test-only cross-layer imports from layerSeparation critical violations (#7446)', () => {
+    const audit = calculateFitnessScore('layer-sep-test');
+    const coreMcpFinding = audit.findings.find((f) =>
+      f.description.includes('core->MCP import violations')
+    );
+    expect(coreMcpFinding).toBeUndefined();
+  });
 });
