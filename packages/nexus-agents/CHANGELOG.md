@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 12.2.1
+
+### Patch Changes
+
+- [#7516](https://github.com/nexus-substrate/nexus-agents/pull/7516) [`bf065e8`](https://github.com/nexus-substrate/nexus-agents/commit/bf065e88f1021ca37dc08fd23a29b56497422671) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - refactor(core): decouple event-bus layer by moving CollaborationEventBus core implementation to core/event-bus with full backwards-compatible re-exports ([#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129))
+
 ## 12.2.0
 
 ### Minor Changes
