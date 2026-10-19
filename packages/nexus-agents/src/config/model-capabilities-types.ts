@@ -127,7 +127,6 @@ export const MODEL_IDS = [
   'gpt-6.1-sol',
   'gpt-6-luna-pro',
   'gpt-5.6-sol',
-  'gpt-5.5',
   'codex-5.3',
   'codex-5.2',
   'codex-5.1-mini',

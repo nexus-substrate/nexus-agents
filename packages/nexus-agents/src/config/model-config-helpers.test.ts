@@ -392,7 +392,7 @@ describe('resolveCliCostPer1M', () => {
     const registry = getDefaultRegistry();
     const entries = registry.allEntries();
     const raised = entries.map((e) =>
-      e.id === 'gpt-5.5' ? { ...e, pricing: { inputPer1M: 50, outputPer1M: 100 } } : e
+      e.id === 'gpt-5.6-sol' ? { ...e, pricing: { inputPer1M: 50, outputPer1M: 100 } } : e
     );
     const spy = vi.spyOn(registry, 'allEntries').mockReturnValue(raised);
     const getEntry = registry.getEntry.bind(registry);
@@ -672,22 +672,20 @@ describe('codex registry entries (#5091)', () => {
       expect(sol.pricing).toEqual({ inputPer1M: 4.0, outputPer1M: 20.0 });
     });
 
-    it('carries gpt-5.5 quality scores forward (a tier position, not a measurement)', () => {
-      expect(getModelQualityScores('gpt-5.6-sol')).toEqual(getModelQualityScores('gpt-5.5'));
+    it('preserves gpt-5.6-sol quality scores from its established baseline', () => {
+      expect(getModelQualityScores('gpt-5.6-sol')).toEqual({
+        reasoning: 10,
+        codeGeneration: 10,
+        speed: 7,
+        cost: 4,
+      });
     });
 
-    it('keeps gpt-5.5 routable until its removal (#6526)', () => {
-      expect(getCliModelName('gpt-5.5')).toBe('gpt-5.5');
-      expect(findInTreeByCli('codex').map((e) => e.id)).toContain('gpt-5.5');
+    it('resolves legacy gpt-5.5 alias to gpt-5.6-sol after codex retirement (#6526)', () => {
+      expect(findCanonicalModel('codex', 'gpt-5.5')?.id).toBe('gpt-5.6-sol');
+      expect(findCanonicalModel('codex', 'gpt-5-5')?.id).toBe('gpt-5.6-sol');
+      expect(findInTreeByCli('codex').map((e) => e.id)).not.toContain('gpt-5.5');
     });
-  });
-
-  it('no codex entry collides with the gpt-5.5 entry the panel kept distinct', () => {
-    const others = findInTreeByCli('codex').filter((e) => e.id !== 'gpt-5.5');
-    expect(others.length).toBeGreaterThan(0);
-    for (const entry of others) {
-      expect(entry.cliModelName).not.toBe(getCliModelName('gpt-5.5'));
-    }
   });
 });
 

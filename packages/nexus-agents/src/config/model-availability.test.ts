@@ -250,7 +250,6 @@ describe('getCliForModelId', () => {
     expect(DEFAULT_MODEL_PER_CLI.codex).not.toBe('gpt-5.6-sol');
     expect(getFallbackChain('codex')).not.toContain('gpt-5.6-sol');
     expect(getCliForModelId('gpt-5.6-sol')).toBe('codex');
-    expect(getCliForModelId('gpt-5.5')).toBe('codex');
   });
 
   it('maps every registered model to its registry cliName', () => {

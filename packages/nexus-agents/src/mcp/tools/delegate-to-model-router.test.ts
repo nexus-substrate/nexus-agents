@@ -246,7 +246,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision({ cliName: 'codex' });
     const output = mapCompositeDecisionToOutput(decision, 100);
 
-    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['gpt-5.5']);
+    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['gpt-6.1-sol']);
   });
 });
 
