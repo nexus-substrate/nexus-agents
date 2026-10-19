@@ -167,8 +167,8 @@ describe('estimateCost', () => {
 
   it('calculates cost for Codex', () => {
     const cost = estimateCost('codex', { inputTokens: 1_000_000, outputTokens: 1_000_000 });
-    // Unpriced gpt-6.1-sol: codex's highest known rates 5 + 30 = 35 (#6866).
-    expect(cost).toBeCloseTo(35);
+    // Unpriced gpt-6.1-sol: codex's highest known rates 4 + 20 = 24 (#6866, after gpt-5.5 retirement).
+    expect(cost).toBeCloseTo(24);
   });
 
   it('returns 0 for zero tokens', () => {

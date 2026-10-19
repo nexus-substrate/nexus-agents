@@ -95,7 +95,7 @@ import {
  *
  * Operators are expected to override via `NEXUS_CUSTOM_MODEL`.
  */
-export const CUSTOM_API_DEFAULT_MODEL = 'gpt-5.5';
+export const CUSTOM_API_DEFAULT_MODEL = 'gpt-5.6-sol';
 
 // ============================================================================
 // Central Defaults Object

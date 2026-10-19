@@ -103,10 +103,10 @@ describe('budget-utils', () => {
     });
 
     it('calculates cost for codex', () => {
-      // Unpriced gpt-6.1-sol: codex's highest known rates, gpt-5.5's $5 + $30
-      // (#6866) — never below priced gpt-5.6-sol's $24.
+      // Unpriced gpt-6.1-sol: codex's highest known rates, gpt-5.6-sol's $4 + $20
+      // (#6866) after gpt-5.5 retirement.
       const cost = estimateCost('codex', 1_000_000, 1_000_000);
-      expect(cost).toBe(35.0);
+      expect(cost).toBe(24.0);
       expect(cost).toBeGreaterThanOrEqual(24.0);
     });
 
@@ -180,8 +180,8 @@ describe('budget-gate invariant: an unpriced candidate is never free (#5122 incr
     { cli: 'claude', est: 60 },
     { cli: 'gemini', est: 4.5 },
     // #6866: unpriced gpt-6.1-sol is estimated at codex's highest known
-    // rates (gpt-5.5 $5/$30), never below priced gpt-5.6-sol's 24.
-    { cli: 'codex', est: 35 },
+    // rates (gpt-5.6-sol $4/$20 after gpt-5.5 retirement).
+    { cli: 'codex', est: 24 },
     { cli: 'opencode', est: 18 },
   ];
 
@@ -200,10 +200,10 @@ describe('budget-gate invariant: an unpriced candidate is never free (#5122 incr
     expect(model).toBe('gpt-6.1-sol');
     expect(getModelPricing(model)).toBeUndefined();
     const resolved = resolveCliCostPer1M('codex');
-    expect(resolved).toEqual({ input: 5, output: 30 });
+    expect(resolved).toEqual({ input: 4, output: 20 });
     expect(resolved.input).toBeGreaterThan(0);
     expect(resolved.output).toBeGreaterThan(0);
-    expect(estimateCost('codex', 1_000_000, 1_000_000)).toBe(35);
+    expect(estimateCost('codex', 1_000_000, 1_000_000)).toBe(24);
   });
 
   it('resolves an UNPRICED model to the conservative fallback, not to zero', () => {

@@ -471,7 +471,8 @@ describe('computeCostDetail characterization — pinned before the #5122 refacto
       costUsd: 0,
       priced: false,
     },
-    { model: 'gpt-5.5', input: 12345, output: 6789, costUsd: 0.265395, priced: true },
+    // gpt-5.5 is retired and aliases to gpt-5.6-sol ($4/$20): 12345*0.000004 + 6789*0.000020 = 0.18516
+    { model: 'gpt-5.5', input: 12345, output: 6789, costUsd: 0.18516, priced: true },
     // FRACTIONAL RATES — the cases where rounding actually changes the answer.
     // Without these the round-to-micro-USD step could be deleted and every test
     // still passed: at $3/1M a single token is exactly 3 micro-USD, so rounding
