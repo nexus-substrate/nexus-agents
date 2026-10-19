@@ -1144,5 +1144,107 @@ describe('ConsensusEngine - Edge Cases', () => {
         expect(closeResult.value.outcome).toBe('rejected');
       }
     });
+
+    it('refuses approval when panelSize is empty (fails closed)', async () => {
+      const propResult = await engine.propose({
+        title: 'Empty panel artifact requirement',
+        description: 'Proposal with empty required voters',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        requiredVoters: [],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+      }
+    });
+
+    it('allows approval when floor of voters inspected the artifact even if one voter dissents', async () => {
+      const propResult = await engine.propose({
+        title: 'Review with dissenting inspector',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 2 approve after inspecting, 1 rejects after inspecting (all 3 inspected, 2/3 approved -> simple_majority passes)
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'inspected and approved',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'approve',
+        reasoning: 'inspected and approved',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'reject',
+        reasoning: 'inspected and rejected',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('approved');
+      }
+    });
+
+    it('does not return cached result when artifact requirements differ', async () => {
+      const cachedEngine = createConsensusEngine({
+        proposalCache: { enabled: true, ttlMs: 60000, maxEntries: 10 },
+      });
+
+      const first = await cachedEngine.propose({
+        title: 'Cache Separation',
+        description: 'Testing artifact cache isolation',
+        algorithm: 'simple_majority',
+      });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+
+      await cachedEngine.vote(first.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'ok',
+        confidence: 0.9,
+      });
+      await cachedEngine.vote(first.value, 'agent-2', {
+        decision: 'approve',
+        reasoning: 'ok',
+        confidence: 0.9,
+      });
+      await cachedEngine.close(first.value);
+
+      // Same title/description but with requireArtifact: true
+      const second = await cachedEngine.propose({
+        title: 'Cache Separation',
+        description: 'Testing artifact cache isolation',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        artifactDigest: requiredDigest,
+      });
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+
+      // Should be a different proposal ID, not cached hit
+      expect(second.value).not.toBe(first.value);
+    });
   });
 });

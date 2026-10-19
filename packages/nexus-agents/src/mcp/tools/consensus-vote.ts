@@ -42,6 +42,7 @@ import {
 } from '../../consensus/decision/strategy.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { inlineVoteArtifact, extractBoundArtifact } from '../../cli/vote-artifact.js';
+import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { resolvePanelWorkspace } from '../../cli/panel-workspace.js';
@@ -311,13 +312,14 @@ async function processVotesThroughEngine(
 
   const proposalId = proposalResult.value;
   for (const { role, vote, source } of engineVotes) {
+    const isAbsent = isAbsentSeat({ source });
     const boundVote: Vote =
       boundArtifact !== undefined
         ? {
             ...vote,
             artifactReadiness:
-              vote.artifactReadiness ?? (source === 'error' ? 'artifact_starved' : 'ready'),
-            boundArtifactDigest: vote.boundArtifactDigest ?? boundArtifact.digest,
+              vote.artifactReadiness ?? (isAbsent ? 'artifact_starved' : undefined),
+            boundArtifactDigest: vote.boundArtifactDigest,
           }
         : vote;
     await engine.vote(proposalId, role, boundVote);

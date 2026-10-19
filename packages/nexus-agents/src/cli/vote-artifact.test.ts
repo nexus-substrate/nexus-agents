@@ -151,5 +151,23 @@ describe('in-memory vote artifact (#7411)', () => {
     it('returns undefined when proposal does not contain an inlined artifact header', () => {
       expect(extractBoundArtifact('Just an ordinary proposal')).toBeUndefined();
     });
+
+    it('returns undefined when proposal merely mentions artifact in prose without framing block', () => {
+      const spoofed =
+        'Proposal text mentioning Artifact: plan.md sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 bytes in prose';
+      expect(extractBoundArtifact(spoofed)).toBeUndefined();
+    });
+
+    it('returns undefined when inlined artifact content does not match declared sha256 digest', () => {
+      const spoofed =
+        'Proposal\n\nArtifact: plan.md sha256:0000000000000000000000000000000000000000000000000000000000000000 14 bytes\n===== BEGIN ARTIFACT =====\nsample content\n===== END ARTIFACT =====';
+      expect(extractBoundArtifact(spoofed)).toBeUndefined();
+    });
+
+    it('returns undefined when inlined artifact content does not match declared byte length', () => {
+      const valid = inlineVoteArtifactText('Review plan', 'sample content', 'plan.md');
+      const tamperedLength = valid.replace(' 14 bytes', ' 99 bytes');
+      expect(extractBoundArtifact(tamperedLength)).toBeUndefined();
+    });
   });
 });

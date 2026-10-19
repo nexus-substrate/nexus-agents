@@ -469,15 +469,15 @@ export class ConsensusEngine implements IConsensusEngine {
   }
 
   private calculateRequiredArtifactFloor(panelSize: number): number {
+    if (panelSize <= 0) return 1;
     return Math.min(panelSize, Math.max(Math.ceil((panelSize * 2) / 3), 3));
   }
 
-  private countEligibleInspectedApprovals(votes: Iterable<Vote>, requiredDigest?: string): number {
+  private countEligibleInspectedVoters(votes: Iterable<Vote>, requiredDigest?: string): number {
     let count = 0;
     for (const v of votes) {
       if (
         v.artifactReadiness === 'ready' &&
-        v.decision === 'approve' &&
         (requiredDigest === undefined || v.boundArtifactDigest === requiredDigest)
       ) {
         count++;
@@ -492,7 +492,7 @@ export class ConsensusEngine implements IConsensusEngine {
     if (outcome.approved && this.hasArtifactRequirement(state.proposal)) {
       const panelSize = state.proposal.requiredVoters?.length ?? state.votes.size;
       const minFloor = this.calculateRequiredArtifactFloor(panelSize);
-      const inspected = this.countEligibleInspectedApprovals(
+      const inspected = this.countEligibleInspectedVoters(
         state.votes.values(),
         state.proposal.artifactDigest
       );
@@ -548,7 +548,7 @@ export class ConsensusEngine implements IConsensusEngine {
   private meetsCascadeArtifactFloor(state: ProposalState, totalRequired: number): boolean {
     if (!this.hasArtifactRequirement(state.proposal)) return true;
     const minFloor = this.calculateRequiredArtifactFloor(totalRequired);
-    const inspected = this.countEligibleInspectedApprovals(
+    const inspected = this.countEligibleInspectedVoters(
       state.votes.values(),
       state.proposal.artifactDigest
     );
@@ -678,7 +678,14 @@ export class ConsensusEngine implements IConsensusEngine {
    * Hash is based on title, description, and algorithm (deterministic content).
    */
   private hashProposalContent(proposal: Proposal): string {
-    const content = [proposal.title, proposal.description, proposal.algorithm].join('|');
+    const content = [
+      proposal.title,
+      proposal.description,
+      proposal.algorithm,
+      String(proposal.requireArtifact ?? false),
+      proposal.artifactDigest ?? '',
+      (proposal.requiredVoters ?? []).join(','),
+    ].join('|');
     // Simple FNV-1a hash for fast deterministic hashing
     let hash = 2166136261;
     for (let i = 0; i < content.length; i++) {

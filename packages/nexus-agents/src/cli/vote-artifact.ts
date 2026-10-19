@@ -72,9 +72,10 @@ export async function inlineVoteArtifact(
   );
 }
 
-const BOUND_ARTIFACT_RE = /\bArtifact:\s+([^\s]+)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\b/i;
+const BOUND_ARTIFACT_BLOCK_RE =
+  /\n\nArtifact:\s+([^\s]+)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\n===== BEGIN ARTIFACT =====\n([\s\S]*?)\n===== END ARTIFACT =====$/;
 
-/** Extracts bound artifact metadata from a proposal containing an inlined artifact. */
+/** Extracts and cryptographically verifies bound artifact metadata from an inlined artifact block. */
 export function extractBoundArtifact(proposal: string):
   | {
       displayName: string;
@@ -82,13 +83,29 @@ export function extractBoundArtifact(proposal: string):
       bytes: number;
     }
   | undefined {
-  const match = BOUND_ARTIFACT_RE.exec(proposal);
-  if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+  const match = BOUND_ARTIFACT_BLOCK_RE.exec(proposal);
+  if (
+    match?.[1] === undefined ||
+    match[2] === undefined ||
+    match[3] === undefined ||
+    match[4] === undefined
+  ) {
+    return undefined;
+  }
+  const content = match[4];
+  const declaredDigest = match[2];
+  const declaredBytes = Number.parseInt(match[3], 10);
+  const actualBytes = Buffer.from(content, 'utf8');
+  if (actualBytes.length !== declaredBytes) {
+    return undefined;
+  }
+  const actualDigest = createHash('sha256').update(actualBytes).digest('hex');
+  if (actualDigest !== declaredDigest) {
     return undefined;
   }
   return {
     displayName: match[1],
-    digest: `sha256:${match[2]}`,
-    bytes: Number.parseInt(match[3], 10),
+    digest: `sha256:${declaredDigest}`,
+    bytes: declaredBytes,
   };
 }

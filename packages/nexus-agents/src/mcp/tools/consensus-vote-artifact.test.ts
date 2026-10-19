@@ -24,6 +24,14 @@ vi.mock('../middleware/tool-wrapper.js', () => ({
 vi.mock('../middleware/secure-handler.js', () => ({
   createSecureHandler: (fn: unknown) => fn,
 }));
+vi.mock('../../cli-adapters/factory.js', () => ({
+  createAllAdapters: () => new Map(),
+  getAvailableClis: () => Promise.resolve([]),
+  isCliAvailable: () => Promise.resolve(false),
+  createCliAdapter: () => {
+    throw new Error('Unexpected real adapter construction');
+  },
+}));
 
 import { CONSENSUS_VOTE_TOOL_SCHEMA, registerConsensusVoteTool } from './consensus-vote.js';
 import { ConsensusVoteInputSchema } from './consensus-vote-types.js';
@@ -190,5 +198,115 @@ describe('consensus_vote artifactPath (#7092)', () => {
       );
     }
     expect(collectMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when voters have undeclared readiness or source unverifiable at the tool seam', async () => {
+    const content = 'reviewed diff content';
+    const artifactPath = join(root, 'patch.diff');
+    writeFileSync(artifactPath, content);
+
+    // 3 voters: none declared artifactReadiness, one seat is unverifiable
+    collectMock.mockResolvedValueOnce([
+      {
+        role: 'architect',
+        vote: { decision: 'approve', confidence: 0.9, reasoning: 'looks good' },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'security',
+        vote: {
+          decision: 'abstain',
+          confidence: 0,
+          reasoning: 'UNVERIFIABLE: could not read the artifact',
+        },
+        source: 'unverifiable',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'devex',
+        vote: { decision: 'approve', confidence: 0.9, reasoning: 'looks good' },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+    ]);
+
+    const result = await captureHandler()(
+      {
+        proposal: 'Review patch',
+        artifactPath: relative(process.cwd(), artifactPath),
+        quickMode: true,
+      },
+      CTX
+    );
+
+    expect(result.isError).not.toBe(true);
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { decision: string };
+    expect(parsed.decision).toBe('rejected');
+  });
+
+  it('approves when voters truthfully declare readiness matching the bound artifact digest at the tool seam', async () => {
+    const content = 'reviewed diff content';
+    const artifactPath = join(root, 'patch.diff');
+    writeFileSync(artifactPath, content);
+    const digest = `sha256:${createHash('sha256').update(content).digest('hex')}`;
+
+    collectMock.mockResolvedValueOnce([
+      {
+        role: 'architect',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: digest,
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'security',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: digest,
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'devex',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: digest,
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+    ]);
+
+    const result = await captureHandler()(
+      {
+        proposal: 'Review patch',
+        artifactPath: relative(process.cwd(), artifactPath),
+        quickMode: true,
+      },
+      CTX
+    );
+
+    expect(result.isError).not.toBe(true);
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { decision: string };
+    expect(parsed.decision).toBe('approved');
   });
 });
