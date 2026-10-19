@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 12.1.0
+
+### Minor Changes
+
+- [#7510](https://github.com/nexus-substrate/nexus-agents/pull/7510) [`622954e`](https://github.com/nexus-substrate/nexus-agents/commit/622954e91ccdca84197363049f68e5843afb3b1e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Admit API vendor and gateway arms (`api:*`) in StrategyDistiller rules and persistence, unblocking closed-loop strategy distillation across dynamic endpoints ([#6555](https://github.com/nexus-substrate/nexus-agents/issues/6555)).
+
+### Patch Changes
+
+- [#7513](https://github.com/nexus-substrate/nexus-agents/pull/7513) [`43e43f9`](https://github.com/nexus-substrate/nexus-agents/commit/43e43f99fa6447eaed401849efaf503cb71672a8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Exclude test files from fitness-audit layerSeparation static analysis checks, eliminating false-positive critical core->MCP layer violation findings on test fixtures ([#7446](https://github.com/nexus-substrate/nexus-agents/issues/7446)).
+
 ## 12.0.0
 
 ### Major Changes
