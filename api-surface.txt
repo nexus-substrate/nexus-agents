@@ -3321,7 +3321,7 @@ InterfaceDeclaration EventBusStats
   eventsEmitted: number
   historySize: number
   subscriptionsCreated: number
-InterfaceDeclaration EventFilter @agents/collaboration/event-bus-core-types
+InterfaceDeclaration EventFilter @core/event-bus-types
   after?: string | undefined
   before?: string | undefined
   correlationId?: string | undefined
@@ -9151,7 +9151,7 @@ ClassDeclaration SubprocessCliAdapter
   extends BaseCliAdapter
   initialize() => Promise<void>
   readonly transport: CliTransport
-InterfaceDeclaration Subscription @agents/collaboration/event-bus-core-types
+InterfaceDeclaration Subscription @core/event-bus-types
   readonly id: string
   readonly pattern: string
   unsubscribe() => void
