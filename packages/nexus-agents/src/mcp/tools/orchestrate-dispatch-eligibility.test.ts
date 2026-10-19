@@ -43,6 +43,10 @@ function fixture(): {
     claude: new ClaudeCliAdapter(),
     codex: new CodexCliAdapter(),
   };
+  Object.defineProperty(natives.gemini, 'enforcesReadOnlyAnalysis', {
+    value: false,
+    writable: true,
+  });
   const adapters = {
     gemini: new CliToModelAdapter(natives.gemini),
     claude: new CliToModelAdapter(natives.claude),

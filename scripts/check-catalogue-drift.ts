@@ -76,6 +76,8 @@ export interface DriftOptions {
    * stages actively prefer a model that could only fail.
    */
   readonly treatFalseFreeAsDefect?: boolean;
+  /** Explicit model names or slugs exempted from public catalogue checking. */
+  readonly exemptModelNames?: readonly string[] | undefined;
 }
 
 /**
@@ -83,6 +85,13 @@ export interface DriftOptions {
  * denotes an operator-configured endpoint; flagging it every run is pure noise.
  */
 const ALIAS_PREFIXES = ['custom/'];
+
+/**
+ * Transport-native CLI models verified by dedicated CLI drift gates (such as
+ * `scripts/check-agy-model-drift.ts` for Antigravity native models) rather than
+ * public models.dev API snapshots (#7423 / #7498).
+ */
+const NATIVE_CLI_MODELS = new Set(['gemini-4-argon']);
 
 /** Prices differ in the last bits across sources; compare with a tolerance. */
 const PRICE_EPSILON = 0.001;
@@ -218,6 +227,12 @@ function absenceFinding(
   };
 }
 
+function isExemptModel(cliModelName: string, opts: DriftOptions): boolean {
+  if (ALIAS_PREFIXES.some((prefix) => cliModelName.startsWith(prefix))) return true;
+  if (NATIVE_CLI_MODELS.has(cliModelName)) return true;
+  return opts.exemptModelNames?.includes(cliModelName) === true;
+}
+
 /** Compare in-tree entries against the catalogue. Pure — no I/O. */
 export function findCatalogueDrift(
   models: readonly InTreeModel[],
@@ -230,7 +245,7 @@ export function findCatalogueDrift(
   for (const model of models) {
     const cliModelName = model.cliModelName;
     if (cliModelName === undefined || cliModelName === '') continue;
-    if (ALIAS_PREFIXES.some((prefix) => cliModelName.startsWith(prefix))) continue;
+    if (isExemptModel(cliModelName, opts)) continue;
 
     const hit = candidateKeys(model, cliModelName)
       .map((k) => byId.get(k))

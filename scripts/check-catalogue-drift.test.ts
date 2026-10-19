@@ -75,6 +75,25 @@ describe('findCatalogueDrift — clean cases', () => {
 
     expect(findings).toEqual([]);
   });
+
+  it('skips native CLI models validated by transport-specific drift checks', () => {
+    const findings = findCatalogueDrift(
+      [model({ id: 'gemini-4-argon', provider: 'google', cliModelName: 'gemini-4-argon' })],
+      []
+    );
+
+    expect(findings).toEqual([]);
+  });
+
+  it('skips explicitly exempt model names passed via options', () => {
+    const findings = findCatalogueDrift(
+      [model({ id: 'custom-native', provider: 'google', cliModelName: 'native-pin' })],
+      [],
+      { exemptModelNames: ['native-pin'] }
+    );
+
+    expect(findings).toEqual([]);
+  });
 });
 
 describe('findCatalogueDrift — the #4410 shape (dead id)', () => {
