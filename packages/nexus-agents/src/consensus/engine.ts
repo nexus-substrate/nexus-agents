@@ -501,7 +501,8 @@ export class ConsensusEngine implements IConsensusEngine {
     const strategy = this.strategyFactory.getStrategy(state.proposal.algorithm);
     const outcome = strategy.calculateOutcome(state.votes);
     if (outcome.approved && this.hasArtifactRequirement(state.proposal)) {
-      const panelSize = state.proposal.requiredVoters?.length ?? state.votes.size;
+      const panelSize =
+        state.proposal.totalRoles ?? state.proposal.requiredVoters?.length ?? state.votes.size;
       const minFloor = this.calculateRequiredArtifactFloor(panelSize);
       const inspected = this.countEligibleInspectedVoters(
         state.votes.values(),
@@ -511,6 +512,7 @@ export class ConsensusEngine implements IConsensusEngine {
         return {
           ...outcome,
           approved: false,
+          artifactFloorUnmet: true,
           reason: `Insufficient eligible voters inspected the required artifact (${String(inspected)}/${String(minFloor)} required)`,
         };
       }
@@ -558,7 +560,8 @@ export class ConsensusEngine implements IConsensusEngine {
 
   private meetsCascadeArtifactFloor(state: ProposalState, totalRequired: number): boolean {
     if (!this.hasArtifactRequirement(state.proposal)) return true;
-    const minFloor = this.calculateRequiredArtifactFloor(totalRequired);
+    const panelSize = state.proposal.totalRoles ?? totalRequired;
+    const minFloor = this.calculateRequiredArtifactFloor(panelSize);
     const inspected = this.countEligibleInspectedVoters(
       state.votes.values(),
       state.proposal.artifactDigest

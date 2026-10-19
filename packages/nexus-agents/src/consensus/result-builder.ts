@@ -75,6 +75,7 @@ export function buildFinalResult(
     closedAt: now.toISOString(),
     durationMs: now.getTime() - state.startedAt.getTime(),
     reason: outcome.reason,
+    ...(outcome.artifactFloorUnmet === true ? { artifactFloorUnmet: true } : {}),
   };
 }
 
@@ -101,5 +102,7 @@ export function buildTimeoutResult(
     startedAt: state.startedAt.toISOString(),
     closedAt: now.toISOString(),
     durationMs: now.getTime() - state.startedAt.getTime(),
+    reason: outcome.reason,
+    ...(outcome.artifactFloorUnmet === true ? { artifactFloorUnmet: true } : {}),
   };
 }

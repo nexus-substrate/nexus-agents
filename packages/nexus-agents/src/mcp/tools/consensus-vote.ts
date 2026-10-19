@@ -286,7 +286,8 @@ function detectEarlyCascade(
 async function processVotesThroughEngine(
   engineVotes: readonly AgentVoteResult[],
   proposal: string,
-  algorithm: ConsensusAlgorithm
+  algorithm: ConsensusAlgorithm,
+  totalRoles?: number
 ): Promise<ConsensusResult> {
   if (engineVotes.length === 0) return createEmptyConsensusResult(proposal, algorithm);
 
@@ -296,6 +297,7 @@ async function processVotesThroughEngine(
     title: 'MCP Consensus Vote',
     description: proposal,
     algorithm,
+    ...(totalRoles !== undefined ? { totalRoles } : {}),
     ...(boundArtifact !== undefined
       ? {
           artifactDigest: boundArtifact.digest,
@@ -436,7 +438,12 @@ async function processVotesWithCascade(
     });
   }
 
-  const engineResult = await processVotesThroughEngine(engineVotes, opts.proposal, opts.algorithm);
+  const engineResult = await processVotesThroughEngine(
+    engineVotes,
+    opts.proposal,
+    opts.algorithm,
+    opts.totalRoles
+  );
   const voteMap = new Map<string, Vote>();
   for (const { role, vote } of engineVotes) voteMap.set(role, vote);
 
@@ -729,7 +736,7 @@ async function executeVotingInner(
   // #4132 / #M1: an errored contrarian under absolute_quorum or an unmet artifact floor
   // voids the quorum — stamp policyReason so buildResponse and resolveVoteDecision
   // downgrade to no_quorum rather than misreporting as a rejection.
-  const degradeReason = resolveDegradeReason(escalation.degradeReason, engineResult.reason);
+  const degradeReason = resolveDegradeReason(escalation.degradeReason, engineResult);
   return applyContrarianDegrade(
     { ...finalized, contrarianCheck: escalation.contrarianCheck },
     degradeReason
@@ -741,13 +748,16 @@ async function executeVotingInner(
  */
 function resolveDegradeReason(
   escalationReason: string | undefined,
-  engineReason: string | undefined
+  engineResult: { reason?: string | undefined; artifactFloorUnmet?: boolean | undefined }
 ): string | undefined {
   if (escalationReason !== undefined) {
     return escalationReason;
   }
-  if (engineReason?.includes('inspected the required artifact') === true) {
-    return `no_quorum: ${engineReason}`;
+  if (
+    engineResult.artifactFloorUnmet === true ||
+    engineResult.reason?.includes('inspected the required artifact') === true
+  ) {
+    return `no_quorum: ${engineResult.reason ?? 'Insufficient eligible voters inspected the required artifact'}`;
   }
   return undefined;
 }

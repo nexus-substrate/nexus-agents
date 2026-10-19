@@ -40,6 +40,8 @@ export interface VotingOutcome {
    */
   weightBasis?: WeightBasis;
   reason: string;
+  /** Whether outcome was marked unapproved due to unmet artifact floor (#M1). */
+  artifactFloorUnmet?: boolean | undefined;
 }
 
 /**

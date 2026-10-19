@@ -1251,6 +1251,40 @@ describe('ConsensusEngine - Edge Cases', () => {
       }
     });
 
+    it('enforces artifact floor against totalRoles even when fewer votes are cast (e.g. 4 of 7)', async () => {
+      const propResult = await engine.propose({
+        title: 'Review with totalRoles=7 and 4 voters',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+        totalRoles: 7,
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 4 voters vote approve with ready inspection.
+      // Floor for panel size 7 is min(7, max(ceil(14/3), 3)) = 5.
+      for (let i = 1; i <= 4; i++) {
+        await engine.vote(propResult.value, `agent-${String(i)}`, {
+          decision: 'approve',
+          reasoning: 'inspected and approved',
+          confidence: 0.9,
+          boundArtifactDigest: requiredDigest,
+          artifactReadiness: 'ready',
+        });
+      }
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+        expect(closeResult.value.artifactFloorUnmet).toBe(true);
+        expect(closeResult.value.reason).toContain('4/5 required');
+      }
+    });
+
     it('does not return cached result when artifact requirements differ', async () => {
       const cachedEngine = createConsensusEngine({
         proposalCache: { enabled: true, ttlMs: 60000, maxEntries: 10 },

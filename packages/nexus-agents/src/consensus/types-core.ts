@@ -142,6 +142,13 @@ export const ProposalSchema = z.object({
     .boolean()
     .optional()
     .describe('Whether artifact inspection is mandatory for eligible votes'),
+  /** Total panel size for artifact inspection floor calculations (#M1). */
+  totalRoles: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Total panel size for artifact inspection floor'),
   metadata: z.record(z.string(), z.unknown()).optional().describe('Additional context'),
   createdAt: z.iso.datetime().optional(),
 });
@@ -198,6 +205,8 @@ export interface ConsensusResult {
   durationMs: number;
   /** Explanation for outcome when applicable (e.g. unmet artifact floor). */
   reason?: string | undefined;
+  /** Whether artifact inspection floor was unmet (#M1 connected autonomy). */
+  artifactFloorUnmet?: boolean | undefined;
 }
 
 /**
@@ -228,6 +237,10 @@ export const ConsensusResultSchema = z.object({
   closedAt: z.iso.datetime(),
   durationMs: z.number().int().nonnegative(),
   reason: z.string().optional().describe('Explanation for outcome when applicable'),
+  artifactFloorUnmet: z
+    .boolean()
+    .optional()
+    .describe('Whether artifact inspection floor was unmet'),
 });
 
 /**
