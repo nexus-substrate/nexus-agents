@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 12.2.0
+
+### Minor Changes
+
+- [#7514](https://github.com/nexus-substrate/nexus-agents/pull/7514) [`8a2ed07`](https://github.com/nexus-substrate/nexus-agents/commit/8a2ed0781e03c6fe38da09a22fd9c3b840f8de1b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(voters): tighten voter system prompts and review proposal instructions to require concrete, reachable, medium-or-higher severity defects and forbid style preferences, formatting, nits, and speculative concerns ([#4336](https://github.com/nexus-substrate/nexus-agents/issues/4336)).
+
 ## 12.1.0
 
 ### Minor Changes
