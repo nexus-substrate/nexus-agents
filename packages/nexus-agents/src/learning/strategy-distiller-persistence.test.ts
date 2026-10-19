@@ -710,6 +710,42 @@ describe('PersistentStrategyDistiller', () => {
       const result = RulesSnapshotSchema.safeParse({ version: 2, savedAt: 'now', rules: [] });
       expect(result.success).toBe(false);
     });
+
+    it('accepts rules with api:* vendor arms (#6555)', () => {
+      const result = RulesSnapshotSchema.safeParse(
+        makeSnapshot([
+          makeRule({
+            id: 'failure-rate:api:anthropic:code_generation',
+            cli: 'api:anthropic' as unknown as DistilledRule['cli'],
+          }),
+        ])
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts rules with api:* gateway arms (#6555)', () => {
+      const result = RulesSnapshotSchema.safeParse(
+        makeSnapshot([
+          makeRule({
+            id: 'failure-rate:api:gw-prod:code_generation',
+            cli: 'api:gw-prod' as unknown as DistilledRule['cli'],
+          }),
+        ])
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects rules with invalid arm format', () => {
+      const result = RulesSnapshotSchema.safeParse(
+        makeSnapshot([
+          makeRule({
+            id: 'failure-rate:invalid:arm:code_generation',
+            cli: 'invalid:arm' as unknown as DistilledRule['cli'],
+          }),
+        ])
+      );
+      expect(result.success).toBe(false);
+    });
   });
 
   // --------------------------------------------------------------------------

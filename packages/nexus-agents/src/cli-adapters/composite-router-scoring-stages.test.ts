@@ -11,8 +11,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ResourceStrategyStage } from './routing/stages/index.js';
 
 import { ok } from '../core/index.js';
-import type { CliName, CliTask } from './types.js';
-import { createRoutingContext } from './routing/router-stage.js';
+import type { CliName, CliTask, RoutingArmId } from './types.js';
+import { createRoutingContext, type RoutingContext } from './routing/router-stage.js';
 
 import { analyzeTaskProfile } from './composite-router-stages.js';
 import {
@@ -393,6 +393,35 @@ describe('runDistilledRuleStage', () => {
     expect(stages).toContain('distilled-rule');
     expect(result.rulesApplied).toBe(2);
     expect(result.scores.get('claude')).toBe(0.75);
+  });
+
+  it('projects RoutingArmId candidates through armsToSlots for distilled-rule scoring (#6555)', async () => {
+    const armCandidates: RoutingArmId[] = ['api:anthropic', 'codex'];
+    const stages: string[] = [];
+    let receivedContext: RoutingContext | undefined;
+    const mockStage = {
+      route: vi.fn((ctx: RoutingContext) => {
+        receivedContext = ctx;
+        return Promise.resolve(
+          ok({
+            context: {
+              ...ctx,
+              signals: ['distilled-rule:applied=failure-rate:api:anthropic:code_generation'],
+              scores: new Map([['claude', -5]]),
+            },
+          })
+        );
+      }),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: mockStage as unknown as StageDependencies['distilledRuleStage'],
+    });
+    const result = await runDistilledRuleStage(mockTask, armCandidates, stages, deps);
+    expect(stages).toContain('distilled-rule');
+    expect(receivedContext?.availableClis).toEqual(['claude', 'codex']);
+    expect(result.rulesApplied).toBe(1);
+    expect(result.scores.get('claude')).toBe(-5);
   });
 });
 

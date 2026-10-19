@@ -557,4 +557,50 @@ describe('rules are scoped to the category they were learned for (#4832)', () =>
     expect(signals.some((sig) => sig.startsWith('distilled-rule:applied='))).toBe(true);
     expect(signals).toContain('distilled-rule:category-unknown');
   });
+
+  describe('api:* arm matching (#6555)', () => {
+    it('applies api:anthropic rules to claude candidate slot', async () => {
+      const apiRule = makeRule({
+        id: 'failure-rate:api:anthropic:code_generation',
+        cli: 'api:anthropic' as unknown as CliName,
+        category: 'code_generation',
+      });
+      const stage = new DistilledRuleStage(createMockDistiller([apiRule]));
+
+      const result = await stage.route(
+        createContext('write code', ['claude', 'gemini'], [], { taskCategory: 'code_generation' })
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(
+        result.value.context.signals.includes(
+          'distilled-rule:applied=failure-rate:api:anthropic:code_generation'
+        )
+      ).toBe(true);
+      // claude score should be adjusted
+      expect(result.value.context.scores.get('claude')).toBeLessThan(0);
+      // gemini score should remain 0
+      expect(result.value.context.scores.get('gemini')).toBe(0);
+    });
+
+    it('does not apply api:anthropic rules to gemini candidate', async () => {
+      const apiRule = makeRule({
+        id: 'failure-rate:api:anthropic:code_generation',
+        cli: 'api:anthropic' as unknown as CliName,
+        category: 'code_generation',
+      });
+      const stage = new DistilledRuleStage(createMockDistiller([apiRule]));
+
+      const result = await stage.route(
+        createContext('write code', ['gemini', 'codex'], [], { taskCategory: 'code_generation' })
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(
+        result.value.context.signals.some((sig) => sig.startsWith('distilled-rule:applied='))
+      ).toBe(false);
+    });
+  });
 });

@@ -14,7 +14,7 @@
 
 import type { ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider } from '../core/index.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { RoutingArmId } from '../cli-adapters/types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type {
@@ -86,34 +86,30 @@ export function effectFor(
 }
 
 /** Build a fingerprint ID for a rule. */
-function ruleFingerprint(patternType: PatternType, cli: CliName, category: string): string {
+function ruleFingerprint(patternType: PatternType, cli: RoutingArmId, category: string): string {
   return `${patternType}:${cli}:${category}`;
 }
 
 /** Group outcomes by (cli, category). */
 interface OutcomeGroup {
-  readonly cli: CliName;
+  readonly cli: RoutingArmId;
   readonly category: string;
   readonly outcomes: readonly TaskOutcome[];
 }
 
 function groupOutcomes(outcomes: readonly TaskOutcome[]): OutcomeGroup[] {
-  const map = new Map<string, TaskOutcome[]>();
+  const map = new Map<string, { cli: RoutingArmId; category: string; outcomes: TaskOutcome[] }>();
   for (const o of outcomes) {
-    const key = `${o.cli}:${o.category}`;
-    const list = map.get(key);
-    if (list !== undefined) {
-      list.push(o);
+    const cli = o.cli as RoutingArmId;
+    const key = `${cli}\0${o.category}`;
+    const existing = map.get(key);
+    if (existing !== undefined) {
+      existing.outcomes.push(o);
     } else {
-      map.set(key, [o]);
+      map.set(key, { cli, category: o.category, outcomes: [o] });
     }
   }
-  const groups: OutcomeGroup[] = [];
-  for (const [key, list] of map) {
-    const [cli, category] = key.split(':') as [CliName, string];
-    groups.push({ cli, category, outcomes: list });
-  }
-  return groups;
+  return Array.from(map.values());
 }
 
 /** Compute p90 duration from a sorted array of durations. */
@@ -128,7 +124,7 @@ function percentile(sorted: readonly number[], p: number): number {
 // ============================================================================
 
 interface DetectedPattern {
-  readonly cli: CliName;
+  readonly cli: RoutingArmId;
   readonly category: string;
   readonly patternType: PatternType;
   readonly action: StrategyAction;

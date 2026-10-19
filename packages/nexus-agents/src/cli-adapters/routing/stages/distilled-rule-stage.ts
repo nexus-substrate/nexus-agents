@@ -27,6 +27,7 @@ import { addTrace, updateScore, getRemainingCandidates } from '../router-stage.j
 import type { StrategyDistiller } from '../../../learning/strategy-distiller.js';
 import type { DistilledRule, StrategyAction } from '../../../learning/strategy-distiller-types.js';
 import { TaskCategorySchema } from '../../../config/task-specialization-types.js';
+import { routingArmCliSlot } from '../../types.js';
 
 /** Score deltas per action type. */
 const ACTION_DELTAS: Readonly<Record<StrategyAction, number>> = {
@@ -197,7 +198,9 @@ export class DistilledRuleStage implements IRouterStage {
     category: string | undefined
   ): DistilledRule[] {
     return rules.filter(
-      (r) => r.cli === cli && (category === undefined || r.category === category)
+      (r) =>
+        (r.cli === cli || routingArmCliSlot(r.cli) === cli) &&
+        (category === undefined || r.category === category)
     );
   }
 

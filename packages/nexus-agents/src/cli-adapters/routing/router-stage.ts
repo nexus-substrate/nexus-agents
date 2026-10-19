@@ -12,8 +12,9 @@
  */
 
 import { z } from 'zod';
-import { CliNameSchema, type CliNameLiteral } from '../../config/model-capabilities-types.js';
+import { type CliNameLiteral } from '../../config/model-capabilities-types.js';
 import type { Result } from '../../core/result.js';
+import { RoutingArmIdSchema, type RoutingArmId } from '../types.js';
 
 // ============================================================================
 // Types
@@ -105,8 +106,8 @@ export type RoutingDecision = StageRoutingDecision;
  * Outcome for feedback/calibration.
  */
 export interface RoutingOutcome {
-  /** The CLI that was selected */
-  readonly selectedCli: CliName;
+  /** The CLI or routing arm that was selected (#6555) */
+  readonly selectedCli: RoutingArmId;
   /** The original task */
   readonly task: string;
   /** Whether the task succeeded */
@@ -236,7 +237,7 @@ export const StageConfigSchema = z.object({
 });
 
 export const RoutingOutcomeSchema = z.object({
-  selectedCli: CliNameSchema,
+  selectedCli: RoutingArmIdSchema,
   task: z.string(),
   success: z.boolean(),
   qualityScore: z.number().min(0).max(1).optional(),

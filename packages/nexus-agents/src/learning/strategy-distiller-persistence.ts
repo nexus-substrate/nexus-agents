@@ -12,7 +12,7 @@
 import { writeFileSync, readFileSync, renameSync, unlinkSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { CLI_NAMES } from '../config/model-capabilities-types.js';
+import { RoutingArmIdSchema } from '../cli-adapters/types.js';
 
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
@@ -38,7 +38,7 @@ import { ensureLearningDir, getRulesFile } from '../config/learning-persistence.
 const DistilledRuleSchema = z.object({
   id: z.string(),
   patternType: z.enum(['failure-rate', 'success-rate', 'latency-spike']),
-  cli: z.enum(CLI_NAMES),
+  cli: RoutingArmIdSchema,
   category: z.string(),
   action: z.enum(['penalize', 'boost', 'avoid']),
   confidence: z.number(),
@@ -311,7 +311,7 @@ export function loadPersistedRules(
     const result = RulesSnapshotSchema.safeParse(parsed);
     if (!result.success) {
       // NOT the same as an absent file. `RulesSnapshotSchema` is all-or-nothing
-      // — it pins `version: z.literal(1)` and each rule's `cli` to `CLI_NAMES` —
+      // — it pins `version: z.literal(1)` and each rule's `cli` to `RoutingArmIdSchema` —
       // so one rule written by a newer build discards EVERY rule, including the
       // valid ones. Returning `[]` silently would tell the consumer "nothing was
       // learned" when the truth is "what was learned could not be read" (#5907).

@@ -183,11 +183,28 @@ describe('recordRoutedOrchestrateOutcome (#6533)', () => {
       expect(pulls.get('claude')).toBe(0);
     });
 
-    it('does not train distilled rules on an API arm row, which no rule can match', () => {
+    it('trains distilled rules on a slotted API arm row (#6555)', () => {
       recordRoutedOrchestrateOutcome(TESTING_TASK, apiSuccess());
 
       const row = store.query()[0];
       expect(row?.routedBy).toBe('composite-router');
+      expect(row !== undefined && isDistillerEligible(row)).toBe(true);
+    });
+
+    it('does not train distilled rules on an unslotted gateway arm row (#6555)', () => {
+      recordRoutedOrchestrateOutcome(TESTING_TASK, {
+        ok: true,
+        value: {
+          text: 'ok',
+          routedCli: 'claude',
+          routedArm: 'api:gw-prod',
+          routedDurationMs: 900,
+        },
+      });
+
+      const row = store.query()[0];
+      expect(row?.routedBy).toBe('composite-router');
+      expect(row?.cli).toBe('api:gw-prod');
       expect(row !== undefined && isDistillerEligible(row)).toBe(false);
     });
   });

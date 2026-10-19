@@ -30,11 +30,13 @@ export type {
   ObservedArmId,
 } from './types-core.js';
 
-// Routing arm id helpers (#3422)
+// Routing arm id helpers (#3422, #6555)
 export {
   apiArmId,
   isCliName,
   isEndpointArmId,
+  isRoutingArmId,
+  RoutingArmIdSchema,
   observedArmDisplaySlot,
   routingArmDisplaySlot,
   routingArmCliSlot,
