@@ -9,6 +9,7 @@
  * @module pipeline/task-contract
  */
 import { z } from 'zod';
+import semver from 'semver';
 import { ok, err, type Result } from '../core/result.js';
 
 // ============================================================================
@@ -159,7 +160,15 @@ export const ArtifactRefSchema = z.object({
   type: z.enum(ARTIFACT_TYPES),
 });
 
-/** Unified task lifecycle contract. */
+/**
+ * Unified task lifecycle contract.
+ *
+ * Capability representations note:
+ * - `requiredCapabilities` and `capabilityGaps` track inferred or observed tool/expert
+ *   capabilities from LLM task analysis.
+ * - `capabilityRequirements` specifies explicit, declarative requirements with execution
+ *   enforcement modes ('enforcing' | 'advisory') for worker dispatch gates.
+ */
 export const TaskContractSchema = z.object({
   id: z.string().min(1),
   description: z.string().min(1),
@@ -251,28 +260,6 @@ export interface ContractCompatibilityOptions {
   readonly requireExplicitVersion?: boolean;
 }
 
-function parseSemverParts(version: string): [number, number, number] | null {
-  const parts = version.split('.').map((p) => Number(p));
-  if (parts.length !== 3 || parts.some((p) => Number.isNaN(p) || p < 0)) {
-    return null;
-  }
-  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
-}
-
-function compareSemver(v1: string, v2: string): number {
-  const p1 = parseSemverParts(v1) ?? [0, 0, 0];
-  const p2 = parseSemverParts(v2) ?? [0, 0, 0];
-  for (let i = 0; i < 3; i++) {
-    const diff = (p1[i] ?? 0) - (p2[i] ?? 0);
-    if (diff !== 0) return diff > 0 ? 1 : -1;
-  }
-  return 0;
-}
-
-function isVersionInRange(version: string, minVersion: string, maxVersion: string): boolean {
-  return compareSemver(version, minVersion) >= 0 && compareSemver(version, maxVersion) <= 0;
-}
-
 function validateContractInput(
   contractInput: unknown,
   requireExplicitVersion?: boolean
@@ -281,15 +268,34 @@ function validateContractInput(
     return err('InvalidContractFormat: contract must be an object');
   }
   const raw = contractInput as Record<string, unknown>;
-  if (requireExplicitVersion === true && !('contractVersion' in raw)) {
+  if (
+    requireExplicitVersion === true &&
+    (typeof raw.contractVersion !== 'string' || raw.contractVersion.trim().length === 0)
+  ) {
     return err('UnversionedContractError: explicit contractVersion required');
   }
   return ok(raw);
 }
 
+function validateVersionRange(
+  version: string,
+  minVersion: string,
+  maxVersion: string
+): Result<string, string> {
+  if (semver.valid(version) === null) {
+    return err(`InvalidContractVersion: malformed semver "${version}"`);
+  }
+  if (semver.lt(version, minVersion) || semver.gt(version, maxVersion)) {
+    return err(
+      `UnsupportedContractVersion: version ${version} is outside supported range [${minVersion}, ${maxVersion}]`
+    );
+  }
+  return ok(version);
+}
+
 /**
- * Validates version compatibility for a TaskContract (Conformance Case C05).
- * Unknown or unsupported contract versions fail closed.
+ * Validates version compatibility for a TaskContract (Conformance Case C35: Legacy client enforcing downgrade).
+ * Malformed, unversioned (when required), or unsupported contract versions fail closed.
  */
 export function checkContractCompatibility(
   contractInput: unknown,
@@ -307,16 +313,23 @@ export function checkContractCompatibility(
     return err(`InvalidTaskContract: ${parsed.error.message}`);
   }
 
-  const version = parsed.data.contractVersion ?? '1.0.0';
-  if (!isVersionInRange(version, supportedMinVersion, supportedMaxVersion)) {
-    return err(
-      `UnsupportedContractVersion: version ${version} is outside supported range [${supportedMinVersion}, ${supportedMaxVersion}]`
-    );
+  const rawVersion = parsed.data.contractVersion;
+  if (options.requireExplicitVersion === true && rawVersion === undefined) {
+    return err('UnversionedContractError: explicit contractVersion required');
+  }
+
+  const versionCheck = validateVersionRange(
+    rawVersion ?? '1.0.0',
+    supportedMinVersion,
+    supportedMaxVersion
+  );
+  if (!versionCheck.ok) {
+    return err(versionCheck.error);
   }
 
   return ok({
     ...parsed.data,
-    contractVersion: version,
+    contractVersion: versionCheck.value,
   });
 }
 
@@ -331,8 +344,9 @@ export interface ObligationCompletenessResult {
 }
 
 /**
- * Validates evidence obligation completeness against provided receipts (Conformance Case C07).
+ * Validates evidence obligation completeness against provided receipts (Conformance Case C06).
  * A task cannot be declared eligible or complete while enforcing obligations remain unmet.
+ * Receipts must match on obligationId, artifactRef, and verified status.
  */
 export function validateObligationCompleteness(
   contract: TaskContract,
@@ -353,6 +367,7 @@ export function validateObligationCompleteness(
     const matchingReceipt = receipts.find(
       (r) =>
         r.obligationId === obligation.id &&
+        r.artifactRef === obligation.artifactRef &&
         r.verified &&
         (obligation.receiptIssuer === undefined || r.issuer === obligation.receiptIssuer)
     );

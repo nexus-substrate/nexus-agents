@@ -2,9 +2,8 @@
  * Tests for Versioned Task, Capability and Evidence Contracts (Task T05, Issue #5129 / Milestone M1)
  *
  * Conformance cases:
- * - C05: Contract version compatibility
- * - C07: Obligation completeness
- * - C35: Missing capability detection
+ * - C35: Legacy client enforcing downgrade / schema version gateway
+ * - C06: Evidence verifier / receipt artifactRef matching & obligation completeness
  *
  * Disciplines: Red/Green TDD, Zero `any` policy, non-vacuous aggregation.
  */
@@ -97,7 +96,7 @@ describe('Task T05: Capability & Evidence Contract Schemas', () => {
   });
 });
 
-describe('Task T05 / C05: Contract Version Compatibility', () => {
+describe('Task T05: Contract Version Compatibility & Downgrade Prevention (C35)', () => {
   it('accepts contracts within supported version range', () => {
     const task = baseValidTask();
     const result = checkContractCompatibility(task, '1.0.0', '1.9.9');
@@ -117,11 +116,38 @@ describe('Task T05 / C05: Contract Version Compatibility', () => {
     }
   });
 
+  it('fails closed when contractVersion is malformed semver', () => {
+    const malformedVersions = ['1..5', 'not-a-version', '1.0', '1.0.0.0', ''];
+    for (const badVer of malformedVersions) {
+      const task = { ...baseValidTask(), contractVersion: badVer };
+      const result = checkContractCompatibility(task, '1.0.0', '1.9.9');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('InvalidContractVersion');
+      }
+    }
+  });
+
   it('fails closed when contract is unversioned and strict versioning is required', () => {
     const taskWithoutVersion: Record<string, unknown> = { ...baseValidTask() };
     delete taskWithoutVersion['contractVersion'];
 
     const result = checkContractCompatibility(taskWithoutVersion, '1.0.0', '1.9.9', {
+      requireExplicitVersion: true,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('UnversionedContractError');
+    }
+  });
+
+  it('fails closed when contractVersion is explicitly undefined and strict versioning is required', () => {
+    const taskWithUndefined: Record<string, unknown> = {
+      ...baseValidTask(),
+      contractVersion: undefined,
+    };
+
+    const result = checkContractCompatibility(taskWithUndefined, '1.0.0', '1.9.9', {
       requireExplicitVersion: true,
     });
     expect(result.ok).toBe(false);
@@ -144,7 +170,7 @@ describe('Task T05 / C05: Contract Version Compatibility', () => {
   });
 });
 
-describe('Task T05 / C07: Obligation Completeness', () => {
+describe('Task T05: Obligation Completeness & Evidence Verification (C06)', () => {
   it('returns ok when all required enforcing obligations are met with valid receipts', () => {
     const task: TaskContract = {
       ...baseValidTask(),
@@ -186,6 +212,37 @@ describe('Task T05 / C07: Obligation Completeness', () => {
     if (result.ok) {
       expect(result.value.fulfilled).toEqual(['ev-diff', 'ev-test']);
       expect(result.value.missing).toHaveLength(0);
+    }
+  });
+
+  it('fails closed when a receipt matches obligationId but has a mismatched artifactRef', () => {
+    const task: TaskContract = {
+      ...baseValidTask(),
+      evidenceObligations: [
+        {
+          id: 'ev-diff',
+          artifactRef: 'diff-001',
+          required: true,
+          mode: 'enforcing',
+        },
+      ],
+    };
+
+    // Receipt specifies obligationId 'ev-diff', but artifactRef is 'unrelated-diff-999'
+    const receipts: readonly EvidenceReceipt[] = [
+      {
+        obligationId: 'ev-diff',
+        artifactRef: 'unrelated-diff-999',
+        digest: 'sha256-xyz',
+        verified: true,
+      },
+    ];
+
+    const result = validateObligationCompleteness(task, receipts);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('MissingEnforcingObligationError');
+      expect(result.error).toContain('ev-diff (diff-001)');
     }
   });
 
@@ -278,7 +335,7 @@ describe('Task T05 / C07: Obligation Completeness', () => {
   });
 });
 
-describe('Task T05 / C35: Missing Capability Detection', () => {
+describe('Task T05: Missing Capability Detection', () => {
   it('detects when all required enforcing capabilities are satisfied', () => {
     const required: readonly CapabilityRequirement[] = [
       { id: 'cap-read', operation: 'artifact.read', mode: 'enforcing' },
