@@ -1074,15 +1074,13 @@ export class CompositeRouter implements ICompositeRouter {
 
   recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean): void {
     recordBanditOutcome(cliName, task, reward, this.getOutcomeDependencies());
-    const slot = routingArmCliSlot(cliName);
     if (
       this.config.enableStrategyDistillation &&
       this.distilledRuleStage !== undefined &&
-      success !== undefined &&
-      slot !== undefined
+      success !== undefined
     ) {
       this.distilledRuleStage.recordOutcome({
-        selectedCli: slot,
+        selectedCli: cliName,
         task: task.content,
         success,
       });

@@ -8016,7 +8016,7 @@ InterfaceDeclaration RoutingMetricsConfig
 InterfaceDeclaration RoutingOutcome
   readonly latencyMs?: number | undefined
   readonly qualityScore?: number | undefined
-  readonly selectedCli: "claude" | "codex" | "gemini" | "opencode"
+  readonly selectedCli: RoutingArmId
   readonly success: boolean
   readonly task: string
   readonly tokensUsed?: number | undefined
