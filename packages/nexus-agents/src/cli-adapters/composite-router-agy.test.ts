@@ -66,13 +66,13 @@ function apiBridge(): ICliAdapter {
 }
 
 describe('AGY-only tier availability (#7423)', () => {
-  it('selects the actual available Flash model for a powerful native CLI task', async () => {
+  it('selects the actual available Argon model for a powerful native CLI task', async () => {
     const router = routerFor('gemini', new GeminiCliAdapter());
     const result = await router.route({ content: 'Explain this code' });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.difficultyTier).toBe('powerful');
-      expect(result.value.model).toBe('gemini-3.8-flash');
+      expect(result.value.model).toBe('gemini-4-argon');
     }
   });
 
@@ -95,7 +95,7 @@ describe('AGY-only tier availability (#7423)', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.difficultyTier).toBe('powerful');
-        expect(result.value.model).toBe('gemini-3-pro');
+        expect(result.value.model).toBe('gemini-4-argon');
       }
     }
   );
@@ -111,7 +111,7 @@ it('does not constrain a gateway-backed Gemini slot to native AGY availability',
   if (arm === undefined || arm === 'unavailable') return;
   const result = await routerFor('gemini', arm).route({ content: 'Explain this code' });
   expect(result.ok).toBe(true);
-  if (result.ok) expect(result.value.model).toBe('gemini-3-pro');
+  if (result.ok) expect(result.value.model).toBe('gemini-4-argon');
   expect(createCli).not.toHaveBeenCalled();
   await arm.dispose();
 });
@@ -137,7 +137,7 @@ it.skipIf(process.platform === 'win32').each([false, true])(
       if (alreadyResolved) await resolveGatewayServedSlot(slot);
       const result = await routerFor('gemini', slot).route({ content: 'Explain this code' });
       expect(result.ok).toBe(true);
-      if (result.ok) expect(result.value.model).toBe('gemini-3.8-flash');
+      if (result.ok) expect(result.value.model).toBe('gemini-4-argon');
       expect(gatewayServedSlotOf(slot)).toBeUndefined();
       expect(available).toHaveBeenCalledTimes(1);
     } finally {

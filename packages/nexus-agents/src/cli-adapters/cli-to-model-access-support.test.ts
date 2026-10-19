@@ -20,7 +20,7 @@ async function support(
   return bridge.supportsAccessMode?.(mode);
 }
 describe('CLI bridge actual access support (#7434)', () => {
-  it.each([new ClaudeCliAdapter(), new CodexCliAdapter()])(
+  it.each([new ClaudeCliAdapter(), new CodexCliAdapter(), new GeminiCliAdapter()])(
     'reports enforcing native $name without executing it',
     async (native) => {
       const execute = vi.spyOn(native, 'execute');
@@ -28,8 +28,9 @@ describe('CLI bridge actual access support (#7434)', () => {
       expect(execute).not.toHaveBeenCalled();
     }
   );
-  it('reports explicitly unsupported Gemini without executing it', async () => {
+  it('reports explicitly unsupported native without executing it', async () => {
     const native = new GeminiCliAdapter();
+    Object.defineProperty(native, 'enforcesReadOnlyAnalysis', { value: false });
     const execute = vi.spyOn(native, 'execute');
     expect(await support(native, 'read-only-analysis')).toBe(false);
     expect(execute).not.toHaveBeenCalled();
