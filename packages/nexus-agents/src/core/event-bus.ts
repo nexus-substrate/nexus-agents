@@ -1,42 +1,338 @@
 /**
- * Event-bus public API (core re-export barrel).
+ * Event Bus Implementation (nexus-agents/core)
  *
- * The actual implementation currently lives under
- * `agents/collaboration/event-bus*` for historical reasons (it was
- * introduced alongside the collaboration module). This barrel makes
- * the event-bus available under the stable `core/event-bus` import
- * path so any subsystem can wire into it without cross-layer
- * violations in the fitness-audit.
+ * Async message passing and domain event bus for decoupled subsystems.
+ * Supports topic-based routing, wildcard patterns, and event history.
  *
- * New code should import from here; existing code at the old path
- * continues to work (no breaking change). A physical move of the
- * implementation to this module is v3.0-gated — the internal
- * `event-bus-events.ts` module has a soft dependency on
- * `collaboration-types.ts` (SessionStatus, VoteDecision) that must be
- * decoupled before a clean move.
+ * (Source: Issue #182, Issue #5129 Item 1 layer decoupling)
  *
  * @module core/event-bus
  */
 
-export {
-  CollaborationEventBus,
-  createEvent,
-  getGlobalEventBus,
-  resetGlobalEventBus,
-  generateCorrelationId,
-  createChildCorrelationId,
-} from '../agents/collaboration/event-bus.js';
-
-export type {
+import { getTimeProvider } from './time-provider.js';
+import { CircularBuffer } from './circular-buffer.js';
+import type {
   ICollaborationEventBus,
-  EventBusOptions,
-  EventBusStats,
+  DomainEvent,
   EventListener,
-  EventFilter,
   Subscription,
   SubscriptionId,
   TopicPattern,
-  DomainEvent,
-} from '../agents/collaboration/event-bus-types.js';
+  EventFilter,
+  EventBusOptions,
+  EventBusStats,
+} from './event-bus-types.js';
+import {
+  DEFAULT_MAX_HISTORY_SIZE,
+  MAX_SUBSCRIPTIONS,
+  type SubscriptionRecord,
+  patternToRegex,
+  topicMatchesPattern,
+  generateEventId,
+  generateSubscriptionId,
+  applyHistoryFilters,
+  applyHistoryLimit,
+  enrichEvent,
+  countMatchingSubscribers,
+} from './event-bus-helpers.js';
 
-export { EventTopics } from '../agents/collaboration/event-bus-topics.js';
+// Re-export correlation ID helpers for public API
+export { generateCorrelationId, createChildCorrelationId } from './event-bus-helpers.js';
+
+// Re-export core types
+export type {
+  ICollaborationEventBus,
+  DomainEvent,
+  EventListener,
+  Subscription,
+  SubscriptionId,
+  TopicPattern,
+  EventFilter,
+  EventBusOptions,
+  EventBusStats,
+  TypedEvent,
+} from './event-bus-types.js';
+
+// Re-export topics
+export { EventTopics } from './event-bus-topics.js';
+
+/**
+ * Event Bus for decoupled subsystem and agent communication.
+ *
+ * Features:
+ * - Topic-based pub/sub with wildcard support
+ * - Async and sync event emission
+ * - Event history with filtering
+ * - Error isolation (one listener failure doesn't block others)
+ *
+ * @example
+ * ```typescript
+ * const bus = new CollaborationEventBus();
+ *
+ * // Subscribe to all session events
+ * const sub = bus.subscribe('session.*', (event) => {
+ *   console.log('Session event:', event.topic);
+ * });
+ *
+ * // Emit an event
+ * bus.emit(createEvent('session.created', { sessionId: '123' }));
+ *
+ * // Cleanup
+ * sub.unsubscribe();
+ * ```
+ */
+export class CollaborationEventBus implements ICollaborationEventBus {
+  private readonly subscriptions: Map<SubscriptionId, SubscriptionRecord> = new Map();
+  private readonly history: CircularBuffer<DomainEvent>;
+  private readonly asyncHandling: boolean;
+  private readonly logger?: EventBusOptions['logger'];
+
+  private stats: EventBusStats = {
+    eventsEmitted: 0,
+    subscriptionsCreated: 0,
+    activeSubscriptions: 0,
+    historySize: 0,
+    errorCount: 0,
+  };
+
+  constructor(options: EventBusOptions = {}) {
+    const maxHistorySize = options.maxHistorySize ?? DEFAULT_MAX_HISTORY_SIZE;
+    this.history = new CircularBuffer<DomainEvent>(maxHistorySize);
+    this.asyncHandling = options.asyncHandling ?? false;
+    this.logger = options.logger;
+  }
+
+  /**
+   * Emit an event synchronously to all matching subscribers.
+   */
+  emit(event: DomainEvent): void {
+    const enrichedEvent = enrichEvent(event);
+    this.addToHistory(enrichedEvent);
+    this.stats.eventsEmitted++;
+
+    this.logger?.debug('Event emitted', {
+      topic: enrichedEvent.topic,
+      eventId: enrichedEvent.eventId,
+      subscriberCount: countMatchingSubscribers(enrichedEvent.topic, this.subscriptions),
+    });
+
+    for (const record of this.subscriptions.values()) {
+      if (topicMatchesPattern(enrichedEvent.topic, record.regex)) {
+        this.invokeListener(record, enrichedEvent);
+      }
+    }
+  }
+
+  /**
+   * Emit an event and wait for all async handlers to complete.
+   */
+  async emitAsync(event: DomainEvent): Promise<void> {
+    const enrichedEvent = enrichEvent(event);
+    this.addToHistory(enrichedEvent);
+    this.stats.eventsEmitted++;
+
+    this.logger?.debug('Async event emitted', {
+      topic: enrichedEvent.topic,
+      eventId: enrichedEvent.eventId,
+    });
+
+    const promises: Promise<void>[] = [];
+
+    for (const record of this.subscriptions.values()) {
+      if (topicMatchesPattern(enrichedEvent.topic, record.regex)) {
+        promises.push(this.invokeListenerAsync(record, enrichedEvent));
+      }
+    }
+
+    await Promise.all(promises);
+  }
+
+  /**
+   * Subscribe to events matching a topic pattern.
+   */
+  subscribe<T extends DomainEvent = DomainEvent>(
+    pattern: TopicPattern,
+    listener: EventListener<T>
+  ): Subscription {
+    if (this.subscriptions.size >= MAX_SUBSCRIPTIONS) {
+      throw new Error(
+        `Maximum subscription limit reached (${String(MAX_SUBSCRIPTIONS)}). ` +
+          'Unsubscribe from unused patterns before adding new ones.'
+      );
+    }
+
+    const id = generateSubscriptionId();
+    const regex = patternToRegex(pattern);
+
+    const record: SubscriptionRecord = {
+      id,
+      pattern,
+      regex,
+      listener: listener as EventListener,
+    };
+
+    this.subscriptions.set(id, record);
+    this.stats.subscriptionsCreated++;
+    this.stats.activeSubscriptions = this.subscriptions.size;
+
+    this.logger?.debug('Subscription created', { id, pattern });
+
+    return {
+      id,
+      pattern,
+      unsubscribe: () => {
+        this.unsubscribe(id);
+      },
+    };
+  }
+
+  /**
+   * Unsubscribe from events.
+   */
+  unsubscribe(subscriptionId: SubscriptionId): void {
+    const existed = this.subscriptions.delete(subscriptionId);
+    if (existed) {
+      this.stats.activeSubscriptions = this.subscriptions.size;
+      this.logger?.debug('Subscription removed', { subscriptionId });
+    }
+  }
+
+  /**
+   * Get event history matching filter criteria.
+   */
+  getHistory(filter?: EventFilter): readonly DomainEvent[] {
+    const historyArray = this.history.toArray();
+    if (filter === undefined) {
+      return historyArray;
+    }
+
+    const filtered = applyHistoryFilters(historyArray, filter);
+    return applyHistoryLimit(filtered, filter);
+  }
+
+  /**
+   * Clear event history.
+   */
+  clearHistory(): void {
+    this.history.clear();
+    this.stats.historySize = 0;
+    this.logger?.debug('History cleared');
+  }
+
+  /**
+   * Get event bus statistics.
+   */
+  getStats(): EventBusStats {
+    return { ...this.stats };
+  }
+
+  /**
+   * Check if a topic pattern has any subscribers.
+   */
+  hasSubscribers(pattern: TopicPattern): boolean {
+    const regex = patternToRegex(pattern);
+    for (const record of this.subscriptions.values()) {
+      // Check if the patterns could overlap
+      if (
+        topicMatchesPattern(pattern, record.regex) ||
+        topicMatchesPattern(record.pattern, regex)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Add event to history, maintaining size limit via O(1) circular buffer.
+   * @see Issue #407 - Performance optimization
+   */
+  private addToHistory(event: DomainEvent): void {
+    this.history.push(event);
+    this.stats.historySize = this.history.size;
+  }
+
+  /**
+   * Invoke a listener synchronously with error isolation.
+   */
+  private invokeListener(record: SubscriptionRecord, event: DomainEvent): void {
+    try {
+      const result = record.listener(event);
+      // If async handling is enabled and listener returns a promise, don't wait
+      if (this.asyncHandling && result instanceof Promise) {
+        result.catch((error: unknown) => {
+          this.handleListenerError(record, event, error);
+        });
+      }
+    } catch (error) {
+      this.handleListenerError(record, event, error);
+    }
+  }
+
+  /**
+   * Invoke a listener asynchronously.
+   */
+  private async invokeListenerAsync(record: SubscriptionRecord, event: DomainEvent): Promise<void> {
+    try {
+      await record.listener(event);
+    } catch (error) {
+      this.handleListenerError(record, event, error);
+    }
+  }
+
+  /**
+   * Handle listener errors without disrupting other listeners.
+   */
+  private handleListenerError(
+    record: SubscriptionRecord,
+    event: DomainEvent,
+    error: unknown
+  ): void {
+    this.stats.errorCount++;
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    this.logger?.error('Event listener error', errorObj, {
+      subscriptionId: record.id,
+      pattern: record.pattern,
+      eventTopic: event.topic,
+      eventId: event.eventId,
+    });
+  }
+}
+
+/**
+ * Global singleton event bus instance.
+ */
+let globalBus: CollaborationEventBus | null = null;
+
+export function getGlobalEventBus(options?: EventBusOptions): CollaborationEventBus {
+  globalBus ??= new CollaborationEventBus(options);
+  return globalBus;
+}
+
+/**
+ * Reset the global event bus (for testing).
+ */
+export function resetGlobalEventBus(): void {
+  globalBus = null;
+}
+
+/**
+ * Factory function for creating typed events.
+ */
+export function createEvent<T extends DomainEvent>(
+  topic: T['topic'],
+  payload: T['payload'],
+  options?: {
+    sessionId?: string;
+    correlationId?: string;
+  }
+): T {
+  return {
+    eventId: generateEventId(),
+    timestamp: getTimeProvider().nowIso(),
+    topic,
+    payload,
+    sessionId: options?.sessionId,
+    correlationId: options?.correlationId,
+  } as T;
+}
