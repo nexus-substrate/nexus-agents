@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { createLogger, type ILogger } from '../core/index.js';
 import {
   DETERMINISM_EXCLUDES,
+  TEST_FILE_EXCLUDES,
   countFiles,
   countMockGuardSites,
   countPatternInDir,
@@ -611,7 +612,8 @@ export class FitnessScoreCalculator {
     const adapterAgentImports = countPatternInDir(
       join(SRC_ROOT, 'adapters'),
       /\.ts$/,
-      /from ['"]\.\.\/agents\//g
+      /from ['"]\.\.\/agents\//g,
+      TEST_FILE_EXCLUDES
     );
     if (adapterAgentImports > 0) {
       const deduction = Math.min(5, adapterAgentImports);
@@ -632,7 +634,8 @@ export class FitnessScoreCalculator {
     const coreMcpImports = countPatternInDir(
       join(SRC_ROOT, 'core'),
       /\.ts$/,
-      /from ['"]\.\.\/mcp\//g
+      /from ['"]\.\.\/mcp\//g,
+      TEST_FILE_EXCLUDES
     );
     if (coreMcpImports > 0) {
       const deduction = Math.min(3, coreMcpImports);
