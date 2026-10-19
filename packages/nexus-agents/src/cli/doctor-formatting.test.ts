@@ -46,34 +46,36 @@ vi.mock('../utils/text-utils.js', () => ({
 }));
 
 // Mock DEFAULT_CAPABILITIES
-vi.mock('../cli-adapters/types.js', async (importOriginal) => ({
-  // The real type guards: `isCliDisabled` reads `isCliName` (#6720).
-  isCliName: (await importOriginal<typeof import('../cli-adapters/types.js')>()).isCliName,
-  DEFAULT_CAPABILITIES: {
-    claude: {
-      reasoning: 95,
-      contextWindow: 200000,
-      speed: 70,
-      quality: 90,
-      costPerMToken: 15,
+vi.mock('../cli-adapters/types.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli-adapters/types.js')>();
+  return {
+    ...actual,
+    DEFAULT_CAPABILITIES: {
+      claude: {
+        reasoning: 95,
+        contextWindow: 200000,
+        speed: 70,
+        quality: 90,
+        costPerMToken: 15,
+      },
+      codex: {
+        reasoning: 85,
+        contextWindow: 128000,
+        speed: 85,
+        quality: 85,
+        costPerMToken: 10,
+      },
+      opencode: { reasoning: 80, contextWindow: 128000, speed: 80, quality: 80, costPerMToken: 5 },
+      gemini: {
+        reasoning: 80,
+        contextWindow: 1000000,
+        speed: 90,
+        quality: 80,
+        costPerMToken: 5,
+      },
     },
-    codex: {
-      reasoning: 85,
-      contextWindow: 128000,
-      speed: 85,
-      quality: 85,
-      costPerMToken: 10,
-    },
-    opencode: { reasoning: 80, contextWindow: 128000, speed: 80, quality: 80, costPerMToken: 5 },
-    gemini: {
-      reasoning: 80,
-      contextWindow: 1000000,
-      speed: 90,
-      quality: 80,
-      costPerMToken: 5,
-    },
-  },
-}));
+  };
+});
 
 /** Applies a scratchSpace override outside the fixture literal (keeps its complexity under the cap). */
 function withScratch(
