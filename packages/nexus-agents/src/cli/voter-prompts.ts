@@ -88,7 +88,7 @@ Reject with findings (severity may be critical, high, medium, low, or info):
 }
 \`\`\`
 
-A finding only triggers strict request_changes if its severity is medium or higher, all 4 gate fields = "passed" AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Non-security low/info findings are reported but do not corroborate a verified blocker. Security-role findings are treated as at least medium. Request_changes votes still count toward soft blocking regardless of severity. Findings missing any of those gate checks surface as informational only — they do not block on their own. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings field entirely. If reviewing a non-diff proposal, ignore this section.
+A finding only triggers strict request_changes if its severity is medium or higher, all 4 gate fields = "passed" AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Flag ONLY concrete, reachable, medium-or-higher severity defects. Forbid style preferences, formatting, nits, and speculative or theoretical concerns that cannot be reached in practice. Non-security low/info findings are reported but do not corroborate a verified blocker. Security-role findings are treated as at least medium. Request_changes votes still count toward soft blocking regardless of severity. Findings missing any of those gate checks surface as informational only — they do not block on their own. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings field entirely. If reviewing a non-diff proposal, ignore this section.
 
 History note: an earlier prompt asked for YAML inside reasoning; that format was lossy across JSON serialization (#2245). Use the top-level JSON array above.`;
 }
@@ -101,7 +101,7 @@ Workflow-test assessment (include in your reasoning):
 - Workflow integration: Does this fit existing CI/build/test pipelines?
 - Incremental verifiability: Can progress be measured at each step?
 
-When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
+When rejecting, classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE. Flag ONLY concrete, reachable defects of medium or higher severity. Forbid style, formatting, nits, and speculative concerns.
 
 If you cannot read the artifact under review — a shell, sandbox, or repository read fails — answer "abstain" and begin your reasoning with "UNVERIFIABLE: could not read the artifact"; never vote on the description alone.
 ${prReviewModeAddendum()}`;
@@ -204,12 +204,11 @@ Workflow-test assessment (include in your reasoning):
 - Workflow integration: Will this actually work in existing pipelines?
 - Incremental verifiability: Can we tell if it's working at each stage?
 
-When rejecting, you MUST classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE.
+When rejecting, you MUST classify your reasons using categories: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE. Flag ONLY concrete, reachable defects of medium or higher severity. Forbid style, formatting, nits, and speculative concerns.
 
 If you cannot read the artifact under review — a shell, sandbox, or repository read fails — answer "abstain" and begin your reasoning with "UNVERIFIABLE: could not read the artifact"; never vote on the description alone.
 
-IMPORTANT: Your job is to find legitimate concerns, not to reject everything.
-If after genuine scrutiny you find no significant issues, you MAY approve.
+IMPORTANT: Your job is to find legitimate, reachable concerns with concrete impact, not to reject everything or raise speculative hypotheticals. Forbid style/nitpicking/theoretical concerns that have no observable defect. Flag ONLY concrete, reachable, medium-or-higher severity defects. If after genuine scrutiny you find no significant issues, you MAY approve.
 But your default posture is skeptical — look for what others might miss.
 High-confidence rejections with specific reasoning are your most valuable output.
 ${prReviewModeAddendum()}`;
