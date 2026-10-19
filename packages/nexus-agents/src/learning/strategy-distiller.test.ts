@@ -813,6 +813,52 @@ describe('StrategyDistiller', () => {
     });
   });
 
+  describe('api:* arms outcome distillation (#6555)', () => {
+    it('distills failure rules for api:anthropic without colon-split corruption', () => {
+      populateStore({
+        store,
+        cli: 'api:anthropic',
+        category: 'code_generation',
+        count: 8,
+        success: false,
+      });
+      populateStore({
+        store,
+        cli: 'api:anthropic',
+        category: 'code_generation',
+        count: 2,
+        success: true,
+      });
+      distiller.distill();
+
+      const rules = distiller.getRules();
+      const rule = rules.find((r) => r.cli === 'api:anthropic');
+      expect(rule).toBeDefined();
+      expect(rule?.cli).toBe('api:anthropic');
+      expect(rule?.category).toBe('code_generation');
+      expect(rule?.id).toBe('failure-rate:api:anthropic:code_generation');
+      expect(rule?.action).toBe('avoid');
+    });
+
+    it('distills failure rules for operator gateway endpoints (e.g. api:gw-prod)', () => {
+      populateStore({
+        store,
+        cli: 'api:gw-prod',
+        category: 'code_generation',
+        count: 8,
+        success: false,
+      });
+      distiller.distill();
+
+      const rules = distiller.getRules();
+      const rule = rules.find((r) => r.cli === 'api:gw-prod');
+      expect(rule).toBeDefined();
+      expect(rule?.cli).toBe('api:gw-prod');
+      expect(rule?.category).toBe('code_generation');
+      expect(rule?.id).toBe('failure-rate:api:gw-prod:code_generation');
+    });
+  });
+
   describe('DEFAULT_DISTILLER_CONFIG', () => {
     it('has expected defaults', () => {
       expect(DEFAULT_DISTILLER_CONFIG.triggerThreshold).toBe(50);

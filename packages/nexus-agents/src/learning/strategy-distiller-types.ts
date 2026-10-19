@@ -10,7 +10,7 @@
  * (Source: Issue #999 - Automatic Strategy Distillation)
  */
 
-import type { CliName } from '../cli-adapters/types.js';
+import type { RoutingArmId } from '../cli-adapters/types.js';
 
 /** Status lifecycle for a distilled rule. */
 export type RuleStatus = 'draft' | 'active' | 'expired';
@@ -32,8 +32,8 @@ export interface DistilledRule {
   readonly id: string;
   /** What kind of pattern triggered this rule */
   readonly patternType: PatternType;
-  /** Which CLI this rule applies to */
-  readonly cli: CliName;
+  /** Which routing arm (CLI slot or API/endpoint arm) this rule applies to (#6555) */
+  readonly cli: RoutingArmId;
   /** Task category this rule applies to */
   readonly category: string;
   /** What routing action to take */

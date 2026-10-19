@@ -55,7 +55,14 @@ describe('isDistillerEligible (#6521)', () => {
     ],
     ['e2e-eval simulated run', { source: 'manual', qualitySignals: ['e2e-eval'] }, false],
     ['routed but unknown CLI', { ...routed, cli: 'unknown' }, false],
-    ['routed api:* arm no rule can match', { ...routed, cli: 'api:anthropic' }, false],
+    ['routed api:anthropic vendor arm (#6555)', { ...routed, cli: 'api:anthropic' }, true],
+    ['routed api:openai vendor arm (#6555)', { ...routed, cli: 'api:openai' }, true],
+    ['routed api:gw-prod gateway arm (#6555)', { ...routed, cli: 'api:gw-prod' }, true],
+    [
+      'routed invalid arm format',
+      { ...routed, cli: 'invalid:arm' as unknown as TaskOutcome['cli'] },
+      false,
+    ],
     // #6549: a rule is keyed on cli×category; a defaulted category names none.
     ['routed row, category defaulted', { ...routed, categorySource: 'defaulted' }, false],
     ['routed row, category detected', { ...routed, categorySource: 'detected' }, true],

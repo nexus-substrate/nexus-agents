@@ -7,7 +7,11 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
-import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
+import {
+  CLI_NAMES,
+  CliNameSchema,
+  type CliNameLiteral,
+} from '../config/model-capabilities-types.js';
 import { z } from 'zod';
 import type { ExecutionAccessMode } from '../core/types/model.js';
 
@@ -127,6 +131,17 @@ export const EndpointArmIdSchema = z.templateLiteral([
  */
 export function isEndpointArmId(value: string): value is EndpointArmId {
   return EndpointArmIdSchema.safeParse(value).success;
+}
+
+/** Zod schema for {@link RoutingArmId} (#6555). */
+export const RoutingArmIdSchema = z.union([CliNameSchema, EndpointArmIdSchema]);
+
+/**
+ * Runtime guard for {@link RoutingArmId} (#6555): true iff `value` is a canonical
+ * CLI slot or a valid endpoint arm id.
+ */
+export function isRoutingArmId(value: string): value is RoutingArmId {
+  return isCliName(value) || isEndpointArmId(value);
 }
 
 /**

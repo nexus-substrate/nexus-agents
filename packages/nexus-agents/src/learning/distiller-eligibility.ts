@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { CLI_NAMES } from '../config/model-capabilities-types.js';
+import { isRoutingArmId } from '../cli-adapters/types.js';
 import { TaskOutcomeSchema, hasMeasuredCategory } from '../orchestration/outcomes/outcome-types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
@@ -21,8 +21,6 @@ export type DistillerEligibilityInput = Pick<
   TaskOutcome,
   'source' | 'cli' | 'routedBy' | 'durationMs' | 'categorySource'
 >;
-
-const ROUTABLE_CLIS: ReadonlySet<string> = new Set(CLI_NAMES);
 
 /**
  * Whether an outcome may train distilled routing rules.
@@ -41,9 +39,9 @@ const ROUTABLE_CLIS: ReadonlySet<string> = new Set(CLI_NAMES);
  * - `source: 'consensus'` is excluded even when routed: a voter seat's
  *   "success" is "returned a parseable vote", not "did this category of work".
  * - `durationMs > 0` is required: a run that took no time did not execute.
- * - `cli` must be in `CLI_NAMES`: `'unknown'` names no CLI, and an `api:*` arm
- *   id can never equal a candidate slot the stage matches against (and
- *   `RulesSnapshotSchema` rejects the whole rules file if one rule carries it).
+ * - `cli` must be a valid `RoutingArmId` (#6555): canonical CLI slots and `api:*`
+ *   vendor/gateway endpoint arms are admitted. `'unknown'` is excluded because
+ *   it names no routable arm.
  * - `categorySource: 'defaulted'` is excluded (#6549): a rule is keyed on
  *   cli×category, and a defaulted row names no category.
  */
@@ -52,7 +50,7 @@ export function isDistillerEligible(outcome: DistillerEligibilityInput): boolean
   if (outcome.source === 'consensus') return false;
   if (!(outcome.durationMs > 0)) return false;
   if (!hasMeasuredCategory(outcome)) return false;
-  return ROUTABLE_CLIS.has(outcome.cli);
+  return isRoutingArmId(outcome.cli);
 }
 
 /**
