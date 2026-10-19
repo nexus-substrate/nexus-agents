@@ -21,7 +21,7 @@ import { ConsensusVoteInputSchema } from '../mcp/tools/consensus-vote-types.js';
 import { resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
 import { PANEL_PROMPT_OVERHEAD_TOKENS } from '../mcp/tools/pr-review-panel-budget.js';
-import { MAX_VOTE_ARTIFACT_BYTES } from '../cli/vote-artifact.js';
+import { extractBoundArtifact, MAX_VOTE_ARTIFACT_BYTES } from '../cli/vote-artifact.js';
 
 const transport = vi.hoisted<{
   tasks: CliTask[];
@@ -52,9 +52,17 @@ vi.mock('./expert-bridge.js', () => ({
   executeExpert: (_role: string, prompt: string) => {
     transport.expertPrompt = prompt;
     transport.expertCalls++;
+    const bound = extractBoundArtifact(prompt);
     return Promise.resolve({
       success: true,
-      text: '{"decision":"approve","confidence":0.9,"reasoning":"Fixture"}',
+      text: JSON.stringify({
+        decision: 'approve',
+        confidence: 0.9,
+        reasoning: 'Fixture',
+        ...(bound !== undefined
+          ? { artifactReadiness: 'ready', boundArtifactDigest: bound.digest }
+          : {}),
+      }),
     });
   },
 }));
@@ -66,9 +74,17 @@ function recordingAdapter(): CliToModelAdapter {
     enforcesReadOnlyAnalysis: transport.enforces,
     execute: (task) => {
       transport.tasks.push(task);
+      const bound = extractBoundArtifact(task.content);
       return Promise.resolve(
         ok({
-          text: '{"decision":"approve","confidence":0.9,"reasoning":"Fixture transport answer"}',
+          text: JSON.stringify({
+            decision: 'approve',
+            confidence: 0.9,
+            reasoning: 'Fixture transport answer',
+            ...(bound !== undefined
+              ? { artifactReadiness: 'ready', boundArtifactDigest: bound.digest }
+              : {}),
+          }),
           model: transport.model,
         })
       );
