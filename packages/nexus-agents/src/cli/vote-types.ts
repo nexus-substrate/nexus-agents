@@ -110,8 +110,10 @@ export { VOTER_ROLES, type VoterRole } from './voter-roles.js';
  * - `reasoning`: the fallback — the seat's own reasoning text said it could
  *   not read the artifact: the `UNVERIFIABLE:` prefix, or an error string
  *   with no recovery asserted (`UNVERIFIABLE_REASONING_RE`, #6104).
+ * - `artifact_starved`: preflight or worker boundary detected lack of artifact
+ *   access (#M1 connected autonomy).
  */
-export type UnverifiableSignal = 'stderr' | 'reasoning';
+export type UnverifiableSignal = 'stderr' | 'reasoning' | 'artifact_starved';
 
 /**
  * Why a seat answered somewhere other than where it was assigned (#6115).

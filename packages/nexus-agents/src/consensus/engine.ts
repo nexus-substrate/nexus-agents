@@ -356,15 +356,42 @@ export class ConsensusEngine implements IConsensusEngine {
   }
 
   private recordVote(state: ProposalState, agentId: string, vote: Vote): void {
+    let recordedVote = vote;
+    if (
+      (state.proposal.requireArtifact === true || state.proposal.artifactDigest !== undefined) &&
+      vote.boundArtifactDigest !== undefined &&
+      state.proposal.artifactDigest !== undefined &&
+      vote.boundArtifactDigest !== state.proposal.artifactDigest
+    ) {
+      this.logger.warn('Subject mismatch: artifact digest changed (#M1)', {
+        proposalId: state.proposal.id,
+        expected: state.proposal.artifactDigest,
+        actual: vote.boundArtifactDigest,
+      });
+      recordedVote = {
+        ...vote,
+        decision: 'abstain',
+        confidence: 0,
+        artifactReadiness: 'unverifiable',
+        reasoning: `Subject mismatch: artifact digest changed (expected ${state.proposal.artifactDigest}, got ${vote.boundArtifactDigest})`,
+      };
+    } else if (vote.artifactReadiness === 'artifact_starved') {
+      recordedVote = {
+        ...vote,
+        decision: 'abstain',
+        confidence: 0,
+      };
+    }
+
     state.votes.set(agentId, {
-      ...vote,
+      ...recordedVote,
       timestamp: getTimeProvider().nowIso(),
     });
     this.logger.debug('Vote recorded', {
       proposalId: state.proposal.id,
       agentId,
-      decision: vote.decision,
-      confidence: vote.confidence,
+      decision: recordedVote.decision,
+      confidence: recordedVote.confidence,
     });
   }
 
@@ -437,9 +464,43 @@ export class ConsensusEngine implements IConsensusEngine {
     this.closedProposals.set(proposalId, result);
   }
 
+  private hasArtifactRequirement(proposal: Proposal): boolean {
+    return proposal.requireArtifact === true || proposal.artifactDigest !== undefined;
+  }
+
+  private countEligibleInspectedApprovals(votes: Iterable<Vote>, requiredDigest?: string): number {
+    let count = 0;
+    for (const v of votes) {
+      if (
+        v.artifactReadiness !== 'artifact_starved' &&
+        v.artifactReadiness !== 'unverifiable' &&
+        v.decision === 'approve' &&
+        (requiredDigest === undefined || v.boundArtifactDigest === requiredDigest)
+      ) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   private calculateOutcome(state: ProposalState): VotingOutcome {
     const strategy = this.strategyFactory.getStrategy(state.proposal.algorithm);
-    const outcome: VotingOutcome = strategy.calculateOutcome(state.votes);
+    const outcome = strategy.calculateOutcome(state.votes);
+    if (outcome.approved && this.hasArtifactRequirement(state.proposal)) {
+      const panelSize = state.proposal.requiredVoters?.length ?? state.votes.size;
+      const minFloor = Math.min(panelSize, Math.max(Math.ceil((panelSize * 2) / 3), 3));
+      const inspected = this.countEligibleInspectedApprovals(
+        state.votes.values(),
+        state.proposal.artifactDigest
+      );
+      if (inspected < minFloor) {
+        return {
+          ...outcome,
+          approved: false,
+          reason: `Insufficient eligible voters inspected the required artifact (${String(inspected)}/${String(minFloor)} required)`,
+        };
+      }
+    }
     return outcome;
   }
 
@@ -462,6 +523,35 @@ export class ConsensusEngine implements IConsensusEngine {
    * when both extremes yield the same outcome. This guarantees parity with
    * the strategy's denominator semantics by construction.
    */
+  private probeHypotheticalEquivalence(
+    state: ProposalState,
+    pending: readonly string[]
+  ): { determined: boolean; approved: boolean } {
+    const strategy = this.strategyFactory.getStrategy(state.proposal.algorithm);
+    const bestCase = new Map<string, Vote>(state.votes);
+    const worstCase = new Map<string, Vote>(state.votes);
+    for (const voter of pending) {
+      bestCase.set(voter, HYPOTHETICAL_APPROVE);
+      worstCase.set(voter, HYPOTHETICAL_REJECT);
+    }
+    const bestOutcome = strategy.calculateOutcome(bestCase);
+    const worstOutcome = strategy.calculateOutcome(worstCase);
+    return {
+      determined: bestOutcome.approved === worstOutcome.approved,
+      approved: bestOutcome.approved,
+    };
+  }
+
+  private meetsCascadeArtifactFloor(state: ProposalState, totalRequired: number): boolean {
+    if (!this.hasArtifactRequirement(state.proposal)) return true;
+    const minFloor = Math.min(totalRequired, Math.max(Math.ceil((totalRequired * 2) / 3), 3));
+    const inspected = this.countEligibleInspectedApprovals(
+      state.votes.values(),
+      state.proposal.artifactDigest
+    );
+    return inspected >= minFloor;
+  }
+
   private canCascadeEarly(state: ProposalState): boolean {
     const required = state.proposal.requiredVoters;
     if (required === undefined || required.length === 0) return false;
@@ -470,23 +560,16 @@ export class ConsensusEngine implements IConsensusEngine {
     const pending = required.filter((voter) => !state.votes.has(voter));
     if (pending.length === 0) return false; // All voted — handled by allRequiredVotersVoted
 
-    const strategy = this.strategyFactory.getStrategy(state.proposal.algorithm);
+    const { determined, approved } = this.probeHypotheticalEquivalence(state, pending);
+    if (!determined) return false;
 
-    const bestCase = new Map<string, Vote>(state.votes);
-    const worstCase = new Map<string, Vote>(state.votes);
-    for (const voter of pending) {
-      bestCase.set(voter, HYPOTHETICAL_APPROVE);
-      worstCase.set(voter, HYPOTHETICAL_REJECT);
+    if (approved && !this.meetsCascadeArtifactFloor(state, required.length)) {
+      return false;
     }
-
-    const bestOutcome = strategy.calculateOutcome(bestCase);
-    const worstOutcome = strategy.calculateOutcome(worstCase);
-
-    if (bestOutcome.approved !== worstOutcome.approved) return false;
 
     this.logger.info('Agreement cascade: outcome determined', {
       proposalId: state.proposal.id,
-      outcome: bestOutcome.approved ? 'approve' : 'reject',
+      outcome: approved ? 'approve' : 'reject',
       votesCast: state.votes.size,
       pending: pending.length,
       algorithm: state.proposal.algorithm,

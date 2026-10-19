@@ -1006,4 +1006,107 @@ describe('ConsensusEngine - Edge Cases', () => {
       expect(voteResult.ok).toBe(true);
     });
   });
+
+  describe('artifact readiness and subject validation (#M1)', () => {
+    const requiredDigest =
+      'sha256:aaaa1111222233334444555566667777888899990000aaaabbbbccccddddeeee';
+
+    it('invalidates vote when subject digest differs from proposal artifact digest', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      const wrongDigest = 'sha256:ffff1111222233334444555566667777888899990000aaaabbbbccccddddeeee';
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+        boundArtifactDigest: wrongDigest,
+      });
+
+      const res = await engine.getResult(propResult.value);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        const storedVote = res.value.votes.get('agent-1');
+        expect(storedVote?.decision).toBe('abstain');
+        expect(storedVote?.confidence).toBe(0);
+      }
+    });
+
+    it('forces artifact-starved seat to abstain with 0 confidence', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'could not read mount',
+        confidence: 0.8,
+        artifactReadiness: 'artifact_starved',
+      });
+
+      const res = await engine.getResult(propResult.value);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        const storedVote = res.value.votes.get('agent-1');
+        expect(storedVote?.decision).toBe('abstain');
+        expect(storedVote?.confidence).toBe(0);
+      }
+    });
+
+    it('refuses approval if insufficient eligible voters inspected the required artifact', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 1 approves with valid artifact, 2 are artifact-starved
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'verified patch',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'abstain',
+        reasoning: 'starved',
+        confidence: 0,
+        artifactReadiness: 'artifact_starved',
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'abstain',
+        reasoning: 'starved',
+        confidence: 0,
+        artifactReadiness: 'artifact_starved',
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+      }
+    });
+  });
 });

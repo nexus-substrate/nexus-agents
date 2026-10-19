@@ -71,3 +71,24 @@ export async function inlineVoteArtifact(
     displayName ?? basename(artifactPath)
   );
 }
+
+const BOUND_ARTIFACT_RE = /\bArtifact:\s+([^\s]+)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\b/i;
+
+/** Extracts bound artifact metadata from a proposal containing an inlined artifact. */
+export function extractBoundArtifact(proposal: string):
+  | {
+      displayName: string;
+      digest: string;
+      bytes: number;
+    }
+  | undefined {
+  const match = BOUND_ARTIFACT_RE.exec(proposal);
+  if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+    return undefined;
+  }
+  return {
+    displayName: match[1],
+    digest: `sha256:${match[2]}`,
+    bytes: Number.parseInt(match[3], 10),
+  };
+}

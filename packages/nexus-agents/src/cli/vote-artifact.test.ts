@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  extractBoundArtifact,
   inlineVoteArtifact,
   inlineVoteArtifactText,
   MAX_VOTE_ARTIFACT_BYTES,
@@ -135,5 +136,20 @@ describe('in-memory vote artifact (#7411)', () => {
     expect(() => inlineVoteArtifactText('Review', text + 'x', 'plan.txt')).toThrow(
       /262145.*262144/
     );
+  });
+
+  describe('extractBoundArtifact', () => {
+    it('extracts metadata from an inlined artifact proposal', () => {
+      const inlined = inlineVoteArtifactText('Review plan', 'sample content', 'plan.md');
+      const extracted = extractBoundArtifact(inlined);
+      expect(extracted).toBeDefined();
+      expect(extracted?.displayName).toBe('plan.md');
+      expect(extracted?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(extracted?.bytes).toBe(14);
+    });
+
+    it('returns undefined when proposal does not contain an inlined artifact header', () => {
+      expect(extractBoundArtifact('Just an ordinary proposal')).toBeUndefined();
+    });
   });
 });
