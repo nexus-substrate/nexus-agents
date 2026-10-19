@@ -392,3 +392,37 @@ describe('GeminiCliAdapter hands agy the working tree (#6254)', () => {
     expect(args).not.toContain('--print');
   });
 });
+
+describe('GeminiCliAdapter read-only bubblewrap sandbox (#6962)', () => {
+  function getCommand(task: unknown): CommandConfig {
+    const adapter = new GeminiCliAdapter();
+    return (
+      adapter as unknown as {
+        getCommand: (t: unknown) => CommandConfig;
+      }
+    ).getCommand(task);
+  }
+
+  it('wraps command in bwrap under read-only-analysis accessMode', () => {
+    const cmd = getCommand({ content: 'hi', accessMode: 'read-only-analysis' });
+    expect(cmd.command).toBe('bwrap');
+    expect(cmd.args).toContain('--ro-bind');
+    expect(cmd.args).toContain('/');
+    expect(cmd.args).toContain('--bind');
+    expect(cmd.args).toContain('/tmp');
+    expect(cmd.args).toContain(process.cwd());
+    expect(cmd.args).toContain('--');
+    expect(cmd.args).toContain('agy');
+  });
+
+  it('binds explicit workDir as read-only under read-only-analysis', () => {
+    const cmd = getCommand({
+      content: 'hi',
+      accessMode: 'read-only-analysis',
+      options: { workDir: '/tmp' },
+    });
+    expect(cmd.command).toBe('bwrap');
+    expect(cmd.args).toContain('--ro-bind');
+    expect(cmd.args).toContain('/tmp');
+  });
+});

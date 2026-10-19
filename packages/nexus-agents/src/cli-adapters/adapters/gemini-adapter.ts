@@ -12,6 +12,8 @@
  * (Source: Issue #389 - Merged enhanced adapter back to canonical)
  */
 
+import { existsSync, realpathSync } from 'node:fs';
+import path from 'node:path';
 import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
@@ -27,7 +29,12 @@ import type {
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { createCallerInputCliError } from '../cli-error-helpers.js';
-import { withEnforcedAccessMode } from '../access-mode.js';
+import { withEnforcedAccessMode, isReadOnlyAnalysis, accessModeConflict } from '../access-mode.js';
+import {
+  createBwrapPreflight,
+  type BwrapIsolation,
+  BWRAP_READ_ONLY_ARGS,
+} from '../codex-sandbox-preflight.js';
 import { AgyResponseParser } from '../parsers/agy-parser.js';
 import { toAgyModelSlug, fromAgyModelSlug, AGY_MODEL_SLUGS } from '../../config/agy-model-map.js';
 import type { CliModelInfo } from '../types-capability.js';
@@ -64,6 +71,10 @@ export interface GeminiConfig extends BaseAdapterOptions {
   readonly circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
   /** Enable circuit breaker (default: true) */
   readonly enableCircuitBreaker?: boolean;
+  /** Injectable bwrap sandbox probe for read-only analysis mode */
+  readonly sandboxProbe?: () => Promise<BwrapIsolation>;
+  /** Platform override for sandbox behavior (defaults to process.platform) */
+  readonly platform?: NodeJS.Platform;
 }
 
 /** Execution result with metadata. */
@@ -75,7 +86,9 @@ export interface GeminiExecutionResult {
   readonly circuitState: 'closed' | 'open' | 'half-open';
 }
 
-const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConfig'>> = {
+const DEFAULT_CONFIG: Required<
+  Omit<GeminiConfig, 'logger' | 'circuitBreakerConfig' | 'sandboxProbe' | 'platform'>
+> = {
   model: DEFAULT_GEMINI_CLI_MODEL,
   maxRetries: 3,
   baseDelayMs: 1000,
@@ -90,6 +103,39 @@ const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConf
  */
 export { GEMINI_CLI_COMMAND };
 
+function resolveWorkDir(task: CliTask): string {
+  const rawWorkDir = task.options?.['workDir'];
+  return typeof rawWorkDir === 'string' && rawWorkDir !== '' ? rawWorkDir : process.cwd();
+}
+
+function resolvePromptContent(task: CliTask): string {
+  return task.systemPrompt !== undefined && task.systemPrompt !== ''
+    ? `${task.systemPrompt}\n\n${task.content}`
+    : task.content;
+}
+
+function buildBwrapArgs(binaryName: string, agyArgs: readonly string[], workDir: string): string[] {
+  const resolvedWorkDir = existsSync(workDir) ? realpathSync(workDir) : path.resolve(workDir);
+  const bwrapArgs: string[] = [...BWRAP_READ_ONLY_ARGS, '--bind', '/tmp', '/tmp'];
+  const customConfig = process.env['ANTIGRAVITY_CONFIG_DIR'];
+  const home = process.env['HOME'];
+  const configDir =
+    customConfig !== undefined && customConfig !== ''
+      ? customConfig
+      : home !== undefined && home !== ''
+        ? path.join(home, '.gemini', 'antigravity-cli')
+        : undefined;
+  if (configDir !== undefined && existsSync(configDir)) {
+    bwrapArgs.push('--bind', configDir, configDir);
+  }
+  bwrapArgs.push('--ro-bind', resolvedWorkDir, resolvedWorkDir);
+  if (resolvedWorkDir !== workDir && existsSync(workDir)) {
+    bwrapArgs.push('--ro-bind', workDir, workDir);
+  }
+  bwrapArgs.push('--', binaryName, ...agyArgs);
+  return bwrapArgs;
+}
+
 /**
  * Gemini CLI adapter with reliability features.
  *
@@ -97,14 +143,11 @@ export { GEMINI_CLI_COMMAND };
  */
 export class GeminiCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'gemini';
-  // agy cannot enforce read-only analysis (#6962), so it refuses those tasks.
-  // #6754 mapped the mode to `--mode plan --sandbox` from `agy --help` alone.
-  // Observed live on 2026-10-02 with agy 1.2.15: given exactly that argv and a
-  // prompt asking it to, agy created `pwned.txt` and rewrote a committed file
-  // in a scratch repository, on two differently phrased prompts. Plan mode
-  // writes a plan and then executes it in print mode; `--sandbox` restricts
-  // the terminal, not the file-edit tools.
-  override readonly enforcesReadOnlyAnalysis = false;
+  /**
+   * Gemini enforces read-only analysis via the bubblewrap (bwrap) Linux sandbox (#6962).
+   * Kernel-level filesystem isolation mounts root and workDir as read-only.
+   */
+  override readonly enforcesReadOnlyAnalysis = true;
 
   /**
    * #4346: the arm is still called `gemini` (it serves Google's Gemini models
@@ -123,6 +166,8 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   private readonly maxDelayMs: number;
   private readonly circuitBreaker: CliCircuitBreaker | null;
   private readonly adapterLogger: ILogger;
+  private readonly sandboxProbe: () => Promise<BwrapIsolation>;
+  private readonly platform: NodeJS.Platform;
 
   constructor(options?: GeminiConfig) {
     const mergedConfig = { ...DEFAULT_CONFIG, ...options };
@@ -134,6 +179,8 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     this.maxDelayMs = mergedConfig.maxDelayMs;
     this.parser = new AgyResponseParser();
     this.adapterLogger = options?.logger ?? createLogger({ component: 'gemini-adapter' });
+    this.platform = options?.platform ?? process.platform;
+    this.sandboxProbe = options?.sandboxProbe ?? createBwrapPreflight(undefined, this.platform);
 
     // Initialize circuit breaker if enabled
     if (mergedConfig.enableCircuitBreaker) {
@@ -262,24 +309,30 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   }
 
   /**
+   * Refuse read-only analysis if bwrap sandbox is unavailable on the host.
+   */
+  protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
+    const base = await super.accessModeRefusal(task);
+    if (base !== undefined) return base;
+    if (isReadOnlyAnalysis(task)) {
+      const isolation = await this.sandboxProbe();
+      if (isolation.mode !== 'os-sandbox') {
+        return accessModeConflict(
+          this.name,
+          'read-only-analysis',
+          `bubblewrap (bwrap) sandbox is unavailable: ${isolation.reason ?? 'bwrap requires Linux with kernel unprivileged user namespaces'}`
+        );
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Gets CLI command and arguments for execution.
    */
   protected override getCommand(task: CliTask): CommandConfig {
-    const args: string[] = [];
+    const args: string[] = ['--output-format', 'json'];
 
-    // #4346: the standalone `gemini` CLI is retired — it fails every invocation
-    // with IneligibleTierError (exit 55). `agy` (Antigravity) is Google's own
-    // replacement. Flag spellings differ entirely from the old CLI:
-    //   -o json      -> --output-format json
-    //   -m <model>   -> --model <slug>
-    //   --resume     -> --conversation
-    //   --policy     -> (no equivalent; see systemPrompt handling below)
-    args.push('--output-format', 'json');
-
-    // Registry model ids and agy slugs are different namespaces — see
-    // config/agy-model-map.ts for why `cliModelName` cannot carry the agy slug.
-    // Unsupported explicit pins are refused before dispatch; accepted legacy
-    // Flash aliases migrate through the documented transport map.
     const requested = task.model ?? this.model;
     const model = toAgyModelSlug(requested);
     if (model !== requested) {
@@ -291,42 +344,20 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
       args.push('--conversation', task.sessionId);
     }
 
-    // #6254: agy's workspace is its STORED project, not the directory it is
-    // spawned in — the other arms take the cwd as their tree by default; agy
-    // does not. Measured: spawned from this repository with no --add-dir, a
-    // voter seat read `packages/nexus-agents/package.json` out of an unrelated
-    // checkout on the same machine and reported that file's version, and on
-    // governor panels it abstained "no repository or accessible sandbox was
-    // provided". The task's `workDir` (the same option the claude adapter
-    // honours) wins; otherwise the process cwd, which is what the subprocess
-    // inherits and what the voter prompt names.
-    const workDir = task.options?.['workDir'];
-    args.push('--add-dir', typeof workDir === 'string' && workDir !== '' ? workDir : process.cwd());
-
-    // #6277: agy's own print-mode wait defaults to 5m0s regardless of the
-    // budget the caller gave us. Measured on the #6260 governor panels: a
-    // contrarian seat with a 600 s budget hit agy's 5-minute default, agy
-    // exited 0 with {"status":"SUCCESS","response":""}, and the vote path
-    // read the empty answer as a parse failure for the rest of the budget.
-    // Derive the CLI's wait from the task timeout, a little below the guard
-    // so agy's own timeout fires first and its stderr is readable.
+    const workDir = resolveWorkDir(task);
+    args.push('--add-dir', workDir);
     args.push(...agyPrintTimeoutArgs(task.timeoutMs));
 
-    // agy has no system-prompt flag. The old CLI's `--policy <file>` preserved
-    // system-role framing (#1886); agy offers only `--agent`, which selects a
-    // preconfigured agent rather than accepting inline instructions. So the
-    // system prompt is prepended to the user content — a deliberate downgrade
-    // in framing fidelity, recorded here so it is not mistaken for an
-    // oversight. No temp file is written, which also removes the tempdir-leak
-    // surface the old path had.
-    const content =
-      task.systemPrompt !== undefined && task.systemPrompt !== ''
-        ? `${task.systemPrompt}\n\n${task.content}`
-        : task.content;
+    const content = resolvePromptContent(task);
 
-    // agy reads text stdin in print mode when no prompt flag is present.
-    // Explicit --print (even with an empty value) suppresses that stdin read.
-    // Keep large artifact prompts out of argv's per-argument limit (#7106).
+    if (isReadOnlyAnalysis(task)) {
+      return {
+        command: 'bwrap',
+        args: buildBwrapArgs(this.binaryName, args, workDir),
+        stdin: content,
+      };
+    }
+
     return { command: this.binaryName, args, stdin: content };
   }
 

@@ -30,6 +30,19 @@ describe('AGY adapter native-model fidelity (#7423)', () => {
     expect(adapter.getModelInfo().id).toBe(getCliModelName('gemini-3.8-flash'));
   });
 
+  it('builds command with gemini-4-argon and matching model info', () => {
+    const adapter = new GeminiCliAdapter({ model: 'gemini-4-argon' });
+    const cmd = command(adapter, { content: 'Reply OK' });
+    expect(cmd.args[cmd.args.indexOf('--model') + 1]).toBe('gemini-4-argon-high');
+    expect(adapter.getModelInfo().id).toBe('gemini-4-argon');
+  });
+
+  it('builds command with explicit gemini-4-argon-medium pin', () => {
+    const adapter = new GeminiCliAdapter();
+    const cmd = command(adapter, { content: 'Reply OK', model: 'gemini-4-argon-medium' });
+    expect(cmd.args[cmd.args.indexOf('--model') + 1]).toBe('gemini-4-argon-medium');
+  });
+
   it.each([
     'gemini-3-pro',
     'gemini-3.1-pro-high',

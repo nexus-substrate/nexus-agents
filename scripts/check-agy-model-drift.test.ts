@@ -67,18 +67,34 @@ describe('compareAgyModels', () => {
   });
 });
 
-describe('captured AGY 1.3.5 native availability (#7423)', () => {
-  it('matches the advertised Gemini table via the actual parser and comparator', () => {
+describe('captured AGY native availability (#7423)', () => {
+  it('matches the advertised Gemini table on AGY 1.4.2', () => {
+    const captured = readFileSync(
+      new URL('../packages/nexus-agents/src/config/fixtures/agy-1.4.2-models.txt', import.meta.url),
+      'utf8'
+    );
+    const models = parseAgyModels(captured);
+    expect(models).toHaveLength(13);
+    expect(compareAgyModels(models)).toMatchObject({
+      ok: true,
+      staleInMap: [],
+      missingFromMap: [],
+    });
+  });
+
+  it('detects older 1.3.5 fixture as missing argon models', () => {
     const captured = readFileSync(
       new URL('../packages/nexus-agents/src/config/fixtures/agy-1.3.5-models.txt', import.meta.url),
       'utf8'
     );
     const models = parseAgyModels(captured);
     expect(models).toHaveLength(10);
-    expect(compareAgyModels(models)).toMatchObject({
-      ok: true,
-      staleInMap: [],
-      missingFromMap: [],
-    });
+    const verdict = compareAgyModels(models);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.staleInMap).toEqual([
+      'gemini-4-argon-high',
+      'gemini-4-argon-low',
+      'gemini-4-argon-medium',
+    ]);
   });
 });

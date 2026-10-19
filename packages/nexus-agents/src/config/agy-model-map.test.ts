@@ -79,11 +79,22 @@ describe('agy model slugs', () => {
       for (const id of geminiIds) {
         const slug = toAgyModelSlug(id);
         // Effort is native transport metadata; reverse identity is the selected
-        // Flash model, irrespective of the legacy alias that requested it.
+        // model family, irrespective of the legacy alias that requested it.
         const back = fromAgyModelSlug(slug);
         expect(back).not.toBeNull();
-        expect(back).toBe('gemini-3.8-flash');
+        if (id.includes('argon')) {
+          expect(back).toBe('gemini-4-argon');
+        } else {
+          expect(back).toBe('gemini-3.8-flash');
+        }
       }
+    });
+
+    it('round-trips gemini-4-argon native pins', () => {
+      expect(fromAgyModelSlug(toAgyModelSlug('gemini-4-argon'))).toBe('gemini-4-argon');
+      expect(fromAgyModelSlug('gemini-4-argon-high')).toBe('gemini-4-argon');
+      expect(fromAgyModelSlug('gemini-4-argon-medium')).toBe('gemini-4-argon');
+      expect(fromAgyModelSlug('gemini-4-argon-low')).toBe('gemini-4-argon');
     });
 
     it('returns null for a slug with no registry entry', () => {

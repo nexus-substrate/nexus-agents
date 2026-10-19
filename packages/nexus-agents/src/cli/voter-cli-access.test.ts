@@ -51,9 +51,9 @@ describe('clisServingVoterSeats (#6962)', () => {
     expect(clisServingVoterSeats([], declares(['claude']))).toEqual({ serving: [], refused: [] });
   });
 
-  it('reads the real adapter declarations by default: gemini and opencode refused (#6970)', () => {
+  it('reads the real adapter declarations by default: gemini unblocked (#7498) and opencode refused (#6970)', () => {
     const result = clisServingVoterSeats(['claude', 'gemini', 'codex', 'opencode']);
-    expect(result.refused).toEqual(['gemini', 'opencode']);
-    expect(result.serving).toEqual(['claude', 'codex']);
+    expect(result.refused).toEqual(['opencode']);
+    expect(result.serving).toEqual(['claude', 'gemini', 'codex']);
   });
 });
