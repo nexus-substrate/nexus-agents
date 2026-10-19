@@ -74,6 +74,7 @@ export async function inlineVoteArtifact(
 
 const BOUND_ARTIFACT_RE = /\bArtifact:\s+([^\s]+)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\b/i;
 
+// @export-no-consumer-yet — see #7501
 /** Extracts bound artifact metadata from a proposal containing an inlined artifact. */
 export function extractBoundArtifact(proposal: string):
   | {
