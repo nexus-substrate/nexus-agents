@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { isRoutingArmId } from '../cli-adapters/types.js';
+import { isRoutingArmId, routingArmCliSlot } from '../cli-adapters/types.js';
 import { TaskOutcomeSchema, hasMeasuredCategory } from '../orchestration/outcomes/outcome-types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
@@ -39,9 +39,13 @@ export type DistillerEligibilityInput = Pick<
  * - `source: 'consensus'` is excluded even when routed: a voter seat's
  *   "success" is "returned a parseable vote", not "did this category of work".
  * - `durationMs > 0` is required: a run that took no time did not execute.
- * - `cli` must be a valid `RoutingArmId` (#6555): canonical CLI slots and `api:*`
- *   vendor/gateway endpoint arms are admitted. `'unknown'` is excluded because
- *   it names no routable arm.
+ * - `cli` must be a valid `RoutingArmId` with a resolved CLI slot (#6555):
+ *   canonical CLI slots and built-in vendor API arms (`api:anthropic`,
+ *   `api:openai`, `api:google`, `api:custom-openai`) under `NEXUS_BILLING_MODE=api`
+ *   are admitted because `DistilledRuleStage` applies adjustments at slot
+ *   granularity. Un-slotted dynamic gateway endpoints (`api:gw-prod`) are
+ *   excluded until stage scoring operates on endpoint candidates directly.
+ *   `'unknown'` is excluded because it names no routable arm.
  * - `categorySource: 'defaulted'` is excluded (#6549): a rule is keyed on
  *   cli×category, and a defaulted row names no category.
  */
@@ -50,7 +54,8 @@ export function isDistillerEligible(outcome: DistillerEligibilityInput): boolean
   if (outcome.source === 'consensus') return false;
   if (!(outcome.durationMs > 0)) return false;
   if (!hasMeasuredCategory(outcome)) return false;
-  return isRoutingArmId(outcome.cli);
+  if (!isRoutingArmId(outcome.cli)) return false;
+  return routingArmCliSlot(outcome.cli) !== undefined;
 }
 
 /**

@@ -840,7 +840,7 @@ describe('StrategyDistiller', () => {
       expect(rule?.action).toBe('avoid');
     });
 
-    it('distills failure rules for operator gateway endpoints (e.g. api:gw-prod)', () => {
+    it('excludes unslotted operator gateway endpoints from distillation (e.g. api:gw-prod)', () => {
       populateStore({
         store,
         cli: 'api:gw-prod',
@@ -852,10 +852,7 @@ describe('StrategyDistiller', () => {
 
       const rules = distiller.getRules();
       const rule = rules.find((r) => r.cli === 'api:gw-prod');
-      expect(rule).toBeDefined();
-      expect(rule?.cli).toBe('api:gw-prod');
-      expect(rule?.category).toBe('code_generation');
-      expect(rule?.id).toBe('failure-rate:api:gw-prod:code_generation');
+      expect(rule).toBeUndefined();
     });
   });
 

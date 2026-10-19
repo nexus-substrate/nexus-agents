@@ -57,7 +57,11 @@ describe('isDistillerEligible (#6521)', () => {
     ['routed but unknown CLI', { ...routed, cli: 'unknown' }, false],
     ['routed api:anthropic vendor arm (#6555)', { ...routed, cli: 'api:anthropic' }, true],
     ['routed api:openai vendor arm (#6555)', { ...routed, cli: 'api:openai' }, true],
-    ['routed api:gw-prod gateway arm (#6555)', { ...routed, cli: 'api:gw-prod' }, true],
+    [
+      'routed api:gw-prod gateway arm without cli slot (#6555)',
+      { ...routed, cli: 'api:gw-prod' },
+      false,
+    ],
     [
       'routed invalid arm format',
       { ...routed, cli: 'invalid:arm' as unknown as TaskOutcome['cli'] },
