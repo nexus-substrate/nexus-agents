@@ -2,4 +2,4 @@
 'nexus-agents': minor
 ---
 
-Implement M1 truthful voter readiness and artifact evidence binding slice from Connected Autonomy Plan (#7501).
+Enforce truthful voter readiness and cryptographically bound artifact evidence across consensus voting and dev-pipeline plan votes (#7501).

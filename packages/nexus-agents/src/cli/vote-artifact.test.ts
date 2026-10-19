@@ -169,5 +169,14 @@ describe('in-memory vote artifact (#7411)', () => {
       const tamperedLength = valid.replace(' 14 bytes', ' 99 bytes');
       expect(extractBoundArtifact(tamperedLength)).toBeUndefined();
     });
+
+    it('extracts artifact when proposal has trailing research context', () => {
+      const inlined = inlineVoteArtifactText('Review plan', 'sample content', 'plan.md');
+      const withResearch = `${inlined}\n\n---\n## Research context (informational):\nSome background research notes`;
+      const extracted = extractBoundArtifact(withResearch);
+      expect(extracted).toBeDefined();
+      expect(extracted?.displayName).toBe('plan.md');
+      expect(extracted?.bytes).toBe(14);
+    });
   });
 });

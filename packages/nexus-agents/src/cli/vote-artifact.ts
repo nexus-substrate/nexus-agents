@@ -77,7 +77,7 @@ export async function inlineVoteArtifact(
 }
 
 const BOUND_ARTIFACT_BLOCK_RE =
-  /\n\nArtifact:\s+(.+?)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\n===== BEGIN ARTIFACT =====\n([\s\S]*?)\n===== END ARTIFACT =====$/;
+  /\n\nArtifact:\s+(.+?)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\n===== BEGIN ARTIFACT =====\n([\s\S]*?)\n===== END ARTIFACT =====(?:\n|$)/;
 
 /** Extracts and cryptographically verifies bound artifact metadata from an inlined artifact block. */
 export function extractBoundArtifact(proposal: string):
