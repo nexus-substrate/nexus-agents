@@ -35,7 +35,7 @@ vi.mock('./auto-adapter.js', () => {
   return { createAutoAdapter: createAutoAdapterMock };
 });
 
-vi.mock('../agents/collaboration/event-bus.js', () => ({
+vi.mock('../core/event-bus.js', () => ({
   getGlobalEventBus: vi.fn().mockReturnValue({ emit: vi.fn() }),
 }));
 
