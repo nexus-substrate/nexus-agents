@@ -125,7 +125,7 @@ export const VoteResponseSchema = z.object({
     .describe('SHA-256 digest of the bound artifact reviewed'),
   /** Worker readiness status for the required artifact. */
   artifactReadiness: z
-    .enum(['ready', 'artifact_starved', 'unverifiable', 'not_required'])
+    .enum(['ready', 'artifact_starved', 'unverifiable'])
     .optional()
     .describe('Readiness status of the voter for the artifact'),
 });
@@ -183,7 +183,7 @@ export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
     },
     artifactReadiness: {
       type: 'string',
-      enum: ['ready', 'artifact_starved', 'unverifiable', 'not_required'],
+      enum: ['ready', 'artifact_starved', 'unverifiable'],
       description: 'Readiness status of the voter for the artifact',
     },
     rejectionCategories: {

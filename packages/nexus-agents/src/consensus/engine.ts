@@ -355,25 +355,36 @@ export class ConsensusEngine implements IConsensusEngine {
     return undefined;
   }
 
+  private normalizeDigest(digest?: string): string | undefined {
+    if (digest === undefined) return undefined;
+    const trimmed = digest.trim();
+    if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+      return `sha256:${trimmed.toLowerCase()}`;
+    }
+    return trimmed.toLowerCase();
+  }
+
   private recordVote(state: ProposalState, agentId: string, vote: Vote): void {
     let recordedVote = vote;
+    const expectedDigest = this.normalizeDigest(state.proposal.artifactDigest);
+    const actualDigest = this.normalizeDigest(vote.boundArtifactDigest);
     if (
-      (state.proposal.requireArtifact === true || state.proposal.artifactDigest !== undefined) &&
-      vote.boundArtifactDigest !== undefined &&
-      state.proposal.artifactDigest !== undefined &&
-      vote.boundArtifactDigest !== state.proposal.artifactDigest
+      (state.proposal.requireArtifact === true || expectedDigest !== undefined) &&
+      actualDigest !== undefined &&
+      expectedDigest !== undefined &&
+      actualDigest !== expectedDigest
     ) {
       this.logger.warn('Subject mismatch: artifact digest changed (#M1)', {
         proposalId: state.proposal.id,
-        expected: state.proposal.artifactDigest,
-        actual: vote.boundArtifactDigest,
+        expected: expectedDigest,
+        actual: actualDigest,
       });
       recordedVote = {
         ...vote,
         decision: 'abstain',
         confidence: 0,
         artifactReadiness: 'unverifiable',
-        reasoning: `Subject mismatch: artifact digest changed (expected ${state.proposal.artifactDigest}, got ${vote.boundArtifactDigest})`,
+        reasoning: `${vote.reasoning} [Subject mismatch: expected ${expectedDigest}, got ${actualDigest}]`,
       };
     } else if (vote.artifactReadiness === 'artifact_starved') {
       recordedVote = {
@@ -474,12 +485,11 @@ export class ConsensusEngine implements IConsensusEngine {
   }
 
   private countEligibleInspectedVoters(votes: Iterable<Vote>, requiredDigest?: string): number {
+    const expected = this.normalizeDigest(requiredDigest);
     let count = 0;
     for (const v of votes) {
-      if (
-        v.artifactReadiness === 'ready' &&
-        (requiredDigest === undefined || v.boundArtifactDigest === requiredDigest)
-      ) {
+      const actual = this.normalizeDigest(v.boundArtifactDigest);
+      if (v.artifactReadiness === 'ready' && (expected === undefined || actual === expected)) {
         count++;
       }
     }

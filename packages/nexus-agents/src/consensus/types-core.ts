@@ -118,14 +118,9 @@ export const VoteSchema = z.object({
     .describe('SHA-256 digest of the bound artifact reviewed'),
   /** Worker readiness status for the required artifact. */
   artifactReadiness: z
-    .enum(['ready', 'artifact_starved', 'unverifiable', 'not_required'])
+    .enum(['ready', 'artifact_starved', 'unverifiable'])
     .optional()
     .describe('Readiness status of the voter for the artifact'),
-  /** Declared review coverage. */
-  coverage: z
-    .enum(['complete', 'partial', 'bounded'])
-    .optional()
-    .describe('Declared coverage of review'),
   timestamp: z.iso.datetime().optional(),
 });
 export type Vote = z.infer<typeof VoteSchema>;

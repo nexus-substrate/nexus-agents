@@ -277,15 +277,6 @@ describe('markUnverifiable', () => {
     expect(marked.vote.confidence).toBe(0);
   });
 
-  it('classifies artifactStarved directly without requiring stderr or reasoning keywords', () => {
-    expect(
-      classifyUnverifiable({
-        reasoning: 'Approve without reading.',
-        artifactStarved: true,
-      })
-    ).toBe('artifact_starved');
-  });
-
   it('keeps the provenance that IS real — reasoning, model, cli, tokens', () => {
     const marked = markUnverifiable(llm(), 'stderr');
     expect(marked.vote.reasoning).toBe(LEDGER_FIXTURES[5]);

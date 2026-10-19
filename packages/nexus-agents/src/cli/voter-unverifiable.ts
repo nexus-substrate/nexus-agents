@@ -76,8 +76,6 @@ export type UnverifiableReasoningRule = 'prefix' | 'error_without_recovery';
 export interface UnverifiableEvidence {
   readonly cliStderr?: string | undefined;
   readonly reasoning: string;
-  /** Whether preflight probe detected the worker lacks required artifact access (#M1). */
-  readonly artifactStarved?: boolean | undefined;
 }
 
 /** True when the reasoning asserts a successful read: a recovery phrase or a file:line citation. */
@@ -103,7 +101,6 @@ export function classifyUnverifiable(
   evidence: UnverifiableEvidence,
   onReasoningRule?: (rule: UnverifiableReasoningRule) => void
 ): UnverifiableSignal | undefined {
-  if (evidence.artifactStarved === true) return 'artifact_starved';
   const stderr = evidence.cliStderr ?? '';
   if (stderr !== '' && UNVERIFIABLE_STDERR_RE.test(stderr)) return 'stderr';
   const { reasoning } = evidence;
@@ -132,12 +129,22 @@ export function markUnverifiable(
   signal: UnverifiableSignal
 ): AgentVoteResult {
   const { selectedOption: _discarded, ...rest } = result;
-  const { conditions: _conditions, ...vote } = result.vote;
+  const {
+    conditions: _conditions,
+    boundArtifactDigest: _discardedDigest,
+    artifactReadiness: _discardedReadiness,
+    ...vote
+  } = result.vote;
   return {
     ...rest,
     source: 'unverifiable',
     unverifiableSignal: signal,
-    vote: { ...vote, decision: 'abstain', confidence: 0 },
+    vote: {
+      ...vote,
+      decision: 'abstain',
+      confidence: 0,
+      artifactReadiness: 'artifact_starved',
+    },
   };
 }
 

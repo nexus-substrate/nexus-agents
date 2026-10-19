@@ -205,7 +205,7 @@ describe('consensus_vote artifactPath (#7092)', () => {
     const artifactPath = join(root, 'patch.diff');
     writeFileSync(artifactPath, content);
 
-    // 3 voters: none declared artifactReadiness, one seat is unverifiable
+    // 3 voters: seat 1 has undeclared readiness, seat 2 falsely declared 'ready' in JSON but transport marked unverifiable
     collectMock.mockResolvedValueOnce([
       {
         role: 'architect',
@@ -220,6 +220,9 @@ describe('consensus_vote artifactPath (#7092)', () => {
           decision: 'abstain',
           confidence: 0,
           reasoning: 'UNVERIFIABLE: could not read the artifact',
+          artifactReadiness: 'ready', // Pretended ready in JSON
+          boundArtifactDigest:
+            'sha256:0000000000000000000000000000000000000000000000000000000000000000',
         },
         source: 'unverifiable',
         cli: 'claude',
@@ -250,9 +253,10 @@ describe('consensus_vote artifactPath (#7092)', () => {
 
   it('approves when voters truthfully declare readiness matching the bound artifact digest at the tool seam', async () => {
     const content = 'reviewed diff content';
-    const artifactPath = join(root, 'patch.diff');
+    const artifactPath = join(root, 'my patch file.diff');
     writeFileSync(artifactPath, content);
-    const digest = `sha256:${createHash('sha256').update(content).digest('hex')}`;
+    const hexDigest = createHash('sha256').update(content).digest('hex');
+    const digest = `sha256:${hexDigest}`;
 
     collectMock.mockResolvedValueOnce([
       {
@@ -275,7 +279,7 @@ describe('consensus_vote artifactPath (#7092)', () => {
           confidence: 0.9,
           reasoning: 'verified patch',
           artifactReadiness: 'ready',
-          boundArtifactDigest: digest,
+          boundArtifactDigest: hexDigest, // bare hex normalized to sha256:<hex>
         },
         source: 'llm',
         cli: 'claude',

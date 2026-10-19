@@ -317,9 +317,8 @@ async function processVotesThroughEngine(
       boundArtifact !== undefined
         ? {
             ...vote,
-            artifactReadiness:
-              vote.artifactReadiness ?? (isAbsent ? 'artifact_starved' : undefined),
-            boundArtifactDigest: vote.boundArtifactDigest,
+            artifactReadiness: isAbsent ? 'artifact_starved' : vote.artifactReadiness,
+            boundArtifactDigest: isAbsent ? undefined : vote.boundArtifactDigest,
           }
         : vote;
     await engine.vote(proposalId, role, boundVote);

@@ -55,7 +55,11 @@ export function inlineVoteArtifactText(
   const content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   const digest = createHash('sha256').update(bytes).digest('hex');
   const header = `Artifact: ${displayName} sha256:${digest} ${String(bytes.length)} bytes`;
-  return `${proposal}\n\n${header}\n===== BEGIN ARTIFACT =====\n${content}\n===== END ARTIFACT =====`;
+  const framed = `${proposal}\n\n${header}\n===== BEGIN ARTIFACT =====\n${content}\n===== END ARTIFACT =====`;
+  if (extractBoundArtifact(framed) === undefined) {
+    throw new Error(`Failed to produce verifiable bound artifact block for ${displayName}`);
+  }
+  return framed;
 }
 
 /** Inline a file into the proposal every voter consumes and the recorder hashes. */
@@ -73,7 +77,7 @@ export async function inlineVoteArtifact(
 }
 
 const BOUND_ARTIFACT_BLOCK_RE =
-  /\n\nArtifact:\s+([^\s]+)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\n===== BEGIN ARTIFACT =====\n([\s\S]*?)\n===== END ARTIFACT =====$/;
+  /\n\nArtifact:\s+(.+?)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\n===== BEGIN ARTIFACT =====\n([\s\S]*?)\n===== END ARTIFACT =====$/;
 
 /** Extracts and cryptographically verifies bound artifact metadata from an inlined artifact block. */
 export function extractBoundArtifact(proposal: string):

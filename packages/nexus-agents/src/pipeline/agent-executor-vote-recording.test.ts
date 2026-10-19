@@ -22,40 +22,56 @@ const voters = vi.hoisted<{
   respondents: undefined,
   unverifiable: false,
 }));
-vi.mock('../cli/voter-agents.js', () => ({
-  collectRealVotes: ({ roles, simulate }: { roles: VoterRole[]; simulate: boolean }) =>
-    Promise.resolve(
-      (voters.empty ? [] : roles.slice(0, voters.respondents)).map(
-        (role, index): AgentVoteResult => ({
-          role,
-          vote: {
-            decision: voters.decisions?.[index] ?? voters.decision,
-            confidence: 0.9,
-            reasoning: 'Measured plan',
-          },
-          source: simulate
-            ? 'simulation'
-            : voters.allFailed || (voters.failed && index === 0)
-              ? 'error'
-              : voters.unverifiable && index === 0
-                ? 'unverifiable'
-                : 'llm',
-          cli: 'codex',
-          model: 'requested-alias',
-          servedModel: 'claude-sonnet',
-          processingTimeMs: 17,
-          inputTokens: 100,
-          outputTokens: 20,
-          attemptUsage: {
-            completions: 2,
-            reportedCompletions: 2,
-            inputTokens: 300,
-            outputTokens: 60,
-          },
-        })
-      )
-    ),
-}));
+vi.mock('../cli/voter-agents.js', async () => {
+  const { extractBoundArtifact } = await import('../cli/vote-artifact.js');
+  return {
+    collectRealVotes: ({
+      roles,
+      simulate,
+      proposal,
+    }: {
+      roles: VoterRole[];
+      simulate: boolean;
+      proposal?: string;
+    }) => {
+      const bound = proposal !== undefined ? extractBoundArtifact(proposal) : undefined;
+      return Promise.resolve(
+        (voters.empty ? [] : roles.slice(0, voters.respondents)).map(
+          (role, index): AgentVoteResult => ({
+            role,
+            vote: {
+              decision: voters.decisions?.[index] ?? voters.decision,
+              confidence: 0.9,
+              reasoning: 'Measured plan',
+              ...(bound !== undefined
+                ? { artifactReadiness: 'ready', boundArtifactDigest: bound.digest }
+                : {}),
+            },
+            source: simulate
+              ? 'simulation'
+              : voters.allFailed || (voters.failed && index === 0)
+                ? 'error'
+                : voters.unverifiable && index === 0
+                  ? 'unverifiable'
+                  : 'llm',
+            cli: 'codex',
+            model: 'requested-alias',
+            servedModel: 'claude-sonnet',
+            processingTimeMs: 17,
+            inputTokens: 100,
+            outputTokens: 20,
+            attemptUsage: {
+              completions: 2,
+              reportedCompletions: 2,
+              inputTokens: 300,
+              outputTokens: 60,
+            },
+          })
+        )
+      );
+    },
+  };
+});
 vi.mock('./expert-bridge.js', () => ({
   executeExpert: () =>
     Promise.resolve({
