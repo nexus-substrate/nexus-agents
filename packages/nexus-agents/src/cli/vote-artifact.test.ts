@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  extractBoundArtifact,
   inlineVoteArtifact,
   inlineVoteArtifactText,
   MAX_VOTE_ARTIFACT_BYTES,
@@ -135,5 +136,47 @@ describe('in-memory vote artifact (#7411)', () => {
     expect(() => inlineVoteArtifactText('Review', text + 'x', 'plan.txt')).toThrow(
       /262145.*262144/
     );
+  });
+
+  describe('extractBoundArtifact', () => {
+    it('extracts metadata from an inlined artifact proposal', () => {
+      const inlined = inlineVoteArtifactText('Review plan', 'sample content', 'plan.md');
+      const extracted = extractBoundArtifact(inlined);
+      expect(extracted).toBeDefined();
+      expect(extracted?.displayName).toBe('plan.md');
+      expect(extracted?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(extracted?.bytes).toBe(14);
+    });
+
+    it('returns undefined when proposal does not contain an inlined artifact header', () => {
+      expect(extractBoundArtifact('Just an ordinary proposal')).toBeUndefined();
+    });
+
+    it('returns undefined when proposal merely mentions artifact in prose without framing block', () => {
+      const spoofed =
+        'Proposal text mentioning Artifact: plan.md sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 bytes in prose';
+      expect(extractBoundArtifact(spoofed)).toBeUndefined();
+    });
+
+    it('returns undefined when inlined artifact content does not match declared sha256 digest', () => {
+      const spoofed =
+        'Proposal\n\nArtifact: plan.md sha256:0000000000000000000000000000000000000000000000000000000000000000 14 bytes\n===== BEGIN ARTIFACT =====\nsample content\n===== END ARTIFACT =====';
+      expect(extractBoundArtifact(spoofed)).toBeUndefined();
+    });
+
+    it('returns undefined when inlined artifact content does not match declared byte length', () => {
+      const valid = inlineVoteArtifactText('Review plan', 'sample content', 'plan.md');
+      const tamperedLength = valid.replace(' 14 bytes', ' 99 bytes');
+      expect(extractBoundArtifact(tamperedLength)).toBeUndefined();
+    });
+
+    it('extracts artifact when proposal has trailing research context', () => {
+      const inlined = inlineVoteArtifactText('Review plan', 'sample content', 'plan.md');
+      const withResearch = `${inlined}\n\n---\n## Research context (informational):\nSome background research notes`;
+      const extracted = extractBoundArtifact(withResearch);
+      expect(extracted).toBeDefined();
+      expect(extracted?.displayName).toBe('plan.md');
+      expect(extracted?.bytes).toBe(14);
+    });
   });
 });

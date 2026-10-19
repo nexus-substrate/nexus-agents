@@ -24,6 +24,14 @@ vi.mock('../middleware/tool-wrapper.js', () => ({
 vi.mock('../middleware/secure-handler.js', () => ({
   createSecureHandler: (fn: unknown) => fn,
 }));
+vi.mock('../../cli-adapters/factory.js', () => ({
+  createAllAdapters: () => new Map(),
+  getAvailableClis: () => Promise.resolve([]),
+  isCliAvailable: () => Promise.resolve(false),
+  createCliAdapter: () => {
+    throw new Error('Unexpected real adapter construction');
+  },
+}));
 
 import { CONSENSUS_VOTE_TOOL_SCHEMA, registerConsensusVoteTool } from './consensus-vote.js';
 import { ConsensusVoteInputSchema } from './consensus-vote-types.js';
@@ -190,5 +198,316 @@ describe('consensus_vote artifactPath (#7092)', () => {
       );
     }
     expect(collectMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when voters have undeclared readiness or source unverifiable at the tool seam', async () => {
+    const content = 'reviewed diff content';
+    const artifactPath = join(root, 'patch.diff');
+    writeFileSync(artifactPath, content);
+
+    // 3 voters: seat 1 has undeclared readiness, seat 2 falsely declared 'ready' in JSON but transport marked unverifiable
+    collectMock.mockResolvedValueOnce([
+      {
+        role: 'architect',
+        vote: { decision: 'approve', confidence: 0.9, reasoning: 'looks good' },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'security',
+        vote: {
+          decision: 'abstain',
+          confidence: 0,
+          reasoning: 'UNVERIFIABLE: could not read the artifact',
+          artifactReadiness: 'ready', // Pretended ready in JSON
+          boundArtifactDigest:
+            'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+        },
+        source: 'unverifiable',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'devex',
+        vote: { decision: 'approve', confidence: 0.9, reasoning: 'looks good' },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+    ]);
+
+    const result = await captureHandler()(
+      {
+        proposal: 'Review patch',
+        artifactPath: relative(process.cwd(), artifactPath),
+        quickMode: true,
+      },
+      CTX
+    );
+
+    expect(result.isError).not.toBe(true);
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as {
+      decision: string;
+      policyReason?: string;
+    };
+    expect(parsed.decision).toBe('no_quorum');
+    expect(parsed.policyReason).toContain('inspected the required artifact');
+  });
+
+  it('approves when voters truthfully declare readiness matching the bound artifact digest at the tool seam', async () => {
+    const content = 'reviewed diff content';
+    const artifactPath = join(root, 'my patch file.diff');
+    writeFileSync(artifactPath, content);
+    const hexDigest = createHash('sha256').update(content).digest('hex');
+    const digest = `sha256:${hexDigest}`;
+
+    collectMock.mockResolvedValueOnce([
+      {
+        role: 'architect',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: digest,
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'security',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: hexDigest, // bare hex normalized to sha256:<hex>
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'devex',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: digest,
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+    ]);
+
+    const result = await captureHandler()(
+      {
+        proposal: 'Review patch',
+        artifactPath: relative(process.cwd(), artifactPath),
+        quickMode: true,
+      },
+      CTX
+    );
+
+    expect(result.isError).not.toBe(true);
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { decision: string };
+    expect(parsed.decision).toBe('approved');
+  });
+
+  it('enforces 3-seat artifact floor when 1 seat errors under reduce_denominator in quickMode', async () => {
+    const content = 'reviewed diff content for 3-seat errored test';
+    const artifactPath = join(root, 'patch3.diff');
+    writeFileSync(artifactPath, content);
+    const hexDigest = createHash('sha256').update(content).digest('hex');
+    const digest = `sha256:${hexDigest}`;
+
+    collectMock.mockResolvedValueOnce([
+      {
+        role: 'architect',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: digest,
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'security',
+        vote: {
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'verified patch',
+          artifactReadiness: 'ready',
+          boundArtifactDigest: digest,
+        },
+        source: 'llm',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+      {
+        role: 'devex',
+        vote: {
+          decision: 'reject',
+          confidence: 0,
+          reasoning: 'seat crashed',
+        },
+        source: 'error',
+        cli: 'claude',
+        processingTimeMs: 1,
+      } satisfies Partial<AgentVoteResult>,
+    ]);
+
+    const result = await captureHandler()(
+      {
+        proposal: 'Review patch',
+        artifactPath: relative(process.cwd(), artifactPath),
+        quickMode: true,
+      },
+      CTX
+    );
+
+    expect(result.isError).not.toBe(true);
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as {
+      decision: string;
+      policyReason?: string;
+    };
+    expect(parsed.decision).toBe('no_quorum');
+    expect(parsed.policyReason).toContain('2/3 required');
+  });
+
+  it('enforces 5-seat artifact floor when 3 seats error in a 7-seat panel under reduce_denominator', async () => {
+    const content = 'reviewed diff content for 7-seat 3-error test';
+    const artifactPath = join(root, 'patch7_3err.diff');
+    writeFileSync(artifactPath, content);
+    const hexDigest = createHash('sha256').update(content).digest('hex');
+    const digest = `sha256:${hexDigest}`;
+
+    const roles: VoterRole[] = [
+      'architect',
+      'security',
+      'devex',
+      'ai_ml',
+      'pm',
+      'catfish',
+      'scope_steward',
+    ];
+
+    collectMock.mockResolvedValueOnce(
+      roles.map((role, idx) => {
+        if (idx < 4) {
+          return {
+            role,
+            vote: {
+              decision: 'approve',
+              confidence: 0.9,
+              reasoning: 'verified patch',
+              artifactReadiness: 'ready',
+              boundArtifactDigest: digest,
+            },
+            source: 'llm',
+            cli: 'claude',
+            processingTimeMs: 1,
+          } satisfies Partial<AgentVoteResult>;
+        }
+        return {
+          role,
+          vote: {
+            decision: 'reject',
+            confidence: 0,
+            reasoning: 'seat crashed',
+          },
+          source: 'error',
+          cli: 'claude',
+          processingTimeMs: 1,
+        } satisfies Partial<AgentVoteResult>;
+      })
+    );
+
+    const result = await captureHandler()(
+      {
+        proposal: 'Review patch 7-seat',
+        artifactPath: relative(process.cwd(), artifactPath),
+        quickMode: false,
+      },
+      CTX
+    );
+
+    expect(result.isError).not.toBe(true);
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as {
+      decision: string;
+      policyReason?: string;
+    };
+    expect(parsed.decision).toBe('no_quorum');
+    expect(parsed.policyReason).toContain('4/5 required');
+  });
+
+  it('approves 7-seat panel when 2 seats error and 5 seats inspect artifact under reduce_denominator', async () => {
+    const content = 'reviewed diff content for 7-seat 2-error test';
+    const artifactPath = join(root, 'patch7_2err.diff');
+    writeFileSync(artifactPath, content);
+    const hexDigest = createHash('sha256').update(content).digest('hex');
+    const digest = `sha256:${hexDigest}`;
+
+    const roles: VoterRole[] = [
+      'architect',
+      'security',
+      'devex',
+      'ai_ml',
+      'pm',
+      'catfish',
+      'scope_steward',
+    ];
+
+    collectMock.mockResolvedValueOnce(
+      roles.map((role, idx) => {
+        if (idx < 5) {
+          return {
+            role,
+            vote: {
+              decision: 'approve',
+              confidence: 0.9,
+              reasoning: 'verified patch',
+              artifactReadiness: 'ready',
+              boundArtifactDigest: digest,
+            },
+            source: 'llm',
+            cli: 'claude',
+            processingTimeMs: 1,
+          } satisfies Partial<AgentVoteResult>;
+        }
+        return {
+          role,
+          vote: {
+            decision: 'reject',
+            confidence: 0,
+            reasoning: 'seat crashed',
+          },
+          source: 'error',
+          cli: 'claude',
+          processingTimeMs: 1,
+        } satisfies Partial<AgentVoteResult>;
+      })
+    );
+
+    const result = await captureHandler()(
+      {
+        proposal: 'Review patch 7-seat pass',
+        artifactPath: relative(process.cwd(), artifactPath),
+        quickMode: false,
+      },
+      CTX
+    );
+
+    expect(result.isError).not.toBe(true);
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { decision: string };
+    expect(parsed.decision).toBe('approved');
   });
 });

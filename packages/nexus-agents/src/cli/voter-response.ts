@@ -13,6 +13,7 @@ import type { Vote } from '../consensus/types.js';
 import { matchDeclaredOption } from '../consensus/option-tally.js';
 import type { VoterRole } from './vote-types.js';
 import { getErrorMessage } from '../core/index.js';
+import { extractBoundArtifact } from './vote-artifact.js';
 
 // ============================================================================
 // Error Classes
@@ -117,6 +118,16 @@ export const VoteResponseSchema = z.object({
    * against the declared list by the caller; an unmatched value is dropped
    * rather than recorded, so a parse miss surfaces as absent. */
   selectedOption: z.string().optional().describe('Which declared option you choose'),
+  /** Bound SHA-256 digest of reviewed artifact (#M1 connected autonomy). */
+  boundArtifactDigest: z
+    .string()
+    .optional()
+    .describe('SHA-256 digest of the bound artifact reviewed'),
+  /** Worker readiness status for the required artifact. */
+  artifactReadiness: z
+    .enum(['ready', 'artifact_starved', 'unverifiable'])
+    .optional()
+    .describe('Readiness status of the voter for the artifact'),
 });
 
 export type VoteResponse = z.infer<typeof VoteResponseSchema>;
@@ -165,6 +176,15 @@ export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
     selectedOption: {
       type: 'string',
       description: 'Which declared option you choose (multi-option proposals only)',
+    },
+    boundArtifactDigest: {
+      type: 'string',
+      description: 'SHA-256 digest of the bound artifact reviewed',
+    },
+    artifactReadiness: {
+      type: 'string',
+      enum: ['ready', 'artifact_starved', 'unverifiable'],
+      description: 'Readiness status of the voter for the artifact',
     },
     rejectionCategories: {
       type: 'array',
@@ -282,6 +302,15 @@ Example PR-review request_changes response with structured findings:
 }`;
 
 /**
+ * Bound artifact instructions, present only when the proposal contains a verified inlined artifact.
+ */
+function buildBoundArtifactInstruction(proposal: string): string {
+  const bound = extractBoundArtifact(proposal);
+  if (bound === undefined) return '';
+  return `\n- boundArtifactDigest: Required when reviewing a bound artifact. String matching the SHA-256 digest of the artifact (${bound.digest}).\n- artifactReadiness: Required when reviewing a bound artifact. "ready" if you inspected the artifact, "artifact_starved" if unable to access/read it.`;
+}
+
+/**
  * Constructs the user prompt for vote evaluation.
  * Includes workflow-test evaluation criteria (Issue #1212) and
  * rejection category instructions (Issue #1213).
@@ -308,7 +337,7 @@ Respond with a JSON object containing:
 - confidence: Number between 0 and 1
 - conditions: Optional array of conditions for approval
 - rejectionCategories: Required when rejecting. Array of categories from: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE
-- findings: PR-REVIEW MODE ONLY. Optional top-level array of structured findings — see "PR-review mode" in the system prompt. OMIT this field entirely when reviewing a non-diff proposal or when approving a diff.
+- findings: PR-REVIEW MODE ONLY. Optional top-level array of structured findings — see "PR-review mode" in the system prompt. OMIT this field entirely when reviewing a non-diff proposal or when approving a diff.${buildBoundArtifactInstruction(proposal)}
 ${buildSelectionFieldDoc(options)}
 ${VOTE_PROMPT_EXAMPLES}`;
 }
@@ -518,6 +547,10 @@ function buildParsedVote(data: VoteResponse, options?: readonly string[]): Parse
       : {}),
     ...(data.findings !== undefined ? { findings: data.findings } : {}),
     ...(selectedOption !== undefined ? { selectedOption } : {}),
+    ...(data.boundArtifactDigest !== undefined
+      ? { boundArtifactDigest: data.boundArtifactDigest }
+      : {}),
+    ...(data.artifactReadiness !== undefined ? { artifactReadiness: data.artifactReadiness } : {}),
     source: 'parsed',
   };
 }

@@ -111,6 +111,16 @@ export const VoteSchema = z.object({
     .string()
     .optional()
     .describe('Chosen option when the proposal declares options'),
+  /** Bound SHA-256 digest of reviewed artifact (#M1 connected autonomy). */
+  boundArtifactDigest: z
+    .string()
+    .optional()
+    .describe('SHA-256 digest of the bound artifact reviewed'),
+  /** Worker readiness status for the required artifact. */
+  artifactReadiness: z
+    .enum(['ready', 'artifact_starved', 'unverifiable'])
+    .optional()
+    .describe('Readiness status of the voter for the artifact'),
   timestamp: z.iso.datetime().optional(),
 });
 export type Vote = z.infer<typeof VoteSchema>;
@@ -125,6 +135,20 @@ export const ProposalSchema = z.object({
   algorithm: ConsensusAlgorithmSchema,
   timeout: z.number().int().positive().optional().describe('Timeout in milliseconds'),
   requiredVoters: z.array(z.string()).optional().describe('Agent IDs that must vote'),
+  /** SHA-256 digest of required artifact fixture (#M1 connected autonomy). */
+  artifactDigest: z.string().optional().describe('SHA-256 digest of required artifact'),
+  /** Whether artifact inspection is mandatory for eligible votes. */
+  requireArtifact: z
+    .boolean()
+    .optional()
+    .describe('Whether artifact inspection is mandatory for eligible votes'),
+  /** Total panel size for artifact inspection floor calculations (#M1). */
+  totalRoles: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Total panel size for artifact inspection floor'),
   metadata: z.record(z.string(), z.unknown()).optional().describe('Additional context'),
   createdAt: z.iso.datetime().optional(),
 });
@@ -179,6 +203,10 @@ export interface ConsensusResult {
   startedAt: string;
   closedAt: string;
   durationMs: number;
+  /** Explanation for outcome when applicable (e.g. unmet artifact floor). */
+  reason?: string | undefined;
+  /** Whether artifact inspection floor was unmet (#M1 connected autonomy). */
+  artifactFloorUnmet?: boolean | undefined;
 }
 
 /**
@@ -208,6 +236,11 @@ export const ConsensusResultSchema = z.object({
   startedAt: z.iso.datetime(),
   closedAt: z.iso.datetime(),
   durationMs: z.number().int().nonnegative(),
+  reason: z.string().optional().describe('Explanation for outcome when applicable'),
+  artifactFloorUnmet: z
+    .boolean()
+    .optional()
+    .describe('Whether artifact inspection floor was unmet'),
 });
 
 /**

@@ -1006,4 +1006,323 @@ describe('ConsensusEngine - Edge Cases', () => {
       expect(voteResult.ok).toBe(true);
     });
   });
+
+  describe('artifact readiness and subject validation (#M1)', () => {
+    const requiredDigest =
+      'sha256:aaaa1111222233334444555566667777888899990000aaaabbbbccccddddeeee';
+
+    it('invalidates vote when subject digest differs from proposal artifact digest', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      const wrongDigest = 'sha256:ffff1111222233334444555566667777888899990000aaaabbbbccccddddeeee';
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+        boundArtifactDigest: wrongDigest,
+      });
+
+      const res = await engine.getResult(propResult.value);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        const storedVote = res.value.votes.get('agent-1');
+        expect(storedVote?.decision).toBe('abstain');
+        expect(storedVote?.confidence).toBe(0);
+      }
+    });
+
+    it('forces artifact-starved seat to abstain with 0 confidence', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'could not read mount',
+        confidence: 0.8,
+        artifactReadiness: 'artifact_starved',
+      });
+
+      const res = await engine.getResult(propResult.value);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        const storedVote = res.value.votes.get('agent-1');
+        expect(storedVote?.decision).toBe('abstain');
+        expect(storedVote?.confidence).toBe(0);
+      }
+    });
+
+    it('refuses approval if insufficient eligible voters inspected the required artifact', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 1 approves with valid artifact, 2 are artifact-starved
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'verified patch',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'abstain',
+        reasoning: 'starved',
+        confidence: 0,
+        artifactReadiness: 'artifact_starved',
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'abstain',
+        reasoning: 'starved',
+        confidence: 0,
+        artifactReadiness: 'artifact_starved',
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+      }
+    });
+
+    it('refuses approval when seats approve without declaring ready artifact inspection (fails closed)', async () => {
+      const propResult = await engine.propose({
+        title: 'Review patch with required artifact',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 3 approve, but none declared artifactReadiness: 'ready' (absence of readiness)
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+        expect(closeResult.value.reason).toContain(
+          'Insufficient eligible voters inspected the required artifact'
+        );
+      }
+    });
+
+    it('does not turn a rejection into an approval when an uninspected or starved seat rejects', async () => {
+      const propResult = await engine.propose({
+        title: 'Review with rejecting uninspected seats',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'reject',
+        reasoning: 'uninspected but rejecting',
+        confidence: 0.8,
+        artifactReadiness: 'artifact_starved',
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'reject',
+        reasoning: 'uninspected but rejecting',
+        confidence: 0.8,
+        artifactReadiness: 'artifact_starved',
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        // Rejections MUST NOT be converted to abstains; 1 approve / 2 reject must be rejected
+        expect(closeResult.value.outcome).toBe('rejected');
+        expect(closeResult.value.voteCounts.reject).toBe(2);
+        expect(closeResult.value.voteCounts.approve).toBe(1);
+      }
+    });
+
+    it('refuses approval when panelSize is empty (fails closed)', async () => {
+      const propResult = await engine.propose({
+        title: 'Empty panel artifact requirement',
+        description: 'Proposal with empty required voters',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        requiredVoters: [],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+      }
+    });
+
+    it('allows approval when floor of voters inspected the artifact even if one voter dissents', async () => {
+      const propResult = await engine.propose({
+        title: 'Review with dissenting inspector',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 2 approve after inspecting, 1 rejects after inspecting (all 3 inspected, 2/3 approved -> simple_majority passes)
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'inspected and approved',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'approve',
+        reasoning: 'inspected and approved',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'reject',
+        reasoning: 'inspected and rejected',
+        confidence: 0.9,
+        boundArtifactDigest: requiredDigest,
+        artifactReadiness: 'ready',
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('approved');
+      }
+    });
+
+    it('enforces artifact floor against totalRoles even when fewer votes are cast (e.g. 4 of 7)', async () => {
+      const propResult = await engine.propose({
+        title: 'Review with totalRoles=7 and 4 voters',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        artifactDigest: requiredDigest,
+        requireArtifact: true,
+        totalRoles: 7,
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      // 4 voters vote approve with ready inspection.
+      // Floor for panel size 7 is min(7, max(ceil(14/3), 3)) = 5.
+      for (let i = 1; i <= 4; i++) {
+        await engine.vote(propResult.value, `agent-${String(i)}`, {
+          decision: 'approve',
+          reasoning: 'inspected and approved',
+          confidence: 0.9,
+          boundArtifactDigest: requiredDigest,
+          artifactReadiness: 'ready',
+        });
+      }
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        expect(closeResult.value.outcome).toBe('rejected');
+        expect(closeResult.value.artifactFloorUnmet).toBe(true);
+        expect(closeResult.value.reason).toContain('4/5 required');
+      }
+    });
+
+    it('does not return cached result when artifact requirements differ', async () => {
+      const cachedEngine = createConsensusEngine({
+        proposalCache: { enabled: true, ttlMs: 60000, maxEntries: 10 },
+      });
+
+      const first = await cachedEngine.propose({
+        title: 'Cache Separation',
+        description: 'Testing artifact cache isolation',
+        algorithm: 'simple_majority',
+      });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+
+      await cachedEngine.vote(first.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'ok',
+        confidence: 0.9,
+      });
+      await cachedEngine.vote(first.value, 'agent-2', {
+        decision: 'approve',
+        reasoning: 'ok',
+        confidence: 0.9,
+      });
+      await cachedEngine.close(first.value);
+
+      // Same title/description but with requireArtifact: true
+      const second = await cachedEngine.propose({
+        title: 'Cache Separation',
+        description: 'Testing artifact cache isolation',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        artifactDigest: requiredDigest,
+      });
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+
+      // Should be a different proposal ID, not cached hit
+      expect(second.value).not.toBe(first.value);
+    });
+  });
 });

@@ -23,6 +23,7 @@ import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import { VOTE_RECORDS_PATH_ENV, parseVoteRecordsText } from '../audit/vote-record-store.js';
 import { verifyVoteRecordSet, type VoteRecord } from '../audit/vote-record.js';
 import { resetNexusDataDirCache } from '../config/nexus-data-dir.js';
+import { extractBoundArtifact } from './vote-artifact.js';
 
 const collectRealVotesMock =
   vi.fn<(opts: CollectedOptions) => Promise<readonly AgentVoteResult[]>>();
@@ -45,10 +46,17 @@ type CollectedOptions = {
   workspaceSha?: string;
 };
 
-function approvingPanel(roles: readonly VoterRole[]): AgentVoteResult[] {
+function approvingPanel(roles: readonly VoterRole[], boundDigest?: string): AgentVoteResult[] {
   return roles.map((role) => ({
     role,
-    vote: { decision: 'approve', confidence: 0.9, reasoning: 'ok' },
+    vote: {
+      decision: 'approve',
+      confidence: 0.9,
+      reasoning: 'ok',
+      ...(boundDigest !== undefined
+        ? { artifactReadiness: 'ready', boundArtifactDigest: boundDigest }
+        : {}),
+    },
     source: 'llm',
     cli: 'claude',
     processingTimeMs: 1,
@@ -96,7 +104,10 @@ describe('nexus-agents vote --ratifies-pr / --strategy reach the persisted recor
     process.env[VOTE_RECORDS_PATH_ENV] = store;
     resetNexusDataDirCache();
     collectRealVotesMock.mockReset();
-    collectRealVotesMock.mockImplementation(({ roles }) => Promise.resolve(approvingPanel(roles)));
+    collectRealVotesMock.mockImplementation(({ roles, proposal }) => {
+      const bound = extractBoundArtifact(proposal);
+      return Promise.resolve(approvingPanel(roles, bound?.digest));
+    });
     out = [];
     const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
       out.push(String(chunk));

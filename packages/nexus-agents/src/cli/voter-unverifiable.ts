@@ -129,12 +129,22 @@ export function markUnverifiable(
   signal: UnverifiableSignal
 ): AgentVoteResult {
   const { selectedOption: _discarded, ...rest } = result;
-  const { conditions: _conditions, ...vote } = result.vote;
+  const {
+    conditions: _conditions,
+    boundArtifactDigest: _discardedDigest,
+    artifactReadiness: _discardedReadiness,
+    ...vote
+  } = result.vote;
   return {
     ...rest,
     source: 'unverifiable',
     unverifiableSignal: signal,
-    vote: { ...vote, decision: 'abstain', confidence: 0 },
+    vote: {
+      ...vote,
+      decision: 'abstain',
+      confidence: 0,
+      artifactReadiness: 'artifact_starved',
+    },
   };
 }
 

@@ -269,6 +269,14 @@ describe('markUnverifiable', () => {
     }
   );
 
+  it('marks an artifact_starved seat with decision abstain and confidence 0', () => {
+    const marked = markUnverifiable(llm(), 'artifact_starved');
+    expect(marked.source).toBe('unverifiable');
+    expect(marked.unverifiableSignal).toBe('artifact_starved');
+    expect(marked.vote.decision).toBe('abstain');
+    expect(marked.vote.confidence).toBe(0);
+  });
+
   it('keeps the provenance that IS real — reasoning, model, cli, tokens', () => {
     const marked = markUnverifiable(llm(), 'stderr');
     expect(marked.vote.reasoning).toBe(LEDGER_FIXTURES[5]);

@@ -55,7 +55,11 @@ export function inlineVoteArtifactText(
   const content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   const digest = createHash('sha256').update(bytes).digest('hex');
   const header = `Artifact: ${displayName} sha256:${digest} ${String(bytes.length)} bytes`;
-  return `${proposal}\n\n${header}\n===== BEGIN ARTIFACT =====\n${content}\n===== END ARTIFACT =====`;
+  const framed = `${proposal}\n\n${header}\n===== BEGIN ARTIFACT =====\n${content}\n===== END ARTIFACT =====`;
+  if (extractBoundArtifact(framed) === undefined) {
+    throw new Error(`Failed to produce verifiable bound artifact block for ${displayName}`);
+  }
+  return framed;
 }
 
 /** Inline a file into the proposal every voter consumes and the recorder hashes. */
@@ -70,4 +74,42 @@ export async function inlineVoteArtifact(
     await readBoundedArtifact(artifactPath),
     displayName ?? basename(artifactPath)
   );
+}
+
+const BOUND_ARTIFACT_BLOCK_RE =
+  /\n\nArtifact:\s+(.+?)\s+sha256:([0-9a-f]{64})\s+(\d+)\s+bytes\n===== BEGIN ARTIFACT =====\n([\s\S]*?)\n===== END ARTIFACT =====(?:\n|$)/;
+
+/** Extracts and cryptographically verifies bound artifact metadata from an inlined artifact block. */
+export function extractBoundArtifact(proposal: string):
+  | {
+      displayName: string;
+      digest: string;
+      bytes: number;
+    }
+  | undefined {
+  const match = BOUND_ARTIFACT_BLOCK_RE.exec(proposal);
+  if (
+    match?.[1] === undefined ||
+    match[2] === undefined ||
+    match[3] === undefined ||
+    match[4] === undefined
+  ) {
+    return undefined;
+  }
+  const content = match[4];
+  const declaredDigest = match[2];
+  const declaredBytes = Number.parseInt(match[3], 10);
+  const actualBytes = Buffer.from(content, 'utf8');
+  if (actualBytes.length !== declaredBytes) {
+    return undefined;
+  }
+  const actualDigest = createHash('sha256').update(actualBytes).digest('hex');
+  if (actualDigest !== declaredDigest) {
+    return undefined;
+  }
+  return {
+    displayName: match[1],
+    digest: `sha256:${declaredDigest}`,
+    bytes: declaredBytes,
+  };
 }
