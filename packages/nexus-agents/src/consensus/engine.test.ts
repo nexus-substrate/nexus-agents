@@ -1142,6 +1142,50 @@ describe('ConsensusEngine - Edge Cases', () => {
       expect(closeResult.ok).toBe(true);
       if (closeResult.ok) {
         expect(closeResult.value.outcome).toBe('rejected');
+        expect(closeResult.value.reason).toContain(
+          'Insufficient eligible voters inspected the required artifact'
+        );
+      }
+    });
+
+    it('does not turn a rejection into an approval when an uninspected or starved seat rejects', async () => {
+      const propResult = await engine.propose({
+        title: 'Review with rejecting uninspected seats',
+        description: 'Review proposal',
+        algorithm: 'simple_majority',
+        requireArtifact: true,
+        requiredVoters: ['agent-1', 'agent-2', 'agent-3'],
+      });
+
+      expect(propResult.ok).toBe(true);
+      if (!propResult.ok) return;
+
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'looks good',
+        confidence: 0.9,
+        artifactReadiness: 'ready',
+      });
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'reject',
+        reasoning: 'uninspected but rejecting',
+        confidence: 0.8,
+        artifactReadiness: 'artifact_starved',
+      });
+      await engine.vote(propResult.value, 'agent-3', {
+        decision: 'reject',
+        reasoning: 'uninspected but rejecting',
+        confidence: 0.8,
+        artifactReadiness: 'artifact_starved',
+      });
+
+      const closeResult = await engine.close(propResult.value);
+      expect(closeResult.ok).toBe(true);
+      if (closeResult.ok) {
+        // Rejections MUST NOT be converted to abstains; 1 approve / 2 reject must be rejected
+        expect(closeResult.value.outcome).toBe('rejected');
+        expect(closeResult.value.voteCounts.reject).toBe(2);
+        expect(closeResult.value.voteCounts.approve).toBe(1);
       }
     });
 

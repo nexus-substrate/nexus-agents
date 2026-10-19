@@ -369,9 +369,8 @@ export class ConsensusEngine implements IConsensusEngine {
     const expectedDigest = this.normalizeDigest(state.proposal.artifactDigest);
     const actualDigest = this.normalizeDigest(vote.boundArtifactDigest);
     if (
-      (state.proposal.requireArtifact === true || expectedDigest !== undefined) &&
-      actualDigest !== undefined &&
       expectedDigest !== undefined &&
+      actualDigest !== undefined &&
       actualDigest !== expectedDigest
     ) {
       this.logger.warn('Subject mismatch: artifact digest changed (#M1)', {
@@ -381,16 +380,18 @@ export class ConsensusEngine implements IConsensusEngine {
       });
       recordedVote = {
         ...vote,
-        decision: 'abstain',
-        confidence: 0,
+        // Only void 'approve' to 'abstain'; preserve 'reject' so an unverified seat cannot turn a rejection into an approval (#Security)
+        decision: vote.decision === 'approve' ? 'abstain' : vote.decision,
+        confidence: vote.decision === 'approve' ? 0 : vote.confidence,
         artifactReadiness: 'unverifiable',
         reasoning: `${vote.reasoning} [Subject mismatch: expected ${expectedDigest}, got ${actualDigest}]`,
       };
     } else if (vote.artifactReadiness === 'artifact_starved') {
       recordedVote = {
         ...vote,
-        decision: 'abstain',
-        confidence: 0,
+        // Only void 'approve' to 'abstain'; preserve 'reject' so an unverified seat cannot turn a rejection into an approval (#Security)
+        decision: vote.decision === 'approve' ? 'abstain' : vote.decision,
+        confidence: vote.decision === 'approve' ? 0 : vote.confidence,
       };
     }
 

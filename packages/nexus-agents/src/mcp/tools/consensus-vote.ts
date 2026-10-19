@@ -300,7 +300,6 @@ async function processVotesThroughEngine(
       ? {
           artifactDigest: boundArtifact.digest,
           requireArtifact: true,
-          requiredVoters: engineVotes.map((v) => v.role),
         }
       : {}),
   };
@@ -727,14 +726,30 @@ async function executeVotingInner(
     startTime,
     logger,
   });
-  // #4132: a contrarian check that errored under absolute_quorum voids the quorum
-  // — stamp policyReason so buildResponse's existing ternary downgrades to
-  // no_quorum, matching the errored-voter path. (Kept out of finalizeVotingResult
-  // to hold executeVoting within its cyclomatic budget.)
+  // #4132 / #M1: an errored contrarian under absolute_quorum or an unmet artifact floor
+  // voids the quorum — stamp policyReason so buildResponse and resolveVoteDecision
+  // downgrade to no_quorum rather than misreporting as a rejection.
+  const degradeReason = resolveDegradeReason(escalation.degradeReason, engineResult.reason);
   return applyContrarianDegrade(
     { ...finalized, contrarianCheck: escalation.contrarianCheck },
-    escalation.degradeReason
+    degradeReason
   );
+}
+
+/**
+ * #4132 / #M1: resolve degrade reason from contrarian escalation or unmet artifact floor.
+ */
+function resolveDegradeReason(
+  escalationReason: string | undefined,
+  engineReason: string | undefined
+): string | undefined {
+  if (escalationReason !== undefined) {
+    return escalationReason;
+  }
+  if (engineReason?.includes('inspected the required artifact') === true) {
+    return `no_quorum: ${engineReason}`;
+  }
+  return undefined;
 }
 
 /**

@@ -196,6 +196,8 @@ export interface ConsensusResult {
   startedAt: string;
   closedAt: string;
   durationMs: number;
+  /** Explanation for outcome when applicable (e.g. unmet artifact floor). */
+  reason?: string | undefined;
 }
 
 /**
@@ -225,6 +227,7 @@ export const ConsensusResultSchema = z.object({
   startedAt: z.iso.datetime(),
   closedAt: z.iso.datetime(),
   durationMs: z.number().int().nonnegative(),
+  reason: z.string().optional().describe('Explanation for outcome when applicable'),
 });
 
 /**

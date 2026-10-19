@@ -74,6 +74,7 @@ export function buildFinalResult(
     startedAt: state.startedAt.toISOString(),
     closedAt: now.toISOString(),
     durationMs: now.getTime() - state.startedAt.getTime(),
+    reason: outcome.reason,
   };
 }
 

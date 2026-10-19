@@ -247,8 +247,12 @@ describe('consensus_vote artifactPath (#7092)', () => {
     );
 
     expect(result.isError).not.toBe(true);
-    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as { decision: string };
-    expect(parsed.decision).toBe('rejected');
+    const parsed = JSON.parse(result.content[0]?.text ?? '{}') as {
+      decision: string;
+      policyReason?: string;
+    };
+    expect(parsed.decision).toBe('no_quorum');
+    expect(parsed.policyReason).toContain('inspected the required artifact');
   });
 
   it('approves when voters truthfully declare readiness matching the bound artifact digest at the tool seam', async () => {
