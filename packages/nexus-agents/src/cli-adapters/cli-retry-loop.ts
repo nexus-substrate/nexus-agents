@@ -26,7 +26,7 @@ import type { ILogger } from '../core/index.js';
 import type { CliResponse, CliError, CliErrorCode, CliName } from './types.js';
 import type { ICircuitBreaker, FailureCategory } from './circuit-breaker-types.js';
 import { delay } from '../utils/async-utils.js';
-import { RETRYABLE_ERROR_CODES } from './cli-error-helpers.js';
+import { RETRYABLE_ERROR_CODES, isCallerInputCliError } from './cli-error-helpers.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
 
 // ============================================================================
@@ -124,8 +124,8 @@ export function categorizeError(error: CliError): FailureCategory {
 /**
  * Executes a CLI operation with retry logic and optional circuit breaker.
  *
- * Used by both BaseCliAdapter (no circuit breaker) and GeminiCliAdapter
- * (with circuit breaker) to eliminate duplicate retry implementations.
+ * Used by BaseCliAdapter and GeminiCliAdapter with their shared circuit
+ * breakers to eliminate duplicate retry implementations.
  */
 export async function executeCliRetryLoop(
   executeFn: () => Promise<Result<CliResponse, CliError>>,
@@ -143,8 +143,9 @@ export async function executeCliRetryLoop(
 
     lastError = result.error;
 
-    // #6691: a caller cancel is neither a health signal nor worth retrying.
-    if (isCallerCancelled(lastError)) return err(lastError);
+    // #7532/#6691: caller input and cancellation are not provider health
+    // signals or worth retrying. The admitting caller owns probe release.
+    if (isCallerInputCliError(lastError) || isCallerCancelled(lastError)) return err(lastError);
 
     // Record failure with circuit breaker if present
     if (config.circuitBreaker !== undefined && config.circuitBreaker !== null) {

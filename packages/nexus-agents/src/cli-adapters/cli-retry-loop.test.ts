@@ -17,7 +17,7 @@ import {
   categorizeError,
 } from './cli-retry-loop.js';
 import type { CliRetryLoopConfig } from './cli-retry-loop.js';
-import { createCallerAbortCliError } from './cli-error-helpers.js';
+import { createCallerAbortCliError, createCallerInputCliError } from './cli-error-helpers.js';
 
 // Deterministic randomness for backoff jitter
 vi.mock('../core/index.js', async (importOriginal) => {
@@ -198,6 +198,28 @@ describe('executeCliRetryLoop', () => {
     expect(result.ok).toBe(false);
     expect(executeFn).toHaveBeenCalledTimes(1);
     expect(cb.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('neither records nor retries typed caller-input errors even when marked retryable', async () => {
+    const cb = makeCircuitBreaker('half-open');
+    const invalidInput: CliError = {
+      ...createCallerInputCliError('Invalid requested model', 'claude'),
+      code: 'TIMEOUT',
+      retryable: true,
+    };
+    const executeFn = vi.fn().mockResolvedValue(err(invalidInput));
+    const promise = executeCliRetryLoop(executeFn, makeConfig({ circuitBreaker: cb }));
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const result = await promise;
+
+    expect(result).toEqual(err(invalidInput));
+    expect(executeFn).toHaveBeenCalledTimes(1);
+    expect(cb.recordFailure).not.toHaveBeenCalled();
+    expect(cb.recordSuccess).not.toHaveBeenCalled();
+    // The retry loop does not own admission; its caller owns probe release.
+    expect(cb.canExecute).not.toHaveBeenCalled();
+    expect(cb.releaseHalfOpenProbe).not.toHaveBeenCalled();
   });
 
   it('does NOT call recordSuccess (caller responsibility)', async () => {
