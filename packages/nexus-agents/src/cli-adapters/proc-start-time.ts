@@ -28,7 +28,7 @@ function procStatFields(stat: string): string[] | undefined {
 }
 
 /** Unlike the kill compatibility helper, retain zombie identity separately. */
-export function parseProcIdentityObservation(stat: string): ProcIdentityObservation {
+function parseProcIdentityObservation(stat: string): ProcIdentityObservation {
   if (!/^\d+ \(/.test(stat)) return { state: 'unknown', reason: 'malformed-stat' };
   const fields = procStatFields(stat);
   const startTime = fields?.[START_TIME_INDEX];
