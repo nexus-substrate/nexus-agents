@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 12.5.1
+
+### Patch Changes
+
+- [#7537](https://github.com/nexus-substrate/nexus-agents/pull/7537) [`eeea7f0`](https://github.com/nexus-substrate/nexus-agents/commit/eeea7f05f2eee2a6434fad41d0876cf810fbc5ca) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep typed caller-input errors out of CLI retries and provider circuit-breaker health counts.
+
 ## 12.5.0
 
 ### Minor Changes
