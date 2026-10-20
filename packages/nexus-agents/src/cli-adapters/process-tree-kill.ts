@@ -53,6 +53,110 @@ import { readProcStartTime } from './proc-start-time.js';
 /** Upper bound on descendants collected, so a fork bomb cannot stall the walk. */
 const MAX_DESCENDANTS = 1_000;
 
+/** Point-in-time enumeration, not whole-lifetime or detached-descendant coverage. */
+export interface ProcessTreeEnumeration {
+  readonly coverage: 'complete' | 'partial' | 'unavailable';
+  readonly pids: readonly number[];
+}
+
+/** One bounded /proc thread read, with malformed and unreadable scope retained. */
+function observeProcTaskChildren(pid: number, tid: string): ProcessTreeEnumeration {
+  try {
+    const raw = readFileSync(`/proc/${String(pid)}/task/${tid}/children`, 'utf8');
+    const tokens = raw.trim().split(/\s+/, MAX_DESCENDANTS + 1);
+    const pids: number[] = [];
+    let coverage: ProcessTreeEnumeration['coverage'] =
+      tokens.length > MAX_DESCENDANTS ? 'partial' : 'complete';
+    for (const token of tokens.slice(0, MAX_DESCENDANTS)) {
+      if (token === '') continue;
+      const child = Number(token);
+      if (!Number.isSafeInteger(child) || child <= 0) coverage = 'partial';
+      else pids.push(child);
+    }
+    return { coverage, pids };
+  } catch {
+    return { coverage: 'unavailable', pids: [] };
+  }
+}
+
+/** Lossless /proc sibling of the legacy kill reader; never invokes ps or signals. */
+function observeProcChildren(pid: number): ProcessTreeEnumeration {
+  const pids: number[] = [];
+  let coverage: ProcessTreeEnumeration['coverage'] = 'complete';
+  try {
+    const tasks = readdirSync(`/proc/${String(pid)}/task`);
+    if (tasks.length === 0) return { coverage: 'unavailable', pids };
+    if (tasks.length > MAX_DESCENDANTS) coverage = 'partial';
+    for (const tid of tasks.slice(0, MAX_DESCENDANTS)) {
+      const sample = observeProcTaskChildren(pid, tid);
+      if (sample.coverage !== 'complete') coverage = 'partial';
+      const remaining = MAX_DESCENDANTS - pids.length;
+      if (sample.pids.length > remaining) coverage = 'partial';
+      pids.push(...sample.pids.slice(0, remaining));
+    }
+    return { coverage, pids };
+  } catch {
+    return { coverage: 'unavailable', pids };
+  }
+}
+
+function readObservedChildren(
+  pid: number,
+  childrenOf: (pid: number) => ProcessTreeEnumeration
+): ProcessTreeEnumeration {
+  try {
+    return childrenOf(pid);
+  } catch {
+    return { coverage: 'unavailable', pids: [] };
+  }
+}
+
+function enqueueObservedChildren(
+  children: readonly number[],
+  seen: Set<number>,
+  pids: number[],
+  queue: number[]
+): boolean {
+  let partial = false;
+  for (const child of children) {
+    if (!Number.isSafeInteger(child) || child <= 0) {
+      partial = true;
+      continue;
+    }
+    if (seen.has(child)) continue;
+    if (pids.length >= MAX_DESCENDANTS) return true;
+    seen.add(child);
+    pids.push(child);
+    queue.push(child);
+  }
+  return partial;
+}
+
+/** Bounded lossless known-tree walk; the kill heuristics below remain unchanged. */
+export function collectProcessTreeObservation(
+  root: number,
+  childrenOf: (pid: number) => ProcessTreeEnumeration = observeProcChildren
+): ProcessTreeEnumeration {
+  if (childrenOf === observeProcChildren && process.platform !== 'linux') {
+    return { coverage: 'unavailable', pids: [] };
+  }
+  const seen = new Set([root]);
+  const pids: number[] = [];
+  const queue = [root];
+  let coverage: ProcessTreeEnumeration['coverage'] = 'complete';
+  while (queue.length > 0) {
+    const pid = queue.shift();
+    if (pid === undefined) break;
+    const sample = readObservedChildren(pid, childrenOf);
+    if (sample.coverage !== 'complete') {
+      coverage = pid === root && sample.coverage === 'unavailable' ? 'unavailable' : 'partial';
+    }
+    if (enqueueObservedChildren(sample.pids, seen, pids, queue))
+      return { coverage: 'partial', pids };
+  }
+  return { coverage, pids };
+}
+
 /** `ps` arguments listing every process with its parent. */
 const PS_ARGS = ['-A', '-o', 'pid=,ppid='];
 

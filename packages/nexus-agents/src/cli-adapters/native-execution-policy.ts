@@ -3,6 +3,7 @@ import { err, getTimeProvider, ok, type Result } from '../core/index.js';
 import { isTimeoutAbortReason } from '../adapters/abort-utils.js';
 import type { ExecutionOptions, ResolvedExecutionOptions } from './types-capability.js';
 import type { CliError, RoutingArmId } from './types-core.js';
+import { NativeResourceObserver } from './native-resource-observer.js';
 import {
   createCallerAbortCliError,
   createNativePreSpawnRefusal,
@@ -26,6 +27,7 @@ interface PolicyState {
   readonly deadlineAt: number;
   readonly signal: AbortSignal;
   attempted: boolean;
+  readonly resources: NativeResourceObserver;
 }
 const issued = new WeakMap<object, PolicyState>();
 
@@ -39,6 +41,7 @@ export function hasIssuedNativeExecutionPolicy(options: ExecutionOptions): boole
 export function issueNativeExecutionPolicy(input: {
   readonly deadlineAt: number;
   readonly signal?: AbortSignal;
+  readonly resources?: NativeResourceObserver;
 }): Result<NativeExecutionPolicy, NativePolicyRefusal> {
   const remaining = input.deadlineAt - getTimeProvider().now();
   if (!Number.isFinite(remaining) || remaining <= 0 || remaining > MAX_TIMER_MS) {
@@ -48,8 +51,18 @@ export function issueNativeExecutionPolicy(input: {
   const signal =
     input.signal === undefined ? deadlineSignal : AbortSignal.any([input.signal, deadlineSignal]);
   const policy: NativeExecutionPolicy = Object.freeze({ [issuedBrand]: true as const });
-  issued.set(policy, { deadlineAt: input.deadlineAt, signal, attempted: false });
+  issued.set(policy, {
+    deadlineAt: input.deadlineAt,
+    signal,
+    attempted: false,
+    resources: input.resources ?? new NativeResourceObserver(),
+  });
   return ok(policy);
+}
+
+/** Host-owned handle registered before launch; never reconstructed from request JSON. */
+export function nativeResourcesForPolicy(policy: unknown): NativeResourceObserver | undefined {
+  return typeof policy === 'object' && policy !== null ? issued.get(policy)?.resources : undefined;
 }
 
 /** Validate identity and elapsed host budget without spending the spawn allowance. */
@@ -78,7 +91,10 @@ export function nativeExecutionOptions(
   signal?: AbortSignal
 ): Result<ExecutionOptions, NativePolicyRefusal> {
   const budget = nativeExecutionBudget(policy, signal);
-  if (!budget.ok) return budget;
+  if (!budget.ok) {
+    nativeResourcesForPolicy(policy)?.recordRefusal();
+    return budget;
+  }
   return ok({
     ...budget.value,
     allowRetry: false,
@@ -127,7 +143,10 @@ export function resolveNativeSpawnOptions(
   const budget = consume
     ? consumeNativeSpawnPermit(policy, options.signal)
     : nativeExecutionBudget(policy, options.signal);
-  if (!budget.ok) return err(nativePolicyRefusalError(budget.error, cli));
+  if (!budget.ok) {
+    nativeResourcesForPolicy(policy)?.recordRefusal();
+    return err(nativePolicyRefusalError(budget.error, cli));
+  }
   return ok({
     ...options,
     signal: budget.value.signal,

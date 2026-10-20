@@ -45,6 +45,7 @@ import {
   NATIVE_EXECUTION_POLICY,
   hasIssuedNativeExecutionPolicy,
   resolveNativeSpawnOptions,
+  nativeResourcesForPolicy,
 } from './native-execution-policy.js';
 
 /** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
@@ -230,8 +231,17 @@ function spawnCliChild(
   // No await, wrapper, iterator or host getter remains between consume and spawn.
   const checked = resolveNativeSpawnOptions(execution, cliName, true);
   if (!checked.ok) return checked;
-  const child = trackProcessTree(spawn(command, spawnArgs, spawnOptions));
-  return ok({ child, options: checked.value });
+  const resources = nativeResourcesForPolicy(execution[NATIVE_EXECUTION_POLICY]);
+  resources?.recordLaunchAttempt();
+  let child: ChildProcessWithoutNullStreams;
+  try {
+    child = spawn(command, spawnArgs, spawnOptions);
+  } catch (error: unknown) {
+    resources?.recordLaunchFailure();
+    throw error;
+  }
+  resources?.attachChild(child);
+  return ok({ child: trackProcessTree(child), options: checked.value });
 }
 
 /**
