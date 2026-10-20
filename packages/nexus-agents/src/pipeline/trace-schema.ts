@@ -30,13 +30,13 @@ export const TraceOriginSchema = z.discriminatedUnion('kind', [
 ]);
 export type TraceRunOrigin = z.infer<typeof TraceRunOriginSchema>;
 export type TraceOrigin = z.infer<typeof TraceOriginSchema>;
-export const TraceRelationSchema = z.enum([
+const TraceRelationSchema = z.enum([
   'run_related',
   'attempt_owned',
   'global_context',
   'unattributed',
 ]);
-export type TraceRelation = z.infer<typeof TraceRelationSchema>;
+type TraceRelation = z.infer<typeof TraceRelationSchema>;
 
 /** Diagnostic equality; never permissions, invocation identity or callback settlement. */
 export function traceRelation(
@@ -201,7 +201,7 @@ export const ExecutionTraceEntrySchema = TraceEntrySchema.superRefine((entry, ct
 export type ExecutionTraceEntry = z.infer<typeof ExecutionTraceEntrySchema>;
 
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-export const TraceRelationCountsSchema = z
+const TraceRelationCountsSchema = z
   .object({
     run_related: count,
     attempt_owned: count,

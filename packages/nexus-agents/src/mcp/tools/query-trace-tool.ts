@@ -62,7 +62,7 @@ export type QueryTraceInput = z.infer<typeof QueryTraceInputSchema>;
 export type TraceErrorCategory =
   'not_found' | 'permission_error' | 'parse_error' | 'too_large' | 'unknown';
 
-export interface TraceAttributionReport {
+interface TraceAttributionReport {
   readonly status: 'measured' | 'unmeasured';
   readonly reason?: string;
   readonly writerObserved: {
