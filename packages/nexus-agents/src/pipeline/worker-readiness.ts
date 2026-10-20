@@ -1,21 +1,13 @@
 /**
  * Worker Boundary Readiness Verifier (Task T06, Issue #5129 / Milestone M1)
- *
- * Implements worker/session-scoped capability resolution, actual resource probes,
- * safe write-probe confinement, and revocation/context-bound proof caching.
- *
  * Conformance cases: C01, C02, C03, C04, C33.
  * @module pipeline/worker-readiness
  */
+import { createHash } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { getTimeProvider } from '../core/index.js';
 import type { CapabilityRequirement } from './task-contract.js';
 
-// ============================================================================
-// Constants & Types
-// ============================================================================
-
-/** Canonical readiness progression levels (PLAN.md §5). */
 export const READINESS_LEVELS = [
   'advertised',
   'authorized',
@@ -28,17 +20,13 @@ export type ReadinessLevel = (typeof READINESS_LEVELS)[number];
 
 const DEFAULT_PROOF_TTL_MS = 300_000;
 const DEFAULT_PROBE_TIMEOUT_MS = 30_000;
-
-/** Token patterns that represent mutating/write operations across dot, colon, dash, or underscore delimiters. */
 const WRITE_TOKEN_REGEX =
   /(?:^|[.:/_-])(write|mutate|publish|push|delete|remove|create|update|modify|patch|commit|merge|append|overwrite|drop|truncate)(?:$|[.:/_-])/i;
 
-/** Classifies whether an operation string represents a write/mutating capability (C33). */
 export function isWriteOperation(operation: string): boolean {
   return WRITE_TOKEN_REGEX.test(operation.trim());
 }
 
-/** Identity, grant, and environment context for a specific worker boundary. */
 export interface WorkerBoundaryContext {
   readonly workerId: string;
   readonly sessionId: string;
@@ -52,26 +40,22 @@ export interface WorkerBoundaryContext {
   readonly authorizedOperations: readonly string[];
 }
 
-/** Options passed to a worker resource probe execution. */
 export interface WorkerProbeExecutionOptions {
   readonly isScratchProbe: boolean;
   readonly scratchDir?: string | undefined;
   readonly signal?: AbortSignal | undefined;
 }
 
-/** Outcome returned by an actual worker resource probe. */
 export type WorkerProbeOutcome =
   | { readonly ok: true; readonly latencyMs?: number | undefined }
   | { readonly ok: false; readonly errorClass: string; readonly message: string };
 
-/** Function signature for executing a capability probe at the worker boundary. */
 export type WorkerResourceProbe = (
   requirement: CapabilityRequirement,
   context: WorkerBoundaryContext,
   options: WorkerProbeExecutionOptions
 ) => Promise<WorkerProbeOutcome> | WorkerProbeOutcome;
 
-/** Scoped proof of an observed readiness probe under stated conditions. */
 export interface ReadinessProof {
   readonly proofId: string;
   readonly requirementId: string;
@@ -92,7 +76,6 @@ export interface ReadinessProof {
   readonly narrowerThanTargetWrite?: boolean | undefined;
 }
 
-/** Structured readiness failure preserving the original error class and level reached. */
 export interface ReadinessFailure {
   readonly requirementId: string;
   readonly operation: string;
@@ -104,7 +87,6 @@ export interface ReadinessFailure {
   readonly message: string;
 }
 
-/** Complete report from verifying worker readiness across capability requirements. */
 export interface WorkerReadinessReport {
   readonly ready: boolean;
   readonly workerId: string;
@@ -113,134 +95,101 @@ export interface WorkerReadinessReport {
   readonly advisoryWarnings: readonly ReadinessFailure[];
 }
 
-/** Configuration for verifying worker readiness. */
 export interface WorkerReadinessConfig {
   readonly context: WorkerBoundaryContext;
   readonly probe: WorkerResourceProbe;
   readonly cache?: ReadinessProofCache | undefined;
-  readonly now?: number | undefined;
+  readonly now?: number | (() => number) | undefined;
   readonly proofTtlMs?: number | undefined;
   readonly probeTimeoutMs?: number | undefined;
+  readonly totalTimeoutMs?: number | undefined;
   readonly signal?: AbortSignal | undefined;
 }
 
-// ============================================================================
-// Proof Validation & Cache (C01, C04)
-// ============================================================================
+type ContextIdentity = Pick<
+  WorkerBoundaryContext,
+  | 'workerId'
+  | 'sessionId'
+  | 'adapterId'
+  | 'toolSchemaDigest'
+  | 'grantDigest'
+  | 'subjectRevision'
+  | 'policyVersion'
+>;
 
-function matchesIdentityTuple(proof: ReadinessProof, context: WorkerBoundaryContext): boolean {
-  return (
-    proof.workerId === context.workerId &&
-    proof.sessionId === context.sessionId &&
-    proof.adapterId === context.adapterId
-  );
+type ReqKeyInput = Pick<CapabilityRequirement, 'id' | 'operation' | 'resourceRef' | 'scope'>;
+
+function contextTuple(c: ContextIdentity): string {
+  return `${c.workerId}::${c.sessionId}::${c.adapterId}::${c.toolSchemaDigest}::${c.grantDigest}::${c.subjectRevision}::${c.policyVersion}`;
 }
 
-function matchesGrantAndRevisionTuple(p: ReadinessProof, c: WorkerBoundaryContext): boolean {
-  return (
-    p.toolSchemaDigest === c.toolSchemaDigest &&
-    p.grantDigest === c.grantDigest &&
-    p.subjectRevision === c.subjectRevision &&
-    p.policyVersion === c.policyVersion
-  );
+function reqTuple(r: ReqKeyInput): string {
+  return `${r.id}::${r.operation}::${r.resourceRef ?? ''}::${r.scope ?? ''}`;
 }
 
-function matchesRequirementTuple(p: ReadinessProof, req: CapabilityRequirement): boolean {
-  return (
-    p.requirementId === req.id &&
-    p.operation === req.operation &&
-    p.resourceRef === req.resourceRef &&
-    p.scope === req.scope
-  );
-}
-
-/** Checks whether a cached ReadinessProof remains valid for the given worker context, requirement, and time (C01, C04). */
 export function isProofValidForContext(
-  proof: ReadinessProof,
-  context: WorkerBoundaryContext,
-  requirement: CapabilityRequirement,
+  p: ReadinessProof,
+  c: WorkerBoundaryContext,
+  req: CapabilityRequirement,
   now: number,
   revokedProofIds?: ReadonlySet<string>
 ): boolean {
-  if (revokedProofIds?.has(proof.proofId) === true || now >= proof.expiresAt) {
-    return false;
-  }
-  return (
-    matchesIdentityTuple(proof, context) &&
-    matchesGrantAndRevisionTuple(proof, context) &&
-    matchesRequirementTuple(proof, requirement)
-  );
+  if (revokedProofIds?.has(p.proofId) === true || now >= p.expiresAt) return false;
+  const pReq: ReqKeyInput = {
+    id: p.requirementId,
+    operation: p.operation,
+    resourceRef: p.resourceRef,
+    scope: p.scope,
+  };
+  return contextTuple(p) === contextTuple(c) && reqTuple(pReq) === reqTuple(req);
 }
 
-/** Scoped cache of worker readiness proofs keyed by worker/session/requirement/resource/scope tuple. */
 export class ReadinessProofCache {
   private readonly store = new Map<string, ReadinessProof>();
   private readonly revokedIds = new Set<string>();
 
-  private buildKey(
-    workerId: string,
-    sessionId: string,
-    req: {
-      readonly id: string;
-      readonly operation: string;
-      readonly resourceRef?: string | undefined;
-      readonly scope?: string | undefined;
-    }
-  ): string {
-    return `${workerId}::${sessionId}::${req.id}::${req.operation}::${req.resourceRef ?? ''}::${req.scope ?? ''}`;
+  putProof(p: ReadinessProof): void {
+    const pReq: ReqKeyInput = {
+      id: p.requirementId,
+      operation: p.operation,
+      resourceRef: p.resourceRef,
+      scope: p.scope,
+    };
+    this.store.set(`${p.workerId}::${p.sessionId}::${reqTuple(pReq)}`, p);
   }
 
-  /** Stores a verified readiness proof. */
-  putProof(proof: ReadinessProof): void {
-    const key = this.buildKey(proof.workerId, proof.sessionId, {
-      id: proof.requirementId,
-      operation: proof.operation,
-      resourceRef: proof.resourceRef,
-      scope: proof.scope,
-    });
-    this.store.set(key, proof);
-  }
-
-  /** Explicitly revokes a proof by ID (C04). */
   revokeProof(proofId: string): void {
     this.revokedIds.add(proofId);
   }
 
-  /** Retrieves a proof only if it is valid for the exact worker context, requirement, and time. */
   getValidProof(
-    context: WorkerBoundaryContext,
-    requirement: CapabilityRequirement,
+    ctx: WorkerBoundaryContext,
+    req: CapabilityRequirement,
     now: number
   ): ReadinessProof | undefined {
-    const key = this.buildKey(context.workerId, context.sessionId, requirement);
-    const candidate = this.store.get(key);
-    if (candidate === undefined) {
-      return undefined;
-    }
-    if (!isProofValidForContext(candidate, context, requirement, now, this.revokedIds)) {
-      this.store.delete(key);
+    const k = `${ctx.workerId}::${ctx.sessionId}::${reqTuple(req)}`;
+    const candidate = this.store.get(k);
+    if (candidate === undefined) return undefined;
+    if (!isProofValidForContext(candidate, ctx, req, now, this.revokedIds)) {
+      this.store.delete(k);
       return undefined;
     }
     return candidate;
   }
 }
 
-// ============================================================================
-// Worker Readiness Verification (C01, C02, C03, C04, C33)
-// ============================================================================
-
 function makeFailure(
-  requirement: CapabilityRequirement,
+  req: CapabilityRequirement,
   workerId: string,
   levelReached: ReadinessLevel | 'unadvertised',
   errorClass: string,
   message: string
 ): ReadinessFailure {
   return {
-    requirementId: requirement.id,
-    operation: requirement.operation,
-    resourceRef: requirement.resourceRef,
-    mode: requirement.mode,
+    requirementId: req.id,
+    operation: req.operation,
+    resourceRef: req.resourceRef,
+    mode: req.mode,
     workerId,
     levelReached,
     errorClass,
@@ -249,25 +198,25 @@ function makeFailure(
 }
 
 function checkStaticBindLevel(
-  requirement: CapabilityRequirement,
-  context: WorkerBoundaryContext
+  req: CapabilityRequirement,
+  ctx: WorkerBoundaryContext
 ): ReadinessFailure | null {
-  if (!context.advertisedOperations.includes(requirement.operation)) {
+  if (!ctx.advertisedOperations.includes(req.operation)) {
     return makeFailure(
-      requirement,
-      context.workerId,
+      req,
+      ctx.workerId,
       'unadvertised',
       'UnadvertisedOperationError',
-      `Operation "${requirement.operation}" is not advertised on worker "${context.workerId}"`
+      `Operation "${req.operation}" is not advertised on worker "${ctx.workerId}"`
     );
   }
-  if (!context.authorizedOperations.includes(requirement.operation)) {
+  if (!ctx.authorizedOperations.includes(req.operation)) {
     return makeFailure(
-      requirement,
-      context.workerId,
+      req,
+      ctx.workerId,
       'advertised',
       'UnauthorizedOperationError',
-      `Operation "${requirement.operation}" is advertised but not authorized for worker "${context.workerId}"`
+      `Operation "${req.operation}" is advertised but not authorized for worker "${ctx.workerId}"`
     );
   }
   return null;
@@ -276,88 +225,82 @@ function checkStaticBindLevel(
 function isSafeScratchPath(scratchDir: string | undefined): scratchDir is string {
   if (scratchDir === undefined) return false;
   const trimmed = scratchDir.trim();
-  if (trimmed.length === 0 || !isAbsolute(trimmed)) return false;
-  return !trimmed.split(/[\\/]+/).includes('..');
+  return trimmed.length > 0 && isAbsolute(trimmed) && !trimmed.split(/[\\/]+/).includes('..');
 }
 
 function buildProbeOptions(
-  requirement: CapabilityRequirement,
-  context: WorkerBoundaryContext,
+  req: CapabilityRequirement,
+  ctx: WorkerBoundaryContext,
   signal?: AbortSignal
 ): WorkerProbeExecutionOptions | ReadinessFailure {
-  if (!isWriteOperation(requirement.operation)) {
+  if (!isWriteOperation(req.operation)) {
     return { isScratchProbe: false, ...(signal !== undefined ? { signal } : {}) };
   }
-  if (!isSafeScratchPath(context.approvedScratchDir)) {
+  if (!isSafeScratchPath(ctx.approvedScratchDir)) {
     return makeFailure(
-      requirement,
-      context.workerId,
+      req,
+      ctx.workerId,
       'bound-to-worker',
       'UnsafeWriteProbeRejectedError',
-      `Write capability "${requirement.operation}" cannot be probed without a safe absolute approvedScratchDir on worker "${context.workerId}"`
+      `Write capability "${req.operation}" cannot be probed without a safe absolute approvedScratchDir on worker "${ctx.workerId}"`
     );
   }
   return {
     isScratchProbe: true,
-    scratchDir: context.approvedScratchDir.trim(),
+    scratchDir: ctx.approvedScratchDir.trim(),
     ...(signal !== undefined ? { signal } : {}),
   };
 }
 
 function createVerifiedProof(
-  requirement: CapabilityRequirement,
-  context: WorkerBoundaryContext,
+  req: CapabilityRequirement,
+  ctx: WorkerBoundaryContext,
   probeOptions: WorkerProbeExecutionOptions,
-  now: number,
+  issuedAt: number,
   ttlMs: number
 ): ReadinessProof {
+  const tuple = `${ctx.workerId}::${ctx.sessionId}::${reqTuple(req)}::${String(issuedAt)}`;
+  const digest = createHash('sha256').update(tuple).digest('hex').slice(0, 12);
   return {
-    proofId: `proof-${context.workerId}-${requirement.id}-${String(now)}`,
-    requirementId: requirement.id,
-    operation: requirement.operation,
-    resourceRef: requirement.resourceRef,
-    scope: requirement.scope,
+    proofId: `proof-${ctx.workerId}-${req.id}-${digest}-${String(issuedAt)}`,
+    requirementId: req.id,
+    operation: req.operation,
+    resourceRef: req.resourceRef,
+    scope: req.scope,
     level: 'probed',
-    workerId: context.workerId,
-    sessionId: context.sessionId,
-    adapterId: context.adapterId,
-    toolSchemaDigest: context.toolSchemaDigest,
-    grantDigest: context.grantDigest,
-    subjectRevision: context.subjectRevision,
-    policyVersion: context.policyVersion,
-    issuedAt: now,
-    expiresAt: now + ttlMs,
+    workerId: ctx.workerId,
+    sessionId: ctx.sessionId,
+    adapterId: ctx.adapterId,
+    toolSchemaDigest: ctx.toolSchemaDigest,
+    grantDigest: ctx.grantDigest,
+    subjectRevision: ctx.subjectRevision,
+    policyVersion: ctx.policyVersion,
+    issuedAt,
+    expiresAt: issuedAt + ttlMs,
     ...(probeOptions.isScratchProbe
       ? { probedInScratch: true, narrowerThanTargetWrite: true }
       : {}),
   };
 }
 
-function normalizeThrownProbeError(err: unknown): WorkerProbeOutcome {
-  if (err instanceof Error) {
-    const errorClass = err.name !== '' && err.name !== 'Error' ? err.name : 'ProbeExecutionError';
-    return { ok: false, errorClass, message: err.message };
-  }
-  return { ok: false, errorClass: 'ProbeExecutionError', message: String(err) };
-}
-
 async function invokeProbeSafely(
-  requirement: CapabilityRequirement,
+  req: CapabilityRequirement,
   config: WorkerReadinessConfig,
   probeOptions: WorkerProbeExecutionOptions,
   signal: AbortSignal
 ): Promise<WorkerProbeOutcome> {
   try {
-    return await config.probe(requirement, config.context, { ...probeOptions, signal });
+    return await config.probe(req, config.context, { ...probeOptions, signal });
   } catch (err: unknown) {
-    return normalizeThrownProbeError(err);
+    const errorClass =
+      err instanceof Error && err.name !== '' && err.name !== 'Error'
+        ? err.name
+        : 'ProbeExecutionError';
+    return { ok: false, errorClass, message: err instanceof Error ? err.message : String(err) };
   }
 }
 
-function createAbortOutcomeRace(
-  requirementId: string,
-  signal: AbortSignal | undefined
-): Promise<WorkerProbeOutcome> {
+function makeAbortRace(reqId: string, signal?: AbortSignal): Promise<WorkerProbeOutcome> {
   return new Promise<WorkerProbeOutcome>((resolve) => {
     signal?.addEventListener(
       'abort',
@@ -365,7 +308,7 @@ function createAbortOutcomeRace(
         resolve({
           ok: false,
           errorClass: 'ProbeAbortedError',
-          message: `Worker probe for "${requirementId}" aborted during execution`,
+          message: `Worker probe for "${reqId}" aborted during execution`,
         });
       },
       { once: true }
@@ -374,24 +317,30 @@ function createAbortOutcomeRace(
 }
 
 async function runBoundedProbe(
-  requirement: CapabilityRequirement,
+  req: CapabilityRequirement,
   config: WorkerReadinessConfig,
-  probeOptions: WorkerProbeExecutionOptions
+  probeOptions: WorkerProbeExecutionOptions,
+  effectiveTimeoutMs: number
 ): Promise<WorkerProbeOutcome> {
   if (config.signal?.aborted === true) {
     return {
       ok: false,
       errorClass: 'ProbeAbortedError',
-      message: `Worker probe for "${requirement.id}" aborted before invocation`,
+      message: `Worker probe for "${req.id}" aborted before invocation`,
     };
   }
-  const timeoutMs = config.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+  if (effectiveTimeoutMs <= 0) {
+    return {
+      ok: false,
+      errorClass: 'ProbeTimeoutError',
+      message: `Worker preflight deadline exhausted before probing "${req.id}"`,
+    };
+  }
   const controller = new AbortController();
   const onAbort = (): void => {
     controller.abort();
   };
   config.signal?.addEventListener('abort', onAbort, { once: true });
-
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutRace = new Promise<WorkerProbeOutcome>((resolve) => {
     timer = setTimeout(() => {
@@ -399,16 +348,15 @@ async function runBoundedProbe(
       resolve({
         ok: false,
         errorClass: 'ProbeTimeoutError',
-        message: `Worker probe for "${requirement.id}" timed out after ${String(timeoutMs)}ms`,
+        message: `Worker probe for "${req.id}" timed out after ${String(effectiveTimeoutMs)}ms`,
       });
-    }, timeoutMs);
+    }, effectiveTimeoutMs);
   });
-
   try {
     return await Promise.race([
-      invokeProbeSafely(requirement, config, probeOptions, controller.signal),
+      invokeProbeSafely(req, config, probeOptions, controller.signal),
       timeoutRace,
-      createAbortOutcomeRace(requirement.id, config.signal),
+      makeAbortRace(req.id, config.signal),
     ]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
@@ -416,26 +364,37 @@ async function runBoundedProbe(
   }
 }
 
+function resolveClock(nowConfig: number | (() => number) | undefined): () => number {
+  if (typeof nowConfig === 'function') return nowConfig;
+  if (typeof nowConfig === 'number') {
+    const startWall = getTimeProvider().now();
+    return () => nowConfig + Math.max(0, getTimeProvider().now() - startWall);
+  }
+  return () => getTimeProvider().now();
+}
+
 async function evaluateSingleRequirement(
-  requirement: CapabilityRequirement,
+  req: CapabilityRequirement,
   config: WorkerReadinessConfig,
-  now: number,
-  ttlMs: number
+  clock: () => number,
+  ttlMs: number,
+  deadlineAt: number | undefined
 ): Promise<{ proof?: ReadinessProof; failure?: ReadinessFailure }> {
-  const cached = config.cache?.getValidProof(config.context, requirement, now);
+  const stepStart = clock();
+  const cached = config.cache?.getValidProof(config.context, req, stepStart);
   if (cached !== undefined) return { proof: cached };
-
-  const staticFailure = checkStaticBindLevel(requirement, config.context);
+  const staticFailure = checkStaticBindLevel(req, config.context);
   if (staticFailure !== null) return { failure: staticFailure };
-
-  const probeOptionsOrFailure = buildProbeOptions(requirement, config.context, config.signal);
+  const probeOptionsOrFailure = buildProbeOptions(req, config.context, config.signal);
   if ('errorClass' in probeOptionsOrFailure) return { failure: probeOptionsOrFailure };
 
-  const outcome = await runBoundedProbe(requirement, config, probeOptionsOrFailure);
+  const perProbe = config.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+  const budgetMs = deadlineAt !== undefined ? Math.min(perProbe, deadlineAt - stepStart) : perProbe;
+  const outcome = await runBoundedProbe(req, config, probeOptionsOrFailure, budgetMs);
   if (!outcome.ok) {
     return {
       failure: makeFailure(
-        requirement,
+        req,
         config.context.workerId,
         'bound-to-worker',
         outcome.errorClass,
@@ -443,30 +402,61 @@ async function evaluateSingleRequirement(
       ),
     };
   }
-  const proof = createVerifiedProof(requirement, config.context, probeOptionsOrFailure, now, ttlMs);
+  const proof = createVerifiedProof(req, config.context, probeOptionsOrFailure, clock(), ttlMs);
   config.cache?.putProof(proof);
   return { proof };
 }
 
-/** Verifies worker readiness at the actual worker boundary across all capability requirements. */
+function revalidateProofsAtCompletion(
+  entries: readonly { readonly req: CapabilityRequirement; readonly proof: ReadinessProof }[],
+  config: WorkerReadinessConfig,
+  completionTime: number,
+  failures: ReadinessFailure[],
+  advisoryWarnings: ReadinessFailure[]
+): ReadinessProof[] {
+  const validProofs: ReadinessProof[] = [];
+  for (const { req, proof } of entries) {
+    const isFresh =
+      config.cache !== undefined
+        ? config.cache.getValidProof(config.context, req, completionTime) !== undefined
+        : isProofValidForContext(proof, config.context, req, completionTime);
+    if (isFresh) {
+      validProofs.push(proof);
+      continue;
+    }
+    const fail = makeFailure(
+      req,
+      config.context.workerId,
+      'bound-to-worker',
+      'ProofExpiredDuringPreflightError',
+      `Cached readiness proof "${proof.proofId}" expired before preflight completed`
+    );
+    (req.mode === 'enforcing' ? failures : advisoryWarnings).push(fail);
+  }
+  return validProofs;
+}
+
 export async function verifyWorkerReadiness(
   requirements: readonly CapabilityRequirement[],
   config: WorkerReadinessConfig
 ): Promise<WorkerReadinessReport> {
-  const now = config.now ?? getTimeProvider().now();
+  const clock = resolveClock(config.now);
+  const startTime = clock();
   const ttlMs = config.proofTtlMs ?? DEFAULT_PROOF_TTL_MS;
-  const proofs: ReadinessProof[] = [];
+  const deadlineAt =
+    config.totalTimeoutMs !== undefined ? startTime + config.totalTimeoutMs : undefined;
+  const entries: { readonly req: CapabilityRequirement; readonly proof: ReadinessProof }[] = [];
   const failures: ReadinessFailure[] = [];
   const advisoryWarnings: ReadinessFailure[] = [];
 
   for (const req of requirements) {
-    const evaluation = await evaluateSingleRequirement(req, config, now, ttlMs);
-    if (evaluation.proof !== undefined) {
-      proofs.push(evaluation.proof);
-    } else if (evaluation.failure !== undefined) {
+    const evaluation = await evaluateSingleRequirement(req, config, clock, ttlMs, deadlineAt);
+    if (evaluation.proof !== undefined) entries.push({ req, proof: evaluation.proof });
+    else if (evaluation.failure !== undefined) {
       (req.mode === 'enforcing' ? failures : advisoryWarnings).push(evaluation.failure);
     }
   }
+  const proofs = revalidateProofsAtCompletion(entries, config, clock(), failures, advisoryWarnings);
   return {
     ready: failures.length === 0,
     workerId: config.context.workerId,

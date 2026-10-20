@@ -339,6 +339,68 @@ describe('Task T06 / C04: Revoked or Changed Grant Invalidates Proof', () => {
     });
     expect(second.ready).toBe(false);
     expect(cache.getValidProof(ctx, narrowReq, now + 200)).toBeDefined();
+
+    // If restrictedReq later succeeds at the same timestamp, its proofId must be distinct from narrowReq
+    const third = await verifyWorkerReadiness([restrictedReq], {
+      context: ctx,
+      probe: () => ({ ok: true }),
+      cache,
+      now,
+    });
+    expect(third.ready).toBe(true);
+    expect(third.proofs[0]?.proofId).not.toBe(first.proofs[0]?.proofId);
+
+    // Revoking restrictedReq's proof must NOT revoke narrowReq's proof
+    cache.revokeProof(third.proofs[0]?.proofId ?? '');
+    expect(cache.getValidProof(ctx, restrictedReq, now + 100)).toBeUndefined();
+    expect(cache.getValidProof(ctx, narrowReq, now + 100)).toBeDefined();
+  });
+
+  it('rejects cached proofs that expire while subsequent requirements are being probed', async () => {
+    const cache = new ReadinessProofCache();
+    let clock = 1_700_000_000_000;
+    const ctx = baseWorkerContext();
+
+    const req1: CapabilityRequirement = {
+      id: 'cap-short-ttl',
+      operation: 'artifact.read',
+      resourceRef: 'artifact:one',
+      mode: 'enforcing',
+    };
+    const req2: CapabilityRequirement = {
+      id: 'cap-slow-probe',
+      operation: 'file.read',
+      resourceRef: 'artifact:two',
+      mode: 'enforcing',
+    };
+
+    // Prime cache for req1 with 50ms TTL
+    await verifyWorkerReadiness([req1], {
+      context: ctx,
+      probe: () => ({ ok: true }),
+      cache,
+      now: () => clock,
+      proofTtlMs: 50,
+    });
+
+    // Now verify [req1, req2]: req1 hits cache at t=0, req2 takes 60ms so clock advances past req1's expiry
+    const report = await verifyWorkerReadiness([req1, req2], {
+      context: ctx,
+      probe: (req) => {
+        if (req.id === 'cap-slow-probe') {
+          clock += 60;
+        }
+        return { ok: true };
+      },
+      cache,
+      now: () => clock,
+      proofTtlMs: 50,
+    });
+
+    expect(report.ready).toBe(false);
+    expect(report.failures).toHaveLength(1);
+    expect(report.failures[0]?.requirementId).toBe('cap-short-ttl');
+    expect(report.failures[0]?.errorClass).toBe('ProofExpiredDuringPreflightError');
   });
 });
 
@@ -552,21 +614,64 @@ describe('Task T06: PipelineRunner Worker Boundary Preflight Integration', () =>
       expect(execResult.value.error).toContain('req-artifact-access');
     }
 
-    // Also verify PipelineRunner enforces timeout on stalled preflight probes and respects remaining timeout budget
-    const stalledExec = await runner.execute(compiled.value, task, {
-      timeout: 20,
+    // Also verify PipelineRunner enforces aggregate deadline across multiple stalled probes,
+    // prevents stage execution when advisory probes exhaust the pipeline budget, and combines AbortSignals.
+    let stalledProbeCount = 0;
+    const multiStalledTask: TaskContract = {
+      ...task,
+      capabilityRequirements: [
+        { id: 'adv-1', operation: 'artifact.read', mode: 'advisory' },
+        { id: 'adv-2', operation: 'file.read', mode: 'advisory' },
+        { id: 'adv-3', operation: 'artifact.read', mode: 'advisory' },
+        { id: 'adv-4', operation: 'file.read', mode: 'advisory' },
+      ],
+    };
+
+    const startMulti = Date.now();
+    const stalledExec = await runner.execute(compiled.value, multiStalledTask, {
+      timeout: 30,
       workerReadiness: {
         context: baseWorkerContext({ workerId: 'worker-stalled-preflight' }),
+        probe: () => {
+          stalledProbeCount += 1;
+          return new Promise(() => {
+            // Never resolves
+          });
+        },
+      },
+    });
+    const elapsedMulti = Date.now() - startMulti;
+    expect(stalledExec.ok).toBe(true);
+    if (stalledExec.ok) {
+      expect(stalledExec.value.success).toBe(false);
+      expect(stalledExec.value.stepsExecuted).toBe(0);
+      expect(stalledProbeCount).toBe(1);
+      expect(elapsedMulti).toBeLessThan(120);
+    }
+
+    // Verify pipeline options.signal cancels preflight even when workerReadiness.signal is also provided
+    const pipelineAbort = new AbortController();
+    const workerAbort = new AbortController();
+    setTimeout(() => {
+      pipelineAbort.abort();
+    }, 10);
+
+    const abortedExec = await runner.execute(compiled.value, task, {
+      signal: pipelineAbort.signal,
+      timeout: 5_000,
+      workerReadiness: {
+        context: baseWorkerContext({ workerId: 'worker-combined-signal' }),
+        signal: workerAbort.signal,
         probe: () =>
           new Promise(() => {
             // Never resolves
           }),
       },
     });
-    expect(stalledExec.ok).toBe(true);
-    if (stalledExec.ok) {
-      expect(stalledExec.value.success).toBe(false);
-      expect(stalledExec.value.error).toContain('ProbeTimeoutError');
+    expect(abortedExec.ok).toBe(true);
+    if (abortedExec.ok) {
+      expect(abortedExec.value.success).toBe(false);
+      expect(abortedExec.value.stepsExecuted).toBe(0);
     }
   });
 });

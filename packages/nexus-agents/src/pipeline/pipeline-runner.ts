@@ -112,39 +112,59 @@ type ExecuteResult =
   | { readonly ok: true; readonly value: PipelineResult }
   | { readonly ok: false; readonly error: string };
 
+function resolveCombinedSignal(
+  pipelineSignal: AbortSignal | undefined,
+  workerSignal: AbortSignal | undefined
+): AbortSignal | undefined {
+  if (pipelineSignal !== undefined && workerSignal !== undefined) {
+    return AbortSignal.any([pipelineSignal, workerSignal]);
+  }
+  return workerSignal ?? pipelineSignal;
+}
+
 function resolveEffectiveProbeTimeout(
   pipeline: CompiledPipeline,
   options: PipelineExecuteOptions
-): number {
+): { totalBudgetMs: number; effectiveProbeTimeout: number } {
   const totalBudgetMs = options.timeout ?? pipeline.plan.timeoutMs;
   const probeTimeoutMs = options.workerReadiness?.probeTimeoutMs;
-  return probeTimeoutMs !== undefined ? Math.min(probeTimeoutMs, totalBudgetMs) : totalBudgetMs;
+  const effectiveProbeTimeout =
+    probeTimeoutMs !== undefined ? Math.min(probeTimeoutMs, totalBudgetMs) : totalBudgetMs;
+  return { totalBudgetMs, effectiveProbeTimeout };
 }
 
 async function checkPreflightReadiness(
   pipeline: CompiledPipeline,
   task: TaskContract,
-  options: PipelineExecuteOptions | undefined
+  options: PipelineExecuteOptions | undefined,
+  startTime: number
 ): Promise<string | null> {
   if (options?.workerReadiness === undefined) {
     return null;
   }
   const requirements = task.capabilityRequirements ?? [];
-  const effectiveProbeTimeout = resolveEffectiveProbeTimeout(pipeline, options);
-  const effectiveSignal = options.workerReadiness.signal ?? options.signal;
+  const { totalBudgetMs, effectiveProbeTimeout } = resolveEffectiveProbeTimeout(pipeline, options);
+  const effectiveSignal = resolveCombinedSignal(options.signal, options.workerReadiness.signal);
 
   const report = await verifyWorkerReadiness(requirements, {
     ...options.workerReadiness,
     probeTimeoutMs: effectiveProbeTimeout,
+    totalTimeoutMs: totalBudgetMs,
     ...(effectiveSignal !== undefined ? { signal: effectiveSignal } : {}),
   });
-  if (report.ready) {
-    return null;
+  if (options.signal?.aborted === true) {
+    return 'Pipeline aborted during preflight readiness';
   }
-  const details = report.failures
-    .map((f) => `${f.requirementId} (${f.errorClass}: ${f.message})`)
-    .join('; ');
-  return `WorkerNotReadyError [${report.workerId}]: ${details}`;
+  if (!report.ready) {
+    const details = report.failures
+      .map((f) => `${f.requirementId} (${f.errorClass}: ${f.message})`)
+      .join('; ');
+    return `WorkerNotReadyError [${report.workerId}]: ${details}`;
+  }
+  if (Date.now() - startTime >= totalBudgetMs) {
+    return `PipelineTimeoutError [${report.workerId}]: Preflight readiness exhausted pipeline timeout budget (${String(totalBudgetMs)}ms)`;
+  }
+  return null;
 }
 
 function computeRemainingTimeout(
@@ -199,7 +219,7 @@ export class PipelineRunner {
       return okResult(failedResult(startTime, 'Pipeline aborted before execution'));
     }
 
-    const readinessError = await checkPreflightReadiness(pipeline, task, options);
+    const readinessError = await checkPreflightReadiness(pipeline, task, options, startTime);
     if (readinessError !== null) {
       return okResult(failedResult(startTime, readinessError));
     }
