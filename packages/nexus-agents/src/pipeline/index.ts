@@ -12,10 +12,17 @@ export {
   PolicyGateSpecSchema,
   CostEstimateSchema,
   ArtifactRefSchema,
+  EnforcementModeSchema,
+  CapabilityRequirementSchema,
+  EvidenceObligationSchema,
   // Constants
   TASK_STATUSES,
   STAGE_TYPES,
   ARTIFACT_TYPES,
+  // Verification & Obligation Helpers
+  checkContractCompatibility,
+  validateObligationCompleteness,
+  detectMissingCapabilities,
   // Types
   type TaskContract,
   type TaskStatus,
@@ -26,6 +33,14 @@ export {
   type CostEstimate,
   type ArtifactRef,
   type ArtifactType,
+  type EnforcementMode,
+  type CapabilityRequirement,
+  type EvidenceObligation,
+  type EvidenceReceipt,
+  type ContractCompatibilityOptions,
+  type ObligationCompletenessOptions,
+  type ObligationCompletenessResult,
+  type CapabilityDetectionResult,
 } from './task-contract.js';
 
 export { compilePlan, type PlanCompileOptions } from './plan-compiler.js';
