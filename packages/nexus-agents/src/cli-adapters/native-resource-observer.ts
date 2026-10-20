@@ -14,7 +14,8 @@ type AcquisitionState = 'none' | ResourceState;
 interface KnownResource {
   readonly pid: number;
   readonly startTime: string | undefined;
-  readonly state: 'running' | 'ended' | 'unknown';
+  /** A zombie stopped executing but retains this physical identity until reaped. */
+  readonly state: 'running' | 'reap-pending' | 'ended' | 'unknown';
 }
 export interface NativeResourceSnapshot {
   readonly launch: 'unattempted' | 'refused' | 'attempted' | 'failed';
@@ -213,7 +214,9 @@ export class NativeResourceObserver {
       return 'unmeasured';
     // Explicit complete enumeration names the empty case; no inferred health.
     if (entries.length === 0) return 'settled';
-    return entries.some((p) => p.state === 'running') ? 'pending' : 'settled';
+    return entries.some((p) => p.state === 'running' || p.state === 'reap-pending')
+      ? 'pending'
+      : 'settled';
   }
 
   private read(pid: number): ProcIdentityObservation {
@@ -287,7 +290,7 @@ export class NativeResourceObserver {
         identity.state === 'unknown'
           ? 'unknown'
           : identity.processState === 'Z'
-            ? 'ended'
+            ? 'reap-pending'
             : 'running',
     });
   }
@@ -300,9 +303,11 @@ export class NativeResourceObserver {
         ? 'ended'
         : identity.state === 'unknown' || entry.startTime === undefined
           ? 'unknown'
-          : identity.startTime !== entry.startTime || identity.processState === 'Z'
+          : identity.startTime !== entry.startTime
             ? 'ended'
-            : 'running';
+            : identity.processState === 'Z'
+              ? 'reap-pending'
+              : 'running';
     return { ...entry, state };
   }
 
