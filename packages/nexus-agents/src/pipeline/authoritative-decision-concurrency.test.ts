@@ -96,7 +96,30 @@ function planFixture(): PlanContract {
   };
 }
 
-function workerSource(): string {
+/** A test-only lease retains the canonical native handle across store operations. */
+function preparedAdmissionSource(): string {
+  return `
+const preparedPath = join(storageDir, 'decisions.db');
+const prepared = openSqliteDatabase(preparedPath);
+const lease = {
+  prepare: prepared.prepare.bind(prepared),
+  exec: prepared.exec.bind(prepared),
+  close: () => {},
+};
+const openDatabase = (filePath) => {
+  if (filePath !== preparedPath) throw new Error('Prepared native database path mismatch');
+  return lease;
+};
+try {
+  const databasePath = prepared.prepare('PRAGMA database_list').all()
+    .find((database) => database.name === 'main')?.file;
+  const journalMode = prepared.prepare('PRAGMA journal_mode').get()?.journal_mode;
+  writeFileSync(join(storageDir, workerId + '.ready'),
+    JSON.stringify({ workerId, databasePath, journalMode }));
+`;
+}
+
+function workerSource(preopenNative = false): string {
   const moduleUrl = (name: string): string => JSON.stringify(new URL(name, import.meta.url).href);
   return `
 import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
@@ -105,6 +128,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { AuthoritativeDecisionStore } from ${moduleUrl('./authoritative-decision-store.ts')};
 import { PipelineRunner } from ${moduleUrl('./pipeline-runner.ts')};
 import { createCorePluginRegistry } from ${moduleUrl('./core-plugins.ts')};
+import { openSqliteDatabase } from ${moduleUrl('../context/open-database.ts')};
 
 const [storageDir, workerId] = process.argv.slice(1);
 const runner = new PipelineRunner();
@@ -112,13 +136,13 @@ const compiled = runner.compile(${JSON.stringify(planFixture())}, {
   pluginRegistry: createCorePluginRegistry(),
 });
 if (!compiled.ok) throw new Error('Worker could not compile the real analyze pipeline');
-writeFileSync(join(storageDir, workerId + '.ready'), 'ready');
+${preopenNative ? preparedAdmissionSource() : "writeFileSync(join(storageDir, workerId + '.ready'), 'ready');"}
 const deadline = Date.now() + ${String(BARRIER_TIMEOUT_MS)};
 while (!existsSync(join(storageDir, 'release'))) {
   if (Date.now() >= deadline) throw new Error('Worker start barrier timed out');
   await delay(${String(POLL_INTERVAL_MS)});
 }
-const store = new AuthoritativeDecisionStore({ storageDir });
+const store = new AuthoritativeDecisionStore({ storageDir${preopenNative ? ', openDatabase' : ''} });
 const result = await runner.execute(compiled.value, ${JSON.stringify(taskFixture())}, {
   decisionStore: store,
   onStageComplete: () => appendFileSync(join(storageDir, 'effects.jsonl'),
@@ -130,6 +154,7 @@ console.log(${JSON.stringify(RESULT_PREFIX)} + JSON.stringify({
   success: outcome.success,
   ...(outcome.error === undefined ? {} : { error: outcome.error }),
 }));
+${preopenNative ? '} finally { prepared.close(); }' : ''}
 `;
 }
 
@@ -228,7 +253,7 @@ function startWorker(storageDir: string, workerId: string, source = workerSource
   return { child, done };
 }
 
-async function releaseReadyWorkers(
+async function waitForReadyWorkers(
   storageDir: string,
   workerIds: readonly string[] = ['one', 'two']
 ): Promise<void> {
@@ -239,6 +264,13 @@ async function releaseReadyWorkers(
       throw new Error('All expected workers must reach the start barrier');
     await delay(POLL_INTERVAL_MS);
   }
+}
+
+async function releaseReadyWorkers(
+  storageDir: string,
+  workerIds: readonly string[] = ['one', 'two']
+): Promise<void> {
+  await waitForReadyWorkers(storageDir, workerIds);
   writeFileSync(join(storageDir, 'release'), 'run');
 }
 
@@ -294,7 +326,24 @@ describe('authoritative pipeline admission across real processes', () => {
     }
     // Pre-create the observation file: empty means no stage effects, never a pass.
     writeFileSync(join(storageDir, 'effects.jsonl'), '');
-    workers = [startWorker(storageDir, 'one'), startWorker(storageDir, 'two')];
+    // Prepare native connections serially, then race real SQL admission together.
+    // Keep both handles alive through the run; the cold-lock test uses default opens.
+    const source = workerSource(true);
+    workers = [startWorker(storageDir, 'one', source)];
+    await waitForReadyWorkers(storageDir, ['one']);
+    workers.push(startWorker(storageDir, 'two', source));
+    await waitForReadyWorkers(storageDir);
+    const readyDir = storageDir;
+    const nativeReady = ['one', 'two'].map(
+      (workerId) => JSON.parse(readFileSync(join(readyDir, `${workerId}.ready`), 'utf8')) as unknown
+    );
+    expect(nativeReady).toEqual(
+      ['one', 'two'].map((workerId) => ({
+        workerId,
+        databasePath: join(readyDir, 'decisions.db'),
+        journalMode: 'wal',
+      }))
+    );
     await releaseReadyWorkers(storageDir);
     const outcomes = (await Promise.all(workers.map((worker) => worker.done))).map(readOutcome);
     const effects = readFileSync(join(storageDir, 'effects.jsonl'), 'utf8')
