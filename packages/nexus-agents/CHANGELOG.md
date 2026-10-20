@@ -1,5 +1,20 @@
 # nexus-agents
 
+## 12.3.0
+
+### Minor Changes
+
+- [#7518](https://github.com/nexus-substrate/nexus-agents/pull/7518) [`ed8c25a`](https://github.com/nexus-substrate/nexus-agents/commit/ed8c25ab019011099d907e09ae938dff819c33cc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): extend versioned task, capability and evidence contracts ([#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129) / Task T05)
+
+  - Added `EnforcementModeSchema`, `CapabilityRequirementSchema`, `EvidenceObligationSchema`, and `EvidenceReceipt`
+  - Added `checkContractCompatibility` using installed `semver` dependency with fail-closed validation on malformed, unversioned (when strict), or out-of-range versions (Conformance Case C35: legacy client enforcing downgrade / schema version gateway)
+  - Added `validateObligationCompleteness` requiring exact `obligationId` and `artifactRef` matching for receipts (Conformance Case C06: evidence verification)
+  - Added `detectMissingCapabilities` matching required operations against available capabilities
+
+- [#7520](https://github.com/nexus-substrate/nexus-agents/pull/7520) [`ee72f25`](https://github.com/nexus-substrate/nexus-agents/commit/ee72f25030f4e1922960390813559cf08f188840) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): verify readiness at the actual worker boundary (Task T06, [#5129](https://github.com/nexus-substrate/nexus-agents/issues/5129))
+
+  Adds `worker-readiness.ts` implementing worker/session-scoped capability readiness verification (`READINESS_LEVELS`, `ReadinessProofCache`, `isProofValidForContext`, `isWriteOperation`, and `verifyWorkerReadiness`) and integrates preflight worker readiness checks into `PipelineRunner.execute`.
+
 ## 12.2.1
 
 ### Patch Changes
