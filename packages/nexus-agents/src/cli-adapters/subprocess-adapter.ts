@@ -9,7 +9,11 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process';
+import type {
+  ChildProcess,
+  ChildProcessWithoutNullStreams,
+  SpawnOptionsWithoutStdio,
+} from 'node:child_process';
 
 import type { Result } from '../core/index.js';
 import { ok, err, getTimeProvider, createLogger, getErrorMessage } from '../core/index.js';
@@ -208,16 +212,25 @@ function spawnCliChild(
     args: cmdConfig.args,
     options: { cwd, env: childEnv },
   };
-  // Materialization is complete. No await or wrapper runs between this consume and spawn.
+  // Fully evaluate host iterators/getters before the final cancellation/deadline fence.
+  const spawnArgs = [...args];
+  const env = options.env;
+  const spawnEnv = env === undefined ? undefined : (Object.create(null) as NodeJS.ProcessEnv);
+  if (env !== undefined && spawnEnv !== undefined) {
+    // Node intentionally includes inherited enumerable env values. Flatten them too,
+    // so its own normalization cannot invoke host getters after the final guard.
+    for (const key in env) spawnEnv[key] = env[key];
+  }
+  const finalCwd = options.cwd;
+  const spawnOptions: SpawnOptionsWithoutStdio = {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: spawnEnv,
+    ...(finalCwd !== undefined ? { cwd: finalCwd } : {}),
+  };
+  // No await, wrapper, iterator or host getter remains between consume and spawn.
   const checked = resolveNativeSpawnOptions(execution, cliName, true);
   if (!checked.ok) return checked;
-  const child = trackProcessTree(
-    spawn(command, [...args], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: options.env,
-      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-    })
-  );
+  const child = trackProcessTree(spawn(command, spawnArgs, spawnOptions));
   return ok({ child, options: checked.value });
 }
 
