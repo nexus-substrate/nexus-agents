@@ -133,16 +133,85 @@ describe('resource lifetime separate from result (#7534)', () => {
     ]);
     expect(f.child.kill).not.toHaveBeenCalled();
   });
-  it('keeps unreadable identities unknown and distinguishes zombie execution', () => {
+  it('keeps unreadable identities unknown and retains zombie physical presence', () => {
     const f = fixture();
     launch(f);
     f.close();
+    const safe = vi.fn();
+    f.observer.onSafeSettlement(safe);
     f.identities.set(22, { state: 'unknown', reason: 'unreadable-stat' });
     f.observer.refreshKnownResources();
     expect(f.observer.snapshot()).toMatchObject({ knownTree: 'unmeasured', safe: false });
     f.identities.set(22, { state: 'present', startTime: '200', processState: 'Z' });
     f.observer.refreshKnownResources();
+    // A zombie stopped executing but the same physical identity awaits reaping.
+    expect(f.observer.snapshot()).toMatchObject({ knownTree: 'pending', safe: false });
+    expect(f.observer.snapshot().knownProcesses).toEqual([
+      { pid: 22, startTime: '200', state: 'reap-pending' },
+    ]);
+    expect(safe).not.toHaveBeenCalled();
+    f.identities.set(22, { state: 'absent' });
+    f.observer.refreshKnownResources();
     expect(f.observer.snapshot()).toMatchObject({ knownTree: 'settled', safe: true });
+    expect(safe).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    ['initially-zombie', 'absent'],
+    ['initially-zombie', 'replacement'],
+    ['running-to-zombie', 'absent'],
+    ['running-to-zombie', 'replacement'],
+  ] as const)('retains %s until physical identity is %s', (initial, resolution) => {
+    const f = fixture();
+    if (initial === 'initially-zombie')
+      f.identities.set(22, { state: 'present', startTime: '200', processState: 'Z' });
+    launch(f);
+    const safe = vi.fn();
+    f.observer.onSafeSettlement(safe);
+    f.identities.set(22, { state: 'present', startTime: '200', processState: 'Z' });
+    f.close();
+    f.observer.refreshKnownResources();
+    expect(f.observer.snapshot()).toMatchObject({
+      completionChild: 'closed',
+      streamsClosed: true,
+      knownTree: 'pending',
+      safe: false,
+    });
+    expect(f.observer.snapshot().knownProcesses).toEqual([
+      { pid: 22, startTime: '200', state: 'reap-pending' },
+    ]);
+    expect(safe).not.toHaveBeenCalled();
+    f.identities.set(
+      22,
+      resolution === 'absent'
+        ? { state: 'absent' }
+        : { state: 'present', startTime: '999', processState: 'R' }
+    );
+    f.observer.refreshKnownResources();
+    expect(f.observer.snapshot()).toMatchObject({ knownTree: 'settled', safe: true });
+    expect(f.observer.snapshot().knownProcesses).toEqual([
+      { pid: 22, startTime: '200', state: 'ended' },
+    ]);
+    f.observer.refreshKnownResources();
+    expect(safe).toHaveBeenCalledTimes(1);
+    expect(f.child.kill).not.toHaveBeenCalled();
+  });
+  it('does not turn zombie absence into ordinary acquisition proof', () => {
+    const f = fixture('unmeasured');
+    f.identities.set(22, { state: 'present', startTime: '200', processState: 'Z' });
+    launch(f);
+    const safe = vi.fn();
+    f.observer.onSafeSettlement(safe);
+    f.close();
+    expect(f.observer.snapshot()).toMatchObject({ knownTree: 'pending', safe: false });
+    f.identities.set(22, { state: 'absent' });
+    f.observer.refreshKnownResources();
+    expect(f.observer.snapshot()).toMatchObject({
+      knownTree: 'settled',
+      acquisitionChildren: 'unmeasured',
+      safe: false,
+    });
+    expect(f.observer.snapshot().reasons).toContain('acquisition-unmeasured');
+    expect(safe).not.toHaveBeenCalled();
   });
   it.each(['partial', 'unavailable'] as const)(
     'preserves %s enumeration uncertainty',
