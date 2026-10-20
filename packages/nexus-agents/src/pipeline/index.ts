@@ -61,6 +61,23 @@ export {
 } from './pipeline-runner.js';
 
 export {
+  READINESS_LEVELS,
+  ReadinessProofCache,
+  isWriteOperation,
+  isProofValidForContext,
+  verifyWorkerReadiness,
+  type ReadinessLevel,
+  type WorkerBoundaryContext,
+  type WorkerProbeExecutionOptions,
+  type WorkerProbeOutcome,
+  type WorkerResourceProbe,
+  type ReadinessProof,
+  type ReadinessFailure,
+  type WorkerReadinessReport,
+  type WorkerReadinessConfig,
+} from './worker-readiness.js';
+
+export {
   // Schemas
   PluginManifestSchema,
   StageResultSchema,

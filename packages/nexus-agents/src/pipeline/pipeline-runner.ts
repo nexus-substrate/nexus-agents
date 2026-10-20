@@ -24,6 +24,7 @@ import type {
 import type { IEventBus } from './event-types.js';
 import { emitStageCompleted, emitStageFailed } from './pipeline-observability.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
+import { verifyWorkerReadiness, type WorkerReadinessConfig } from './worker-readiness.js';
 
 const pipelineLogger = createLogger({ component: 'PipelineRunner' });
 
@@ -94,6 +95,11 @@ export interface PipelineExecuteOptions {
    * which bypassed per-repo routing (#2889).
    */
   readonly runsDir?: string;
+  /**
+   * Worker boundary readiness configuration (Task T06 / #5129).
+   * When provided, verifies capability requirements on the actual worker before execution.
+   */
+  readonly workerReadiness?: WorkerReadinessConfig;
 }
 
 /** Compile result type. */
@@ -105,6 +111,85 @@ type CompileResult =
 type ExecuteResult =
   | { readonly ok: true; readonly value: PipelineResult }
   | { readonly ok: false; readonly error: string };
+
+function resolvePreflightConfig(
+  workerReadiness: WorkerReadinessConfig,
+  pipelineTimeoutMs: number,
+  pipelineSignal: AbortSignal | undefined
+): { effectiveSignal: AbortSignal | undefined; totalBudgetMs: number; effectiveProbeMs: number } {
+  const effectiveSignal =
+    pipelineSignal !== undefined && workerReadiness.signal !== undefined
+      ? AbortSignal.any([pipelineSignal, workerReadiness.signal])
+      : (workerReadiness.signal ?? pipelineSignal);
+  const totalBudgetMs = Math.min(
+    pipelineTimeoutMs,
+    workerReadiness.totalTimeoutMs ?? pipelineTimeoutMs
+  );
+  const effectiveProbeMs = Math.min(workerReadiness.probeTimeoutMs ?? totalBudgetMs, totalBudgetMs);
+  return { effectiveSignal, totalBudgetMs, effectiveProbeMs };
+}
+
+function formatReadinessOutcome(
+  report: {
+    readonly ready: boolean;
+    readonly workerId: string;
+    readonly failures: readonly {
+      readonly requirementId: string;
+      readonly errorClass: string;
+      readonly message: string;
+    }[];
+  },
+  effectiveSignal: AbortSignal | undefined,
+  startTime: number,
+  totalBudgetMs: number
+): string | null {
+  if (effectiveSignal?.aborted === true) return 'Pipeline aborted during preflight readiness';
+  if (!report.ready) {
+    const details = report.failures
+      .map((f) => `${f.requirementId} (${f.errorClass}: ${f.message})`)
+      .join('; ');
+    return `WorkerNotReadyError [${report.workerId}]: ${details}`;
+  }
+  if (Date.now() - startTime >= totalBudgetMs) {
+    return `PipelineTimeoutError [${report.workerId}]: Preflight readiness exhausted timeout budget (${String(totalBudgetMs)}ms)`;
+  }
+  return null;
+}
+
+async function checkPreflightReadiness(
+  pipeline: CompiledPipeline,
+  task: TaskContract,
+  options: PipelineExecuteOptions | undefined,
+  startTime: number
+): Promise<string | null> {
+  if (options?.workerReadiness === undefined) return null;
+  const { effectiveSignal, totalBudgetMs, effectiveProbeMs } = resolvePreflightConfig(
+    options.workerReadiness,
+    options.timeout ?? pipeline.plan.timeoutMs,
+    options.signal
+  );
+  if (effectiveSignal?.aborted === true) return 'Pipeline aborted before preflight readiness';
+
+  const report = await verifyWorkerReadiness(task.capabilityRequirements ?? [], {
+    ...options.workerReadiness,
+    probeTimeoutMs: effectiveProbeMs,
+    totalTimeoutMs: totalBudgetMs,
+    ...(effectiveSignal !== undefined ? { signal: effectiveSignal } : {}),
+  });
+  for (const w of report.advisoryWarnings) {
+    pipelineLogger.warn('Worker readiness advisory warning', { ...w });
+  }
+  return formatReadinessOutcome(report, effectiveSignal, startTime, totalBudgetMs);
+}
+
+function computeRemainingTimeout(
+  pipeline: CompiledPipeline,
+  options: PipelineExecuteOptions | undefined,
+  startTime: number
+): number {
+  const totalTimeoutMs = options?.timeout ?? pipeline.plan.timeoutMs;
+  return Math.max(1, totalTimeoutMs - (Date.now() - startTime));
+}
 
 // ============================================================================
 // PipelineRunner
@@ -149,11 +234,20 @@ export class PipelineRunner {
       return okResult(failedResult(startTime, 'Pipeline aborted before execution'));
     }
 
+    const readinessError = await checkPreflightReadiness(pipeline, task, options, startTime);
+    if (readinessError !== null) {
+      return okResult(failedResult(startTime, readinessError));
+    }
+
+    const remainingTimeoutMs = computeRemainingTimeout(pipeline, options, startTime);
     const trace = createTraceContext(task, options);
     emitPipelineStarted(trace, task);
 
     try {
-      const graphOpts = buildGraphOptions(pipeline, options);
+      const graphOpts = buildGraphOptions(pipeline, {
+        ...options,
+        timeout: remainingTimeoutMs,
+      });
       const graphResult = await executeGraph(pipeline.graph, { task }, graphOpts);
 
       if (!graphResult.ok) {
