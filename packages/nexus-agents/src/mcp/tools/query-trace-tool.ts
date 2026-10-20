@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import {
   readTraceSnapshot,
+  decodeTraceBytes,
   relationCounts,
   type TraceSnapshotReading,
 } from '../../pipeline/trace-attribution.js';
@@ -318,10 +319,25 @@ async function readTraceFromDirectory(
       return overSizeResponse(input.runId, fileStat.size);
     }
 
-    const content = await readFile(tracePath, 'utf-8');
+    const content = await readFile(tracePath);
+    const decoded = decodeTraceBytes(content);
+    if (decoded === null) {
+      return {
+        ...readTraceResponse(
+          input,
+          { events: [], skippedLines: 0 },
+          {
+            status: 'unmeasured',
+            reason: 'invalid_encoding',
+          }
+        ),
+        errorCategory: 'parse_error',
+        errorMessage: 'Trace is not valid UTF-8; no events were read',
+      };
+    }
     return readTraceResponse(
       input,
-      parseJsonlLines(content),
+      parseJsonlLines(decoded),
       readTraceSnapshot(tracePath, dir, content, input.runId)
     );
   } catch (err: unknown) {

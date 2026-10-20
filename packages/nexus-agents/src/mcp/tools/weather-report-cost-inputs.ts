@@ -15,7 +15,7 @@ import {
   type DecisionCostRecord,
 } from '../../observability/decision-cost-store.js';
 import { nexusDataPath } from '../../config/nexus-data-dir.js';
-import { readTraceSnapshot } from '../../pipeline/trace-attribution.js';
+import { readTraceSnapshot, decodeTraceBytes } from '../../pipeline/trace-attribution.js';
 import { isPipelineRunId } from '../../pipeline/pipeline-run-id.js';
 import {
   ExecutionTraceEntrySchema,
@@ -37,9 +37,11 @@ function traceInWindow(path: string, runId: string, since: number): boolean {
   const stat = statSync(path);
   if (stat.mtimeMs < since) return false;
   if (stat.size > MAX_TRACE_FILE_BYTES) throw new Error('pipeline trace exceeds read cap');
-  const content = readFileSync(path, 'utf8');
+  const content = readFileSync(path);
+  const decoded = decodeTraceBytes(content);
+  if (decoded === null) throw new Error('Pipeline trace is not valid UTF-8');
   const snapshot = readTraceSnapshot(path, nexusDataPath('runs'), content, runId);
-  const inspected = inspectTraceRows(content, runId, since);
+  const inspected = inspectTraceRows(decoded, runId, since);
   if (inspected.requiresBinding && snapshot.status === 'unmeasured') {
     throw new Error('Unmeasured pipeline trace snapshot binding');
   }

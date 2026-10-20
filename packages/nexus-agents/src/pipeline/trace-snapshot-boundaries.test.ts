@@ -4,9 +4,18 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { constants } from 'node:fs';
 
 const io = vi.hoisted(() => ({
   grow: false,
+  growAfterDescriptorStat: false,
+  nonregularDescriptor: false,
+  replaceBeforeOpen: false,
+  metadataFd: undefined as number | undefined,
+  metadataPath: '',
+  openFlags: [] as unknown[],
+  descriptorChecks: 0,
+  metadataCloses: 0,
   metadataReadBytes: 0,
   pause: false,
   pauseAfterTraceRename: false,
@@ -26,6 +35,40 @@ vi.mock('node:fs', async (importOriginal) => {
         actual.appendFileSync(String(args[0]), ' '.repeat(32 * 1024));
       }
       return result;
+    },
+    openSync: (...args: unknown[]) => {
+      const metadata = String(args[0]).endsWith('trace-attribution.json');
+      if (metadata && io.replaceBeforeOpen) {
+        io.replaceBeforeOpen = false;
+        actual.renameSync(String(args[0]), `${String(args[0])}.original`);
+        actual.copyFileSync(`${String(args[0])}.original`, String(args[0]));
+      }
+      const fd = Reflect.apply(actual.openSync, actual, args) as number;
+      if (metadata) {
+        io.metadataFd = fd;
+        io.metadataPath = String(args[0]);
+        io.openFlags.push(args[1]);
+      }
+      return fd;
+    },
+    fstatSync: (...args: unknown[]) => {
+      const result = Reflect.apply(actual.fstatSync, actual, args) as import('node:fs').Stats;
+      if (args[0] !== io.metadataFd) return result;
+      io.descriptorChecks++;
+      if (io.growAfterDescriptorStat) {
+        io.growAfterDescriptorStat = false;
+        actual.appendFileSync(io.metadataPath, ' '.repeat(32 * 1024));
+      }
+      return io.nonregularDescriptor
+        ? new Proxy(result, {
+            get: (target, key, receiver): unknown =>
+              key === 'isFile' ? () => false : Reflect.get(target, key, receiver),
+          })
+        : result;
+    },
+    closeSync: (...args: unknown[]) => {
+      if (args[0] === io.metadataFd) io.metadataCloses++;
+      Reflect.apply(actual.closeSync, actual, args);
     },
     readFileSync: (...args: unknown[]) => {
       const result: unknown = Reflect.apply(actual.readFileSync, actual, args);
@@ -102,6 +145,14 @@ beforeEach(async () => {
   bus = new EventBus();
   writer = new TraceWriter(bus, { runsDir: dir, runId: 'pipeline-a', origin });
   io.grow = false;
+  io.growAfterDescriptorStat = false;
+  io.nonregularDescriptor = false;
+  io.replaceBeforeOpen = false;
+  io.metadataFd = undefined;
+  io.metadataPath = '';
+  io.openFlags.length = 0;
+  io.descriptorChecks = 0;
+  io.metadataCloses = 0;
   io.metadataReadBytes = 0;
   io.pause = false;
   io.pauseAfterTraceRename = false;
@@ -114,6 +165,75 @@ afterEach(async () => {
 });
 
 describe('snapshot loss cannot hide behind plausible metadata', () => {
+  it('keeps valid Unicode metadata but refuses invalid UTF-8 replacement decoding', async () => {
+    writer.stop();
+    const unicodeOrigin = { ...origin, taskId: 'task-\uFFFD' };
+    writer = new TraceWriter(bus, { runsDir: dir, runId: origin.runId, origin: unicodeOrigin });
+    bus.emit({ ...event, origin: unicodeOrigin });
+    await writer.flush();
+    expect(await queryTraceFromDisk({ runId: origin.runId }, dir)).toMatchObject({
+      attribution: { status: 'measured' },
+    });
+    const original = await readFile(sidecar());
+    const offset = original.indexOf(Buffer.from('\uFFFD'));
+    expect(offset).toBeGreaterThanOrEqual(0);
+    const changed = Buffer.concat([
+      original.subarray(0, offset),
+      Buffer.from([0xe1, 0x80]),
+      original.subarray(offset + 3),
+    ]);
+    expect(changed.toString('utf8')).toBe(original.toString('utf8'));
+    await writeFile(sidecar(), changed);
+    expect(await queryTraceFromDisk({ runId: origin.runId }, dir)).toMatchObject({
+      attribution: { status: 'unmeasured', retained: null },
+    });
+  });
+
+  it('uses nonblocking no-follow metadata open flags and closes the regular descriptor', async () => {
+    bus.emit(event);
+    await writer.flush();
+    expect(await queryTraceFromDisk({ runId: 'pipeline-a' }, dir)).toMatchObject({
+      attribution: { status: 'measured' },
+    });
+    expect(io.openFlags[0]).toBe(constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
+    expect(io.descriptorChecks).toBe(1);
+    expect(io.metadataCloses).toBe(1);
+  });
+  it('rejects a nonregular opened descriptor before reading and closes it', async () => {
+    bus.emit(event);
+    await writer.flush();
+    io.nonregularDescriptor = true;
+    expect(await queryTraceFromDisk({ runId: 'pipeline-a' }, dir)).toMatchObject({
+      attribution: { status: 'unmeasured', retained: null },
+    });
+    expect(io.descriptorChecks).toBe(1);
+    expect(io.metadataReadBytes).toBe(0);
+    expect(io.metadataCloses).toBe(1);
+  });
+  it('rejects metadata replaced between path stat and open, then recovers', async () => {
+    bus.emit(event);
+    await writer.flush();
+    io.replaceBeforeOpen = true;
+    expect(await queryTraceFromDisk({ runId: 'pipeline-a' }, dir)).toMatchObject({
+      attribution: { status: 'unmeasured', retained: null },
+    });
+    expect(io.metadataReadBytes).toBe(0);
+    expect(io.metadataCloses).toBe(1);
+    expect(await queryTraceFromDisk({ runId: 'pipeline-a' }, dir)).toMatchObject({
+      attribution: { status: 'measured' },
+    });
+  });
+  it('bounds bytes when metadata grows after the descriptor stat', async () => {
+    bus.emit(event);
+    await writer.flush();
+    io.growAfterDescriptorStat = true;
+    expect(await queryTraceFromDisk({ runId: 'pipeline-a' }, dir)).toMatchObject({
+      attribution: { status: 'unmeasured' },
+    });
+    expect(io.metadataReadBytes).toBe(16 * 1024 + 1);
+    expect(io.metadataCloses).toBe(1);
+  });
+
   it('bounds the actual sidecar bytes read even if it grows after stat', async () => {
     bus.emit(event);
     await writer.flush();

@@ -566,3 +566,93 @@ describe('weather whole-snapshot diagnostics', () => {
     }
   );
 });
+
+describe('raw UTF-8 snapshot binding at actual file consumers', () => {
+  it.each([
+    ['query', 'original-sidecar'],
+    ['query', 'raw-updated-sidecar'],
+    ['weather', 'original-sidecar'],
+    ['weather', 'raw-updated-sidecar'],
+  ] as const)('rejects lossy trace decoding: %s / %s', async (consumer, mode) => {
+    vi.stubEnv('NEXUS_DATA_DIR', directory);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    vi.stubEnv('NEXUS_VOTE_RECORDS_PATH', join(directory, 'absent-ledger.jsonl'));
+    resetNexusDataDirCache();
+    resetOutcomeStore();
+    const runId = 'pipeline-utf8';
+    const origin = runOrigin(runId);
+    const bus = new EventBus();
+    const value = new TraceWriter(bus, { runsDir: join(directory, 'runs'), runId, origin });
+    writers.push(value);
+    bus.emit({
+      type: 'stage.completed',
+      timestamp: Date.now(),
+      stageId: 'plan',
+      durationMs: 1,
+      success: true,
+      origin,
+      executionId: 'dev-pipeline-\uFFFD',
+    });
+    await value.flush();
+    getOutcomeStore().append({
+      id: 'outcome-utf8',
+      traceId: runId,
+      cli: 'codex',
+      category: 'planning',
+      model: 'pipeline',
+      source: 'delegate',
+      success: true,
+      durationMs: 1,
+      timestamp: new Date().toISOString(),
+    });
+    const tracePath = join(directory, 'runs', runId, 'trace.jsonl');
+    const metadataPath = join(directory, 'runs', runId, 'trace-attribution.json');
+    const original = await readFile(tracePath);
+    const originalMetadata = JSON.parse(await readFile(metadataPath, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    const offset = original.indexOf(Buffer.from('\uFFFD'));
+    expect(offset).toBeGreaterThanOrEqual(0);
+    const changed = Buffer.concat([
+      original.subarray(0, offset),
+      Buffer.from([0xe1, 0x80]),
+      original.subarray(offset + 3),
+    ]);
+    expect(changed.toString('utf8')).toBe(original.toString('utf8'));
+    expect(changed.length).not.toBe(original.length);
+    const weather = (): ReturnType<typeof generateWeatherReport> =>
+      generateWeatherReport({ includePipelineJoins: true });
+    if (consumer === 'query') {
+      expect(await queryTraceFromDisk({ runId }, join(directory, 'runs'))).toMatchObject({
+        attribution: { status: 'measured', retained: { run_related: 1 } },
+      });
+    } else {
+      expect(weather().costSection?.consensusDecisionTokens).toMatchObject({
+        matchedPipelineRuns: 1,
+        pipelineOutcomeJoinCoverage: 1,
+      });
+    }
+    await writeFile(tracePath, changed);
+    if (mode === 'raw-updated-sidecar')
+      await writeFile(
+        metadataPath,
+        JSON.stringify({
+          ...originalMetadata,
+          traceBytes: changed.length,
+          traceSha256: createHash('sha256').update(changed).digest('hex'),
+        })
+      );
+    if (consumer === 'query') {
+      const result = await queryTraceFromDisk({ runId }, join(directory, 'runs'));
+      expect(result).toMatchObject({ attribution: { status: 'unmeasured', retained: null } });
+      expect(result.events[0]?.['captureRelation']).toBeUndefined();
+    } else {
+      expect(weather().costSection?.consensusDecisionTokens).toMatchObject({
+        matchedPipelineRuns: 0,
+        unreadablePipelineTraces: 1,
+        pipelineOutcomeJoinCoverage: null,
+      });
+    }
+  });
+});
