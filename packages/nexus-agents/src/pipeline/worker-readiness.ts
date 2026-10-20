@@ -106,25 +106,24 @@ export interface WorkerReadinessConfig {
   readonly signal?: AbortSignal | undefined;
 }
 
-type ContextIdentity = Pick<
-  WorkerBoundaryContext,
-  | 'workerId'
-  | 'sessionId'
-  | 'adapterId'
-  | 'toolSchemaDigest'
-  | 'grantDigest'
-  | 'subjectRevision'
-  | 'policyVersion'
->;
-
-type ReqKeyInput = Pick<CapabilityRequirement, 'id' | 'operation' | 'resourceRef' | 'scope'>;
-
-function contextTuple(c: ContextIdentity): string {
-  return `${c.workerId}::${c.sessionId}::${c.adapterId}::${c.toolSchemaDigest}::${c.grantDigest}::${c.subjectRevision}::${c.policyVersion}`;
+function contextTuple(c: ReadinessProof | WorkerBoundaryContext): string {
+  return JSON.stringify([
+    c.workerId,
+    c.sessionId,
+    c.adapterId,
+    c.toolSchemaDigest,
+    c.grantDigest,
+    c.subjectRevision,
+    c.policyVersion,
+  ]);
 }
 
-function reqTuple(r: ReqKeyInput): string {
-  return `${r.id}::${r.operation}::${r.resourceRef ?? ''}::${r.scope ?? ''}`;
+function reqTuple(r: CapabilityRequirement): string {
+  return JSON.stringify([r.id, r.operation, r.resourceRef ?? null, r.scope ?? null]);
+}
+
+function proofReqTuple(p: ReadinessProof): string {
+  return JSON.stringify([p.requirementId, p.operation, p.resourceRef ?? null, p.scope ?? null]);
 }
 
 export function isProofValidForContext(
@@ -135,13 +134,7 @@ export function isProofValidForContext(
   revokedProofIds?: ReadonlySet<string>
 ): boolean {
   if (revokedProofIds?.has(p.proofId) === true || now >= p.expiresAt) return false;
-  const pReq: ReqKeyInput = {
-    id: p.requirementId,
-    operation: p.operation,
-    resourceRef: p.resourceRef,
-    scope: p.scope,
-  };
-  return contextTuple(p) === contextTuple(c) && reqTuple(pReq) === reqTuple(req);
+  return contextTuple(p) === contextTuple(c) && proofReqTuple(p) === reqTuple(req);
 }
 
 export class ReadinessProofCache {
@@ -149,13 +142,7 @@ export class ReadinessProofCache {
   private readonly revokedIds = new Set<string>();
 
   putProof(p: ReadinessProof): void {
-    const pReq: ReqKeyInput = {
-      id: p.requirementId,
-      operation: p.operation,
-      resourceRef: p.resourceRef,
-      scope: p.scope,
-    };
-    this.store.set(`${p.workerId}::${p.sessionId}::${reqTuple(pReq)}`, p);
+    this.store.set(JSON.stringify([p.workerId, p.sessionId, proofReqTuple(p)]), p);
   }
 
   revokeProof(proofId: string): void {
@@ -167,7 +154,7 @@ export class ReadinessProofCache {
     req: CapabilityRequirement,
     now: number
   ): ReadinessProof | undefined {
-    const k = `${ctx.workerId}::${ctx.sessionId}::${reqTuple(req)}`;
+    const k = JSON.stringify([ctx.workerId, ctx.sessionId, reqTuple(req)]);
     const candidate = this.store.get(k);
     if (candidate === undefined) return undefined;
     if (!isProofValidForContext(candidate, ctx, req, now, this.revokedIds)) {
@@ -197,31 +184,6 @@ function makeFailure(
   };
 }
 
-function checkStaticBindLevel(
-  req: CapabilityRequirement,
-  ctx: WorkerBoundaryContext
-): ReadinessFailure | null {
-  if (!ctx.advertisedOperations.includes(req.operation)) {
-    return makeFailure(
-      req,
-      ctx.workerId,
-      'unadvertised',
-      'UnadvertisedOperationError',
-      `Operation "${req.operation}" is not advertised on worker "${ctx.workerId}"`
-    );
-  }
-  if (!ctx.authorizedOperations.includes(req.operation)) {
-    return makeFailure(
-      req,
-      ctx.workerId,
-      'advertised',
-      'UnauthorizedOperationError',
-      `Operation "${req.operation}" is advertised but not authorized for worker "${ctx.workerId}"`
-    );
-  }
-  return null;
-}
-
 function isSafeScratchPath(scratchDir: string | undefined): scratchDir is string {
   if (scratchDir === undefined) return false;
   const trimmed = scratchDir.trim();
@@ -233,23 +195,13 @@ function buildProbeOptions(
   ctx: WorkerBoundaryContext,
   signal?: AbortSignal
 ): WorkerProbeExecutionOptions | ReadinessFailure {
-  if (!isWriteOperation(req.operation)) {
-    return { isScratchProbe: false, ...(signal !== undefined ? { signal } : {}) };
-  }
+  const sigOpt = signal !== undefined ? { signal } : {};
+  if (!isWriteOperation(req.operation)) return { isScratchProbe: false, ...sigOpt };
   if (!isSafeScratchPath(ctx.approvedScratchDir)) {
-    return makeFailure(
-      req,
-      ctx.workerId,
-      'bound-to-worker',
-      'UnsafeWriteProbeRejectedError',
-      `Write capability "${req.operation}" cannot be probed without a safe absolute approvedScratchDir on worker "${ctx.workerId}"`
-    );
+    const msg = `Write capability "${req.operation}" cannot be probed without a safe absolute approvedScratchDir on worker "${ctx.workerId}"`;
+    return makeFailure(req, ctx.workerId, 'bound-to-worker', 'UnsafeWriteProbeRejectedError', msg);
   }
-  return {
-    isScratchProbe: true,
-    scratchDir: ctx.approvedScratchDir.trim(),
-    ...(signal !== undefined ? { signal } : {}),
-  };
+  return { isScratchProbe: true, scratchDir: ctx.approvedScratchDir.trim(), ...sigOpt };
 }
 
 function createVerifiedProof(
@@ -259,8 +211,11 @@ function createVerifiedProof(
   issuedAt: number,
   ttlMs: number
 ): ReadinessProof {
-  const tuple = `${ctx.workerId}::${ctx.sessionId}::${reqTuple(req)}::${String(issuedAt)}`;
+  const tuple = JSON.stringify([ctx.workerId, ctx.sessionId, reqTuple(req), issuedAt]);
   const digest = createHash('sha256').update(tuple).digest('hex').slice(0, 12);
+  const scratchFlags = probeOptions.isScratchProbe
+    ? { probedInScratch: true, narrowerThanTargetWrite: true }
+    : {};
   return {
     proofId: `proof-${ctx.workerId}-${req.id}-${digest}-${String(issuedAt)}`,
     requirementId: req.id,
@@ -277,9 +232,7 @@ function createVerifiedProof(
     policyVersion: ctx.policyVersion,
     issuedAt,
     expiresAt: issuedAt + ttlMs,
-    ...(probeOptions.isScratchProbe
-      ? { probedInScratch: true, narrowerThanTargetWrite: true }
-      : {}),
+    ...scratchFlags,
   };
 }
 
@@ -292,28 +245,10 @@ async function invokeProbeSafely(
   try {
     return await config.probe(req, config.context, { ...probeOptions, signal });
   } catch (err: unknown) {
-    const errorClass =
-      err instanceof Error && err.name !== '' && err.name !== 'Error'
-        ? err.name
-        : 'ProbeExecutionError';
+    const hasName = err instanceof Error && err.name !== '' && err.name !== 'Error';
+    const errorClass = hasName ? err.name : 'ProbeExecutionError';
     return { ok: false, errorClass, message: err instanceof Error ? err.message : String(err) };
   }
-}
-
-function makeAbortRace(reqId: string, signal?: AbortSignal): Promise<WorkerProbeOutcome> {
-  return new Promise<WorkerProbeOutcome>((resolve) => {
-    signal?.addEventListener(
-      'abort',
-      () => {
-        resolve({
-          ok: false,
-          errorClass: 'ProbeAbortedError',
-          message: `Worker probe for "${reqId}" aborted during execution`,
-        });
-      },
-      { once: true }
-    );
-  });
 }
 
 async function runBoundedProbe(
@@ -322,20 +257,6 @@ async function runBoundedProbe(
   probeOptions: WorkerProbeExecutionOptions,
   effectiveTimeoutMs: number
 ): Promise<WorkerProbeOutcome> {
-  if (config.signal?.aborted === true) {
-    return {
-      ok: false,
-      errorClass: 'ProbeAbortedError',
-      message: `Worker probe for "${req.id}" aborted before invocation`,
-    };
-  }
-  if (effectiveTimeoutMs <= 0) {
-    return {
-      ok: false,
-      errorClass: 'ProbeTimeoutError',
-      message: `Worker preflight deadline exhausted before probing "${req.id}"`,
-    };
-  }
   const controller = new AbortController();
   const onAbort = (): void => {
     controller.abort();
@@ -345,18 +266,25 @@ async function runBoundedProbe(
   const timeoutRace = new Promise<WorkerProbeOutcome>((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
-      resolve({
-        ok: false,
-        errorClass: 'ProbeTimeoutError',
-        message: `Worker probe for "${req.id}" timed out after ${String(effectiveTimeoutMs)}ms`,
-      });
+      const message = `Worker probe for "${req.id}" timed out after ${String(effectiveTimeoutMs)}ms`;
+      resolve({ ok: false, errorClass: 'ProbeTimeoutError', message });
     }, effectiveTimeoutMs);
+  });
+  const abortRace = new Promise<WorkerProbeOutcome>((resolve) => {
+    config.signal?.addEventListener(
+      'abort',
+      () => {
+        const message = `Worker probe for "${req.id}" aborted during execution`;
+        resolve({ ok: false, errorClass: 'ProbeAbortedError', message });
+      },
+      { once: true }
+    );
   });
   try {
     return await Promise.race([
       invokeProbeSafely(req, config, probeOptions, controller.signal),
       timeoutRace,
-      makeAbortRace(req.id, config.signal),
+      abortRace,
     ]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
@@ -373,6 +301,32 @@ function resolveClock(nowConfig: number | (() => number) | undefined): () => num
   return () => getTimeProvider().now();
 }
 
+function checkPreStepBounds(
+  req: CapabilityRequirement,
+  config: WorkerReadinessConfig,
+  stepStart: number,
+  deadlineAt: number | undefined
+): ReadinessFailure | null {
+  const ctx = config.context;
+  if (config.signal?.aborted === true) {
+    const msg = `Worker probe for "${req.id}" aborted before invocation`;
+    return makeFailure(req, ctx.workerId, 'bound-to-worker', 'ProbeAbortedError', msg);
+  }
+  if (deadlineAt !== undefined && stepStart >= deadlineAt) {
+    const msg = `Worker preflight deadline exhausted before evaluating "${req.id}"`;
+    return makeFailure(req, ctx.workerId, 'bound-to-worker', 'ProbeTimeoutError', msg);
+  }
+  if (!ctx.advertisedOperations.includes(req.operation)) {
+    const msg = `Operation "${req.operation}" is not advertised on worker "${ctx.workerId}"`;
+    return makeFailure(req, ctx.workerId, 'unadvertised', 'UnadvertisedOperationError', msg);
+  }
+  if (!ctx.authorizedOperations.includes(req.operation)) {
+    const msg = `Operation "${req.operation}" is advertised but not authorized for worker "${ctx.workerId}"`;
+    return makeFailure(req, ctx.workerId, 'advertised', 'UnauthorizedOperationError', msg);
+  }
+  return null;
+}
+
 async function evaluateSingleRequirement(
   req: CapabilityRequirement,
   config: WorkerReadinessConfig,
@@ -381,10 +335,10 @@ async function evaluateSingleRequirement(
   deadlineAt: number | undefined
 ): Promise<{ proof?: ReadinessProof; failure?: ReadinessFailure }> {
   const stepStart = clock();
+  const preStepFailure = checkPreStepBounds(req, config, stepStart, deadlineAt);
+  if (preStepFailure !== null) return { failure: preStepFailure };
   const cached = config.cache?.getValidProof(config.context, req, stepStart);
   if (cached !== undefined) return { proof: cached };
-  const staticFailure = checkStaticBindLevel(req, config.context);
-  if (staticFailure !== null) return { failure: staticFailure };
   const probeOptionsOrFailure = buildProbeOptions(req, config.context, config.signal);
   if ('errorClass' in probeOptionsOrFailure) return { failure: probeOptionsOrFailure };
 
@@ -416,20 +370,23 @@ function revalidateProofsAtCompletion(
 ): ReadinessProof[] {
   const validProofs: ReadinessProof[] = [];
   for (const { req, proof } of entries) {
-    const isFresh =
-      config.cache !== undefined
-        ? config.cache.getValidProof(config.context, req, completionTime) !== undefined
-        : isProofValidForContext(proof, config.context, req, completionTime);
-    if (isFresh) {
+    const selfValid = isProofValidForContext(proof, config.context, req, completionTime);
+    const cacheCurrent = config.cache?.getValidProof(config.context, req, completionTime);
+    if (selfValid && (config.cache === undefined || cacheCurrent?.proofId === proof.proofId)) {
       validProofs.push(proof);
       continue;
     }
+    if (cacheCurrent !== undefined && cacheCurrent.proofId !== proof.proofId) {
+      validProofs.push(cacheCurrent);
+      continue;
+    }
+    const msg = `Cached readiness proof "${proof.proofId}" expired before preflight completed`;
     const fail = makeFailure(
       req,
       config.context.workerId,
       'bound-to-worker',
       'ProofExpiredDuringPreflightError',
-      `Cached readiness proof "${proof.proofId}" expired before preflight completed`
+      msg
     );
     (req.mode === 'enforcing' ? failures : advisoryWarnings).push(fail);
   }

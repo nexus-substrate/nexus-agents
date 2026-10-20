@@ -112,25 +112,48 @@ type ExecuteResult =
   | { readonly ok: true; readonly value: PipelineResult }
   | { readonly ok: false; readonly error: string };
 
-function resolveCombinedSignal(
-  pipelineSignal: AbortSignal | undefined,
-  workerSignal: AbortSignal | undefined
-): AbortSignal | undefined {
-  if (pipelineSignal !== undefined && workerSignal !== undefined) {
-    return AbortSignal.any([pipelineSignal, workerSignal]);
-  }
-  return workerSignal ?? pipelineSignal;
+function resolvePreflightConfig(
+  workerReadiness: WorkerReadinessConfig,
+  pipelineTimeoutMs: number,
+  pipelineSignal: AbortSignal | undefined
+): { effectiveSignal: AbortSignal | undefined; totalBudgetMs: number; effectiveProbeMs: number } {
+  const effectiveSignal =
+    pipelineSignal !== undefined && workerReadiness.signal !== undefined
+      ? AbortSignal.any([pipelineSignal, workerReadiness.signal])
+      : (workerReadiness.signal ?? pipelineSignal);
+  const totalBudgetMs = Math.min(
+    pipelineTimeoutMs,
+    workerReadiness.totalTimeoutMs ?? pipelineTimeoutMs
+  );
+  const effectiveProbeMs = Math.min(workerReadiness.probeTimeoutMs ?? totalBudgetMs, totalBudgetMs);
+  return { effectiveSignal, totalBudgetMs, effectiveProbeMs };
 }
 
-function resolveEffectiveProbeTimeout(
-  pipeline: CompiledPipeline,
-  options: PipelineExecuteOptions
-): { totalBudgetMs: number; effectiveProbeTimeout: number } {
-  const totalBudgetMs = options.timeout ?? pipeline.plan.timeoutMs;
-  const probeTimeoutMs = options.workerReadiness?.probeTimeoutMs;
-  const effectiveProbeTimeout =
-    probeTimeoutMs !== undefined ? Math.min(probeTimeoutMs, totalBudgetMs) : totalBudgetMs;
-  return { totalBudgetMs, effectiveProbeTimeout };
+function formatReadinessOutcome(
+  report: {
+    readonly ready: boolean;
+    readonly workerId: string;
+    readonly failures: readonly {
+      readonly requirementId: string;
+      readonly errorClass: string;
+      readonly message: string;
+    }[];
+  },
+  effectiveSignal: AbortSignal | undefined,
+  startTime: number,
+  totalBudgetMs: number
+): string | null {
+  if (effectiveSignal?.aborted === true) return 'Pipeline aborted during preflight readiness';
+  if (!report.ready) {
+    const details = report.failures
+      .map((f) => `${f.requirementId} (${f.errorClass}: ${f.message})`)
+      .join('; ');
+    return `WorkerNotReadyError [${report.workerId}]: ${details}`;
+  }
+  if (Date.now() - startTime >= totalBudgetMs) {
+    return `PipelineTimeoutError [${report.workerId}]: Preflight readiness exhausted timeout budget (${String(totalBudgetMs)}ms)`;
+  }
+  return null;
 }
 
 async function checkPreflightReadiness(
@@ -139,32 +162,21 @@ async function checkPreflightReadiness(
   options: PipelineExecuteOptions | undefined,
   startTime: number
 ): Promise<string | null> {
-  if (options?.workerReadiness === undefined) {
-    return null;
-  }
-  const requirements = task.capabilityRequirements ?? [];
-  const { totalBudgetMs, effectiveProbeTimeout } = resolveEffectiveProbeTimeout(pipeline, options);
-  const effectiveSignal = resolveCombinedSignal(options.signal, options.workerReadiness.signal);
+  if (options?.workerReadiness === undefined) return null;
+  const { effectiveSignal, totalBudgetMs, effectiveProbeMs } = resolvePreflightConfig(
+    options.workerReadiness,
+    options.timeout ?? pipeline.plan.timeoutMs,
+    options.signal
+  );
+  if (effectiveSignal?.aborted === true) return 'Pipeline aborted before preflight readiness';
 
-  const report = await verifyWorkerReadiness(requirements, {
+  const report = await verifyWorkerReadiness(task.capabilityRequirements ?? [], {
     ...options.workerReadiness,
-    probeTimeoutMs: effectiveProbeTimeout,
+    probeTimeoutMs: effectiveProbeMs,
     totalTimeoutMs: totalBudgetMs,
     ...(effectiveSignal !== undefined ? { signal: effectiveSignal } : {}),
   });
-  if (options.signal?.aborted === true) {
-    return 'Pipeline aborted during preflight readiness';
-  }
-  if (!report.ready) {
-    const details = report.failures
-      .map((f) => `${f.requirementId} (${f.errorClass}: ${f.message})`)
-      .join('; ');
-    return `WorkerNotReadyError [${report.workerId}]: ${details}`;
-  }
-  if (Date.now() - startTime >= totalBudgetMs) {
-    return `PipelineTimeoutError [${report.workerId}]: Preflight readiness exhausted pipeline timeout budget (${String(totalBudgetMs)}ms)`;
-  }
-  return null;
+  return formatReadinessOutcome(report, effectiveSignal, startTime, totalBudgetMs);
 }
 
 function computeRemainingTimeout(

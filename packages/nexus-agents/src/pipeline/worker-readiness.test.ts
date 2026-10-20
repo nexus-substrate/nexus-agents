@@ -402,6 +402,83 @@ describe('Task T06 / C04: Revoked or Changed Grant Invalidates Proof', () => {
     expect(report.failures[0]?.requirementId).toBe('cap-short-ttl');
     expect(report.failures[0]?.errorClass).toBe('ProofExpiredDuringPreflightError');
   });
+
+  it('prevents delimiter-injected cache-key collisions and rejects expired proof when cache is concurrently refreshed', async () => {
+    const cache = new ReadinessProofCache();
+    let clock = 1_700_000_000_000;
+    const ctx = baseWorkerContext();
+
+    // Delimiter collision attempt: resourceRef="a::b" + scope="c" vs resourceRef="a" + scope="b::c"
+    const reqDelimiterA: CapabilityRequirement = {
+      id: 'cap-delim',
+      operation: 'artifact.read',
+      resourceRef: 'a::b',
+      scope: 'c',
+      mode: 'enforcing',
+    };
+    const reqDelimiterB: CapabilityRequirement = {
+      id: 'cap-delim',
+      operation: 'artifact.read',
+      resourceRef: 'a',
+      scope: 'b::c',
+      mode: 'enforcing',
+    };
+
+    await verifyWorkerReadiness([reqDelimiterA], {
+      context: ctx,
+      probe: () => ({ ok: true }),
+      cache,
+      now: () => clock,
+    });
+    expect(cache.getValidProof(ctx, reqDelimiterB, clock)).toBeUndefined();
+
+    // Concurrent cache replacement during preflight: expired proof1 must not be returned even if cache now has fresh proof2
+    const reqConcurrent: CapabilityRequirement = {
+      id: 'cap-concurrent',
+      operation: 'artifact.read',
+      resourceRef: 'artifact:concurrent',
+      mode: 'enforcing',
+    };
+    const reqTrigger: CapabilityRequirement = {
+      id: 'cap-trigger',
+      operation: 'file.read',
+      resourceRef: 'artifact:trigger',
+      mode: 'enforcing',
+    };
+
+    const firstRun = await verifyWorkerReadiness([reqConcurrent], {
+      context: ctx,
+      probe: () => ({ ok: true }),
+      cache,
+      now: () => clock,
+      proofTtlMs: 40,
+    });
+    const originalProof = firstRun.proofs[0];
+    expect(originalProof).toBeDefined();
+
+    const concurrentReport = await verifyWorkerReadiness([reqConcurrent, reqTrigger], {
+      context: ctx,
+      probe: (req) => {
+        if (req.id === 'cap-trigger') {
+          clock += 50; // originalProof is now expired (t=50 >= 40)
+          // Another concurrent caller refreshes cache with a new proof
+          cache.putProof({
+            ...(originalProof as ReadinessProof),
+            proofId: 'proof-refreshed-concurrent',
+            issuedAt: clock,
+            expiresAt: clock + 1000,
+          });
+        }
+        return { ok: true };
+      },
+      cache,
+      now: () => clock,
+      proofTtlMs: 40,
+    });
+
+    // Must not return expired originalProof as valid evidence; should return the refreshed proof or fail
+    expect(concurrentReport.proofs.some((p) => p.proofId === originalProof?.proofId)).toBe(false);
+  });
 });
 
 describe('Task T06 / C33: Unsafe Write-Capability Probe Prevention', () => {
@@ -672,6 +749,30 @@ describe('Task T06: PipelineRunner Worker Boundary Preflight Integration', () =>
     if (abortedExec.ok) {
       expect(abortedExec.value.success).toBe(false);
       expect(abortedExec.value.stepsExecuted).toBe(0);
+    }
+
+    // Verify pre-aborted workerReadiness.signal blocks stage execution even when cached proof exists
+    const preAbortedWorker = new AbortController();
+    preAbortedWorker.abort();
+    const cachedAbortCache = new ReadinessProofCache();
+    await verifyWorkerReadiness(task.capabilityRequirements ?? [], {
+      context: baseWorkerContext({ workerId: 'worker-cached-abort' }),
+      probe: () => ({ ok: true }),
+      cache: cachedAbortCache,
+    });
+
+    const cachedAbortedExec = await runner.execute(compiled.value, task, {
+      workerReadiness: {
+        context: baseWorkerContext({ workerId: 'worker-cached-abort' }),
+        signal: preAbortedWorker.signal,
+        cache: cachedAbortCache,
+        probe: () => ({ ok: true }),
+      },
+    });
+    expect(cachedAbortedExec.ok).toBe(true);
+    if (cachedAbortedExec.ok) {
+      expect(cachedAbortedExec.value.success).toBe(false);
+      expect(cachedAbortedExec.value.stepsExecuted).toBe(0);
     }
   });
 });
