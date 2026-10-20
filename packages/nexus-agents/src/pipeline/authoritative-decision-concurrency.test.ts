@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -340,7 +341,7 @@ describe('authoritative pipeline admission across real processes', () => {
     expect(nativeReady).toEqual(
       ['one', 'two'].map((workerId) => ({
         workerId,
-        databasePath: join(readyDir, 'decisions.db'),
+        databasePath: realpathSync(join(readyDir, 'decisions.db')),
         journalMode: 'wal',
       }))
     );
