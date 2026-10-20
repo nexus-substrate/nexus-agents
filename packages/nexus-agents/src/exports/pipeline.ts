@@ -43,6 +43,9 @@ export {
   type CompiledPipeline,
   type PipelineResult,
   type PipelineExecuteOptions,
+  // Durable decision store for the public runner options seam (#7522)
+  AuthoritativeDecisionStore,
+  type AuthoritativeDecisionStoreConfig,
   // Plugin types
   PluginManifestSchema,
   StageResultSchema,

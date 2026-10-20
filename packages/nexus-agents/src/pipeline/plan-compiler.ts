@@ -197,6 +197,7 @@ function createStageHandler(
         config: stage.config,
       };
       const result = await plugin.execute(stage, ctx);
+      if (!result.success) throw new Error(result.error ?? `Pipeline stage "${stage.id}" failed`);
       return {
         currentStage: stage.id,
         stageResults: [buildStageResult(stage.id, result)],

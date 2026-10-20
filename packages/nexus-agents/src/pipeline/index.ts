@@ -78,6 +78,20 @@ export {
 } from './worker-readiness.js';
 
 export {
+  AUTHORITATIVE_DECISION_STATES,
+  AuthoritativeDecisionStore,
+  type AuthoritativeDecisionState,
+  type OutboxIntentInput,
+  type PersistedOutboxIntent,
+  type DecisionTransitionInput,
+  type CommittedDecisionRecord,
+  type CommitTransitionOutcome,
+  type FlushOutboxOutcome,
+  type AuthoritativeTaskSnapshot,
+  type AuthoritativeDecisionStoreConfig,
+} from './authoritative-decision-store.js';
+
+export {
   // Schemas
   PluginManifestSchema,
   StageResultSchema,
