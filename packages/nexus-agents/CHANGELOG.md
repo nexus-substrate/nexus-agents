@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 12.5.0
+
+### Minor Changes
+
+- [#7538](https://github.com/nexus-substrate/nexus-agents/pull/7538) [`9083342`](https://github.com/nexus-substrate/nexus-agents/commit/908334252fde8f3d03e806c8f16a2831c5ec1bbe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce declared required pipeline evidence obligations before successful completion. Add host-configured artifact content digest verification, structured evidence reports, and accepted/rejected receipts persisted atomically with the final decision.
+
+  Content verification certifies only the expected artifact bytes. It does not prove worker delivery or model inspection; the actual worker-to-pipeline evidence bridge remains pending under [#7523](https://github.com/nexus-substrate/nexus-agents/issues/7523). Legacy tasks with no declared obligations retain their execution behavior.
+
 ## 12.4.0
 
 ### Minor Changes
