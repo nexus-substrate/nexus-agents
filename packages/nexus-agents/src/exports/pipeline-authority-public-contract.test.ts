@@ -16,14 +16,42 @@ import {
   PipelineRunner,
   type AuthoritativeDecisionStoreConfig,
   type PipelineExecuteOptions,
+  type EvidenceAuthorization,
+  type EvidenceBinding,
+  type EvidenceObservation,
+  type EvidenceVerificationRequest,
+  type EvidenceVerificationConfig,
+  type EvidenceReport,
 } from 'nexus-agents';
 
+const authorization: EvidenceAuthorization = {
+  obligationId: 'content', artifactRef: 'artifact:source', issuer: 'host-content-reader',
+  operation: 'artifact-content-digest', expectedDigest: 'a'.repeat(64), expectedBytes: 12,
+};
+const verification: EvidenceVerificationConfig = {
+  authorizations: [authorization],
+  verify(request: EvidenceVerificationRequest) {
+    const binding: EvidenceBinding = request.binding;
+    const observation: EvidenceObservation = { ...binding,
+      obligationId: 'content', artifactRef: 'artifact:source', issuer: 'host-content-reader',
+      operation: 'artifact-content-digest', digest: authorization.expectedDigest, bytes: 12,
+      coverage: { start: 0, end: 12 },
+    };
+    return [observation];
+  },
+};
+const evidence: EvidenceReport = { status: 'not_applicable', criteria: 0,
+  acceptedReceipts: 0, rejectedReceipts: 0, fulfilledObligations: [], missing: [],
+  unmetAdvisory: [], diagnostics: [],
+};
 const config: AuthoritativeDecisionStoreConfig = { storageDir: '/approved/pipeline-state' };
 const store = new AuthoritativeDecisionStore(config);
-const options: PipelineExecuteOptions = { decisionStore: store, decisionAttemptId: 'attempt-one' };
+const options: PipelineExecuteOptions = { decisionStore: store, decisionAttemptId: 'attempt-one',
+  evidenceVerification: verification,
+};
 const configuredStore: NonNullable<PipelineExecuteOptions['decisionStore']> = store;
 const runner = new PipelineRunner();
-void [options, configuredStore.getTaskSnapshot('task-one'), runner];
+void [options, configuredStore.getTaskSnapshot('task-one'), runner, evidence];
 `;
 
 function consumerDiagnostics(): readonly ts.Diagnostic[] {

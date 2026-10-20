@@ -5,7 +5,7 @@
  */
 import { createLogger, getTimeProvider, type Result } from '../core/index.js';
 import type { IEventBus, PipelineEvent } from './event-types.js';
-import type { TaskContract } from './task-contract.js';
+import type { EvidenceReceipt, TaskContract } from './task-contract.js';
 import {
   persistDecision,
   readDecisionSnapshot,
@@ -104,6 +104,7 @@ export class AuthoritativeDecisionStore {
       readonly error?: string;
       /** False retains ownership; a deadline does not prove callback settlement. */
       readonly executionSettled?: boolean;
+      readonly receipts?: readonly EvidenceReceipt[];
     }
   ): string | null {
     const success = outcome.success && outcome.executionSettled !== false;
@@ -127,6 +128,7 @@ export class AuthoritativeDecisionStore {
         contractVersion: task.contractVersion,
         subjectRevision: context.subjectRevision,
         reason: outcome.error === undefined ? context.scope : `${context.scope}: ${outcome.error}`,
+        receipts: outcome.receipts ?? [],
         outboxIntents: [{ intentId: `finish:${context.attemptId}`, event }],
       },
       this.clock()

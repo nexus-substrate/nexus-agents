@@ -44,6 +44,14 @@ export {
 } from './task-contract.js';
 
 export { compilePlan, type PlanCompileOptions } from './plan-compiler.js';
+export type {
+  EvidenceAuthorization,
+  EvidenceBinding,
+  EvidenceObservation,
+  EvidenceVerificationRequest,
+  EvidenceVerificationConfig,
+  EvidenceReport,
+} from './evidence-verification-types.js';
 
 export {
   resolvePipelineDeps,

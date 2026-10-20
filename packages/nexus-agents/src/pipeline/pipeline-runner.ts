@@ -26,6 +26,8 @@ import { emitStageCompleted, emitStageFailed } from './pipeline-observability.js
 import type { PlanContract, TaskContract } from './task-contract.js';
 import { verifyWorkerReadiness, type WorkerReadinessConfig } from './worker-readiness.js';
 import type { AuthoritativeDecisionStore } from './authoritative-decision-store.js';
+import type { EvidenceReport, EvidenceVerificationConfig } from './evidence-verification-types.js';
+import { evidenceAdmissionError } from './evidence-verification.js';
 
 const pipelineLogger = createLogger({ component: 'PipelineRunner' });
 
@@ -42,6 +44,7 @@ export interface CompiledPipeline {
 /** Pipeline execution result. */
 export interface PipelineResult {
   readonly success: boolean;
+  readonly evidence?: EvidenceReport;
   readonly stepsExecuted: number;
   readonly durationMs: number;
   readonly error?: string;
@@ -77,6 +80,7 @@ export function getDefaultRunsDir(): string {
 
 /** Pipeline execution options. */
 export interface PipelineExecuteOptions {
+  readonly evidenceVerification?: EvidenceVerificationConfig;
   readonly signal?: AbortSignal;
   readonly maxSteps?: number;
   readonly timeout?: number;
@@ -199,6 +203,8 @@ async function runPreExecutionGates(
   startTime: number
 ): Promise<string | null> {
   if (options?.signal?.aborted === true) return 'Pipeline aborted before execution';
+  const evidenceError = evidenceAdmissionError(task);
+  if (evidenceError !== null) return evidenceError;
   return checkPreflightReadiness(pipeline, task, options, startTime);
 }
 
@@ -252,26 +258,26 @@ export class PipelineRunner {
       executionBoundaryError(pipeline, options, startTime);
     if (preGateError !== null) return okResult(failedResult(startTime, preGateError));
 
-    const lifecycle = new PipelineRunLifecycle(pipeline, task, options);
+    const lifecycle = new PipelineRunLifecycle(pipeline, task, options, startTime);
     const admissionError = lifecycle.begin();
     if (admissionError !== null) return okResult(failedResult(startTime, admissionError));
 
     try {
       const boundaryError = executionBoundaryError(pipeline, options, startTime);
       if (boundaryError !== null)
-        return okResult(lifecycle.finish(failedResult(startTime, boundaryError)));
+        return okResult(await lifecycle.finish(failedResult(startTime, boundaryError)));
       const remainingTimeoutMs = computeRemainingTimeout(pipeline, options, startTime);
       const graphOpts = buildGraphOptions(pipeline, { ...options, timeout: remainingTimeoutMs });
       const graphResult = await executeGraph(lifecycle.executionGraph, { task }, graphOpts);
       if (!graphResult.ok) {
         const failed = failedResult(startTime, graphResult.error.message);
-        return okResult(lifecycle.finish(failed));
+        return okResult(await lifecycle.finish(failed));
       }
       const result = toResult(graphResult.value, startTime, options?.continueOnFailure === true);
-      return okResult(lifecycle.finish(result));
+      return okResult(await lifecycle.finish(result));
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      return okResult(lifecycle.finish(failedResult(startTime, message)));
+      return okResult(await lifecycle.finish(failedResult(startTime, message)));
     } finally {
       await lifecycle.flush();
     }

@@ -30,8 +30,9 @@ export class PipelineCallbackTracker {
     return this.activeCallbacks;
   }
 
-  private track<Args extends unknown[], Value>(
-    callback: (...args: Args) => Promise<Value>
+  /** Also tracks host verification work until its real promise settles. */
+  track<Args extends unknown[], Value>(
+    callback: (...args: Args) => Promise<Value> | Value
   ): (...args: Args) => Promise<Value> {
     return async (...args) => {
       this.activeCallbacks++;
