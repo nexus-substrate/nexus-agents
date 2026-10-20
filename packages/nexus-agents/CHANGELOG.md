@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 12.6.0
+
+### Minor Changes
+
+- [#7546](https://github.com/nexus-substrate/nexus-agents/pull/7546) [`75e9eb9`](https://github.com/nexus-substrate/nexus-agents/commit/75e9eb932d1a20626f2c33137631b006c62459e7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add an internal host-issued policy for one canonical native completion spawn attempt, with explicit nonretryable pre-spawn refusals and preserved absolute deadlines.
+
+  Materialize wrapper arguments and environment values before final cancellation/deadline validation, preserving inherited enumerable environment entries and preventing prelaunch callbacks from spending the physical spawn permit.
+
+### Patch Changes
+
+- [#7546](https://github.com/nexus-substrate/nexus-agents/pull/7546) [`75e9eb9`](https://github.com/nexus-substrate/nexus-agents/commit/75e9eb932d1a20626f2c33137631b006c62459e7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce host-issued native execution policy at retry and Claude fallback decisions so caller overrides cannot replace a launched failure before canonical health and capacity accounting.
+
 ## 12.5.1
 
 ### Patch Changes
