@@ -478,10 +478,31 @@ describe('Task T06 / C04: Revoked or Changed Grant Invalidates Proof', () => {
 
     // Must not return expired originalProof as valid evidence; should return the refreshed proof or fail
     expect(concurrentReport.proofs.some((p) => p.proofId === originalProof?.proofId)).toBe(false);
+
+    // Unprobed cached proofs (e.g. level="advertised" or "authorized") must never satisfy readiness
+    const unprobedProof: ReadinessProof = {
+      ...(originalProof as ReadinessProof),
+      proofId: 'proof-unprobed-advertised',
+      level: 'advertised',
+      issuedAt: clock,
+      expiresAt: clock + 5000,
+    };
+    cache.putProof(unprobedProof);
+    expect(isProofValidForContext(unprobedProof, ctx, reqConcurrent, clock)).toBe(false);
   });
 });
 
 describe('Task T06 / C33: Unsafe Write-Capability Probe Prevention', () => {
+  it('detects camelCase and expanded mutating verbs (writeFile, gitCommit, uploadArtifact) as write operations', () => {
+    expect(isWriteOperation('writeFile')).toBe(true);
+    expect(isWriteOperation('gitCommit')).toBe(true);
+    expect(isWriteOperation('uploadArtifact')).toBe(true);
+    expect(isWriteOperation('db.upsert')).toBe(true);
+    expect(isWriteOperation('fs:unlink')).toBe(true);
+    expect(isWriteOperation('artifact.read')).toBe(false);
+    expect(isWriteOperation('readWriteLock')).toBe(true);
+  });
+
   it('refuses write probe when no approvedScratchDir is configured', async () => {
     const writeReq: CapabilityRequirement = {
       id: 'cap-write-file',
@@ -589,7 +610,7 @@ describe('Task T06 / C33: Unsafe Write-Capability Probe Prevention', () => {
     expect(report.failures[0]?.message).toContain('Socket hang up');
   });
 
-  it('bounds stalled worker probes via probeTimeoutMs and AbortSignal', async () => {
+  it('bounds stalled worker probes via probeTimeoutMs and AbortSignal, including synchronous clock overruns', async () => {
     const req: CapabilityRequirement = {
       id: 'cap-stalled',
       operation: 'artifact.read',
@@ -608,6 +629,21 @@ describe('Task T06 / C33: Unsafe Write-Capability Probe Prevention', () => {
 
     expect(report.ready).toBe(false);
     expect(report.failures[0]?.errorClass).toBe('ProbeTimeoutError');
+
+    // Synchronous probe that advances clock past probeTimeoutMs or totalTimeoutMs must also fail
+    let syncClock = 1_700_000_000_000;
+    const syncOverrun = await verifyWorkerReadiness([req], {
+      context: baseWorkerContext(),
+      probeTimeoutMs: 10,
+      totalTimeoutMs: 25,
+      now: () => syncClock,
+      probe: () => {
+        syncClock += 30;
+        return { ok: true };
+      },
+    });
+    expect(syncOverrun.ready).toBe(false);
+    expect(syncOverrun.failures[0]?.errorClass).toBe('ProbeTimeoutError');
   });
 });
 
