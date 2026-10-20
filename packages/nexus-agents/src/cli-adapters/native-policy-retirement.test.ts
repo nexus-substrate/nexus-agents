@@ -1,5 +1,6 @@
 /** Real policy→Base→subprocess boundary; child and signal operations are offline doubles. */
 import { EventEmitter } from 'node:events';
+import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../core/index.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { PassThrough } from 'node:stream';
 import { isCallerAbortError, isNativePreSpawnRefusal } from './cli-error-helpers.js';
@@ -282,7 +283,32 @@ describe('terminal host operation after actual request refusal (#7534)', () => {
     autoClose();
     expectRetired(await adapter.execute({ content: 'fixture' }, host.options));
     expect(spawn).not.toHaveBeenCalled();
-    expect(adapter.cleanup).toHaveBeenCalledTimes(2);
+    // The second call is refused before getCommand creates any cleanup resource.
+    expect(adapter.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns actual expiry first and a distinct retirement on subsequent admission', () => {
+    const clock = new FixedTimeProvider(1000);
+    setTimeProvider(clock);
+    try {
+      const issued = issueNativeExecutionPolicy({ deadlineAt: 2000, resources: resources() });
+      if (!issued.ok) throw new Error('Expected policy');
+      clock.advance(1000);
+      expect(nativeExecutionBudget(issued.value)).toEqual({
+        ok: false,
+        error: { reason: 'expired-before-spawn' },
+      });
+      expect(nativeExecutionOptions(issued.value)).toEqual({
+        ok: false,
+        error: { reason: 'expired-before-spawn' },
+      });
+      expect(nativeExecutionOptions(issued.value)).toEqual({
+        ok: false,
+        error: { reason: 'policy-retired' },
+      });
+    } finally {
+      resetTimeProvider();
+    }
   });
 
   it('pure budget inquiry with request cancellation neither retires nor publishes refusal', async () => {
