@@ -98,12 +98,19 @@ export class AuthoritativeDecisionStore {
   recordPipelineFinish(
     task: TaskContract,
     context: PipelineDecisionContext,
-    outcome: { readonly success: boolean; readonly durationMs: number; readonly error?: string }
+    outcome: {
+      readonly success: boolean;
+      readonly durationMs: number;
+      readonly error?: string;
+      /** False retains ownership; a deadline does not prove callback settlement. */
+      readonly executionSettled?: boolean;
+    }
   ): string | null {
+    const success = outcome.success && outcome.executionSettled !== false;
     const event: PipelineEvent = {
       type: 'pipeline.completed',
       executionId: task.id,
-      success: outcome.success,
+      success,
       durationMs: outcome.durationMs,
       timestamp: this.clock(),
     };
@@ -114,7 +121,8 @@ export class AuthoritativeDecisionStore {
         attemptId: context.attemptId,
         idempotencyKey: `pipeline-finish:${context.attemptId}`,
         fromState: 'executing',
-        toState: outcome.success ? 'terminal' : 'blocked',
+        toState:
+          outcome.executionSettled === false ? 'recoverable' : success ? 'terminal' : 'blocked',
         mode: 'enforcing',
         contractVersion: task.contractVersion,
         subjectRevision: context.subjectRevision,

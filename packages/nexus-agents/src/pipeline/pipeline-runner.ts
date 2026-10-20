@@ -262,7 +262,7 @@ export class PipelineRunner {
         return okResult(lifecycle.finish(failedResult(startTime, boundaryError)));
       const remainingTimeoutMs = computeRemainingTimeout(pipeline, options, startTime);
       const graphOpts = buildGraphOptions(pipeline, { ...options, timeout: remainingTimeoutMs });
-      const graphResult = await executeGraph(pipeline.graph, { task }, graphOpts);
+      const graphResult = await executeGraph(lifecycle.executionGraph, { task }, graphOpts);
       if (!graphResult.ok) {
         const failed = failedResult(startTime, graphResult.error.message);
         return okResult(lifecycle.finish(failed));

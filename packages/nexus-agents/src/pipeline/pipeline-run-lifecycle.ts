@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { createLogger } from '../core/logger.js';
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 import { TraceWriter } from './trace-writer.js';
+import { PipelineCallbackTracker } from './pipeline-callback-tracker.js';
+import type { CompiledGraph } from '../orchestration/graph/graph-types.js';
 import type {
   CompiledPipeline,
   PipelineExecuteOptions,
@@ -12,8 +14,18 @@ import type { TaskContract } from './task-contract.js';
 
 const logger = createLogger({ component: 'PipelineRunner' });
 
+function rejectUnsettledResult(result: PipelineResult, pendingCallbacks: number): PipelineResult {
+  if (pendingCallbacks === 0) return result;
+  return {
+    ...result,
+    success: false,
+    error: `UnsettledExecutionError: ${String(pendingCallbacks)} callback(s) still active; explicit recovery required. ${result.error ?? ''}`,
+  };
+}
+
 export class PipelineRunLifecycle {
   private writer: TraceWriter | undefined;
+  private readonly callbacks: PipelineCallbackTracker | undefined;
   private readonly context: { attemptId: string; subjectRevision: string; scope: string };
 
   constructor(
@@ -21,11 +33,19 @@ export class PipelineRunLifecycle {
     private readonly task: TaskContract,
     private readonly options: PipelineExecuteOptions | undefined
   ) {
+    this.callbacks =
+      options?.decisionStore === undefined
+        ? undefined
+        : new PipelineCallbackTracker(pipeline.graph);
     this.context = {
       attemptId: options?.decisionAttemptId ?? task.id,
       scope: options?.decisionScope ?? 'pipeline-attempt',
       subjectRevision: '',
     };
+  }
+
+  get executionGraph(): CompiledGraph {
+    return this.callbacks?.graph ?? this.pipeline.graph;
   }
 
   /** No graph work or lifecycle event precedes successful durable admission. */
@@ -72,21 +92,26 @@ export class PipelineRunLifecycle {
 
   /** Missing terminal persistence never becomes a reported completed decision. */
   finish(result: PipelineResult): PipelineResult {
+    const pendingCallbacks = this.callbacks?.pendingCount ?? 0;
+    const outcome = rejectUnsettledResult(result, pendingCallbacks);
     const store = this.options?.decisionStore;
     if (store !== undefined) {
-      const error = store.recordPipelineFinish(this.task, this.context, result);
-      if (error !== null) return { ...result, success: false, error };
+      const error = store.recordPipelineFinish(this.task, this.context, {
+        ...outcome,
+        executionSettled: pendingCallbacks === 0,
+      });
+      if (error !== null) return { ...outcome, success: false, error };
       store.flushPendingOutbox(this.task.id, this.options?.eventBus);
     } else {
       this.options?.eventBus?.emit({
         type: 'pipeline.completed',
         executionId: this.task.id,
-        success: result.success,
-        durationMs: result.durationMs,
+        success: outcome.success,
+        durationMs: outcome.durationMs,
         timestamp: Date.now(),
       });
     }
-    return result;
+    return outcome;
   }
 
   async flush(): Promise<void> {

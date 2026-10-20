@@ -705,7 +705,7 @@ ClassDeclaration AuthoritativeDecisionStore
   commitTransition(input: DecisionTransitionInput) => Result<CommitTransitionOutcome, string>
   flushPendingOutbox(taskId: string, eventBus?: IEventBus) => FlushOutboxOutcome
   getTaskSnapshot(taskId: string) => Result<AuthoritativeTaskSnapshot | null, string>
-  recordPipelineFinish(task: TaskContract, context: PipelineDecisionContext, outcome: { readonly durationMs: number; readonly error?: string; readonly success: boolean; }) => null | string
+  recordPipelineFinish(task: TaskContract, context: PipelineDecisionContext, outcome: { readonly durationMs: number; readonly error?: string; readonly executionSettled?: boolean; readonly success: boolean; }) => null | string
   recordPipelineStart(task: TaskContract, context: PipelineDecisionContext) => null | string
 InterfaceDeclaration AuthoritativeDecisionStoreConfig
   readonly eventBus?: IEventBus | undefined
