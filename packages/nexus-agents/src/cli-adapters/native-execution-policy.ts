@@ -29,6 +29,12 @@ interface PolicyState {
 }
 const issued = new WeakMap<object, PolicyState>();
 
+/** Issued host policy forbids retries even when callers override ordinary options. */
+export function hasIssuedNativeExecutionPolicy(options: ExecutionOptions): boolean {
+  const policy = options[NATIVE_EXECUTION_POLICY];
+  return policy !== undefined && issued.has(policy);
+}
+
 /** Minted by trusted host code once per logical operation, never from model JSON. */
 export function issueNativeExecutionPolicy(input: {
   readonly deadlineAt: number;

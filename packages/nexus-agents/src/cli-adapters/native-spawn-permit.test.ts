@@ -263,7 +263,7 @@ describe('canonical native completion spawn boundary (#7533)', () => {
     expect(cleanup).toHaveBeenCalledTimes(2);
   });
 
-  it('blocks a physical second spawn even when the base retry layer is deliberately enabled', async () => {
+  it('suppresses a forced base retry without replacing the original failure', async () => {
     vi.useFakeTimers();
     const { adapter, cleanup } = configured();
     mockSpawn.mockImplementationOnce(() => offlineChild('', 1, 'connection refused'));
@@ -279,13 +279,13 @@ describe('canonical native completion spawn boundary (#7533)', () => {
     const result = await pending;
 
     expect(mockSpawn.mock.calls.length).toBe(1);
-    expect(adapter.command).toHaveBeenCalledTimes(2);
+    expect(adapter.command).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.cause).toMatchObject({ reason: 'permit-consumed' });
-    expect(cleanup).toHaveBeenCalledTimes(2);
+    if (!result.ok) expect(result.error.code).toBe('CONNECTION_ERROR');
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
-  it('blocks a physical second spawn through the actual transient retry layer', async () => {
+  it('suppresses a forced transient retry without replacing the original failure', async () => {
     const adapter = new TransientRetrySubprocess();
     const cleanup = vi.fn();
     adapter.command.mockReturnValue({ command: 'offline-command', args: [], cleanup });
@@ -299,13 +299,13 @@ describe('canonical native completion spawn boundary (#7533)', () => {
     );
 
     expect(mockSpawn.mock.calls.length).toBe(1);
-    expect(adapter.command).toHaveBeenCalledTimes(2);
+    expect(adapter.command).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.cause).toMatchObject({ reason: 'permit-consumed' });
-    expect(cleanup).toHaveBeenCalledTimes(2);
+    if (!result.ok) expect(result.error.code).toBe('CONNECTION_ERROR');
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
-  it('blocks the actual Claude in-family fallback even when its task suppression flag is absent', async () => {
+  it('suppresses Claude fallback under host policy even without its task flag', async () => {
     const adapter = new ClaudeCliAdapter();
     const attempts = vi.spyOn(SubprocessCliAdapter.prototype, 'executeTask');
     mockSpawn.mockImplementationOnce(() =>
@@ -325,10 +325,10 @@ describe('canonical native completion spawn boundary (#7533)', () => {
       nativeOptions(policy())
     );
 
-    expect(attempts).toHaveBeenCalledTimes(2);
+    expect(attempts).toHaveBeenCalledTimes(1);
     expect(mockSpawn.mock.calls.length).toBe(1);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.cause).toMatchObject({ reason: 'permit-consumed' });
+    if (!result.ok) expect(result.error.code).toBe('RATE_LIMITED');
   });
 
   it('reuses bridge conversion and preserves workDir while forwarding host retry suppression', async () => {

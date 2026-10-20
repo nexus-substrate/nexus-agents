@@ -37,7 +37,11 @@ import {
 import { createCallerAbortCliError, isTimeoutText } from './cli-error-helpers.js';
 import { generateHyphenId } from '../utils/id-utils.js';
 import { recordAbortObservation } from '../adapters/abort-observation.js';
-import { NATIVE_EXECUTION_POLICY, resolveNativeSpawnOptions } from './native-execution-policy.js';
+import {
+  NATIVE_EXECUTION_POLICY,
+  hasIssuedNativeExecutionPolicy,
+  resolveNativeSpawnOptions,
+} from './native-execution-policy.js';
 
 /** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
 const STDERR_ERROR_PATTERNS = [
@@ -356,7 +360,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * recording is unaffected.
    */
   protected override shouldOuterRetry(opts: ResolvedExecutionOptions): boolean {
-    return opts.allowRetry && !this.transientRetry.enabled;
+    return super.shouldOuterRetry(opts) && !this.transientRetry.enabled;
   }
 
   /**
@@ -441,7 +445,13 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     // adapter-internal correlation key.
     const requestId = generateHyphenId('cli-req', 8);
     const result = await this.spawnSubprocess(task, options, requestId);
-    if (result.ok || !this.transientRetry.enabled || !options.allowRetry) return result;
+    if (
+      result.ok ||
+      !this.transientRetry.enabled ||
+      !options.allowRetry ||
+      hasIssuedNativeExecutionPolicy(options)
+    )
+      return result;
     if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, options, result, 0, requestId);
