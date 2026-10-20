@@ -46,6 +46,12 @@ export {
   // Durable decision store for the public runner options seam (#7522)
   AuthoritativeDecisionStore,
   type AuthoritativeDecisionStoreConfig,
+  type EvidenceAuthorization,
+  type EvidenceBinding,
+  type EvidenceObservation,
+  type EvidenceVerificationRequest,
+  type EvidenceVerificationConfig,
+  type EvidenceReport,
   // Plugin types
   PluginManifestSchema,
   StageResultSchema,
