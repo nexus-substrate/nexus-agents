@@ -3,6 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
 
+// Full package-root type checking needs headroom under parallel coverage.
+const CONSUMER_COMPILATION_TIMEOUT_MS = 120_000;
+
 const consumerPath = fileURLToPath(
   new URL('../../pipeline-authority-consumer.ts', import.meta.url)
 );
@@ -48,10 +51,14 @@ function consumerDiagnostics(): readonly ts.Diagnostic[] {
 }
 
 describe('public pipeline authority consumer (#7522)', () => {
-  it('constructs the public store and supplies it to the public runner options', () => {
-    const diagnostics = consumerDiagnostics().map((diagnostic) =>
-      ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')
-    );
-    expect(diagnostics).toEqual([]);
-  });
+  it(
+    'constructs the public store and supplies it to the public runner options',
+    () => {
+      const diagnostics = consumerDiagnostics().map((diagnostic) =>
+        ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')
+      );
+      expect(diagnostics).toEqual([]);
+    },
+    CONSUMER_COMPILATION_TIMEOUT_MS
+  );
 });
