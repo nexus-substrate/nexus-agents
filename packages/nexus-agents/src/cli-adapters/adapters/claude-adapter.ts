@@ -32,6 +32,7 @@ import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { getDefaultRegistry } from '../../config/model-registry.js';
 import { isDurableCapacityText } from '../../adapters/rate-limit-detector.js';
+import { hasIssuedNativeExecutionPolicy } from '../native-execution-policy.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
@@ -245,6 +246,7 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
   /**
    * Run the task, and on an out-of-credits envelope for the requested model
    * retry ONCE with the next claude alias the registry lists (#6120).
+   * An issued host policy forbids this substitution independently of task options.
    *
    * The credit exhaustion the claude CLI reports is per MODEL — `fable`
    * answered "You're out of usage credits" while `sonnet` answered the same
@@ -277,7 +279,12 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     options: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
     const first = await super.executeTask(task, options);
-    if (first.ok || !isDurableCapacityText(first.error.message)) return first;
+    if (
+      first.ok ||
+      !isDurableCapacityText(first.error.message) ||
+      hasIssuedNativeExecutionPolicy(options)
+    )
+      return first;
     if (task.options?.[IN_FAMILY_FALLBACK_OPTION] === false) return first;
 
     const requested = toCliAlias(task.model ?? this.model);

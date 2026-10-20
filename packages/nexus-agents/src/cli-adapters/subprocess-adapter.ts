@@ -9,7 +9,11 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process';
+import type {
+  ChildProcess,
+  ChildProcessWithoutNullStreams,
+  SpawnOptionsWithoutStdio,
+} from 'node:child_process';
 
 import type { Result } from '../core/index.js';
 import { ok, err, getTimeProvider, createLogger, getErrorMessage } from '../core/index.js';
@@ -37,6 +41,11 @@ import {
 import { createCallerAbortCliError, isTimeoutText } from './cli-error-helpers.js';
 import { generateHyphenId } from '../utils/id-utils.js';
 import { recordAbortObservation } from '../adapters/abort-observation.js';
+import {
+  NATIVE_EXECUTION_POLICY,
+  hasIssuedNativeExecutionPolicy,
+  resolveNativeSpawnOptions,
+} from './native-execution-policy.js';
 
 /** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
 const STDERR_ERROR_PATTERNS = [
@@ -182,8 +191,9 @@ function spawnCliChild(
   cliName: CliName,
   cmdConfig: CommandConfig,
   task: CliTask,
-  timeoutMs: number
-): ChildProcessWithoutNullStreams {
+  execution: ResolvedExecutionOptions
+): Result<{ child: ChildProcessWithoutNullStreams; options: ResolvedExecutionOptions }, CliError> {
+  const { timeoutMs } = execution;
   // Curated child env: base infrastructure vars + only this CLI's
   // own vendor credentials, so cross-vendor API keys don't leak
   // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
@@ -197,16 +207,31 @@ function spawnCliChild(
     env: childEnv,
     timeoutMs,
   });
-  const command = wrapped?.command ?? cmdConfig.command;
-  const args = wrapped?.args ?? cmdConfig.args;
-  const options = wrapped?.options ?? { cwd, env: childEnv };
-  return trackProcessTree(
-    spawn(command, [...args], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: options.env,
-      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-    })
-  );
+  const { command, args, options } = wrapped ?? {
+    command: cmdConfig.command,
+    args: cmdConfig.args,
+    options: { cwd, env: childEnv },
+  };
+  // Fully evaluate host iterators/getters before the final cancellation/deadline fence.
+  const spawnArgs = [...args];
+  const env = options.env;
+  const spawnEnv = env === undefined ? undefined : (Object.create(null) as NodeJS.ProcessEnv);
+  if (env !== undefined && spawnEnv !== undefined) {
+    // Node intentionally includes inherited enumerable env values. Flatten them too,
+    // so its own normalization cannot invoke host getters after the final guard.
+    for (const key in env) spawnEnv[key] = env[key];
+  }
+  const finalCwd = options.cwd;
+  const spawnOptions: SpawnOptionsWithoutStdio = {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: spawnEnv,
+    ...(finalCwd !== undefined ? { cwd: finalCwd } : {}),
+  };
+  // No await, wrapper, iterator or host getter remains between consume and spawn.
+  const checked = resolveNativeSpawnOptions(execution, cliName, true);
+  if (!checked.ok) return checked;
+  const child = trackProcessTree(spawn(command, spawnArgs, spawnOptions));
+  return ok({ child, options: checked.value });
 }
 
 /**
@@ -348,7 +373,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * recording is unaffected.
    */
   protected override shouldOuterRetry(opts: ResolvedExecutionOptions): boolean {
-    return opts.allowRetry && !this.transientRetry.enabled;
+    return super.shouldOuterRetry(opts) && !this.transientRetry.enabled;
   }
 
   /**
@@ -433,7 +458,13 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     // adapter-internal correlation key.
     const requestId = generateHyphenId('cli-req', 8);
     const result = await this.spawnSubprocess(task, options, requestId);
-    if (result.ok || !this.transientRetry.enabled || !options.allowRetry) return result;
+    if (
+      result.ok ||
+      !this.transientRetry.enabled ||
+      !options.allowRetry ||
+      hasIssuedNativeExecutionPolicy(options)
+    )
+      return result;
     if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, options, result, 0, requestId);
@@ -526,22 +557,17 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     options: ResolvedExecutionOptions,
     requestId: string
   ): Promise<Result<CliResponse, CliError>> {
-    // #3026 finding 2: fast-fail if the caller already aborted before we
-    // bothered to spawn. Saves a child process start when an upstream
-    // wave/loop has already moved on. Checked before getCommand (#6680): a
-    // command builder can create a tempdir that only the spawn path cleans up.
-    const signal = options.signal;
-    if (signal?.aborted === true) {
-      return Promise.resolve(
-        err(createCallerAbortCliError(signal.reason, 'Aborted before spawn', this.name))
-      );
-    }
+    // Validate before creating command resources, then consume only after the wrapper.
+    const prepared = resolveNativeSpawnOptions(options, this.name, false);
+    if (!prepared.ok) return Promise.resolve(prepared);
+    const execution = prepared.value;
     // #6277: the resolved guard reaches getCommand on the task, so an adapter
     // whose CLI has its own wait (agy --print-timeout) can size it to the
     // budget instead of a default that races the guard.
-    const cmdConfig = this.getCommand(
-      task.timeoutMs === undefined ? { ...task, timeoutMs: options.timeoutMs } : task
-    );
+    const needsTimeout =
+      task.timeoutMs === undefined || execution[NATIVE_EXECUTION_POLICY] !== undefined;
+    const timeoutMs = Math.min(task.timeoutMs ?? execution.timeoutMs, execution.timeoutMs);
+    const cmdConfig = this.getCommand(needsTimeout ? { ...task, timeoutMs } : task);
     const startTime = getTimeProvider().now();
 
     return new Promise((resolveOuter) => {
@@ -551,21 +577,26 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         resolveOuter(r);
       };
       try {
-        const child = spawnCliChild(this.name, cmdConfig, task, options.timeoutMs);
+        const spawned = spawnCliChild(this.name, cmdConfig, task, execution);
+        if (!spawned.ok) {
+          resolve(spawned);
+          return;
+        }
+        const { child, options: finalOptions } = spawned.value;
 
-        const onProgress = options.onProgress;
+        const onProgress = finalOptions.onProgress;
         // Keep stdout evidence available to the caller-deadline abort path (#6851).
         const state = this.setupChildProcessHandlers({
           child,
           startTime,
-          timeoutMs: options.timeoutMs,
+          timeoutMs: finalOptions.timeoutMs,
           resolve,
           requestId,
           ...(onProgress !== undefined ? { onProgress } : {}),
         });
 
-        if (signal !== undefined) {
-          this.attachAbortSignal(child, signal, resolve, state);
+        if (finalOptions.signal !== undefined) {
+          this.attachAbortSignal(child, finalOptions.signal, resolve, state);
         }
 
         // Write stdin content if provided and close stdin

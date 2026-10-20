@@ -43,6 +43,7 @@ import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { breakerKeys } from './breaker-key.js';
 import { createCliError } from './cli-error-helpers.js';
+import { hasIssuedNativeExecutionPolicy } from './native-execution-policy.js';
 import { unenforcedAccessModeRefusal, withEnforcedAccessMode } from './access-mode.js';
 import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
 import type { LevelOutcome } from '../cli/cli-readiness.js';
@@ -234,12 +235,12 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   /**
    * Whether the shared outer retry loop ({@link executeCliRetryLoop}) is
    * allowed to retry this adapter's failures. The base adapter honors the
-   * caller's `allowRetry`. Subprocess adapters override this to suppress
+   * caller's `allowRetry` except for issued host policies. Subprocess adapters suppress
    * the outer loop when their own transient-retry layer is active, so the
    * two layers do not nest into multiplied spawns (#2824).
    */
   protected shouldOuterRetry(opts: ResolvedExecutionOptions): boolean {
-    return opts.allowRetry;
+    return opts.allowRetry && !hasIssuedNativeExecutionPolicy(opts);
   }
 
   /**
