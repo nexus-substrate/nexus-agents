@@ -10,7 +10,7 @@
  *
  * Disciplines: Red/Green TDD, Zero `any` policy, non-vacuous verdicts.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   READINESS_LEVELS,
   ReadinessProofCache,
@@ -747,26 +747,47 @@ describe('Task T06: PipelineRunner Worker Boundary Preflight Integration', () =>
       ],
     };
 
-    const startMulti = Date.now();
-    const stalledExec = await runner.execute(compiled.value, multiStalledTask, {
-      timeout: 30,
-      workerReadiness: {
-        context: baseWorkerContext({ workerId: 'worker-stalled-preflight' }),
-        probe: () => {
-          stalledProbeCount += 1;
-          return new Promise(() => {
-            // Never resolves
-          });
+    // Align timer delivery and wall-clock expiry at the shared deadline.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      const startMulti = Date.now();
+      const nodes = new Map(compiled.value.graph.nodes);
+      const stage = nodes.get('stage-1');
+      if (stage === undefined) throw new Error('Missing compiled stage-1 handler');
+      const stageEffect = vi.fn(stage.handler.bind(stage));
+      nodes.set(stage.id, { ...stage, handler: stageEffect });
+      const instrumented = { ...compiled.value, graph: { ...compiled.value.graph, nodes } };
+      let stalledSettled = false;
+      const pending = runner.execute(instrumented, multiStalledTask, {
+        timeout: 30,
+        workerReadiness: {
+          context: baseWorkerContext({ workerId: 'worker-stalled-preflight' }),
+          probe: () => {
+            stalledProbeCount += 1;
+            return new Promise(() => {
+              // Never resolves
+            });
+          },
         },
-      },
-    });
-    const elapsedMulti = Date.now() - startMulti;
-    expect(stalledExec.ok).toBe(true);
-    if (stalledExec.ok) {
-      expect(stalledExec.value.success).toBe(false);
-      expect(stalledExec.value.stepsExecuted).toBe(0);
+      });
+      void pending.then(() => {
+        stalledSettled = true;
+      });
+      await vi.advanceTimersByTimeAsync(30);
+      expect(stalledSettled).toBe(true);
       expect(stalledProbeCount).toBe(1);
-      expect(elapsedMulti).toBeLessThan(120);
+      expect(stageEffect).not.toHaveBeenCalled();
+      expect(Date.now() - startMulti).toBe(30);
+      const stalledExec = await pending;
+      expect(stalledExec.ok).toBe(true);
+      if (stalledExec.ok) {
+        expect(stalledExec.value.success).toBe(false);
+        expect(stalledExec.value.stepsExecuted).toBe(0);
+        expect(stalledExec.value.durationMs).toBe(30);
+      }
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
     }
 
     // Verify pipeline options.signal cancels preflight even when workerReadiness.signal is also provided
