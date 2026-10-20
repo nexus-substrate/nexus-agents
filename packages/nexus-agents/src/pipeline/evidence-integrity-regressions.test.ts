@@ -11,6 +11,8 @@ import { buildBaseTaskContract } from './task-contract-builders.js';
 import type { EvidenceObligation, TaskContract } from './task-contract.js';
 import type { EvidenceVerificationConfig } from './evidence-verification-types.js';
 import { readWorkerArtifact } from '../orchestration/aorchestra/worker-artifact.js';
+import { EventBus } from './event-bus.js';
+import { queryTraceFromDisk } from '../mcp/tools/query-trace-tool.js';
 
 interface Fixture {
   readonly directory: string;
@@ -216,4 +218,65 @@ describe('reviewed evidence integrity regressions', () => {
       }),
     ]);
   });
+
+  it.each([true, false])(
+    'includes host verification in completed duration (store=%s)',
+    async (durable) => {
+      const current = fixture(directories);
+      const bus = new EventBus();
+      const store = durable
+        ? new AuthoritativeDecisionStore({ storageDir: current.directory })
+        : undefined;
+      const graphMs = 23;
+      const verificationMs = 101;
+      let clock = 1_800_000_000_000;
+      const now = vi.spyOn(Date, 'now').mockImplementation(() => clock);
+      try {
+        const result = await new PipelineRunner().execute(current.pipeline, current.task, {
+          ...(store === undefined ? {} : { decisionStore: store }),
+          eventBus: bus,
+          runsDir: current.directory,
+          onStageComplete: () => {
+            clock += graphMs;
+          },
+          evidenceVerification: {
+            ...current.verification,
+            verify: async (request) => {
+              await Promise.resolve();
+              clock += verificationMs;
+              return current.verification.verify(request);
+            },
+          },
+        });
+        const expectedDuration = graphMs + verificationMs;
+        expect(result).toMatchObject({
+          ok: true,
+          value: { success: true, durationMs: expectedDuration },
+        });
+        expect(bus.query({ type: 'pipeline.completed' })).toEqual([
+          expect.objectContaining({ success: true, durationMs: expectedDuration }),
+        ]);
+        const trace = await queryTraceFromDisk(
+          { runId: current.task.id, eventType: 'pipeline.completed' },
+          current.directory
+        );
+        expect(trace.source).toBe('disk');
+        expect(trace.events).toEqual([expect.objectContaining({ durationMs: expectedDuration })]);
+        if (store !== undefined) {
+          const snapshot = store.getTaskSnapshot(current.task.id);
+          if (!snapshot.ok) throw new Error(snapshot.error);
+          expect(snapshot.value?.dispatchedOutboxIntents).toContainEqual(
+            expect.objectContaining({
+              event: expect.objectContaining({
+                type: 'pipeline.completed',
+                durationMs: expectedDuration,
+              }),
+            })
+          );
+        }
+      } finally {
+        now.mockRestore();
+      }
+    }
+  );
 });

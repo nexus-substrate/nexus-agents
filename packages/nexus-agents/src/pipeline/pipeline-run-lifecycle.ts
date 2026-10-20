@@ -72,7 +72,7 @@ export class PipelineRunLifecycle {
     private readonly pipeline: CompiledPipeline,
     private readonly task: TaskContract,
     private readonly options: PipelineExecuteOptions | undefined,
-    startTime: number
+    private readonly startTime: number
   ) {
     const evidence = prepareEvidenceVerification(task, options?.evidenceVerification);
     this.callbacks = callbackTracker(pipeline, evidence, options);
@@ -154,10 +154,10 @@ export class PipelineRunLifecycle {
       settled.success
     );
     const pendingAfterEvidence = this.pendingCallbacks;
-    const outcome = rejectUnsettledResult(
-      applyEvidenceOutcome(settled, evidence),
-      pendingAfterEvidence
-    );
+    const outcome = {
+      ...rejectUnsettledResult(applyEvidenceOutcome(settled, evidence), pendingAfterEvidence),
+      durationMs: Date.now() - this.startTime,
+    };
     const store = this.options?.decisionStore;
     if (store !== undefined) {
       const error = store.recordPipelineFinish(this.task, this.context, {
