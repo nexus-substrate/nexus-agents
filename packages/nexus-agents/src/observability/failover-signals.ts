@@ -103,6 +103,7 @@ export function startFailoverSignals(options?: FailoverSignalsOptions): void {
 
       pipelineBus.emit({
         type: 'signal.swarm_unhealthy',
+        origin: { kind: 'global', producer: 'failover' },
         timestamp: now,
         agentId: unhealthy.cli,
         reason: unhealthy.reason,

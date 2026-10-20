@@ -84,6 +84,9 @@ describe('dev-pipeline traces queried from disk', () => {
       {
         timestamp: 1234,
         runId,
+        // #7551 containment: actual dev producers are not threaded until #7552.
+        attributionVersion: 1,
+        captureRelation: 'unattributed',
         eventType: 'stage.completed',
         executionId: runId,
         nodeId: 'research',

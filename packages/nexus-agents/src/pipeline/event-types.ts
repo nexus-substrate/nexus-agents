@@ -8,6 +8,7 @@
  * @module pipeline/event-types
  */
 
+import type { TraceOrigin } from './trace-schema.js';
 import type { ContentTrustProvenanceRecord } from '../security/content-trust-tier.js';
 
 // ============================================================================
@@ -53,6 +54,8 @@ export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];
 
 /** Base fields present on every event. */
 interface BaseEvent {
+  /** Explicit producing context; diagnostic only, absent means UNKNOWN. */
+  readonly origin?: TraceOrigin;
   readonly timestamp: number;
   /** Stable identity on persisted diagnostic notifications; delivery may replay. */
   readonly intentId?: string;

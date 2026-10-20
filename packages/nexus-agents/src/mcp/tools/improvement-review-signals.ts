@@ -49,6 +49,7 @@ export function emitFitnessDeclinedSignal(
     const dimension = worstDimension(audit);
     bus.emit({
       type: 'signal.fitness_declined',
+      origin: { kind: 'global', producer: 'fitness-review' },
       timestamp: getTimeProvider().now(),
       score: audit.score,
       floor: fitnessFloor,

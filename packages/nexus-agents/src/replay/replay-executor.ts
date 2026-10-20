@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from '../core/index.js';
+import { validateTraceSnapshot } from '../pipeline/trace-attribution.js';
 import { ExecutionTraceEntrySchema } from '../pipeline/trace-schema.js';
 import type { ExecutionTraceEntry } from '../pipeline/trace-schema.js';
 
@@ -35,6 +36,8 @@ export interface ReplayComparison {
 
 /** Summary of a replay run. */
 export interface ReplaySummary {
+  /** No qualifying original decisions means no comparison was measured. */
+  readonly measurement: 'measured' | 'unmeasured';
   readonly runId: string;
   readonly totalDecisions: number;
   readonly matches: number;
@@ -48,6 +51,7 @@ export interface ReplaySummary {
 export function extractDecisions(entries: readonly ExecutionTraceEntry[]): TracedDecision[] {
   const decisions: TracedDecision[] = [];
   for (const entry of entries) {
+    if (!hasReplayAttribution(entry)) continue;
     if (entry.eventType !== 'routing.decision') continue;
     const modelId = entry.modelId;
     if (modelId === undefined) continue;
@@ -62,10 +66,22 @@ export function extractDecisions(entries: readonly ExecutionTraceEntry[]): Trace
   return decisions;
 }
 
+function hasReplayAttribution(entry: ExecutionTraceEntry): boolean {
+  const parsed = ExecutionTraceEntrySchema.safeParse(entry);
+  if (!parsed.success || parsed.data.attributionVersion !== 1) return false;
+  return (
+    parsed.data.captureRelation === 'run_related' || parsed.data.captureRelation === 'attempt_owned'
+  );
+}
+
 /**
  * Parse trace JSONL content into entries.
  */
-export function parseTraceJsonl(content: string): ExecutionTraceEntry[] {
+export function parseTraceJsonl(content: string, snapshot?: unknown): ExecutionTraceEntry[] {
+  const binding =
+    snapshot === undefined
+      ? undefined
+      : validateTraceSnapshot(content, snapshotRunId(snapshot), snapshot);
   const entries: ExecutionTraceEntry[] = [];
   let rejected = 0;
 
@@ -78,7 +94,17 @@ export function parseTraceJsonl(content: string): ExecutionTraceEntry[] {
       rejected++;
       continue;
     }
-    entries.push(entry);
+    if (binding?.status === 'measured') entries.push(entry);
+    else {
+      const {
+        attributionVersion: _version,
+        captureRelation: _relation,
+        origin: _origin,
+        captureOrigin: _capture,
+        ...legacy
+      } = entry;
+      entries.push(legacy);
+    }
   }
 
   // `warn`, not `debug` (#5018 pattern): at debug this is invisible at normal
@@ -115,6 +141,17 @@ function parseTraceLine(line: string): ExecutionTraceEntry | null {
   }
   const parsed = ExecutionTraceEntrySchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
+}
+
+function snapshotRunId(snapshot: unknown): string {
+  if (
+    snapshot !== null &&
+    typeof snapshot === 'object' &&
+    'runId' in snapshot &&
+    typeof snapshot.runId === 'string'
+  )
+    return snapshot.runId;
+  return '';
 }
 
 /**
@@ -168,6 +205,7 @@ export function compareDecisions(
   }
 
   return {
+    measurement: original.length === 0 ? 'unmeasured' : 'measured',
     runId: original[0]?.taskId ?? 'unknown',
     totalDecisions: original.length,
     matches,

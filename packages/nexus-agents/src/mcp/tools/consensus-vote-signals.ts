@@ -43,6 +43,7 @@ export function emitVoteRejectedSignal(
     const rejectionRules = rejectionRulesFrom(result);
     bus.emit({
       type: 'signal.vote_rejected',
+      origin: { kind: 'global', producer: 'consensus' },
       timestamp: getTimeProvider().now(),
       proposalId: result.proposalId,
       approvalPercentage: result.approvalPercentage,

@@ -204,6 +204,8 @@ export {
   ErrorTaxonomy,
   type ExecutionTraceEntry,
   type ErrorTaxonomyType,
+  type TraceOrigin,
+  type TraceRunOrigin,
 } from './trace-schema.js';
 
 export { TraceWriter, type TraceWriterOptions } from './trace-writer.js';

@@ -55,7 +55,17 @@ describe('extractDecisions', () => {
       { timestamp: 2, runId: 'r1', eventType: 'tick' as const },
       { timestamp: 3, runId: 'r1', eventType: 'routing.decision' as const, modelId: 'gemini' },
     ];
-    const decisions = extractDecisions(entries);
+    // Positive control supplies explicit matching provenance; legacy stays UNKNOWN.
+    const origin = { kind: 'run', producer: 'dev-pipeline', runId: 'r1' } as const;
+    const decisions = extractDecisions(
+      entries.map((entry) => ({
+        ...entry,
+        origin,
+        captureOrigin: origin,
+        attributionVersion: 1,
+        captureRelation: 'run_related',
+      }))
+    );
     expect(decisions).toHaveLength(2);
     expect(decisions[0]?.selectedModel).toBe('claude');
     expect(decisions[1]?.selectedModel).toBe('gemini');

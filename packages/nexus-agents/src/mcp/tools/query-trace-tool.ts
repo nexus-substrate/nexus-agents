@@ -10,6 +10,12 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import {
+  readTraceSnapshot,
+  relationCounts,
+  type TraceSnapshotReading,
+} from '../../pipeline/trace-attribution.js';
+import type { TraceRelationCounts } from '../../pipeline/trace-schema.js';
 import type { McpServer } from '../sdk-types.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { nexusDataPath } from '../../config/nexus-data-dir.js';
@@ -55,7 +61,21 @@ export type QueryTraceInput = z.infer<typeof QueryTraceInputSchema>;
 export type TraceErrorCategory =
   'not_found' | 'permission_error' | 'parse_error' | 'too_large' | 'unknown';
 
+export interface TraceAttributionReport {
+  readonly status: 'measured' | 'unmeasured';
+  readonly reason?: string;
+  readonly writerObserved: {
+    readonly observed: number;
+    readonly foreignDropped: number;
+    readonly evicted: number;
+  } | null;
+  readonly retained: TraceRelationCounts | null;
+  readonly filtered: TraceRelationCounts | null;
+  readonly returned: TraceRelationCounts | null;
+}
 export interface QueryTraceResponse {
+  /** Run-level participation cannot distinguish reused/concurrent sessions or prove settlement. */
+  readonly attribution?: TraceAttributionReport;
   readonly runId: string;
   readonly events: readonly Record<string, unknown>[];
   readonly totalEvents: number;
@@ -142,7 +162,12 @@ function parseJsonlLines(content: string): {
   let skippedLines = 0;
   for (const line of content.trim().split('\n').filter(Boolean)) {
     try {
-      events.push(JSON.parse(line) as Record<string, unknown>);
+      const parsed: unknown = JSON.parse(line);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        skippedLines++;
+        continue;
+      }
+      events.push(parsed as Record<string, unknown>);
     } catch {
       skippedLines++;
     }
@@ -189,16 +214,22 @@ function overSizeResponse(runId: string, sizeBytes: number): QueryTraceResponse 
  */
 function readTraceResponse(
   input: QueryTraceInput,
-  read: { events: Record<string, unknown>[]; skippedLines: number }
+  read: { events: Record<string, unknown>[]; skippedLines: number },
+  reading: TraceSnapshotReading
 ): QueryTraceResponse {
   const limit = input.limit ?? 100;
+  const events =
+    reading.status === 'measured'
+      ? reading.entries.map((entry) => ({ ...entry }))
+      : read.events.map(withoutCertifiedAttribution);
   const parsed =
     input.eventType !== undefined
-      ? read.events.filter((e) => e['eventType'] === input.eventType)
-      : read.events;
+      ? events.filter((e) => e['eventType'] === input.eventType)
+      : events;
 
   return {
     runId: input.runId,
+    attribution: attributionReport(reading, input.eventType, limit),
     events: parsed.slice(0, limit),
     totalEvents: parsed.length,
     truncated: parsed.length > limit,
@@ -212,6 +243,44 @@ function readTraceResponse(
             'could not be parsed; the events returned are what survived',
         }
       : {}),
+  };
+}
+
+/** Invalid/missing snapshot binding must not echo raw positive attribution as certified. */
+function withoutCertifiedAttribution(entry: Record<string, unknown>): Record<string, unknown> {
+  const {
+    attributionVersion: _version,
+    captureRelation: _relation,
+    captureOrigin: _capture,
+    origin: _origin,
+    ...legacy
+  } = entry;
+  return legacy;
+}
+
+function attributionReport(
+  reading: TraceSnapshotReading,
+  eventType: string | undefined,
+  limit: number
+): TraceAttributionReport {
+  if (reading.status === 'unmeasured')
+    return {
+      ...reading,
+      writerObserved: null,
+      retained: null,
+      filtered: null,
+      returned: null,
+    };
+  const filtered =
+    eventType === undefined
+      ? reading.entries
+      : reading.entries.filter((e) => e.eventType === eventType);
+  return {
+    status: 'measured',
+    writerObserved: reading.snapshot.writerObserved,
+    retained: reading.snapshot.retained,
+    filtered: relationCounts(filtered),
+    returned: relationCounts(filtered.slice(0, limit)),
   };
 }
 
@@ -250,7 +319,11 @@ async function readTraceFromDirectory(
     }
 
     const content = await readFile(tracePath, 'utf-8');
-    return readTraceResponse(input, parseJsonlLines(content));
+    return readTraceResponse(
+      input,
+      parseJsonlLines(content),
+      readTraceSnapshot(tracePath, dir, content, input.runId)
+    );
   } catch (err: unknown) {
     const category = classifyTraceError(err);
     const message = userFacingTraceError(err, input.runId);
@@ -323,7 +396,8 @@ export function registerQueryTraceTool(server: McpServer, deps: QueryTraceDeps):
   const description =
     'Query execution traces by run ID. Returns agent and model ' +
     'attribution for pipeline runs including decision paths, ' +
-    'error taxonomy, and timing data.';
+    'error taxonomy, timing and snapshot-bound attribution counts. run_related is logical ' +
+    'session participation only: reused/concurrent invocations are indistinguishable; no attempt, worker or settlement proof.';
 
   const secureHandler = createSecureHandler(queryTraceHandler, {
     toolName: 'query_trace',

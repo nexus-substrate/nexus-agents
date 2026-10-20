@@ -12,7 +12,7 @@ keywords: [mcp, tool, reference, query_trace]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Query execution traces by run ID (reads the trace JSONL files from disk). Returns agent and model attribution for pipeline runs — decision paths, error taxonomy, and timing data — with filtering by event type and pagination.
+Query execution traces by run ID. Returns agent and model attribution for pipeline runs including decision paths, error taxonomy, timing and snapshot-bound attribution counts. run_related is logical session participation only: reused/concurrent invocations are indistinguishable; no attempt, worker or settlement proof.
 
 ## Parameters
 

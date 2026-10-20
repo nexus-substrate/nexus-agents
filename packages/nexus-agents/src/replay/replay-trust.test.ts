@@ -76,8 +76,16 @@ describe('divergence verdicts rest on a real comparison', () => {
       decisionLine({ modelId: ['a'] }),
     ].join('\n');
 
-    for (const decision of extractDecisions(parseTraceJsonl(content))) {
-      expect(typeof decision.selectedModel).toBe('string');
-    }
+    const origin = { kind: 'run', producer: 'dev-pipeline', runId: 'r1' } as const;
+    const entries = parseTraceJsonl(content).map((entry) => ({
+      ...entry,
+      origin,
+      captureOrigin: origin,
+      attributionVersion: 1 as const,
+      captureRelation: 'run_related' as const,
+    }));
+    const decisions = extractDecisions(entries);
+    expect(decisions).toHaveLength(1);
+    for (const decision of decisions) expect(typeof decision.selectedModel).toBe('string');
   });
 });
