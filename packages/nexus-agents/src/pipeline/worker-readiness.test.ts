@@ -493,13 +493,20 @@ describe('Task T06 / C04: Revoked or Changed Grant Invalidates Proof', () => {
 });
 
 describe('Task T06 / C33: Unsafe Write-Capability Probe Prevention', () => {
-  it('detects camelCase and expanded mutating verbs (writeFile, gitCommit, uploadArtifact) as write operations', () => {
+  it('detects camelCase, snake_case, and manifest mutating tools while keeping read operations read-only', () => {
     expect(isWriteOperation('writeFile')).toBe(true);
+    expect(isWriteOperation('edit_file')).toBe(true);
+    expect(isWriteOperation('save_file')).toBe(true);
     expect(isWriteOperation('gitCommit')).toBe(true);
     expect(isWriteOperation('uploadArtifact')).toBe(true);
     expect(isWriteOperation('db.upsert')).toBe(true);
     expect(isWriteOperation('fs:unlink')).toBe(true);
+    expect(isWriteOperation('memory_write')).toBe(true);
     expect(isWriteOperation('artifact.read')).toBe(false);
+    expect(isWriteOperation('output.read')).toBe(false);
+    expect(isWriteOperation('git.list_commits')).toBe(false);
+    expect(isWriteOperation('read_file')).toBe(false);
+    expect(isWriteOperation('memory_query')).toBe(false);
     expect(isWriteOperation('readWriteLock')).toBe(true);
   });
 

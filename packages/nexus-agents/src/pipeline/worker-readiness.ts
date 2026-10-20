@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { getTimeProvider } from '../core/index.js';
+import { classifyRegisteredTool } from '../mcp/tools/tool-manifest.js';
 import type { CapabilityRequirement } from './task-contract.js';
 
 export const READINESS_LEVELS = [
@@ -19,15 +20,23 @@ export type ReadinessLevel = (typeof READINESS_LEVELS)[number];
 
 const DEFAULT_PROOF_TTL_MS = 300_000;
 const DEFAULT_PROBE_TIMEOUT_MS = 30_000;
-const WRITE_VERBS =
-  'write|mutate|publish|push|delete|remove|create|update|modify|patch|commit|merge|append|overwrite|drop|truncate|upload|insert|upsert|replace|rename|move|unlink|mkdir|rmdir|chmod|chown|exec|spawn|send|post|put';
-const WRITE_TOKEN_REGEX = new RegExp(
-  `(?:^|[.:/_\\-\\s]|(?<=[a-z0-9])(?=[A-Z]))(${WRITE_VERBS})(?:$|[.:/_\\-\\s]|(?=[A-Z]))`,
-  'i'
+const WRITE_TOKEN_SET: ReadonlySet<string> = new Set(
+  'write,mutate,publish,push,delete,remove,create,update,modify,edit,save,patch,commit,merge,append,overwrite,drop,alter,truncate,upload,insert,upsert,replace,rename,move,unlink,rm,mkdir,rmdir,chmod,chown,exec,execute,spawn,bash,sh,zsh,shell,powershell,cmd,terminal,send,post,put'.split(
+    ','
+  )
 );
 
 export function isWriteOperation(operation: string): boolean {
-  return WRITE_TOKEN_REGEX.test(operation.trim());
+  const trimmed = operation.trim();
+  if (trimmed.length === 0) return false;
+  const manifestClass = classifyRegisteredTool(trimmed);
+  if (manifestClass !== 'unclassified') return manifestClass === 'mutation';
+  const tokens = trimmed
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean);
+  return tokens.some((t) => WRITE_TOKEN_SET.has(t.toLowerCase()));
 }
 
 interface WorkerIdentityFields {
@@ -222,12 +231,7 @@ function createVerifiedProof(
   const scratch = probeOptions.isScratchProbe
     ? { probedInScratch: true, narrowerThanTargetWrite: true }
     : {};
-  const {
-    advertisedOperations: _adv,
-    authorizedOperations: _auth,
-    approvedScratchDir: _scr,
-    ...id
-  } = ctx;
+  const { advertisedOperations: _a, authorizedOperations: _b, approvedScratchDir: _c, ...id } = ctx;
   return {
     ...id,
     proofId: `proof-${ctx.workerId}-${req.id}-${digest}-${String(issuedAt)}`,
