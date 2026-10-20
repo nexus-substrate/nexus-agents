@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  parseProcIdentityObservation,
-  parseProcStatStartTime,
-  readProcIdentity,
-} from './proc-start-time.js';
+import { parseProcStatStartTime, readProcIdentity } from './proc-start-time.js';
 import { collectProcessTreeObservation } from './process-tree-kill.js';
 const { read, directories } = vi.hoisted(() => ({ read: vi.fn(), directories: vi.fn() }));
 vi.mock('node:fs', async (original) => ({
@@ -15,23 +11,27 @@ function stat(state = 'S'): string {
   return `11 (fixture (nested) name) ${[state, ...Array<string>(18).fill('0'), '123'].join(' ')}`;
 }
 describe('lossless process observations preserve kill-helper semantics', () => {
-  it('distinguishes running, zombie and malformed identities', () => {
-    expect(parseProcIdentityObservation(stat())).toEqual({
+  it('distinguishes running, zombie and malformed identities through the proc reader', () => {
+    read.mockReturnValueOnce(stat());
+    expect(readProcIdentity(11)).toEqual({
       state: 'present',
       processState: 'S',
       startTime: '123',
     });
-    expect(parseProcIdentityObservation(stat('Z'))).toEqual({
+    read.mockReturnValueOnce(stat('Z'));
+    expect(readProcIdentity(11)).toEqual({
       state: 'present',
       processState: 'Z',
       startTime: '123',
     });
     expect(parseProcStatStartTime(stat('Z'))).toBeUndefined();
-    expect(parseProcIdentityObservation('malformed')).toEqual({
+    read.mockReturnValueOnce('malformed');
+    expect(readProcIdentity(11)).toEqual({
       state: 'unknown',
       reason: 'malformed-stat',
     });
-    expect(parseProcIdentityObservation(stat().replace('11 (', 'invalid-prefix ('))).toEqual({
+    read.mockReturnValueOnce(stat().replace('11 (', 'invalid-prefix ('));
+    expect(readProcIdentity(11)).toEqual({
       state: 'unknown',
       reason: 'malformed-stat',
     });
