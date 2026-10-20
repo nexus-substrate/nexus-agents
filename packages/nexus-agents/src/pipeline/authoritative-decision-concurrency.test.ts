@@ -20,6 +20,7 @@ import { AuthoritativeDecisionStore } from './authoritative-decision-store.js';
 import { EventBus } from './event-bus.js';
 import { PipelineRunner } from './pipeline-runner.js';
 import { createCorePluginRegistry } from './core-plugins.js';
+import { openSqliteDatabase } from '../context/open-database.js';
 
 const WORKER_TIMEOUT_MS = 15_000;
 const BARRIER_TIMEOUT_MS = 10_000;
@@ -227,10 +228,15 @@ function startWorker(storageDir: string, workerId: string, source = workerSource
   return { child, done };
 }
 
-async function releaseReadyWorkers(storageDir: string): Promise<void> {
+async function releaseReadyWorkers(
+  storageDir: string,
+  workerIds: readonly string[] = ['one', 'two']
+): Promise<void> {
+  if (workerIds.length === 0) throw new Error('A release barrier requires at least one worker');
   const deadline = Date.now() + BARRIER_TIMEOUT_MS;
-  while (!existsSync(join(storageDir, 'one.ready')) || !existsSync(join(storageDir, 'two.ready'))) {
-    if (Date.now() >= deadline) throw new Error('Both subprocesses must reach the start barrier');
+  while (workerIds.some((workerId) => !existsSync(join(storageDir, `${workerId}.ready`)))) {
+    if (Date.now() >= deadline)
+      throw new Error('All expected workers must reach the start barrier');
     await delay(POLL_INTERVAL_MS);
   }
   writeFileSync(join(storageDir, 'release'), 'run');
@@ -262,6 +268,30 @@ describe('authoritative pipeline admission across real processes', () => {
 
   it('admits one logical execution and explicitly refuses the concurrent duplicate', async () => {
     storageDir = mkdtempSync(join(tmpdir(), 'nexus-admission-processes-'));
+    const initialized = new AuthoritativeDecisionStore({ storageDir }).flushPendingOutbox(
+      taskFixture().id
+    );
+    expect(initialized.observabilityDegraded).toBe(false);
+    expect(initialized.observabilityError).toBeUndefined();
+    const inspection = openSqliteDatabase(join(storageDir, 'decisions.db'));
+    try {
+      expect(inspection.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' });
+      expect(
+        inspection
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE name IN ('decisions', 'outbox') ORDER BY name"
+          )
+          .all()
+      ).toEqual([{ name: 'decisions' }, { name: 'outbox' }]);
+      expect(inspection.prepare('SELECT COUNT(*) AS count FROM decisions').get()).toEqual({
+        count: 0,
+      });
+      expect(inspection.prepare('SELECT COUNT(*) AS count FROM outbox').get()).toEqual({
+        count: 0,
+      });
+    } finally {
+      inspection.close();
+    }
     // Pre-create the observation file: empty means no stage effects, never a pass.
     writeFileSync(join(storageDir, 'effects.jsonl'), '');
     workers = [startWorker(storageDir, 'one'), startWorker(storageDir, 'two')];
@@ -279,7 +309,43 @@ describe('authoritative pipeline admission across real processes', () => {
     expect(effects[0]?.workerId).toBe(outcomes.find((outcome) => outcome.success)?.workerId);
     const refused = outcomes.filter((outcome) => !outcome.success);
     expect(refused).toHaveLength(1);
-    expect(refused[0]?.error).toMatch(/duplicate|already|admission/i);
+    expect(refused[0]?.error, JSON.stringify(outcomes)).toMatch(/duplicate|already|admission/i);
+  });
+
+  it('fails closed during a locked cold start without a graph effect or committed admission', async () => {
+    storageDir = mkdtempSync(join(tmpdir(), 'nexus-admission-locked-'));
+    writeFileSync(join(storageDir, 'effects.jsonl'), '');
+    const held = openSqliteDatabase(join(storageDir, 'decisions.db'));
+    let locked = false;
+    try {
+      held.exec('PRAGMA journal_mode = DELETE; BEGIN EXCLUSIVE');
+      locked = true;
+      const worker = startWorker(storageDir, 'one');
+      workers = [worker];
+      await releaseReadyWorkers(storageDir, ['one']);
+      const outcome = readOutcome(await worker.done);
+      expect(outcome).toMatchObject({
+        workerId: 'one',
+        success: false,
+        error: 'DurablePersistenceWriteError: database is locked',
+      });
+      expect(readFileSync(join(storageDir, 'effects.jsonl'), 'utf8')).toBe('');
+    } finally {
+      try {
+        if (locked) held.exec('ROLLBACK');
+      } finally {
+        held.close();
+      }
+    }
+    const restarted = new AuthoritativeDecisionStore({ storageDir });
+    expect(restarted.getTaskSnapshot(taskFixture().id)).toEqual({ ok: true, value: null });
+    expect(readFileSync(join(storageDir, 'effects.jsonl'), 'utf8')).toBe('');
+  });
+
+  it('does not release a barrier with no expected workers', async () => {
+    storageDir = mkdtempSync(join(tmpdir(), 'nexus-admission-empty-barrier-'));
+    await expect(releaseReadyWorkers(storageDir, [])).rejects.toThrow('at least one worker');
+    expect(existsSync(join(storageDir, 'release'))).toBe(false);
   });
 
   it('recovers no admission or graph effect after SIGKILL immediately before commit', async () => {
