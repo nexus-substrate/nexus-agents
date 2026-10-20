@@ -26,7 +26,11 @@ import type { ILogger } from '../core/index.js';
 import type { CliResponse, CliError, CliErrorCode, CliName } from './types.js';
 import type { ICircuitBreaker, FailureCategory } from './circuit-breaker-types.js';
 import { delay } from '../utils/async-utils.js';
-import { RETRYABLE_ERROR_CODES, isCallerInputCliError } from './cli-error-helpers.js';
+import {
+  RETRYABLE_ERROR_CODES,
+  isCallerInputCliError,
+  isNativePreSpawnRefusal,
+} from './cli-error-helpers.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
 
 // ============================================================================
@@ -143,14 +147,18 @@ export async function executeCliRetryLoop(
 
     lastError = result.error;
 
-    // #7532/#6691: caller input and cancellation are not provider health
+    // #7532/#7533/#6691: input, pre-spawn refusal and cancellation are not provider health
     // signals or worth retrying. The admitting caller owns probe release.
-    if (isCallerInputCliError(lastError) || isCallerCancelled(lastError)) return err(lastError);
+    if (
+      isCallerInputCliError(lastError) ||
+      isCallerCancelled(lastError) ||
+      isNativePreSpawnRefusal(lastError)
+    ) {
+      return err(lastError);
+    }
 
     // Record failure with circuit breaker if present
-    if (config.circuitBreaker !== undefined && config.circuitBreaker !== null) {
-      config.circuitBreaker.recordFailure(categorizeError(lastError));
-    }
+    config.circuitBreaker?.recordFailure(categorizeError(lastError));
 
     // Check if we should retry
     if (!shouldRetry(lastError, attempt, maxAttempts, config.circuitBreaker)) {

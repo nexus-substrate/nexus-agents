@@ -30,7 +30,14 @@ import type { ExecutionAccessMode } from '../core/types/model.js';
 import { declaredAccessModeSupport, unenforcedAccessModeRefusal } from './access-mode.js';
 import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
-import { isCallerInputCliError, isHostUnavailableCliError } from './cli-error-helpers.js';
+import {
+  isCallerInputCliError,
+  isHostUnavailableCliError,
+  isNativePreSpawnRefusal,
+  createNativePreSpawnRefusal,
+} from './cli-error-helpers.js';
+import { nativeExecutionOptions, nativePolicyRefusalError } from './native-execution-policy.js';
+import { SubprocessCliAdapter } from './subprocess-adapter.js';
 import { findCanonicalModel } from '../config/model-config-helpers.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { toAgyModelSlug, fromAgyModelSlug } from '../config/agy-model-map.js';
@@ -204,7 +211,10 @@ export class CliToModelAdapter implements IModelAdapter {
     const code = isCallerInputCliError(cliError) ? { code: ErrorCode.INVALID_INPUT } : {};
     // #6846: only a host refusal overrides the caller's retry policy. The
     // code-derived CLI boolean also marks ordinary execution failures false.
-    const retryability = isHostUnavailableCliError(cliError) ? { retryable: false } : {};
+    const retryability =
+      isHostUnavailableCliError(cliError) || isNativePreSpawnRefusal(cliError)
+        ? { retryable: false }
+        : {};
     return new ModelError(cliError.message, { ...options, ...code, ...retryability });
   }
 
@@ -227,7 +237,37 @@ export class CliToModelAdapter implements IModelAdapter {
    * Send a completion request via CLI.
    */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
+    return this.completeWithOptions(request);
+  }
+
+  /** Internal host path; acquisition/identity leasing is a separate registry operation. */
+  async completeWithNativePolicy(
+    request: CompletionRequest,
+    policy: unknown
+  ): Promise<Result<CompletionResponse, ModelError>> {
+    if (!(this.cliAdapter instanceof SubprocessCliAdapter) || this.cliAdapter.name !== 'claude') {
+      return err(
+        this.toModelError(createNativePreSpawnRefusal('invalid-policy', this.cliAdapter.name))
+      );
+    }
+    const opts = nativeExecutionOptions(policy, request.signal);
+    if (!opts.ok) {
+      return err(this.toModelError(nativePolicyRefusalError(opts.error, this.cliAdapter.name)));
+    }
+    return this.completeWithOptions(request, opts.value);
+  }
+
+  private async completeWithOptions(
+    request: CompletionRequest,
+    nativeOpts?: ExecutionOptions
+  ): Promise<Result<CompletionResponse, ModelError>> {
     const task = this.toCliTask(request);
+    if (nativeOpts !== undefined) {
+      (task as { options: Record<string, unknown> }).options = {
+        ...task.options,
+        inFamilyFallback: false,
+      };
+    }
     // #6754/#6792: fail closed for an adapter that does not declare the task's
     // access mode, whatever its own execute would have done with the field.
     const refusal = unenforcedAccessModeRefusal(this.cliAdapter, task);
@@ -240,12 +280,13 @@ export class CliToModelAdapter implements IModelAdapter {
     // subprocess on abort. It used to stop here, so neither a watchdog timeout
     // nor `cancel_job` could end a running CLI call.
     const opts: ExecutionOptions | undefined =
-      effectiveTimeoutMs !== undefined || request.signal !== undefined
+      nativeOpts ??
+      (effectiveTimeoutMs !== undefined || request.signal !== undefined
         ? {
             ...(effectiveTimeoutMs !== undefined ? { timeoutMs: effectiveTimeoutMs } : {}),
             ...(request.signal !== undefined ? { signal: request.signal } : {}),
           }
-        : undefined;
+        : undefined);
     const result = await this.cliAdapter.execute(task, opts);
 
     if (!result.ok) {

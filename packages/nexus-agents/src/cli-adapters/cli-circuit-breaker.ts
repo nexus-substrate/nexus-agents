@@ -33,7 +33,7 @@ import {
   type CircuitBreakerSnapshot,
   type CircuitStateChangeListener,
 } from './circuit-breaker.js';
-import { isCallerInputCliError } from './cli-error-helpers.js';
+import { isCallerInputCliError, isNativePreSpawnRefusal } from './cli-error-helpers.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
 import { unenforcedAccessModeRefusal } from './access-mode.js';
 import { ModelToCliAdapter } from './model-to-cli-adapter.js';
@@ -320,7 +320,11 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       // #6613: caller-input errors (e.g. invalid model requested) must not count
       // against the breaker or exhaust half-open probe capacity. #6691: nor
       // must a call its caller cancelled.
-      if (isCallerInputCliError(execResult.error) || isCallerCancelled(execResult.error)) {
+      if (
+        isCallerInputCliError(execResult.error) ||
+        isCallerCancelled(execResult.error) ||
+        isNativePreSpawnRefusal(execResult.error)
+      ) {
         if (!this.adapterOwnsAdmission(adapter)) breaker.releaseHalfOpenProbe();
         return err(execResult.error);
       }

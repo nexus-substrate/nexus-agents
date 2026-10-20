@@ -119,6 +119,51 @@ export function isHostUnavailableCliError(error: CliError): boolean {
   return error.cause instanceof HostUnavailableError;
 }
 
+/** Bounded host-policy events before any completion spawn was attempted. */
+export type NativePreSpawnRefusalReason =
+  'invalid-policy' | 'invalid-deadline' | 'expired-before-spawn' | 'permit-consumed';
+
+function boundedPreSpawnReason(reason: unknown): NativePreSpawnRefusalReason {
+  switch (reason) {
+    case 'invalid-policy':
+    case 'invalid-deadline':
+    case 'expired-before-spawn':
+    case 'permit-consumed':
+      return reason;
+    default:
+      return 'invalid-policy';
+  }
+}
+
+/** Distinct from malformed user input, operator cancellation and launched timeouts. */
+class NativePreSpawnRefusal extends Error {
+  readonly reason: NativePreSpawnRefusalReason;
+
+  constructor(reason: NativePreSpawnRefusalReason) {
+    const bounded = boundedPreSpawnReason(reason);
+    super(`Native completion refused before spawn (${bounded})`);
+    this.name = 'NativePreSpawnRefusal';
+    this.reason = bounded;
+    Object.freeze(this);
+  }
+}
+
+/** Host scheduling refusal; never a provider-health observation or retry request. */
+export function createNativePreSpawnRefusal(
+  reason: NativePreSpawnRefusalReason,
+  cli: RoutingArmId
+): CliError {
+  const cause = new NativePreSpawnRefusal(reason);
+  return createCliError('EXECUTION_ERROR', cause.message, cli, cause);
+}
+
+/** Only the actual internal class is evidence; names and serialized objects are not. */
+export function isNativePreSpawnRefusal(error: {
+  readonly cause?: unknown;
+}): error is { readonly cause: NativePreSpawnRefusal } {
+  return error.cause instanceof NativePreSpawnRefusal;
+}
+
 /** Deadline abort identity, independent of operator-cancel/breaker semantics. */
 class CallerDeadlineAbortError extends Error {}
 

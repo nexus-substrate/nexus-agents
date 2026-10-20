@@ -11,6 +11,7 @@ import type { Result, ILogger, ExecutionAccessMode } from '../core/index.js';
 import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
 import type { LevelOutcome } from '../cli/cli-readiness.js';
 import type { CommandWrapper } from './exec-file-tree.js';
+import { NATIVE_EXECUTION_POLICY, type NativeExecutionPolicy } from './native-execution-policy.js';
 import type {
   CliName,
   RoutingArmId,
@@ -98,18 +99,22 @@ export interface CliTask {
 
 /**
  * Internal resolved-options shape — every "default-able" field is
- * required, but `signal` stays optional because it's a per-call hook,
- * not a value with a default. Used by adapter internals (subprocess,
+ * required, but the per-call signal and internal host policy stay optional,
+ * with no default. Used by adapter internals (subprocess,
  * codex-mcp) and tests as the "resolved" execution options. Public
  * callers should keep using `ExecutionOptions` (everything optional).
  */
-export type ResolvedExecutionOptions = Required<Omit<ExecutionOptions, 'signal'>> &
-  Pick<ExecutionOptions, 'signal'>;
+export type ResolvedExecutionOptions = Required<
+  Omit<ExecutionOptions, 'signal' | typeof NATIVE_EXECUTION_POLICY>
+> &
+  Pick<ExecutionOptions, 'signal' | typeof NATIVE_EXECUTION_POLICY>;
 
 /**
  * Execution options for CLI adapters.
  */
 export interface ExecutionOptions {
+  /** Internal, host-issued completion-spawn authority; never accepted from model JSON. */
+  readonly [NATIVE_EXECUTION_POLICY]?: NativeExecutionPolicy | undefined;
   /** Timeout in milliseconds */
   readonly timeoutMs?: number;
   /** Whether to allow retries */
