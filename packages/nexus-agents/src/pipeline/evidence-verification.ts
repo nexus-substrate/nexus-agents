@@ -28,12 +28,22 @@ export interface PreparedEvidenceVerification {
   readonly authorizations: readonly EvidenceAuthorization[];
   readonly verifier: EvidenceVerificationConfig['verify'] | undefined;
   readonly configurationError?: string;
+  readonly admissionError?: string;
 }
 
 export interface EvidenceVerificationOutcome {
   readonly receipts: readonly EvidenceReceipt[];
   readonly report: EvidenceReport;
   readonly error?: string;
+}
+
+export function evidenceAdmissionError(task: TaskContract): string | null {
+  const ids = new Set<string>();
+  for (const obligation of task.evidenceObligations ?? []) {
+    if (ids.has(obligation.id)) return `DuplicateEvidenceObligationIdError: ${obligation.id}`;
+    ids.add(obligation.id);
+  }
+  return null;
 }
 
 /** Private copies are captured before graph effects, not when callbacks finish. */
@@ -45,6 +55,9 @@ export function prepareEvidenceVerification(
     ...task,
     evidenceObligations: (task.evidenceObligations ?? []).map((item) => ({ ...item })),
   };
+  const admissionError = evidenceAdmissionError(contract);
+  if (admissionError !== null)
+    return { contract, authorizations: [], verifier: undefined, admissionError };
   if (contract.evidenceObligations.length === 0)
     return { contract, authorizations: [], verifier: undefined };
   try {
@@ -78,6 +91,32 @@ function reportStatus(
   return advisory > 0 ? 'incomplete' : 'complete';
 }
 
+/** Preserve expected inputs without counting an absent observation as a rejection. */
+function retainEvidenceContext(
+  prepared: PreparedEvidenceVerification,
+  receipts: readonly EvidenceReceipt[]
+): EvidenceReceipt[] {
+  const hostAuthorizations = prepared.authorizations.map((item) => ({ ...item }));
+  if (receipts.length > 0)
+    return receipts.map((receipt, index) =>
+      index === 0 ? { ...receipt, metadata: { ...receipt.metadata, hostAuthorizations } } : receipt
+    );
+  if ((prepared.contract.evidenceObligations ?? []).length === 0) return [];
+  return [
+    {
+      obligationId: 'evidence-summary',
+      artifactRef: 'evidence-summary',
+      verified: false,
+      metadata: {
+        recordKind: 'authorization-absence-summary',
+        provenance: 'host-content-verifier',
+        observationStatus: 'absent',
+        hostAuthorizations,
+      },
+    },
+  ];
+}
+
 export function summarizeEvidence(
   prepared: PreparedEvidenceVerification,
   receipts: readonly EvidenceReceipt[],
@@ -101,19 +140,8 @@ export function summarizeEvidence(
   }
   const accepted = receipts.filter((receipt) => receipt.verified).length;
   const rejected = receipts.length - accepted;
-  const retained = receipts.map((receipt, index) =>
-    index === 0
-      ? {
-          ...receipt,
-          metadata: {
-            ...receipt.metadata,
-            hostAuthorizations: prepared.authorizations.map((item) => ({ ...item })),
-          },
-        }
-      : receipt
-  );
   return {
-    receipts: retained,
+    receipts: retainEvidenceContext(prepared, receipts),
     report: {
       status: reportStatus(obligations.length, accepted, missing.length, unmetAdvisory.length),
       criteria: obligations.length,

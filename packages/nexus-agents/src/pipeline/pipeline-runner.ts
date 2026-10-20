@@ -27,6 +27,7 @@ import type { PlanContract, TaskContract } from './task-contract.js';
 import { verifyWorkerReadiness, type WorkerReadinessConfig } from './worker-readiness.js';
 import type { AuthoritativeDecisionStore } from './authoritative-decision-store.js';
 import type { EvidenceReport, EvidenceVerificationConfig } from './evidence-verification-types.js';
+import { evidenceAdmissionError } from './evidence-verification.js';
 
 const pipelineLogger = createLogger({ component: 'PipelineRunner' });
 
@@ -202,6 +203,8 @@ async function runPreExecutionGates(
   startTime: number
 ): Promise<string | null> {
   if (options?.signal?.aborted === true) return 'Pipeline aborted before execution';
+  const evidenceError = evidenceAdmissionError(task);
+  if (evidenceError !== null) return evidenceError;
   return checkPreflightReadiness(pipeline, task, options, startTime);
 }
 

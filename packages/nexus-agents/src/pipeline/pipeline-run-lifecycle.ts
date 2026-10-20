@@ -42,6 +42,25 @@ function applyEvidenceOutcome(
   };
 }
 
+function callbackTracker(
+  pipeline: CompiledPipeline,
+  evidence: PreparedEvidenceVerification,
+  options: PipelineExecuteOptions | undefined
+): PipelineCallbackTracker | undefined {
+  const hasCriteria = (evidence.contract.evidenceObligations ?? []).length > 0;
+  return options?.decisionStore !== undefined || hasCriteria
+    ? new PipelineCallbackTracker(pipeline.graph)
+    : undefined;
+}
+
+function trackEvidence(
+  evidence: PreparedEvidenceVerification,
+  tracker: PipelineCallbackTracker | undefined
+): PreparedEvidenceVerification {
+  if (evidence.verifier === undefined || tracker === undefined) return evidence;
+  return { ...evidence, verifier: tracker.track(evidence.verifier) };
+}
+
 export class PipelineRunLifecycle {
   private writer: TraceWriter | undefined;
   private readonly callbacks: PipelineCallbackTracker | undefined;
@@ -55,11 +74,9 @@ export class PipelineRunLifecycle {
     private readonly options: PipelineExecuteOptions | undefined,
     startTime: number
   ) {
-    this.callbacks =
-      options?.decisionStore === undefined
-        ? undefined
-        : new PipelineCallbackTracker(pipeline.graph);
-    this.evidence = prepareEvidenceVerification(task, options?.evidenceVerification);
+    const evidence = prepareEvidenceVerification(task, options?.evidenceVerification);
+    this.callbacks = callbackTracker(pipeline, evidence, options);
+    this.evidence = trackEvidence(evidence, this.callbacks);
     this.task = { ...task };
     this.deadlineAt = startTime + (options?.timeout ?? pipeline.plan.timeoutMs);
     this.context = {
@@ -73,8 +90,13 @@ export class PipelineRunLifecycle {
     return this.callbacks?.graph ?? this.pipeline.graph;
   }
 
+  private get pendingCallbacks(): number {
+    return this.callbacks?.pendingCount ?? 0;
+  }
+
   /** No graph work or lifecycle event precedes successful durable admission. */
   begin(): string | null {
+    if (this.evidence.admissionError !== undefined) return this.evidence.admissionError;
     const error = this.admit();
     if (error !== null) return error;
     this.startDiagnostics();
@@ -118,7 +140,7 @@ export class PipelineRunLifecycle {
 
   /** Missing terminal persistence never becomes a reported completed decision. */
   async finish(result: PipelineResult): Promise<PipelineResult> {
-    const pendingCallbacks = this.callbacks?.pendingCount ?? 0;
+    const pendingCallbacks = this.pendingCallbacks;
     const settled = rejectUnsettledResult(result, pendingCallbacks);
     const evidence = await verifyPreparedEvidence(
       this.evidence,
@@ -131,12 +153,16 @@ export class PipelineRunLifecycle {
       this.options?.signal,
       settled.success
     );
-    const outcome = applyEvidenceOutcome(settled, evidence);
+    const pendingAfterEvidence = this.pendingCallbacks;
+    const outcome = rejectUnsettledResult(
+      applyEvidenceOutcome(settled, evidence),
+      pendingAfterEvidence
+    );
     const store = this.options?.decisionStore;
     if (store !== undefined) {
       const error = store.recordPipelineFinish(this.task, this.context, {
         ...outcome,
-        executionSettled: pendingCallbacks === 0,
+        executionSettled: Math.max(pendingCallbacks, pendingAfterEvidence) === 0,
         receipts: evidence.receipts,
       });
       if (error !== null) return { ...outcome, success: false, error };
