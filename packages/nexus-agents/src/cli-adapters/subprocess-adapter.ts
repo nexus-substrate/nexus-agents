@@ -186,7 +186,9 @@ export function isTransientError(code: CliErrorCode): boolean {
 }
 
 /** Evaluate wrapper option/environment getters before the final spawn fence. */
-function materializeSpawnOptions(options: ExecFileTreeOptions): SpawnOptionsWithoutStdio {
+function materializeSpawnOptions(
+  options: Pick<ExecFileTreeOptions, 'env' | 'cwd'>
+): SpawnOptionsWithoutStdio {
   const env = options.env;
   const spawnEnv = env === undefined ? undefined : (Object.create(null) as NodeJS.ProcessEnv);
   if (env !== undefined && spawnEnv !== undefined) {
