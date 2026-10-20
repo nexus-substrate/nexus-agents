@@ -448,6 +448,9 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     child.once('close', () => {
       signal.removeEventListener('abort', onAbort);
     });
+    // Resource notifications run after spawn, before business listener setup.
+    // A notification may already have cancelled this now-physical child.
+    if (signal.aborted) onAbort();
   }
 
   /**

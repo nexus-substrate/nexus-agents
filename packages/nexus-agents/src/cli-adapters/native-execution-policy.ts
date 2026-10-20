@@ -47,6 +47,8 @@ export function issueNativeExecutionPolicy(input: {
   if (!Number.isFinite(remaining) || remaining <= 0 || remaining > MAX_TIMER_MS) {
     return err({ reason: 'invalid-deadline' });
   }
+  const resources = input.resources ?? new NativeResourceObserver();
+  if (!resources.claimForPolicy()) return err({ reason: 'invalid-policy' });
   const deadlineSignal = AbortSignal.timeout(Math.ceil(remaining));
   const signal =
     input.signal === undefined ? deadlineSignal : AbortSignal.any([input.signal, deadlineSignal]);
@@ -55,7 +57,7 @@ export function issueNativeExecutionPolicy(input: {
     deadlineAt: input.deadlineAt,
     signal,
     attempted: false,
-    resources: input.resources ?? new NativeResourceObserver(),
+    resources,
   });
   return ok(policy);
 }

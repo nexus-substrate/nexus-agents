@@ -60,6 +60,7 @@ export class NativeResourceObserver {
   private child: ChildProcess | undefined;
   private rootStart: string | undefined;
   private disposed = false;
+  private policyBound = false;
   private safeNotified = false;
 
   constructor(options?: {
@@ -76,7 +77,9 @@ export class NativeResourceObserver {
       [...this.known.values()].map((p) => Object.freeze({ ...p }))
     );
     const knownTree = this.treeState(knownProcesses);
-    const ended = this.launch === 'refused' || (this.direct === 'closed' && this.streamsClosed);
+    const ended =
+      (this.launch === 'refused' && this.direct === 'not-started' && this.child === undefined) ||
+      (this.direct === 'closed' && this.streamsClosed);
     return Object.freeze({
       launch: this.launch,
       completionChild: this.direct,
@@ -89,10 +92,25 @@ export class NativeResourceObserver {
       reasons: Object.freeze([...this.reasons]),
       safe:
         !this.disposed &&
+        this.direct !== 'running' &&
         ended &&
         knownTree === 'settled' &&
         (this.acquisition === 'none' || this.acquisition === 'settled'),
     });
+  }
+
+  /** Claim one fresh observer for one host-issued operation; never reset after refusal. */
+  claimForPolicy(): boolean {
+    if (
+      this.policyBound ||
+      this.disposed ||
+      this.launch !== 'unattempted' ||
+      this.direct !== 'not-started' ||
+      this.child !== undefined
+    )
+      return false;
+    this.policyBound = true;
+    return true;
   }
 
   recordRefusal(): void {
@@ -106,7 +124,8 @@ export class NativeResourceObserver {
     if (this.launch !== 'unattempted' || this.disposed) return;
     this.launch = 'attempted';
     this.direct = 'unknown';
-    this.publish();
+    // No host callback may run between the final policy check and physical spawn.
+    // attachChild publishes only after a physical handle and listeners exist.
   }
 
   recordLaunchFailure(): void {
@@ -188,7 +207,8 @@ export class NativeResourceObserver {
 
   private treeState(entries: readonly KnownResource[]): ResourceState {
     if (this.disposed || this.launch === 'failed') return 'unmeasured';
-    if (this.launch === 'refused') return 'settled';
+    if (this.launch === 'refused')
+      return this.direct === 'not-started' && this.child === undefined ? 'settled' : 'unmeasured';
     if (this.coverage !== 'complete' || entries.some((p) => p.state === 'unknown'))
       return 'unmeasured';
     // Explicit complete enumeration names the empty case; no inferred health.
