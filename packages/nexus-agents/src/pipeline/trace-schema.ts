@@ -42,11 +42,13 @@ type TraceRelation = z.infer<typeof TraceRelationSchema>;
 export function traceRelation(
   eventType: string,
   origin: TraceOrigin | undefined,
-  capture: TraceRunOrigin | undefined
+  capture: TraceRunOrigin | undefined,
+  captureRunId: string
 ): TraceRelation | 'foreign' {
   if (origin === undefined) return 'unattributed';
   if (origin.kind === 'global')
     return eventType.startsWith('signal.') ? 'global_context' : 'unattributed';
+  if (origin.runId !== captureRunId) return 'foreign';
   if (capture === undefined) return 'unattributed';
   if (conflictingRunIdentity(origin, capture)) return 'foreign';
   if (origin.attemptId === undefined && capture.attemptId === undefined) return 'run_related';
@@ -189,8 +191,8 @@ function consistentAttribution(entry: TraceEntryFields): boolean {
   if (entry.origin?.kind === 'global' && entry.agentId !== undefined && entry.agentId.length > 256)
     return false;
   return (
-    traceRelation(entry.eventType, entry.origin, entry.captureOrigin) === entry.captureRelation &&
-    eventIdentityAgrees(entry)
+    traceRelation(entry.eventType, entry.origin, entry.captureOrigin, entry.runId) ===
+      entry.captureRelation && eventIdentityAgrees(entry)
   );
 }
 export const ExecutionTraceEntrySchema = TraceEntrySchema.superRefine((entry, ctx) => {

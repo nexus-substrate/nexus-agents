@@ -174,7 +174,12 @@ export class TraceWriter {
   private eventToTrace(event: PipelineEvent): ExecutionTraceEntry | null {
     const parsed = TraceOriginSchema.safeParse(event.origin);
     const origin = parsed.success ? parsed.data : undefined;
-    const captureRelation = traceRelation(event.type, origin, this.options.origin);
+    const captureRelation = traceRelation(
+      event.type,
+      origin,
+      this.options.origin,
+      this.options.runId
+    );
     if (captureRelation === 'foreign') return null;
     const base: ExecutionTraceEntry = {
       attributionVersion: 1,
@@ -334,12 +339,35 @@ async function writeAtomic(path: string, content: string): Promise<void> {
   }
 }
 
+/** Only these event discriminants declare a genuine task identity. */
+function taskIdentity(event: PipelineEvent): string | undefined {
+  switch (event.type) {
+    case 'task.created':
+    case 'task.status_changed':
+    case 'task.completed':
+    case 'task.failed':
+    case 'pipeline.started':
+      return event.taskId;
+    default:
+      return undefined;
+  }
+}
+
 function extractIdentity(event: PipelineEvent): Partial<ExecutionTraceEntry> {
   const result: Partial<ExecutionTraceEntry> = {};
+  const identities = {
+    intentId: event.intentId,
+    attemptId: event.attemptId,
+    // CompositeRouter uses routing.taskId for a task-content prefix, not an ID.
+    taskId: taskIdentity(event),
+    ...(event.type === 'tool.invoked' || event.type === 'tool.completed'
+      ? { invocationId: event.invocationId }
+      : {}),
+  };
   for (const key of ['taskId', 'attemptId', 'intentId', 'invocationId'] as const) {
-    const value: unknown = Reflect.get(event, key);
+    const value: unknown = Reflect.get(identities, key);
     if (typeof value !== 'string') continue;
-    if (value.length > 256) {
+    if (value.length === 0 || value.length > 256) {
       result.provenanceTruncated = true;
       continue;
     }
