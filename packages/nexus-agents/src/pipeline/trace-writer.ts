@@ -9,7 +9,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile, rename, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { resolveInsideRoot } from '../security/safe-path.js';
 
 import { createLogger } from '../core/index.js';
 import type { IEventBus, PipelineEvent, Unsubscribe } from './event-types.js';
@@ -73,13 +74,12 @@ export class TraceWriter {
     bus: IEventBus,
     private readonly options: TraceWriterOptions
   ) {
-    if (!/^[a-zA-Z0-9_-]{1,256}$/.test(options.runId)) throw new Error('Invalid trace runId');
     const origin =
       options.origin === undefined ? undefined : TraceRunOriginSchema.parse(options.origin);
     if (origin !== undefined && origin.runId !== options.runId)
       throw new Error('Trace capture run mismatch');
     this.options = { ...options, ...(origin === undefined ? {} : { origin }) };
-    this.runDir = join(options.runsDir, options.runId);
+    this.runDir = resolve(options.runsDir, options.runId);
     this.maxBuffer = options.maxBufferSize ?? MAX_BUFFER_SIZE;
     if (!Number.isSafeInteger(this.maxBuffer) || this.maxBuffer < 1)
       throw new Error('Invalid trace buffer size');
@@ -139,13 +139,24 @@ export class TraceWriter {
       const metadata = JSON.stringify(snapshot) + '\n';
       if (Buffer.byteLength(metadata) > MAX_TRACE_ATTRIBUTION_BYTES)
         throw new Error('Trace metadata exceeds read cap');
+      const runDir = this.containedRunDirectory();
       const index = this.buildIndex(entries);
-      await mkdir(this.runDir, { recursive: true });
-      await writeAtomic(join(this.runDir, 'trace.jsonl'), content);
-      await writeAtomic(join(this.runDir, TRACE_ATTRIBUTION_FILE), metadata);
-      await writeAtomic(join(this.runDir, 'index.md'), index);
+      await mkdir(runDir, { recursive: true });
+      await writeAtomic(join(runDir, 'trace.jsonl'), content);
+      await writeAtomic(join(runDir, TRACE_ATTRIBUTION_FILE), metadata);
+      await writeAtomic(join(runDir, 'index.md'), index);
       logger.info('Trace flushed', { runId: this.options.runId, events: entries.length });
     } while (this.needsAnotherFlush());
+  }
+
+  /** Refuse unsafe output during optional diagnostic flush, not task admission. */
+  private containedRunDirectory(): string {
+    const root = resolve(this.options.runsDir);
+    const directory = resolveInsideRoot(this.runDir, root);
+    const canonicalRoot = resolveInsideRoot(root, root);
+    if (canonicalRoot === null || directory === null || directory === canonicalRoot)
+      throw new Error('Trace output must be a contained descendant of runsDir');
+    return directory;
   }
 
   /** Read through a call: another request can set this flag across awaits. */
