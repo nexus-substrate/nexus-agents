@@ -24,6 +24,7 @@ import type {
 import type { IEventBus } from './event-types.js';
 import { emitStageCompleted, emitStageFailed } from './pipeline-observability.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
+import { verifyWorkerReadiness, type WorkerReadinessConfig } from './worker-readiness.js';
 
 const pipelineLogger = createLogger({ component: 'PipelineRunner' });
 
@@ -94,6 +95,11 @@ export interface PipelineExecuteOptions {
    * which bypassed per-repo routing (#2889).
    */
   readonly runsDir?: string;
+  /**
+   * Worker boundary readiness configuration (Task T06 / #5129).
+   * When provided, verifies capability requirements on the actual worker before execution.
+   */
+  readonly workerReadiness?: WorkerReadinessConfig;
 }
 
 /** Compile result type. */
@@ -105,6 +111,24 @@ type CompileResult =
 type ExecuteResult =
   | { readonly ok: true; readonly value: PipelineResult }
   | { readonly ok: false; readonly error: string };
+
+async function checkPreflightReadiness(
+  task: TaskContract,
+  options: PipelineExecuteOptions | undefined
+): Promise<string | null> {
+  if (options?.workerReadiness === undefined) {
+    return null;
+  }
+  const requirements = task.capabilityRequirements ?? [];
+  const report = await verifyWorkerReadiness(requirements, options.workerReadiness);
+  if (report.ready) {
+    return null;
+  }
+  const details = report.failures
+    .map((f) => `${f.requirementId} (${f.errorClass}: ${f.message})`)
+    .join('; ');
+  return `WorkerNotReadyError [${report.workerId}]: ${details}`;
+}
 
 // ============================================================================
 // PipelineRunner
@@ -147,6 +171,11 @@ export class PipelineRunner {
 
     if (options?.signal?.aborted === true) {
       return okResult(failedResult(startTime, 'Pipeline aborted before execution'));
+    }
+
+    const readinessError = await checkPreflightReadiness(task, options);
+    if (readinessError !== null) {
+      return okResult(failedResult(startTime, readinessError));
     }
 
     const trace = createTraceContext(task, options);
