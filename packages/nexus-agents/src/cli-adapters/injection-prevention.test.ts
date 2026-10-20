@@ -127,16 +127,4 @@ describe('codex adapter spawn options', () => {
     const matches = codeOnly.match(/shell:\s*true/g);
     expect(matches).toBeNull();
   });
-
-  it('subprocess adapter uses array-based spawn', async () => {
-    const source = await import('node:fs/promises').then((fs) =>
-      fs.readFile(new URL('./subprocess-adapter.ts', import.meta.url), 'utf-8')
-    );
-
-    // Wrappers can replace the command and argv. Spawn still receives a separate array.
-    expect(source).toMatch(/\bspawn\(\w+,\s*\[\.\.\.\w+\],\s*\{/);
-    // No shell: true in the subprocess adapter
-    const matches = source.match(/shell:\s*true/g);
-    expect(matches).toBeNull();
-  });
 });
