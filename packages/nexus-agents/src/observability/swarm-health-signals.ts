@@ -85,6 +85,7 @@ export function emitSwarmUnhealthySignals(
 
       bus.emit({
         type: 'signal.swarm_unhealthy',
+        origin: { kind: 'global', producer: 'swarm-health' },
         timestamp: Date.parse(metrics.calculatedAt),
         agentId: slot,
         reason: `bottleneck: ${String(bottleneck.queuedMessages)} queued, ${String(bottleneck.blockedAgents)} blocked (severity ${bottleneck.severity})`,

@@ -7,12 +7,27 @@
  * @module pipeline/trace-writer
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile, rename, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { resolveInsideRoot } from '../security/safe-path.js';
 
 import { createLogger } from '../core/index.js';
 import type { IEventBus, PipelineEvent, Unsubscribe } from './event-types.js';
-import type { ExecutionTraceEntry } from './trace-schema.js';
+import {
+  TraceOriginSchema,
+  TraceRunOriginSchema,
+  TraceAttributionSnapshotSchema,
+  traceRelation,
+  type ExecutionTraceEntry,
+  type TraceRunOrigin,
+} from './trace-schema.js';
+import {
+  relationCounts,
+  traceDigest,
+  TRACE_ATTRIBUTION_FILE,
+  MAX_TRACE_ATTRIBUTION_BYTES,
+} from './trace-attribution.js';
 
 const logger = createLogger({ component: 'TraceWriter' });
 
@@ -31,6 +46,8 @@ export interface TraceWriterOptions {
   readonly runId: string;
   /** Maximum buffer entries before eviction (default: 50,000). */
   readonly maxBufferSize?: number;
+  /** Explicit expected producer context. Run equality never identifies an invocation. */
+  readonly origin?: TraceRunOrigin;
 }
 
 // ============================================================================
@@ -46,64 +63,105 @@ export class TraceWriter {
   private readonly runDir: string;
   private readonly maxBuffer: number;
   private stopped = false;
+  private observed = 0;
+  private foreignDropped = 0;
+  private evicted = 0;
+  private countsOverflow = false;
+  private pendingFlush: Promise<void> | undefined;
+  private flushAgain = false;
 
   constructor(
     bus: IEventBus,
     private readonly options: TraceWriterOptions
   ) {
-    this.runDir = join(options.runsDir, options.runId);
+    const origin =
+      options.origin === undefined ? undefined : TraceRunOriginSchema.parse(options.origin);
+    if (origin !== undefined && origin.runId !== options.runId)
+      throw new Error('Trace capture run mismatch');
+    this.options = { ...options, ...(origin === undefined ? {} : { origin }) };
+    this.runDir = resolve(options.runsDir, options.runId);
     this.maxBuffer = options.maxBufferSize ?? MAX_BUFFER_SIZE;
+    if (!Number.isSafeInteger(this.maxBuffer) || this.maxBuffer < 1)
+      throw new Error('Invalid trace buffer size');
     this.unsubscribe = bus.subscribe({}, (event) => {
-      if (!this.stopped) {
-        if (this.buffer.length >= this.maxBuffer) {
-          this.buffer.shift();
-        }
-        this.buffer.push(this.eventToTrace(event));
+      if (this.stopped) return;
+      this.countsOverflow ||= this.observed === Number.MAX_SAFE_INTEGER;
+      if (this.countsOverflow) return;
+      this.observed++;
+      const entry = this.eventToTrace(event);
+      if (entry === null) {
+        this.foreignDropped++;
+        return;
       }
+      if (this.buffer.length >= this.maxBuffer) {
+        this.buffer.shift();
+        this.evicted++;
+      }
+      this.buffer.push(entry);
     });
   }
 
-  /** Flush buffered events to disk. Throws on write failure. */
-  async flush(): Promise<void> {
-    if (this.buffer.length === 0) return;
-
-    await mkdir(this.runDir, { recursive: true });
-
-    const lines = this.buffer.map((e) => JSON.stringify(e)).join('\n');
-
-    // Atomic write: trace.jsonl via tmp+rename
-    const tracePath = join(this.runDir, 'trace.jsonl');
-    const traceTmp = `${tracePath}.tmp.${String(process.pid)}`;
-    try {
-      await writeFile(traceTmp, lines + '\n', 'utf-8');
-      await rename(traceTmp, tracePath);
-    } catch (err: unknown) {
-      await unlink(traceTmp).catch((unlinkErr: unknown) => {
-        const msg = unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr);
-        logger.warn('Failed to clean up trace temp file', { path: traceTmp, error: msg });
-      });
-      throw err;
+  /**
+   * Serializes/coalesces bounded pending work. Each snapshot freezes rows and counters
+   * before its first await. Files rename individually; readers verify their digest binding.
+   */
+  flush(): Promise<void> {
+    if (this.pendingFlush !== undefined) {
+      this.flushAgain = true;
+      return this.pendingFlush;
     }
-
-    // Atomic write: index.md via tmp+rename
-    const indexContent = this.buildIndex();
-    const indexPath = join(this.runDir, 'index.md');
-    const indexTmp = `${indexPath}.tmp.${String(process.pid)}`;
-    try {
-      await writeFile(indexTmp, indexContent, 'utf-8');
-      await rename(indexTmp, indexPath);
-    } catch (err: unknown) {
-      await unlink(indexTmp).catch((unlinkErr: unknown) => {
-        const msg = unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr);
-        logger.warn('Failed to clean up index temp file', { path: indexTmp, error: msg });
-      });
-      throw err;
-    }
-
-    logger.info('Trace flushed', {
-      runId: this.options.runId,
-      events: this.buffer.length,
+    this.pendingFlush = this.flushSnapshots().finally(() => {
+      this.pendingFlush = undefined;
     });
+    return this.pendingFlush;
+  }
+
+  private async flushSnapshots(): Promise<void> {
+    do {
+      this.flushAgain = false;
+      if (this.countsOverflow) throw new Error('Trace observation counter overflow');
+      const entries = [...this.buffer];
+      const content =
+        entries.length === 0 ? '' : entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
+      const snapshot = TraceAttributionSnapshotSchema.parse({
+        attributionVersion: 1,
+        runId: this.options.runId,
+        ...(this.options.origin === undefined ? {} : { captureOrigin: this.options.origin }),
+        traceSha256: traceDigest(content),
+        traceBytes: Buffer.byteLength(content),
+        writerObserved: {
+          observed: this.observed,
+          foreignDropped: this.foreignDropped,
+          evicted: this.evicted,
+        },
+        retained: relationCounts(entries),
+      });
+      const metadata = JSON.stringify(snapshot) + '\n';
+      if (Buffer.byteLength(metadata) > MAX_TRACE_ATTRIBUTION_BYTES)
+        throw new Error('Trace metadata exceeds read cap');
+      const runDir = this.containedRunDirectory();
+      const index = this.buildIndex(entries);
+      await mkdir(runDir, { recursive: true });
+      await writeAtomic(join(runDir, 'trace.jsonl'), content);
+      await writeAtomic(join(runDir, TRACE_ATTRIBUTION_FILE), metadata);
+      await writeAtomic(join(runDir, 'index.md'), index);
+      logger.info('Trace flushed', { runId: this.options.runId, events: entries.length });
+    } while (this.needsAnotherFlush());
+  }
+
+  /** Refuse unsafe output during optional diagnostic flush, not task admission. */
+  private containedRunDirectory(): string {
+    const root = resolve(this.options.runsDir);
+    const directory = resolveInsideRoot(this.runDir, root);
+    const canonicalRoot = resolveInsideRoot(root, root);
+    if (canonicalRoot === null || directory === null || directory === canonicalRoot)
+      throw new Error('Trace output must be a contained descendant of runsDir');
+    return directory;
+  }
+
+  /** Read through a call: another request can set this flag across awaits. */
+  private needsAnotherFlush(): boolean {
+    return this.flushAgain;
   }
 
   /** Stop subscribing to events. */
@@ -113,8 +171,24 @@ export class TraceWriter {
   }
 
   /** Convert a PipelineEvent to an ExecutionTraceEntry. */
-  private eventToTrace(event: PipelineEvent): ExecutionTraceEntry {
+  private eventToTrace(event: PipelineEvent): ExecutionTraceEntry | null {
+    const parsed = TraceOriginSchema.safeParse(event.origin);
+    const origin = parsed.success ? parsed.data : undefined;
+    const captureRelation = traceRelation(
+      event.type,
+      origin,
+      this.options.origin,
+      this.options.runId
+    );
+    if (captureRelation === 'foreign') return null;
     const base: ExecutionTraceEntry = {
+      attributionVersion: 1,
+      captureRelation,
+      ...(origin === undefined ? {} : { origin }),
+      ...(this.options.origin === undefined ? {} : { captureOrigin: { ...this.options.origin } }),
+      ...(event.origin !== undefined && !parsed.success
+        ? { attributionIssue: 'invalid_origin' as const }
+        : {}),
       timestamp: event.timestamp,
       runId: this.options.runId,
       eventType: event.type,
@@ -123,6 +197,8 @@ export class TraceWriter {
     return {
       ...base,
       ...this.extractAttribution(event),
+      ...extractIdentity(event),
+      ...extractSignal(event),
     };
   }
 
@@ -150,19 +226,19 @@ export class TraceWriter {
   }
 
   /** Build a markdown index summary for this run. */
-  private buildIndex(): string {
+  private buildIndex(entries: readonly ExecutionTraceEntry[]): string {
     const lines = [
       `# Run: ${this.options.runId}`,
       '',
       `**Generated:** ${new Date().toISOString()}`,
-      `**Events:** ${String(this.buffer.length)}`,
+      `**Events:** ${String(entries.length)}`,
       '',
       '## Event Summary',
       '',
     ];
 
     const counts = new Map<string, number>();
-    for (const entry of this.buffer) {
+    for (const entry of entries) {
       const prev = counts.get(entry.eventType) ?? 0;
       counts.set(entry.eventType, prev + 1);
     }
@@ -246,4 +322,81 @@ function extractWaveAttribution(
     return { ...base, workerCount: event.workerCount };
   }
   return { ...base, durationMs: event.durationMs, workerCount: event.successes + event.errors };
+}
+
+/** Exclusive temporary names are filesystem mechanics, never producer identities. */
+async function writeAtomic(path: string, content: string): Promise<void> {
+  const temporary = `${path}.tmp.${randomUUID()}`;
+  try {
+    await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' });
+    await rename(temporary, path);
+  } catch (cause: unknown) {
+    await unlink(temporary).catch((cleanup: unknown) => {
+      const error = cleanup instanceof Error ? cleanup.message : String(cleanup);
+      logger.warn('Failed to clean up trace temporary file', { path: temporary, error });
+    });
+    throw cause;
+  }
+}
+
+/** Only these event discriminants declare a genuine task identity. */
+function taskIdentity(event: PipelineEvent): string | undefined {
+  switch (event.type) {
+    case 'task.created':
+    case 'task.status_changed':
+    case 'task.completed':
+    case 'task.failed':
+    case 'pipeline.started':
+      return event.taskId;
+    default:
+      return undefined;
+  }
+}
+
+function extractIdentity(event: PipelineEvent): Partial<ExecutionTraceEntry> {
+  const result: Partial<ExecutionTraceEntry> = {};
+  const identities = {
+    intentId: event.intentId,
+    attemptId: event.attemptId,
+    // CompositeRouter uses routing.taskId for a task-content prefix, not an ID.
+    taskId: taskIdentity(event),
+    ...(event.type === 'tool.invoked' || event.type === 'tool.completed'
+      ? { invocationId: event.invocationId }
+      : {}),
+  };
+  for (const key of ['taskId', 'attemptId', 'intentId', 'invocationId'] as const) {
+    const value: unknown = Reflect.get(identities, key);
+    if (typeof value !== 'string') continue;
+    if (value.length === 0 || value.length > 256) {
+      result.provenanceTruncated = true;
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+/** Bounded allowlist; no prompt, arbitrary payload, or dynamic serialization. */
+function extractSignal(event: PipelineEvent): Partial<ExecutionTraceEntry> {
+  const result: Partial<ExecutionTraceEntry> = {};
+  const bounded = (value: string, limit = 256): string => {
+    if (value.length > limit) result.provenanceTruncated = true;
+    return value.slice(0, limit);
+  };
+  if (event.type === 'signal.vote_rejected') {
+    result.proposalId = bounded(event.proposalId);
+    result.approvalPercentage = event.approvalPercentage;
+    if (event.rejectionRules !== undefined) {
+      if (event.rejectionRules.length > 20) result.provenanceTruncated = true;
+      result.rejectionRules = event.rejectionRules.slice(0, 20).map((rule) => bounded(rule));
+    }
+  } else if (event.type === 'signal.fitness_declined') {
+    result.score = event.score;
+    result.floor = event.floor;
+    if (event.dimension !== undefined) result.dimension = bounded(event.dimension);
+  } else if (event.type === 'signal.swarm_unhealthy') {
+    result.agentId = bounded(event.agentId);
+    result.reason = bounded(event.reason, 1024);
+  }
+  return result;
 }

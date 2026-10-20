@@ -20,7 +20,6 @@ vi.mock('node:fs', async (importOriginal) => {
 
 import { EventBus } from '../../pipeline/event-bus.js';
 import { TraceWriter } from '../../pipeline/trace-writer.js';
-import { emitStageStarted } from '../../pipeline/pipeline-observability.js';
 import type { ParsedCliArgs } from '../../cli-types.js';
 import { collectHealth, handleHealthCommand } from '../../cli/health-command.js';
 import { pipelineRunId } from '../../pipeline/pipeline-run-id.js';
@@ -51,9 +50,18 @@ afterEach(() => {
 async function traced(session: string, timestamp = Date.now()): Promise<string> {
   const runId = pipelineRunId(session);
   const bus = new EventBus();
-  const writer = new TraceWriter(bus, { runsDir: getDefaultRunsDir(), runId });
+  // Explicit host fixture provenance; production dev closures remain UNKNOWN until #7552.
+  const origin = { kind: 'run', producer: 'dev-pipeline', runId } as const;
+  const writer = new TraceWriter(bus, { runsDir: getDefaultRunsDir(), runId, origin });
   vi.spyOn(Date, 'now').mockReturnValueOnce(timestamp);
-  emitStageStarted({ bus, stageId: 'research', executionId: 'dev-pipeline-research' });
+  bus.emit({
+    type: 'stage.started',
+    timestamp: Date.now(),
+    stageId: 'research',
+    pluginId: 'research',
+    executionId: 'dev-pipeline-research',
+    origin,
+  });
   await writer.flush();
   writer.stop();
   return runId;
@@ -338,7 +346,7 @@ describe('weather pipeline inputs and output (#6867)', () => {
       JSON.stringify({
         timestamp: Date.now(),
         runId: 'pipeline-x',
-        // A stage event, so only the executionId provenance leg can reject it.
+        // Legacy stage capture identity is not typed producer provenance.
         eventType: 'stage.completed',
         executionId: 'pipeline-x',
       })

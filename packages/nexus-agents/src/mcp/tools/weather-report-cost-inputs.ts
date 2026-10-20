@@ -15,6 +15,7 @@ import {
   type DecisionCostRecord,
 } from '../../observability/decision-cost-store.js';
 import { nexusDataPath } from '../../config/nexus-data-dir.js';
+import { readTraceSnapshot, decodeTraceBytes } from '../../pipeline/trace-attribution.js';
 import { isPipelineRunId } from '../../pipeline/pipeline-run-id.js';
 import {
   ExecutionTraceEntrySchema,
@@ -36,8 +37,26 @@ function traceInWindow(path: string, runId: string, since: number): boolean {
   const stat = statSync(path);
   if (stat.mtimeMs < since) return false;
   if (stat.size > MAX_TRACE_FILE_BYTES) throw new Error('pipeline trace exceeds read cap');
+  const content = readFileSync(path);
+  const decoded = decodeTraceBytes(content);
+  if (decoded === null) throw new Error('Pipeline trace is not valid UTF-8');
+  const snapshot = readTraceSnapshot(path, nexusDataPath('runs'), content, runId);
+  const inspected = inspectTraceRows(decoded, runId, since);
+  if (inspected.requiresBinding && snapshot.status === 'unmeasured') {
+    throw new Error('Unmeasured pipeline trace snapshot binding');
+  }
+  return inspected.measured && snapshot.status === 'measured';
+}
+
+/** Validate all rows before a surviving row can certify logical participation. */
+function inspectTraceRows(
+  content: string,
+  runId: string,
+  since: number
+): { measured: boolean; requiresBinding: boolean } {
   let measured = false;
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
+  let requiresBinding = false;
+  for (const line of content.split('\n')) {
     if (line.trim() === '') continue;
     let raw: unknown;
     try {
@@ -47,9 +66,10 @@ function traceInWindow(path: string, runId: string, since: number): boolean {
     }
     const parsed = ExecutionTraceEntrySchema.safeParse(raw);
     if (!parsed.success) throw new Error('invalid persisted pipeline trace entry');
-    if (isWindowedDevTrace(parsed.data, runId, since)) measured = true;
+    requiresBinding ||= parsed.data.attributionVersion === 1;
+    measured ||= isWindowedDevTrace(parsed.data, runId, since);
   }
-  return measured;
+  return { measured, requiresBinding };
 }
 
 /** Contract IDs can collide; only the dev-stage producer's attribution certifies a run. */
@@ -58,7 +78,11 @@ function isWindowedDevTrace(entry: ExecutionTraceEntry, runId: string, since: nu
     entry.runId === runId &&
     entry.timestamp >= since &&
     entry.eventType.startsWith('stage.') &&
-    entry.executionId?.startsWith('dev-pipeline-') === true
+    entry.attributionVersion === 1 &&
+    entry.captureRelation === 'run_related' &&
+    entry.origin?.kind === 'run' &&
+    entry.origin.producer === 'dev-pipeline' &&
+    entry.origin.runId === runId
   );
 }
 
@@ -164,7 +188,9 @@ function withTraceReading(
     ...tokens,
     unreadablePipelineTraces: traces.unreadablePipelineTraces,
     pipelineOutcomeJoinCoverage:
-      traces.unreadablePipelineTraces > 0 ? null : (tokens.pipelineOutcomeJoinCoverage ?? null),
+      traces.unreadablePipelineTraces > 0 || traces.runIds.length === 0
+        ? null
+        : (tokens.pipelineOutcomeJoinCoverage ?? null),
   };
 }
 

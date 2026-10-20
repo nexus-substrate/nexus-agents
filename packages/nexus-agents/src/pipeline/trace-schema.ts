@@ -9,6 +9,73 @@
 
 import { z } from 'zod';
 
+const identity = z.string().min(1).max(256);
+export const TraceRunOriginSchema = z
+  .object({
+    kind: z.literal('run'),
+    producer: z.enum(['dev-pipeline', 'contract-pipeline', 'graph-pipeline']),
+    runId: identity,
+    taskId: identity.optional(),
+    attemptId: identity.optional(),
+  })
+  .strict();
+export const TraceOriginSchema = z.discriminatedUnion('kind', [
+  TraceRunOriginSchema,
+  z
+    .object({
+      kind: z.literal('global'),
+      producer: z.enum(['consensus', 'fitness-review', 'swarm-health', 'failover']),
+    })
+    .strict(),
+]);
+export type TraceRunOrigin = z.infer<typeof TraceRunOriginSchema>;
+export type TraceOrigin = z.infer<typeof TraceOriginSchema>;
+const TraceRelationSchema = z.enum([
+  'run_related',
+  'attempt_owned',
+  'global_context',
+  'unattributed',
+]);
+type TraceRelation = z.infer<typeof TraceRelationSchema>;
+
+/** Diagnostic equality; never permissions, invocation identity or callback settlement. */
+export function traceRelation(
+  eventType: string,
+  origin: TraceOrigin | undefined,
+  capture: TraceRunOrigin | undefined,
+  captureRunId: string
+): TraceRelation | 'foreign' {
+  if (origin === undefined) return 'unattributed';
+  if (origin.kind === 'global')
+    return eventType.startsWith('signal.') ? 'global_context' : 'unattributed';
+  if (origin.runId !== captureRunId) return 'foreign';
+  if (capture === undefined) return 'unattributed';
+  if (conflictingRunIdentity(origin, capture)) return 'foreign';
+  if (origin.attemptId === undefined && capture.attemptId === undefined) return 'run_related';
+  return exactCommittedAttempt(origin, capture) ? 'attempt_owned' : 'unattributed';
+}
+
+function differentKnownIdentity(a: string | undefined, b: string | undefined): boolean {
+  return a !== undefined && b !== undefined && a !== b;
+}
+function conflictingRunIdentity(origin: TraceRunOrigin, capture: TraceRunOrigin): boolean {
+  return (
+    origin.producer !== capture.producer ||
+    origin.runId !== capture.runId ||
+    differentKnownIdentity(origin.taskId, capture.taskId) ||
+    differentKnownIdentity(origin.attemptId, capture.attemptId)
+  );
+}
+function exactCommittedAttempt(origin: TraceRunOrigin, capture: TraceRunOrigin): boolean {
+  return (
+    origin.producer === 'contract-pipeline' &&
+    origin.taskId !== undefined &&
+    origin.taskId === capture.taskId &&
+    origin.attemptId !== undefined &&
+    origin.attemptId === capture.attemptId
+  );
+}
+
 // ============================================================================
 // Error Taxonomy
 // ============================================================================
@@ -33,7 +100,26 @@ export type ErrorTaxonomyType = (typeof ErrorTaxonomy)[keyof typeof ErrorTaxonom
  * Carries enough data to reconstruct: which agent did what,
  * with which model, why that model was selected.
  */
-export const ExecutionTraceEntrySchema = z.object({
+const TraceEntrySchema = z.object({
+  /** Optional/versioned so historical rows remain readable UNKNOWN. */
+  attributionVersion: z.literal(1).optional(),
+  origin: TraceOriginSchema.optional(),
+  captureOrigin: TraceRunOriginSchema.optional(),
+  captureRelation: TraceRelationSchema.optional(),
+  intentId: identity.optional(),
+  attemptId: identity.optional(),
+  taskId: identity.optional(),
+  invocationId: identity.optional(),
+  proposalId: z.string().max(256).optional(),
+  approvalPercentage: z.number().optional(),
+  rejectionRules: z.array(z.string().max(256)).max(20).optional(),
+  reason: z.string().max(1024).optional(),
+  score: z.number().optional(),
+  floor: z.number().optional(),
+  dimension: z.string().max(256).optional(),
+  provenanceTruncated: z.boolean().optional(),
+  attributionIssue: z.literal('invalid_origin').optional(),
+
   /** Unix timestamp (ms). */
   timestamp: z.number(),
 
@@ -83,4 +169,72 @@ export const ExecutionTraceEntrySchema = z.object({
   workerCount: z.number().optional(),
 });
 
+type TraceEntryFields = z.infer<typeof TraceEntrySchema>;
+function legacyAttribution(entry: TraceEntryFields): boolean {
+  return (
+    entry.attributionVersion === undefined &&
+    entry.origin === undefined &&
+    entry.captureOrigin === undefined &&
+    entry.captureRelation === undefined
+  );
+}
+function eventIdentityAgrees(entry: TraceEntryFields): boolean {
+  if (entry.origin?.kind !== 'run') return true;
+  return (
+    !differentKnownIdentity(entry.attemptId, entry.origin.attemptId) &&
+    !differentKnownIdentity(entry.taskId, entry.origin.taskId)
+  );
+}
+function consistentAttribution(entry: TraceEntryFields): boolean {
+  if (entry.attributionVersion !== 1 || entry.captureRelation === undefined) return false;
+  if (entry.captureOrigin !== undefined && entry.captureOrigin.runId !== entry.runId) return false;
+  if (entry.origin?.kind === 'global' && entry.agentId !== undefined && entry.agentId.length > 256)
+    return false;
+  return (
+    traceRelation(entry.eventType, entry.origin, entry.captureOrigin, entry.runId) ===
+      entry.captureRelation && eventIdentityAgrees(entry)
+  );
+}
+export const ExecutionTraceEntrySchema = TraceEntrySchema.superRefine((entry, ctx) => {
+  if (legacyAttribution(entry)) return;
+  if (!consistentAttribution(entry))
+    ctx.addIssue({ code: 'custom', message: 'Contradictory trace attribution' });
+});
 export type ExecutionTraceEntry = z.infer<typeof ExecutionTraceEntrySchema>;
+
+const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const TraceRelationCountsSchema = z
+  .object({
+    run_related: count,
+    attempt_owned: count,
+    global_context: count,
+    unattributed: count,
+  })
+  .strict();
+export type TraceRelationCounts = z.infer<typeof TraceRelationCountsSchema>;
+
+/** One writer's observations of the exact retained JSONL snapshot, never all-run history. */
+export const TraceAttributionSnapshotSchema = z
+  .object({
+    attributionVersion: z.literal(1),
+    runId: identity,
+    captureOrigin: TraceRunOriginSchema.optional(),
+    traceSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    traceBytes: count,
+    writerObserved: z.object({ observed: count, foreignDropped: count, evicted: count }).strict(),
+    retained: TraceRelationCountsSchema,
+  })
+  .strict()
+  .superRefine((snapshot, ctx) => {
+    const retained = Object.values(snapshot.retained).reduce((sum, value) => sum + value, 0);
+    const total =
+      retained + snapshot.writerObserved.foreignDropped + snapshot.writerObserved.evicted;
+    if (
+      !Number.isSafeInteger(total) ||
+      total !== snapshot.writerObserved.observed ||
+      (snapshot.captureOrigin !== undefined && snapshot.captureOrigin.runId !== snapshot.runId)
+    ) {
+      ctx.addIssue({ code: 'custom', message: 'Inconsistent trace observation counts/context' });
+    }
+  });
+export type TraceAttributionSnapshot = z.infer<typeof TraceAttributionSnapshotSchema>;
