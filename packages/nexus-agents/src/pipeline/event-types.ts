@@ -54,6 +54,10 @@ export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];
 /** Base fields present on every event. */
 interface BaseEvent {
   readonly timestamp: number;
+  /** Stable identity on persisted diagnostic notifications; delivery may replay. */
+  readonly intentId?: string;
+  /** Execution attempt that committed a persisted notification. */
+  readonly attemptId?: string;
 }
 
 /** Task lifecycle events. */

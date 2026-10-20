@@ -28,6 +28,7 @@ import { createLogger } from '../core/index.js';
 import { API_TIMEOUTS } from '../config/timeouts.js';
 
 import { PipelineRunner } from './pipeline-runner.js';
+import { AuthoritativeDecisionStore } from './authoritative-decision-store.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine, type PipelineStateSnapshot } from './policy-engine.js';
 import { evaluatePipelinePolicy, getPolicyMode } from './policy-evaluator.js';
@@ -164,6 +165,8 @@ export async function executeDelegatePipeline(task: TaskContract): Promise<Pipel
   const startMs = Date.now();
   const result = await runner.execute(compiled.value, task, {
     eventBus: getPipelineEventBus(),
+    decisionStore: new AuthoritativeDecisionStore(),
+    decisionScope: 'v2-route-instrumentation',
   });
   const durationMs = Date.now() - startMs;
   if (!result.ok) {

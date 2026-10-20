@@ -12,7 +12,7 @@ import { nexusDataPath } from '../config/nexus-data-dir.js';
 
 import { compilePlan } from './plan-compiler.js';
 import type { PlanCompileOptions } from './plan-compiler.js';
-import { TraceWriter } from './trace-writer.js';
+import { PipelineRunLifecycle } from './pipeline-run-lifecycle.js';
 import { resolvePipelineDeps } from './pipeline-deps.js';
 
 import type {
@@ -25,6 +25,7 @@ import type { IEventBus } from './event-types.js';
 import { emitStageCompleted, emitStageFailed } from './pipeline-observability.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
 import { verifyWorkerReadiness, type WorkerReadinessConfig } from './worker-readiness.js';
+import type { AuthoritativeDecisionStore } from './authoritative-decision-store.js';
 
 const pipelineLogger = createLogger({ component: 'PipelineRunner' });
 
@@ -100,6 +101,15 @@ export interface PipelineExecuteOptions {
    * When provided, verifies capability requirements on the actual worker before execution.
    */
   readonly workerReadiness?: WorkerReadinessConfig;
+  /**
+   * Authoritative decision store (Task T10 / #7522).
+   * When provided, persists authoritative transitions and outbox intents before/after execution.
+   */
+  readonly decisionStore?: AuthoritativeDecisionStore;
+  /** Stable retry identity; changing it explicitly requests a distinct attempt. */
+  readonly decisionAttemptId?: string;
+  /** Persist the actual scope: V2 route instrumentation never certifies V1 work. */
+  readonly decisionScope?: 'pipeline-attempt' | 'v2-route-instrumentation';
 }
 
 /** Compile result type. */
@@ -182,18 +192,35 @@ async function checkPreflightReadiness(
   return formatReadinessOutcome(report, effectiveSignal, startTime, totalBudgetMs);
 }
 
+async function runPreExecutionGates(
+  pipeline: CompiledPipeline,
+  task: TaskContract,
+  options: PipelineExecuteOptions | undefined,
+  startTime: number
+): Promise<string | null> {
+  if (options?.signal?.aborted === true) return 'Pipeline aborted before execution';
+  return checkPreflightReadiness(pipeline, task, options, startTime);
+}
+
 function computeRemainingTimeout(
   pipeline: CompiledPipeline,
   options: PipelineExecuteOptions | undefined,
   startTime: number
 ): number {
   const totalTimeoutMs = options?.timeout ?? pipeline.plan.timeoutMs;
-  return Math.max(1, totalTimeoutMs - (Date.now() - startTime));
+  return Math.max(0, totalTimeoutMs - (Date.now() - startTime));
 }
 
-// ============================================================================
-// PipelineRunner
-// ============================================================================
+function executionBoundaryError(
+  pipeline: CompiledPipeline,
+  options: PipelineExecuteOptions | undefined,
+  startTime: number
+): string | null {
+  if (options?.signal?.aborted === true) return 'Pipeline aborted before graph execution';
+  return computeRemainingTimeout(pipeline, options, startTime) === 0
+    ? 'Pipeline timed out before graph execution'
+    : null;
+}
 
 /**
  * Compiles PlanContracts and executes them as graphs.
@@ -201,25 +228,16 @@ function computeRemainingTimeout(
 export class PipelineRunner {
   /** Compiles a PlanContract into a CompiledPipeline. */
   compile(plan: PlanContract, options?: PlanCompileOptions): CompileResult {
-    // Resolve deps through the explicit seam (#3175): an injected registry wins,
-    // otherwise the documented global default is used — behavior unchanged.
     const { pluginRegistry } = resolvePipelineDeps(options);
     const compileOpts: PlanCompileOptions = {
       pluginRegistry,
-      // Thread stage-boundary policy enforcement through to the gate handlers
-      // (#3177). Unset → gates remain no-op passes (back-compat).
       ...(options?.policyEnforcement !== undefined
         ? { policyEnforcement: options.policyEnforcement }
         : {}),
     };
     const graphResult = compilePlan(plan, compileOpts);
-    if (!graphResult.ok) {
-      return { ok: false, error: graphResult.error };
-    }
-    return {
-      ok: true,
-      value: { graph: graphResult.value, plan },
-    };
+    if (!graphResult.ok) return { ok: false, error: graphResult.error };
+    return { ok: true, value: { graph: graphResult.value, plan } };
   }
 
   /** Executes a compiled pipeline. */
@@ -229,38 +247,33 @@ export class PipelineRunner {
     options?: PipelineExecuteOptions
   ): Promise<ExecuteResult> {
     const startTime = Date.now();
+    const preGateError =
+      (await runPreExecutionGates(pipeline, task, options, startTime)) ??
+      executionBoundaryError(pipeline, options, startTime);
+    if (preGateError !== null) return okResult(failedResult(startTime, preGateError));
 
-    if (options?.signal?.aborted === true) {
-      return okResult(failedResult(startTime, 'Pipeline aborted before execution'));
-    }
-
-    const readinessError = await checkPreflightReadiness(pipeline, task, options, startTime);
-    if (readinessError !== null) {
-      return okResult(failedResult(startTime, readinessError));
-    }
-
-    const remainingTimeoutMs = computeRemainingTimeout(pipeline, options, startTime);
-    const trace = createTraceContext(task, options);
-    emitPipelineStarted(trace, task);
+    const lifecycle = new PipelineRunLifecycle(pipeline, task, options);
+    const admissionError = lifecycle.begin();
+    if (admissionError !== null) return okResult(failedResult(startTime, admissionError));
 
     try {
-      const graphOpts = buildGraphOptions(pipeline, {
-        ...options,
-        timeout: remainingTimeoutMs,
-      });
+      const boundaryError = executionBoundaryError(pipeline, options, startTime);
+      if (boundaryError !== null)
+        return okResult(lifecycle.finish(failedResult(startTime, boundaryError)));
+      const remainingTimeoutMs = computeRemainingTimeout(pipeline, options, startTime);
+      const graphOpts = buildGraphOptions(pipeline, { ...options, timeout: remainingTimeoutMs });
       const graphResult = await executeGraph(pipeline.graph, { task }, graphOpts);
-
       if (!graphResult.ok) {
-        emitPipelineCompleted(trace, task.id, false, Date.now() - startTime);
-        return okResult(failedResult(startTime, graphResult.error.message));
+        const failed = failedResult(startTime, graphResult.error.message);
+        return okResult(lifecycle.finish(failed));
       }
-
-      const continueMode = options?.continueOnFailure === true;
-      const result = toResult(graphResult.value, startTime, continueMode);
-      emitPipelineCompleted(trace, task.id, result.success, result.durationMs);
-      return okResult(result);
+      const result = toResult(graphResult.value, startTime, options?.continueOnFailure === true);
+      return okResult(lifecycle.finish(result));
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      return okResult(lifecycle.finish(failedResult(startTime, message)));
     } finally {
-      await flushTrace(trace);
+      await lifecycle.flush();
     }
   }
 
@@ -463,82 +476,13 @@ function mapNodeStatus(
 // Trace Helpers (#1167)
 // ============================================================================
 
-interface TraceContext {
-  readonly bus: IEventBus | undefined;
-  readonly writer: TraceWriter | undefined;
-}
-
-function createTraceContext(task: TaskContract, options?: PipelineExecuteOptions): TraceContext {
-  const bus = options?.eventBus;
-  const writer =
-    bus !== undefined
-      ? new TraceWriter(bus, {
-          runsDir: options?.runsDir ?? getDefaultRunsDir(),
-          runId: task.id,
-        })
-      : undefined;
-  return { bus, writer };
-}
-
-function emitPipelineStarted(ctx: TraceContext, task: TaskContract): void {
-  pipelineLogger.debug('Pipeline started', { taskId: task.id });
-  if (ctx.bus === undefined) return;
-  ctx.bus.emit({
-    type: 'pipeline.started',
-    taskId: task.id,
-    executionId: task.id,
-    timestamp: Date.now(),
-  });
-}
-
-function emitPipelineCompleted(
-  ctx: TraceContext,
-  executionId: string,
-  success: boolean,
-  durationMs: number
-): void {
-  pipelineLogger.debug('Pipeline completed', { executionId, success, durationMs });
-  if (ctx.bus === undefined) return;
-  ctx.bus.emit({
-    type: 'pipeline.completed',
-    executionId,
-    success,
-    durationMs,
-    timestamp: Date.now(),
-  });
-}
-
 /** Emit stage.completed or stage.failed based on node result (#1179, #1734). */
 function emitStageEvent(bus: IEventBus | undefined, executionId: string, result: NodeResult): void {
-  pipelineLogger.debug('Stage event', {
-    executionId,
-    stageId: result.nodeId,
-    status: result.status,
-    durationMs: result.durationMs,
-  });
-  if (result.status === 'failed') {
-    emitStageFailed({
-      bus,
-      executionId,
-      stageId: result.nodeId,
-      error: result.error ?? 'Unknown error',
-    });
+  const { nodeId: stageId, status, durationMs } = result;
+  pipelineLogger.debug('Stage event', { executionId, stageId, status, durationMs });
+  if (status === 'failed') {
+    emitStageFailed({ bus, executionId, stageId, error: result.error ?? 'Unknown error' });
   } else {
-    emitStageCompleted({
-      bus,
-      executionId,
-      stageId: result.nodeId,
-      durationMs: result.durationMs,
-      success: result.status === 'success',
-    });
+    emitStageCompleted({ bus, executionId, stageId, durationMs, success: status === 'success' });
   }
-}
-
-async function flushTrace(ctx: TraceContext): Promise<void> {
-  if (ctx.writer === undefined) return;
-  await ctx.writer.flush().catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err);
-    pipelineLogger.warn('Trace flush failed — trace data may be lost', { error: msg });
-  });
-  ctx.writer.stop();
 }

@@ -15,6 +15,7 @@
  */
 import { createDelegatePipeline, checkPipelinePolicy } from './v2-delegate.js';
 import { PipelineRunner } from './pipeline-runner.js';
+import { AuthoritativeDecisionStore } from './authoritative-decision-store.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { buildBaseTaskContract } from './task-contract-builders.js';
 
@@ -114,6 +115,8 @@ export async function executeOrchestratePipeline(task: TaskContract): Promise<Pi
   const startMs = Date.now();
   const result = await runner.execute(compiled.value, task, {
     eventBus: getPipelineEventBus(),
+    decisionStore: new AuthoritativeDecisionStore(),
+    decisionScope: 'v2-route-instrumentation',
   });
   const durationMs = Date.now() - startMs;
   if (!result.ok) {
