@@ -84,6 +84,7 @@ function fixture(directories: string[]): Fixture {
 describe('reviewed evidence integrity regressions', () => {
   const directories: string[] = [];
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const directory of directories.splice(0))
       rmSync(directory, { recursive: true, force: true });
   });
@@ -126,11 +127,25 @@ describe('reviewed evidence integrity regressions', () => {
     const barrier = new Promise<void>((resolve) => {
       release = resolve;
     });
+    // Setup and synchronous SQLite admission must not consume the verifier's test budget.
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const nativeTimeout = vi.spyOn(AbortSignal, 'timeout');
+    let markEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    let entryWatchdog: ReturnType<typeof setTimeout> | undefined;
+    let verifierSignal: AbortSignal | undefined;
     let active = 0;
     let maximum = 0;
     const verifier: EvidenceVerificationConfig['verify'] = async (request) => {
       active++;
       maximum = Math.max(maximum, active);
+      verifierSignal = request.signal;
+      markEntered();
+      // The native 50ms timer was created before entry; it remains real and pending.
+      now += 51;
       try {
         await barrier;
         return await current.verification.verify(request);
@@ -145,44 +160,66 @@ describe('reviewed evidence integrity regressions', () => {
       timeout: 50,
     };
     try {
-      const first = await runner.execute(current.pipeline, current.task, {
-        ...options,
-        decisionStore: store,
-        decisionAttemptId: 'first',
-      });
-      expect(first.ok && first.value.success).toBe(false);
-      expect(active).toBe(1);
-      const retry = await runner.execute(current.pipeline, current.task, {
+      try {
+        const firstExecution = runner.execute(current.pipeline, current.task, {
+          ...options,
+          decisionStore: store,
+          decisionAttemptId: 'first',
+        });
+        await Promise.race([
+          entered,
+          new Promise<never>((_resolve, reject) => {
+            entryWatchdog = setTimeout(() => {
+              reject(new Error('Verifier entry watchdog'));
+            }, 2_000);
+          }),
+        ]);
+        const first = await firstExecution;
+        expect(first.ok && first.value.success).toBe(false);
+        expect(nativeTimeout).toHaveBeenCalledWith(50);
+        expect(nativeTimeout.mock.results.some((result) => result.value === verifierSignal)).toBe(
+          true
+        );
+        expect(verifierSignal?.aborted).toBe(true);
+        expect(verifierSignal?.reason).toBeInstanceOf(DOMException);
+        expect(verifierSignal?.reason).toMatchObject({ name: 'TimeoutError' });
+        expect(active).toBe(1);
+        const retry = await runner.execute(current.pipeline, current.task, {
+          ...options,
+          decisionStore: new AuthoritativeDecisionStore({ storageDir: current.directory }),
+          decisionAttemptId: 'second',
+        });
+        expect(maximum, 'a deadline must not admit a concurrent host verifier').toBe(1);
+        expect(retry).toMatchObject({
+          ok: true,
+          value: { success: false, error: expect.stringContaining('AdmissionConflictError') },
+        });
+        expect(store.getTaskSnapshot(current.task.id)).toMatchObject({
+          ok: true,
+          value: { currentState: 'recoverable', latestAttemptId: 'first' },
+        });
+      } finally {
+        release();
+        await barrier;
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+      }
+      expect(active).toBe(0);
+      const afterSettlement = await runner.execute(current.pipeline, current.task, {
         ...options,
         decisionStore: new AuthoritativeDecisionStore({ storageDir: current.directory }),
-        decisionAttemptId: 'second',
+        decisionAttemptId: 'third',
       });
-      expect(maximum, 'a deadline must not admit a concurrent host verifier').toBe(1);
-      expect(retry).toMatchObject({
+      expect(afterSettlement).toMatchObject({
         ok: true,
         value: { success: false, error: expect.stringContaining('AdmissionConflictError') },
       });
-      expect(store.getTaskSnapshot(current.task.id)).toMatchObject({
-        ok: true,
-        value: { currentState: 'recoverable', latestAttemptId: 'first' },
-      });
     } finally {
-      release();
-      await barrier;
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
+      if (entryWatchdog !== undefined) clearTimeout(entryWatchdog);
+      clock.mockRestore();
+      nativeTimeout.mockRestore();
     }
-    expect(active).toBe(0);
-    const afterSettlement = await runner.execute(current.pipeline, current.task, {
-      ...options,
-      decisionStore: new AuthoritativeDecisionStore({ storageDir: current.directory }),
-      decisionAttemptId: 'third',
-    });
-    expect(afterSettlement).toMatchObject({
-      ok: true,
-      value: { success: false, error: expect.stringContaining('AdmissionConflictError') },
-    });
   });
 
   it('persists host expectations and an unverified absence summary when observations are empty', async () => {
