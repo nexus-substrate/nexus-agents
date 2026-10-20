@@ -176,6 +176,9 @@ async function checkPreflightReadiness(
     totalTimeoutMs: totalBudgetMs,
     ...(effectiveSignal !== undefined ? { signal: effectiveSignal } : {}),
   });
+  for (const w of report.advisoryWarnings) {
+    pipelineLogger.warn('Worker readiness advisory warning', { ...w });
+  }
   return formatReadinessOutcome(report, effectiveSignal, startTime, totalBudgetMs);
 }
 
