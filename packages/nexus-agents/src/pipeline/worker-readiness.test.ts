@@ -57,6 +57,10 @@ describe('Task T06: Readiness Levels & Write Operation Classification', () => {
     expect(isWriteOperation('repo.mutate')).toBe(true);
     expect(isWriteOperation('release.publish')).toBe(true);
     expect(isWriteOperation('git.push')).toBe(true);
+    expect(isWriteOperation('fs:write')).toBe(true);
+    expect(isWriteOperation('repo_update')).toBe(true);
+    expect(isWriteOperation('git-commit')).toBe(true);
+    expect(isWriteOperation('artifact.modify')).toBe(true);
     expect(isWriteOperation('artifact.read')).toBe(false);
     expect(isWriteOperation('file.read')).toBe(false);
   });
@@ -293,6 +297,49 @@ describe('Task T06 / C04: Revoked or Changed Grant Invalidates Proof', () => {
     cache.revokeProof(initialProof.proofId);
     expect(cache.getValidProof(ctx, requirement, now + 20_000)).toBeUndefined();
   });
+
+  it('isolates cached proofs by resourceRef and scope so narrow proofs never satisfy broader requirements', async () => {
+    const cache = new ReadinessProofCache();
+    const now = 1_700_000_000_000;
+    const ctx = baseWorkerContext();
+
+    const narrowReq: CapabilityRequirement = {
+      id: 'cap-shared-id',
+      operation: 'artifact.read',
+      resourceRef: 'artifact:public-readme',
+      scope: 'public',
+      mode: 'enforcing',
+    };
+    const restrictedReq: CapabilityRequirement = {
+      id: 'cap-shared-id',
+      operation: 'artifact.read',
+      resourceRef: 'artifact:secret-diff',
+      scope: 'restricted',
+      mode: 'enforcing',
+    };
+
+    const first = await verifyWorkerReadiness([narrowReq], {
+      context: ctx,
+      probe: () => ({ ok: true }),
+      cache,
+      now,
+    });
+    expect(first.ready).toBe(true);
+
+    // Narrow proof must NOT be overwritten or reused for restrictedReq, and narrowReq proof must remain intact
+    const second = await verifyWorkerReadiness([restrictedReq], {
+      context: ctx,
+      probe: () => ({
+        ok: false,
+        errorClass: 'RestrictedScopeDeniedError',
+        message: 'Denied restricted scope',
+      }),
+      cache,
+      now: now + 100,
+    });
+    expect(second.ready).toBe(false);
+    expect(cache.getValidProof(ctx, narrowReq, now + 200)).toBeDefined();
+  });
 });
 
 describe('Task T06 / C33: Unsafe Write-Capability Probe Prevention', () => {
@@ -352,6 +399,76 @@ describe('Task T06 / C33: Unsafe Write-Capability Probe Prevention', () => {
     expect(observedScratchFlag).toBe(true);
     expect(report.proofs[0]?.probedInScratch).toBe(true);
     expect(report.proofs[0]?.narrowerThanTargetWrite).toBe(true);
+  });
+
+  it('rejects relative or traversal approvedScratchDir paths', async () => {
+    const writeReq: CapabilityRequirement = {
+      id: 'cap-write-file',
+      operation: 'file.write',
+      resourceRef: 'packages/nexus-agents/src/index.ts',
+      mode: 'enforcing',
+    };
+
+    const traversalCtx = baseWorkerContext({ approvedScratchDir: '/tmp/scratch/../../etc' });
+    const report = await verifyWorkerReadiness([writeReq], {
+      context: traversalCtx,
+      probe: () => ({ ok: true }),
+      now: 1_700_000_000_000,
+    });
+
+    expect(report.ready).toBe(false);
+    expect(report.failures[0]?.errorClass).toBe('UnsafeWriteProbeRejectedError');
+  });
+
+  it('captures thrown/rejected probe exceptions as structured ReadinessFailure without crashing advisory or enforcing checks', async () => {
+    const advisoryReq: CapabilityRequirement = {
+      id: 'cap-advisory-throw',
+      operation: 'artifact.read',
+      mode: 'advisory',
+    };
+    const enforcingReq: CapabilityRequirement = {
+      id: 'cap-enforcing-throw',
+      operation: 'file.read',
+      mode: 'enforcing',
+    };
+
+    const report = await verifyWorkerReadiness([advisoryReq, enforcingReq], {
+      context: baseWorkerContext(),
+      probe: () => {
+        const err = new Error('Socket hang up during worker probe');
+        err.name = 'ECONNRESET';
+        throw err;
+      },
+      now: 1_700_000_000_000,
+    });
+
+    expect(report.ready).toBe(false);
+    expect(report.advisoryWarnings).toHaveLength(1);
+    expect(report.advisoryWarnings[0]?.errorClass).toBe('ECONNRESET');
+    expect(report.failures).toHaveLength(1);
+    expect(report.failures[0]?.errorClass).toBe('ECONNRESET');
+    expect(report.failures[0]?.message).toContain('Socket hang up');
+  });
+
+  it('bounds stalled worker probes via probeTimeoutMs and AbortSignal', async () => {
+    const req: CapabilityRequirement = {
+      id: 'cap-stalled',
+      operation: 'artifact.read',
+      mode: 'enforcing',
+    };
+
+    const report = await verifyWorkerReadiness([req], {
+      context: baseWorkerContext(),
+      probeTimeoutMs: 15,
+      probe: () =>
+        new Promise(() => {
+          // Never resolves
+        }),
+      now: 1_700_000_000_000,
+    });
+
+    expect(report.ready).toBe(false);
+    expect(report.failures[0]?.errorClass).toBe('ProbeTimeoutError');
   });
 });
 
@@ -433,6 +550,23 @@ describe('Task T06: PipelineRunner Worker Boundary Preflight Integration', () =>
       expect(execResult.value.stepsExecuted).toBe(0);
       expect(execResult.value.error).toContain('ArtifactMountDeniedError');
       expect(execResult.value.error).toContain('req-artifact-access');
+    }
+
+    // Also verify PipelineRunner enforces timeout on stalled preflight probes and respects remaining timeout budget
+    const stalledExec = await runner.execute(compiled.value, task, {
+      timeout: 20,
+      workerReadiness: {
+        context: baseWorkerContext({ workerId: 'worker-stalled-preflight' }),
+        probe: () =>
+          new Promise(() => {
+            // Never resolves
+          }),
+      },
+    });
+    expect(stalledExec.ok).toBe(true);
+    if (stalledExec.ok) {
+      expect(stalledExec.value.success).toBe(false);
+      expect(stalledExec.value.error).toContain('ProbeTimeoutError');
     }
   });
 });

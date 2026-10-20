@@ -112,7 +112,17 @@ type ExecuteResult =
   | { readonly ok: true; readonly value: PipelineResult }
   | { readonly ok: false; readonly error: string };
 
+function resolveEffectiveProbeTimeout(
+  pipeline: CompiledPipeline,
+  options: PipelineExecuteOptions
+): number {
+  const totalBudgetMs = options.timeout ?? pipeline.plan.timeoutMs;
+  const probeTimeoutMs = options.workerReadiness?.probeTimeoutMs;
+  return probeTimeoutMs !== undefined ? Math.min(probeTimeoutMs, totalBudgetMs) : totalBudgetMs;
+}
+
 async function checkPreflightReadiness(
+  pipeline: CompiledPipeline,
   task: TaskContract,
   options: PipelineExecuteOptions | undefined
 ): Promise<string | null> {
@@ -120,7 +130,14 @@ async function checkPreflightReadiness(
     return null;
   }
   const requirements = task.capabilityRequirements ?? [];
-  const report = await verifyWorkerReadiness(requirements, options.workerReadiness);
+  const effectiveProbeTimeout = resolveEffectiveProbeTimeout(pipeline, options);
+  const effectiveSignal = options.workerReadiness.signal ?? options.signal;
+
+  const report = await verifyWorkerReadiness(requirements, {
+    ...options.workerReadiness,
+    probeTimeoutMs: effectiveProbeTimeout,
+    ...(effectiveSignal !== undefined ? { signal: effectiveSignal } : {}),
+  });
   if (report.ready) {
     return null;
   }
@@ -128,6 +145,15 @@ async function checkPreflightReadiness(
     .map((f) => `${f.requirementId} (${f.errorClass}: ${f.message})`)
     .join('; ');
   return `WorkerNotReadyError [${report.workerId}]: ${details}`;
+}
+
+function computeRemainingTimeout(
+  pipeline: CompiledPipeline,
+  options: PipelineExecuteOptions | undefined,
+  startTime: number
+): number {
+  const totalTimeoutMs = options?.timeout ?? pipeline.plan.timeoutMs;
+  return Math.max(1, totalTimeoutMs - (Date.now() - startTime));
 }
 
 // ============================================================================
@@ -173,16 +199,20 @@ export class PipelineRunner {
       return okResult(failedResult(startTime, 'Pipeline aborted before execution'));
     }
 
-    const readinessError = await checkPreflightReadiness(task, options);
+    const readinessError = await checkPreflightReadiness(pipeline, task, options);
     if (readinessError !== null) {
       return okResult(failedResult(startTime, readinessError));
     }
 
+    const remainingTimeoutMs = computeRemainingTimeout(pipeline, options, startTime);
     const trace = createTraceContext(task, options);
     emitPipelineStarted(trace, task);
 
     try {
-      const graphOpts = buildGraphOptions(pipeline, options);
+      const graphOpts = buildGraphOptions(pipeline, {
+        ...options,
+        timeout: remainingTimeoutMs,
+      });
       const graphResult = await executeGraph(pipeline.graph, { task }, graphOpts);
 
       if (!graphResult.ok) {

@@ -10515,6 +10515,7 @@ InterfaceDeclaration WorkerOutput
 InterfaceDeclaration WorkerProbeExecutionOptions
   readonly isScratchProbe: boolean
   readonly scratchDir?: string | undefined
+  readonly signal?: AbortSignal | undefined
 TypeAliasDeclaration WorkerProbeOutcome
   = { readonly errorClass: string; readonly message: string; readonly ok: false; } | { readonly latencyMs?: number | undefined; readonly ok: true; }
 InterfaceDeclaration WorkerReadinessConfig
@@ -10522,7 +10523,9 @@ InterfaceDeclaration WorkerReadinessConfig
   readonly context: WorkerBoundaryContext
   readonly now?: number | undefined
   readonly probe: WorkerResourceProbe
+  readonly probeTimeoutMs?: number | undefined
   readonly proofTtlMs?: number | undefined
+  readonly signal?: AbortSignal | undefined
 TypeAliasDeclaration WorkerResourceProbe
   = ( requirement: CapabilityRequirement, context: WorkerBoundaryContext, options: WorkerProbeExecutionOptions ) => Promise<WorkerProbeOutcome> | WorkerProbeOutcome
 InterfaceDeclaration WorkflowAdapterConfig
