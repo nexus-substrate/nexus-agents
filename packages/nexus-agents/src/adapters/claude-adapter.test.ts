@@ -202,6 +202,7 @@ describe('ClaudeAdapter', () => {
         expect(result.value.usage?.outputTokens).toBe(5);
         expect(result.value.usage?.totalTokens).toBe(15);
         expect(result.value.stopReason).toBe('end_turn');
+        expect(result.value.reportedModel).toBe(CLAUDE_MODELS.SONNET_4);
       }
     });
 

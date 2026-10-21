@@ -42,7 +42,7 @@ import {
 } from '../config/timeouts.js';
 import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
 import { extractTextFromResponse, isStructuredOutputUnsupported } from './voter-response-text.js';
-import { foldCompletionUsage, type AttemptUsage } from '../observability/attempt-usage.js';
+import type { AttemptUsage } from '../observability/attempt-usage.js';
 
 export { extractTextFromResponse };
 
@@ -75,8 +75,9 @@ export const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
 // Rate-limit detection and failed-attempt logging live in a sibling (#6821
 // made room here); `isRateLimitError` stays exported from this module.
 import { isRateLimitError, logAbandonedRetries, logFailedAttempt } from './voter-attempt-log.js';
-import { readVoteUsage, foldAttempt } from './voter-attempt-usage.js';
+import { readVoteUsage, foldAttempt, toVoteOutcome } from './voter-attempt-usage.js';
 import { VOTER_ACCESS_MODE } from './voter-cli-access.js';
+import { validatedModelIdentity } from '../cli-adapters/model-identity.js';
 export { isRateLimitError };
 
 /**
@@ -351,9 +352,9 @@ async function runVoteCompletion(
     // #6115: the alias the seat asked for, when the CLI answered on another
     // one of its family (#6120) — the seat's result discloses it as a fallback.
     fallbackFrom: response.value.fallbackFrom,
-    // #6660: the model the adapter reported answering — not `adapter.modelId`,
-    // the alias requested. An empty report is no report.
-    servedModel: response.value.model === '' ? undefined : response.value.model,
+    // #7550: operational attribution must not become a transport report.
+    servedModel: validatedModelIdentity(response.value.reportedModel),
+    operationalModel: validatedModelIdentity(response.value.model),
   };
 }
 
@@ -370,6 +371,7 @@ interface VoteAttemptSuccess {
   readonly fallbackFrom: string | undefined;
   /** The model the adapter reported answering (#6660); undefined when it reported none. */
   readonly servedModel: string | undefined;
+  readonly operationalModel?: string | undefined;
 }
 
 /** What the prompt carries beyond the proposal: declared options (#4472), the target project (#6110) and the working directory (#6254). */
@@ -453,6 +455,7 @@ function parseVoteCompletion(
       cliStderr: completion.cliStderr,
       fallbackFrom: completion.fallbackFrom,
       servedModel: completion.servedModel,
+      operationalModel: completion.operationalModel,
     };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
@@ -506,6 +509,8 @@ export interface VoteOutcome {
   readonly fallbackFrom: string | undefined;
   /** The model the adapter reported answering (#6660); undefined when it reported none. */
   readonly servedModel: string | undefined;
+  /** Successful completion's operational selection, distinct from serving evidence. */
+  readonly operationalModel?: string | undefined;
   /**
    * Usage summed over EVERY attempt of this seat that settled with a response,
    * the answering one included (#6821). `usage` stays the answering
@@ -523,16 +528,6 @@ function withAttemptUsage(
 ): VoteAttemptFailure {
   const { usage: _single, rawOutput: _raw, ...rest } = failure;
   return attemptUsage === undefined ? rest : { ...rest, attemptUsage };
-}
-
-/** The success a retry loop returns: the answer plus every attempt's usage (#6821). */
-function toOutcome(
-  result: VoteAttemptSuccess,
-  prior: AttemptUsage | undefined
-): VoteOutcome & { ok: true } {
-  const { vote, usage, cliStderr, fallbackFrom, servedModel } = result;
-  const attemptUsage = foldCompletionUsage(prior, usage);
-  return { vote, usage, cliStderr, fallbackFrom, servedModel, attemptUsage, ok: true };
 }
 
 /**
@@ -590,7 +585,7 @@ async function runVoteRetries(
         attemptMs,
         succeeded: true,
       });
-      return toOutcome(result, attemptUsage);
+      return toVoteOutcome(result, attemptUsage);
     }
 
     attemptUsage = foldAttempt(attemptUsage, result.usage);

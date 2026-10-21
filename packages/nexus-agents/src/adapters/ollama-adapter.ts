@@ -1,4 +1,6 @@
 import type { ExecutionAccessMode } from '../core/types/model.js';
+import { validatedModelIdentity } from '../cli-adapters/model-identity.js';
+
 /**
  * nexus-agents/adapters - Ollama Model Adapter
  *
@@ -299,11 +301,13 @@ export class OllamaAdapter extends BaseAdapter {
   }
 
   private mapResponse(response: OllamaChatResponse): CompletionResponse {
+    const reportedModel = validatedModelIdentity(response.model);
     return {
       content: mapOllamaMessageToContent(response.message),
       usage: this.calcUsage(response),
       stopReason: mapStopReason(response.done_reason),
       model: response.model,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
     };
   }
 

@@ -16,6 +16,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { ClaudeCliAdapter } from './claude-adapter.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-circuit-breaker.js';
+import { CliToModelAdapter } from '../cli-to-model-adapter.js';
+import { executeWithRetries } from '../../cli/voter-execution.js';
+import { buildLlmVoteResult } from '../../cli/voter-attempt-usage.js';
+import { voterModelEvidence } from '../../audit/voter-model-provenance.js';
+import { createLogger } from '../../core/index.js';
 
 interface ScriptedRun {
   readonly stdout: string;
@@ -26,8 +31,12 @@ interface ScriptedRun {
 const script: ScriptedRun[] = [];
 const spawnedArgs: string[][] = [];
 
-vi.mock('node:child_process', () => ({
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
   exec: vi.fn(),
+  execFile: vi.fn(() => {
+    throw new Error('Unexpected execFile in scripted native fixture');
+  }),
   spawn: vi.fn((_cmd: string, args: string[]) => {
     spawnedArgs.push(args);
     const run = script.shift();
@@ -183,6 +192,43 @@ describe('ClaudeCliAdapter is_error envelope (#6120)', () => {
     expect(modelArg(spawnedArgs[1])).toBe('opus');
     // Per-model capacity is not a per-CLI failure: nothing reaches the breaker.
     expect(recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('keeps the actual fallback selection through voter retries without inventing a report', async () => {
+    script.push(
+      errorEnvelope(OUT_OF_CREDITS),
+      okEnvelope(
+        JSON.stringify({
+          decision: 'approve',
+          confidence: 0.9,
+          reasoning: 'Offline native fallback control',
+        })
+      )
+    );
+    const cli = new ClaudeCliAdapter();
+    const execute = cli.execute.bind(cli);
+    // Keep the real fallback/parser path; only suppress unrelated health probes.
+    vi.spyOn(cli, 'execute').mockImplementation((task, options) =>
+      execute(task, { ...options, ...OPTIONS })
+    );
+    const adapter = new CliToModelAdapter(cli);
+    const outcome = await executeWithRetries({
+      role: 'architect',
+      proposal: 'Offline fallback provenance',
+      adapter,
+      logger: createLogger({ component: 'native-fallback-control' }),
+      timeoutMs: 30_000,
+      maxRetries: 0,
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) throw new Error(outcome.error);
+    const row = voterModelEvidence(buildLlmVoteResult('architect', outcome, adapter, 1));
+    expect(row).not.toHaveProperty('servedModel');
+    expect(row.resolvedModel).toBe('claude-opus');
+    expect(row.fallback?.fromModel).toBe('fable');
+    expect(spawnedArgs).toHaveLength(2);
+    expect(modelArg(spawnedArgs[0])).toBe('fable');
+    expect(modelArg(spawnedArgs[1])).toBe('opus');
   });
 
   it('(b) a second capacity error propagates the typed error and records ONE breaker failure', async () => {

@@ -1480,7 +1480,7 @@ describe('buildResponse error counting (Issue #815)', () => {
     expect(response.panelWarning).toMatch(/Panel degraded: 1 of 3 voters errored/);
   });
 
-  it('omits panelWarning when every voter returns a real vote', () => {
+  it('omits degradation when every voter answers but names absent serving reports unmeasured', () => {
     const votes: AgentVoteResult[] = [
       {
         role: 'architect',
@@ -1497,7 +1497,12 @@ describe('buildResponse error counting (Issue #815)', () => {
     ];
     const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
     const response = buildResponse(input, makeVotingResult(votes));
-    expect(response.panelWarning).toBeUndefined();
+    expect(response.panelWarning).not.toContain('Panel degraded');
+    expect(response.panelWarning).toBe(
+      'Serving-model reports 0/2; unreported serving identities are UNMEASURED. ' +
+        'Model/family counts include operational attribution.'
+    );
+    expect(response.panelDiversity.reportCoverage).toEqual({ reported: 0, total: 2 });
   });
 
   it('should report all errors when every vote errored', () => {

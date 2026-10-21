@@ -1454,7 +1454,8 @@ describe('voteCommand — panel model diversity line (#6115)', () => {
       'approved'
     );
     expect(comment).toContain(
-      '**Models: 2 distinct, 2 families, 1 fallbacks (devex: codex→gemini, capacity)**'
+      '**Models: 2 distinct, 2 families, 1 fallbacks (devex: codex→gemini, capacity); ' +
+        'serving-model reports 0/3**'
     );
   });
 });

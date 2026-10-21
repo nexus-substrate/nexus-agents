@@ -80,7 +80,9 @@ function responseFor(
     id: 'resp-fake',
     object: 'response',
     created_at: Math.floor(Date.now() / 1000),
-    model,
+    ...(script.kind === 'text' && script.responseModel === null
+      ? {}
+      : { model: script.kind === 'text' ? (script.responseModel ?? model) : model }),
     status: script.kind === 'content_filter' ? 'incomplete' : 'completed',
     output,
     incomplete_details: script.kind === 'content_filter' ? { reason: 'content_filter' } : null,

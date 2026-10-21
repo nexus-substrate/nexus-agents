@@ -294,58 +294,74 @@ describe('recordVoteOutcomes records the model that answered, not the one reques
     setOutcomeStore(new OutcomeStore());
   });
 
-  it('a seat asked for claude-fable-5 that answered on claude-sonnet records claude-sonnet', async () => {
-    // The claude adapter substitutes the next alias when credits run out
-    // (#6120): the adapter was built for claude-fable-5, the response names
-    // claude-sonnet. The row must name, and price, the one that answered.
-    const approve = JSON.stringify({
-      decision: 'approve',
-      reasoning: 'Approve: the change is small and tested.',
-      confidence: 0.9,
-    });
-    const adapter: IModelAdapter = {
-      providerId: 'cli-claude',
-      modelId: 'claude-fable-5',
-      capabilities: [],
-      complete: vi.fn().mockResolvedValue({
-        ok: true,
-        value: {
-          content: approve,
-          stopReason: 'end_turn',
-          model: 'claude-sonnet',
-          fallbackFrom: 'claude-fable-5',
-          usage: { inputTokens: 1_000, outputTokens: 2_000 },
-        },
-      }),
-      stream: vi.fn(),
-      countTokens: vi.fn().mockResolvedValue(10),
-      validateConfig: vi.fn().mockReturnValue({ ok: true }),
-    };
-    const logger: ILogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: vi.fn(),
-      setLevel: vi.fn(),
-    };
-    const seat = await executeAgentVote('architect', 'Ratify', adapter, logger, {
-      timeoutMs: 5000,
-      maxRetries: 0,
-    });
-    expect(seat.source).toBe('llm');
+  it.each([true, false])(
+    'records serving identity only with an explicit report: %s',
+    async (reported) => {
+      // Operational alias substitution alone is not transport evidence. The same
+      // successful completion with an explicit report can be named and priced.
+      const approve = JSON.stringify({
+        decision: 'approve',
+        reasoning: 'Approve: the change is small and tested.',
+        confidence: 0.9,
+      });
+      const adapter: IModelAdapter = {
+        providerId: 'cli-claude',
+        modelId: 'claude-fable-5',
+        capabilities: [],
+        complete: vi.fn().mockResolvedValue({
+          ok: true,
+          value: {
+            content: approve,
+            stopReason: 'end_turn',
+            model: 'claude-sonnet',
+            ...(reported ? { reportedModel: 'claude-sonnet' } : {}),
+            fallbackFrom: 'claude-fable-5',
+            usage: { inputTokens: 1_000, outputTokens: 2_000 },
+          },
+        }),
+        stream: vi.fn(),
+        countTokens: vi.fn().mockResolvedValue(10),
+        validateConfig: vi.fn().mockReturnValue({ ok: true }),
+      };
+      const logger: ILogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        child: vi.fn(),
+        setLevel: vi.fn(),
+      };
+      const seat = await executeAgentVote('architect', 'Ratify', adapter, logger, {
+        timeoutMs: 5000,
+        maxRetries: 0,
+      });
+      expect(seat.source).toBe('llm');
+      expect(seat.operationalModel).toBe('claude-sonnet');
+      expect(seat.inputTokens).toBe(1000);
+      expect(seat.outputTokens).toBe(2000);
+      expect(seat.servedModel).toBe(reported ? 'claude-sonnet' : undefined);
 
-    recordVoteOutcomes([seat], TEST_DECISION_ID);
+      recordVoteOutcomes([seat], TEST_DECISION_ID);
 
-    const [row] = getOutcomeStore().query();
-    // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
-    expect(row).toMatchObject({
-      model: 'consensus',
-      servedModel: 'claude-sonnet',
-      costUsd: 0.033,
-      priceBasis: 'list',
-    });
-  });
+      const rows = getOutcomeStore().query();
+      expect(rows).toHaveLength(1);
+      const [row] = rows;
+      if (!reported) {
+        expect(row?.model).toBe('consensus');
+        expect(row).not.toHaveProperty('servedModel');
+        expect(row).not.toHaveProperty('costUsd');
+        expect(row).not.toHaveProperty('priceBasis');
+        return;
+      }
+      // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
+      expect(row).toMatchObject({
+        model: 'consensus',
+        servedModel: 'claude-sonnet',
+        costUsd: 0.033,
+        priceBasis: 'list',
+      });
+    }
+  );
 });
 
 describe('recordAuthenticVote persistence outcome (#3991)', () => {

@@ -1281,6 +1281,12 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       // panelDiversityOf; optional so the published schema widens additively.
       unresolvedSeats: z.number().int().nonnegative().optional(),
       fallbacks: z.number().int().nonnegative(),
+      reportCoverage: z
+        .object({
+          reported: z.number().int().nonnegative(),
+          total: z.number().int().nonnegative(),
+        })
+        .optional(),
     })
     .optional(),
   // Assigned roster includes errored and abstaining seats. Absent when no

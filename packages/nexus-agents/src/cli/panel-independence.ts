@@ -12,11 +12,13 @@ import type { ILogger, IModelAdapter } from '../core/index.js';
 import { assessPanelIndependence } from '../config/model-equivalence.js';
 import type { PanelIndependence } from '../config/model-equivalence.js';
 import type { AgentVoteResult } from './vote-types.js';
+import { resolvedModel } from './vote-diversity.js';
+import { validatedModelIdentity } from '../cli-adapters/model-identity.js';
 
 /**
  * When the check runs. Adapter detection is lazy (#811), so at `assignment`
  * every CLI adapter still reports a placeholder and an unmeasured verdict is
- * expected. By `post-vote` each has resolved, so unmeasured means the panel
+ * expected. At `post-vote` only explicit transport reports count; unmeasured means the panel
  * finished without anyone being able to say whether its members were
  * independent — which is worth a warning.
  */
@@ -41,11 +43,13 @@ export function reportPanelIndependence(
   );
 }
 
-/** Reports independence from the models that successfully returned votes. */
+/** Reports model correlation from explicit transport reports; missing reports remain unmeasured. */
 export function reportVoteIndependence(results: readonly AgentVoteResult[], logger: ILogger): void {
   const successful = results.filter((result) => result.source === 'llm');
   reportPanelModelIndependence(
-    successful.map((result) => result.model),
+    successful.map((result) =>
+      validatedModelIdentity(result.servedModel) === undefined ? undefined : resolvedModel(result)
+    ),
     successful.length,
     'post-vote',
     logger

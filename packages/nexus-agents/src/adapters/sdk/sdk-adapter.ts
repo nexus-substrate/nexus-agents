@@ -46,6 +46,7 @@ import {
   type OpenAICompatConfig,
 } from '../openai-compat-adapter.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
+import { readSdkReportedModel } from './sdk-model-report.js';
 import type {
   AiSdkFunctions,
   AiSdkModel,
@@ -460,7 +461,10 @@ export class SdkAdapter extends BaseAdapter {
   /**
    * Maps our CompletionRequest to AI SDK generateText options.
    */
-  private buildSdkOptions(request: CompletionRequest): {
+  private buildSdkOptions(
+    request: CompletionRequest,
+    retainReportBody = false
+  ): {
     options: Record<string, unknown>;
     dropped: readonly DroppedParam[];
   } {
@@ -468,6 +472,7 @@ export class SdkAdapter extends BaseAdapter {
       model: this.model,
       // AI SDK 7 requires opt-in to preserve our system-role message contract.
       allowSystemInMessages: true,
+      ...(retainReportBody ? { include: { responseBody: true } } : {}),
       messages: request.messages.map((m) => ({
         role: m.role === 'system' ? 'system' : m.role,
         content:
@@ -502,9 +507,7 @@ export class SdkAdapter extends BaseAdapter {
     return { options, dropped: plan.dropped };
   }
 
-  /**
-   * generateText path (text / absent responseFormat) — unchanged behavior.
-   */
+  /** generateText path (text / absent responseFormat). */
   private async completeText(
     sdk: AiSdkFunctions,
     options: Record<string, unknown>
@@ -517,11 +520,13 @@ export class SdkAdapter extends BaseAdapter {
       result.response.modelId
     );
     const usage = mapSdkUsage(result.usage);
+    const reportedModel = readSdkReportedModel(result.response.body, this.logger);
     return {
       content: [{ type: 'text', text: result.text }],
       ...(usage !== undefined ? { usage } : {}),
       stopReason: mapFinishReason(result.finishReason),
       model: result.response.modelId,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
     };
   }
 
@@ -559,11 +564,13 @@ export class SdkAdapter extends BaseAdapter {
     assertValidCompletion(source, finishReason, result.text.trim() !== '', response.modelId);
     const output = result.output;
     const usage = mapSdkUsage(result.usage);
+    const reportedModel = readSdkReportedModel(result.response.body, this.logger);
     return {
       content: [{ type: 'text', text: JSON.stringify(output) }],
       ...(usage !== undefined ? { usage } : {}),
       stopReason: mapFinishReason(result.finishReason),
       model: result.response.modelId,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
     };
   }
 
@@ -581,7 +588,7 @@ export class SdkAdapter extends BaseAdapter {
             'Ensure ensureInitialized() completes before calling complete().'
         );
       }
-      const { options, dropped } = this.buildSdkOptions(request);
+      const { options, dropped } = this.buildSdkOptions(request, true);
 
       // #3433: native structured output. json_object/json_schema route
       // through generateText + Output.object; text uses the default output.

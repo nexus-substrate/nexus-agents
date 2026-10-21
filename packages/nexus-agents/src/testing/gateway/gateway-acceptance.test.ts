@@ -343,7 +343,11 @@ describe('response fidelity over HTTP (#6607)', () => {
 const VoteResponse = z.object({
   decision: z.string(),
   voteCounts: z.object({ approve: z.number(), error: z.number() }),
-  panelDiversity: z.object({ distinctModels: z.number(), distinctFamilies: z.number() }),
+  panelDiversity: z.object({
+    distinctModels: z.number(),
+    distinctFamilies: z.number(),
+    reportCoverage: z.object({ reported: z.number(), total: z.number() }),
+  }),
   panelWarning: z.string().optional(),
   votes: z.array(z.object({ role: z.string(), modelUsed: z.string().optional() })),
   costSummary: z.object({
@@ -487,7 +491,9 @@ describe('a 7-seat consensus_vote on a one-family gateway (#6606)', () => {
     expect(vote.panelDiversity).toEqual(
       expect.objectContaining({ distinctFamilies: 1, distinctModels: 5 })
     );
-    expect(vote.panelWarning).toContain('answering seats ran openai models');
+    expect(vote.panelDiversity.reportCoverage).toEqual({ reported: 7, total: 7 });
+    expect(vote.panelWarning).toContain('answering seats reported openai models');
+    expect(vote.panelWarning).toContain('serving-model reports 7/7');
   });
 });
 

@@ -34,6 +34,7 @@ import {
 } from '../adapters/rate-limit-detector.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { toCliTokenUsage } from './token-usage-bridge.js';
+import { validatedModelIdentity } from './model-identity.js';
 import { withEnforcedAccessMode } from './access-mode.js';
 import { breakerKeys } from './breaker-key.js';
 import { mapModelErrorToCategory } from './circuit-breaker.js';
@@ -175,6 +176,7 @@ export class ModelToCliAdapter implements ICliAdapter {
   /** Convert a CompletionResponse to a CliResponse. */
   private toCliResponse(response: CompletionResponse): CliResponse {
     const usage = response.usage;
+    const reportedModel = validatedModelIdentity(response.reportedModel);
     return {
       text: this.toText(response),
       // Omit rather than zero-fill (#4439): a synthesised 0/0/0 is
@@ -184,6 +186,7 @@ export class ModelToCliAdapter implements ICliAdapter {
       // `inputTokensMeasured` (#4835) instead of dropping it.
       ...(usage !== undefined ? { usage: toCliTokenUsage(usage) } : {}),
       model: response.model,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
       ...this.gatewayArmField(),
     };
   }
