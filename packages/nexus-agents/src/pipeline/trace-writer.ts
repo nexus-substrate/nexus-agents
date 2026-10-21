@@ -16,6 +16,7 @@ import { createLogger } from '../core/index.js';
 import type { IEventBus, PipelineEvent, Unsubscribe } from './event-types.js';
 import {
   TraceOriginSchema,
+  ExecutionTraceEntrySchema,
   TraceRunOriginSchema,
   TraceAttributionSnapshotSchema,
   traceRelation,
@@ -66,6 +67,8 @@ export class TraceWriter {
   private observed = 0;
   private foreignDropped = 0;
   private evicted = 0;
+  private invalidDropped = 0;
+  private invalidWarningEmitted = false;
   private countsOverflow = false;
   private pendingFlush: Promise<void> | undefined;
   private flushAgain = false;
@@ -84,21 +87,51 @@ export class TraceWriter {
     if (!Number.isSafeInteger(this.maxBuffer) || this.maxBuffer < 1)
       throw new Error('Invalid trace buffer size');
     this.unsubscribe = bus.subscribe({}, (event) => {
-      if (this.stopped) return;
-      this.countsOverflow ||= this.observed === Number.MAX_SAFE_INTEGER;
-      if (this.countsOverflow) return;
-      this.observed++;
-      const entry = this.eventToTrace(event);
-      if (entry === null) {
-        this.foreignDropped++;
-        return;
-      }
-      if (this.buffer.length >= this.maxBuffer) {
-        this.buffer.shift();
-        this.evicted++;
-      }
-      this.buffer.push(entry);
+      this.captureEvent(event);
     });
+  }
+
+  /** Classify before committing counters so a failed conversion has a disposition. */
+  private captureEvent(event: PipelineEvent): void {
+    if (this.stopped || this.countsOverflow) return;
+    let entry: ExecutionTraceEntry | null;
+    try {
+      const converted = this.eventToTrace(event);
+      entry = converted === null ? null : ExecutionTraceEntrySchema.parse(converted);
+    } catch {
+      this.captureInvalidEvent();
+      return;
+    }
+    if (!this.observeEvent()) return;
+    if (entry === null) {
+      this.foreignDropped++;
+      return;
+    }
+    if (this.buffer.length >= this.maxBuffer) {
+      this.buffer.shift();
+      this.evicted++;
+    }
+    this.buffer.push(entry);
+  }
+
+  private captureInvalidEvent(): void {
+    if (!this.observeEvent()) return;
+    if (this.invalidDropped === Number.MAX_SAFE_INTEGER) {
+      this.countsOverflow = true;
+      return;
+    }
+    this.invalidDropped++;
+    if (!this.invalidWarningEmitted) {
+      this.invalidWarningEmitted = true;
+      logger.warn('Invalid trace events were dropped; consult snapshot invalidDropped');
+    }
+  }
+
+  private observeEvent(): boolean {
+    this.countsOverflow ||= this.observed === Number.MAX_SAFE_INTEGER;
+    if (this.countsOverflow) return false;
+    this.observed++;
+    return true;
   }
 
   /**
@@ -133,6 +166,7 @@ export class TraceWriter {
           observed: this.observed,
           foreignDropped: this.foreignDropped,
           evicted: this.evicted,
+          invalidDropped: this.invalidDropped,
         },
         retained: relationCounts(entries),
       });

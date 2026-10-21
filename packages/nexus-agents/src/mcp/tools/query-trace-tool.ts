@@ -69,6 +69,8 @@ interface TraceAttributionReport {
     readonly observed: number;
     readonly foreignDropped: number;
     readonly evicted: number;
+    /** Null for historical snapshots that did not measure invalid losses. */
+    readonly invalidDropped: number | null;
   } | null;
   readonly retained: TraceRelationCounts | null;
   readonly filtered: TraceRelationCounts | null;
@@ -278,7 +280,10 @@ function attributionReport(
       : reading.entries.filter((e) => e.eventType === eventType);
   return {
     status: 'measured',
-    writerObserved: reading.snapshot.writerObserved,
+    writerObserved: {
+      ...reading.snapshot.writerObserved,
+      invalidDropped: reading.snapshot.writerObserved.invalidDropped ?? null,
+    },
     retained: reading.snapshot.retained,
     filtered: relationCounts(filtered),
     returned: relationCounts(filtered.slice(0, limit)),
@@ -412,7 +417,9 @@ export function registerQueryTraceTool(server: McpServer, deps: QueryTraceDeps):
   const description =
     'Query execution traces by run ID. Returns agent and model ' +
     'attribution for pipeline runs including decision paths, ' +
-    'error taxonomy, timing and snapshot-bound attribution counts. run_related is logical ' +
+    'error taxonomy, timing and snapshot-bound attribution counts. writerObserved.invalidDropped ' +
+    'counts rejected conversions or rows, and is null for historical snapshots without that measurement. ' +
+    'Counted or unknown loss does not certify complete capture. run_related is logical ' +
     'session participation only: reused/concurrent invocations are indistinguishable; no attempt, worker or settlement proof.';
 
   const secureHandler = createSecureHandler(queryTraceHandler, {

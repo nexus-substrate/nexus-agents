@@ -37,6 +37,12 @@ import {
 
 export type WeatherReportDeps = BaseMcpToolDeps;
 
+const WEATHER_REPORT_DESCRIPTION =
+  'Get multi-CLI performance weather report. Shows per-CLI success rates, ' +
+  'per-category breakdowns, and adaptive routing bonus recommendations ' +
+  'based on observed task outcomes. Pipeline join coverage is unmeasured when trace invalid ' +
+  'losses are counted or unknown; validated retained logical joins remain visible.';
+
 // ============================================================================
 // Serialization
 // ============================================================================
@@ -130,11 +136,6 @@ export function registerWeatherReportTool(server: McpServer, deps: WeatherReport
       .describe('Include adaptive routing bonuses (default: true)'),
   };
 
-  const description =
-    'Get multi-CLI performance weather report. Shows per-CLI success rates, ' +
-    'per-category breakdowns, and adaptive routing bonus recommendations ' +
-    'based on observed task outcomes.';
-
   const secureHandler = createSecureHandler(weatherReportHandler, {
     toolName: 'weather_report',
     rateLimiter: deps.rateLimiter,
@@ -150,7 +151,7 @@ export function registerWeatherReportTool(server: McpServer, deps: WeatherReport
     server,
     'weather_report',
     {
-      description,
+      description: WEATHER_REPORT_DESCRIPTION,
       inputSchema: toolSchema,
       outputSchema: WEATHER_REPORT_OUTPUT_SCHEMA,
       annotations: getToolAnnotations('weather_report'),

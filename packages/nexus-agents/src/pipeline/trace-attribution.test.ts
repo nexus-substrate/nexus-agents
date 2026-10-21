@@ -265,6 +265,7 @@ describe('real shared-bus containment', () => {
       observed: 1,
       foreignDropped: 0,
       evicted: 0,
+      invalidDropped: 0,
     });
   });
 });
