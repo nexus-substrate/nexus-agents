@@ -21,3 +21,5 @@ overrides:
   http-cache-semantics@<=4.2.0: '>=4.3.0'
   # GHSA-238p-pmpm-9mq7 (low): katex >=0.11.0 <0.18.2.
   katex@<0.18.2: '>=0.18.2'
+  # GHSA-587h-7wmj-h5pm: keep every Vite selection on the patched 8.x line.
+  vite: '>=8.3.3 <9'
