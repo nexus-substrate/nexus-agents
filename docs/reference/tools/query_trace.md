@@ -12,7 +12,7 @@ keywords: [mcp, tool, reference, query_trace]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Query execution traces by run ID. Returns agent and model attribution for pipeline runs including decision paths, error taxonomy, timing and snapshot-bound attribution counts. run_related is logical session participation only: reused/concurrent invocations are indistinguishable; no attempt, worker or settlement proof.
+Query execution traces by run ID. Returns agent and model attribution for pipeline runs including decision paths, error taxonomy, timing and snapshot-bound attribution counts. run_related is logical session participation only: reused/concurrent invocations are indistinguishable; no attempt, worker or settlement proof. writerObserved.invalidDropped counts rejected conversions or rows, and is null for historical snapshots without that measurement. Counted or unknown loss does not certify complete capture.
 
 ## Parameters
 
