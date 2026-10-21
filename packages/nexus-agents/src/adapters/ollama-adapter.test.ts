@@ -118,6 +118,7 @@ describe('OllamaAdapter', () => {
         expect(result.value.content).toEqual([{ type: 'text', text: 'Hello!' }]);
         expect(result.value.usage).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
         expect(result.value.stopReason).toBe('end_turn');
+        expect(result.value.reportedModel).toBe('llama3:8b');
       }
     });
 

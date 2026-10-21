@@ -385,6 +385,7 @@ InterfaceDeclaration AgentVoteResult
   readonly inputTokens?: number | undefined
   readonly model?: string | undefined
   readonly modelPinWarning?: string | undefined
+  readonly operationalModel?: string | undefined
   readonly optionReask?: undefined | { readonly resolved: boolean; }
   readonly outputTokens?: number | undefined
   readonly pinnedModel?: string | undefined
@@ -1606,6 +1607,7 @@ InterfaceDeclaration CliResponse
   readonly model?: string | undefined
   readonly permissionDenials?: readonly CliPermissionDenial[] | undefined
   readonly raw?: unknown
+  readonly reportedModel?: string | undefined
   readonly routedArm?: RoutingArmId | undefined
   readonly routedCli?: "claude" | "codex" | "gemini" | "opencode" | undefined
   readonly routedDurationMs?: number | undefined
@@ -1860,6 +1862,7 @@ InterfaceDeclaration CompletionResponse
   content: ContentBlock[]
   fallbackFrom?: string | undefined
   model: string
+  reportedModel?: string | undefined
   stopReason: StopReason
   usage?: TokenUsage | undefined
   warnings?: readonly { readonly param: string; readonly reason: string; readonly severity: "behavioral" | "cosmetic"; }[] | undefined
@@ -4264,7 +4267,7 @@ FunctionDeclaration generateSecurityPlan
   : (input: { categories?: string[] | undefined; maxScanners: number; repo: string; }) => Promise<RepoSecurityPlan>
 InterfaceDeclaration GenerateTextResult
   finishReason: string
-  response: { modelId: string; }
+  response: { body?: unknown; modelId: string; }
   text: string
   usage: { inputTokens: number | undefined; outputTokens: number | undefined; totalTokens: number | undefined; }
 FunctionDeclaration generateWeatherReport

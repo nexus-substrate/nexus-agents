@@ -26,6 +26,17 @@ import { ModelCapability as MC } from '../core/index.js';
 import type { ModelEntry } from '../config/model-registry.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
 import { getCliModelName } from '../config/model-config-helpers.js';
+import { getMaxTokensParamForModel } from '../config/model-parameter-support.js';
+
+/** Reasoning families use completion-token limits, including their hidden reasoning. */
+export function isReasoningFamily(modelId: string): boolean {
+  return getMaxTokensParamForModel(modelId) === 'max_completion_tokens';
+}
+
+/** Preserve the established 25,000 reasoning-token ceiling (#6607). */
+export function defaultMaxCompletionTokens(modelId: string): number {
+  return isReasoningFamily(modelId) ? 25_000 : DEFAULT_MAX_TOKENS;
+}
 
 /**
  * Supported OpenAI direct-API model identifiers (OpenAI's own dated names).

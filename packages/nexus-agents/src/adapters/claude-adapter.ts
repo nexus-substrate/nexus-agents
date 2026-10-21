@@ -1,4 +1,6 @@
 import type { ExecutionAccessMode } from '../core/types/model.js';
+import { validatedModelIdentity } from '../cli-adapters/model-identity.js';
+
 /**
  * nexus-agents/adapters - Claude/Anthropic Model Adapter
  *
@@ -327,6 +329,7 @@ export class ClaudeAdapter extends BaseAdapter {
     surfaceRespondTool = false,
     dropped: readonly DroppedParam[] = []
   ): CompletionResponse {
+    const reportedModel = validatedModelIdentity(response.model);
     const content: ContentBlock[] = surfaceRespondTool
       ? mapResponseWithRespondTool(response.content)
       : response.content.map(mapContentBlock);
@@ -358,6 +361,7 @@ export class ClaudeAdapter extends BaseAdapter {
       usage,
       stopReason: mapStopReason(response.stop_reason),
       model: response.model,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
       // #4069: surface dropped params (e.g. an omitted temperature) so the caller
       // can see a behavioral param had no effect. Omitted entirely when nothing
       // was dropped (exactOptionalPropertyTypes).

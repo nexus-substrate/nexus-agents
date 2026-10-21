@@ -213,8 +213,14 @@ export interface CompletionResponse {
   usage?: TokenUsage;
   /** Reason generation stopped */
   stopReason: StopReason;
-  /** Model that generated the response */
+  /** Operational model attribution; may be configured or derived, not a serving report. */
   model: string;
+  /**
+   * Raw model identifier explicitly supplied by the upstream response, when known.
+   * Absent for configured aliases, derived selections and unmarked legacy producers.
+   * A transport report is not independent provider identity attestation.
+   */
+  reportedModel?: string;
   /**
    * Stderr the CLI transport captured while serving this completion, when the
    * adapter is a CLI bridge and the pipe was non-empty (#6094). A sandboxed

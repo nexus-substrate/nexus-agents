@@ -105,14 +105,16 @@ export function withResolvedAssignment(vote: AgentVoteResult): AgentVoteResult {
 }
 
 /**
- * Canonically qualified adapter-reported `servedModel`, else the requested model
- * (#7179). Diversity and display use this resolved identity; an absent report's
- * request fallback is not a transport measurement. The ledger preserves its
+ * Canonically qualified `servedModel`, else per-completion operational selection,
+ * else the configured request. Diversity and display use this attribution; an
+ * absent report's selection fallback is not a transport measurement. The ledger preserves its
  * configured `model` separately and stores this as `resolvedModel` (#7333).
  */
 export function resolvedModel(v: AgentVoteResult): string | undefined {
   const served = realModel(v.servedModel);
-  return served === undefined ? requestedModel(v) : qualifiedModel(served, v.cli);
+  const operational = realModel(v.operationalModel);
+  const attributed = served ?? operational;
+  return attributed === undefined ? requestedModel(v) : qualifiedModel(attributed, v.cli);
 }
 
 /**

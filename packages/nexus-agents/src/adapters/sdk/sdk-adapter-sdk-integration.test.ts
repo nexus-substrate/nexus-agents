@@ -75,6 +75,7 @@ describe('SdkAdapter with real AI SDK dependencies (#7223)', () => {
         expect(result.value.content).toEqual([{ type: 'text', text: reply }]);
         expect(result.value.stopReason).toBe('end_turn');
         expect(result.value.model).toBe(MODEL);
+        expect(result.value.reportedModel).toBe(MODEL);
         expect(result.value.usage).toEqual({ inputTokens: 42, outputTokens: 17, totalTokens: 59 });
       }
       expect(gateway.chatRequests()).toHaveLength(1);
