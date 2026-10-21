@@ -118,6 +118,91 @@ describe('weather join coverage with counted or unknown trace capture loss', () 
     expect(joins().pipelineOutcomeJoinCoverage).toBeNull();
   });
 
+  it.each([false, true])(
+    'withholds mixed-run coverage when a separate empty capture has historical unknown loss=%s',
+    async (historical) => {
+      await traced(false);
+      const runId = pipelineRunId('empty-loss-weather-fixture');
+      const bus = new EventBus();
+      // Explicit fixture provenance; the real writer emits and binds the empty capture.
+      const origin = { kind: 'run', producer: 'dev-pipeline', runId } as const;
+      const writer = new TraceWriter(bus, { runsDir: getDefaultRunsDir(), runId, origin });
+      try {
+        if (!historical) {
+          const invalid = {
+            type: 'stage.started',
+            timestamp: Date.now(),
+            executionId: 'dev-pipeline-empty-research',
+            stageId: 'research',
+            pluginId: 'research',
+            origin,
+          } as const;
+          Object.defineProperty(invalid, 'origin', {
+            get: () => {
+              throw new Error('FAKE_TEST invalid-only weather conversion failure');
+            },
+          });
+          bus.emit(invalid);
+        }
+        await writer.flush();
+      } finally {
+        writer.stop();
+      }
+      if (historical) {
+        const path = join(getDefaultRunsDir(), runId, 'trace-attribution.json');
+        const snapshot = TraceAttributionSnapshotSchema.parse(
+          JSON.parse(readFileSync(path, 'utf8'))
+        );
+        const { invalidDropped, ...historicalCounts } = snapshot.writerObserved;
+        expect(invalidDropped).toBe(0);
+        // Omit only the historical measurement; preserve exact empty-byte binding.
+        writeFileSync(path, JSON.stringify({ ...snapshot, writerObserved: historicalCounts }));
+      }
+      expect(await queryTraceFromDisk({ runId }, getDefaultRunsDir())).toMatchObject({
+        events: [],
+        attribution: {
+          status: 'measured',
+          writerObserved: {
+            observed: historical ? 0 : 1,
+            invalidDropped: historical ? null : 1,
+            foreignDropped: 0,
+            evicted: 0,
+          },
+          retained: { run_related: 0, attempt_owned: 0, global_context: 0, unattributed: 0 },
+        },
+      });
+      // Neither empty capture is fabricated into a joined run or unreadable trace.
+      expectRetainedLogicalJoin();
+      expect(joins().pipelineOutcomeJoinCoverage).toBeNull();
+    }
+  );
+
+  it('preserves mixed-run coverage with a separate explicitly zero-loss empty capture', async () => {
+    await traced(false);
+    const runId = pipelineRunId('empty-zero-loss-weather-fixture');
+    const origin = { kind: 'run', producer: 'dev-pipeline', runId } as const;
+    const writer = new TraceWriter(new EventBus(), {
+      runsDir: getDefaultRunsDir(),
+      runId,
+      origin,
+    });
+    try {
+      await writer.flush();
+    } finally {
+      writer.stop();
+    }
+    expect(await queryTraceFromDisk({ runId }, getDefaultRunsDir())).toMatchObject({
+      events: [],
+      attribution: {
+        status: 'measured',
+        writerObserved: { observed: 0, invalidDropped: 0 },
+        retained: { run_related: 0, attempt_owned: 0, global_context: 0, unattributed: 0 },
+      },
+    });
+    expectRetainedLogicalJoin();
+    expect(joins().pipelineOutcomeJoinCoverage).toBe(1);
+  });
+
   it('preserves healthy join coverage for an explicitly measured zero-loss capture', async () => {
     const runId = await traced(false);
     expect(await queryTraceFromDisk({ runId }, getDefaultRunsDir())).toMatchObject({

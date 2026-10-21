@@ -31,7 +31,7 @@ import type { WeatherReportDeps } from './weather-report.js';
 
 /** Same per-file read bound as query_trace (100 MB). */
 const MAX_TRACE_FILE_BYTES = 100 * 1024 * 1024;
-type PipelineTraceMeasurement = 'measured' | 'partial' | 'unmeasured' | 'unreadable';
+type PipelineTraceMeasurement = 'measured' | 'partial' | 'incomplete' | 'unmeasured' | 'unreadable';
 
 /** Validate the whole trace before allowing any surviving row to certify a run. */
 function traceInWindow(path: string, runId: string, since: number): PipelineTraceMeasurement {
@@ -46,8 +46,10 @@ function traceInWindow(path: string, runId: string, since: number): PipelineTrac
   if (inspected.requiresBinding && snapshot.status === 'unmeasured') {
     throw new Error('Unmeasured pipeline trace snapshot binding');
   }
-  if (!inspected.measured || snapshot.status !== 'measured') return 'unmeasured';
-  return snapshot.snapshot.writerObserved.invalidDropped === 0 ? 'measured' : 'partial';
+  if (snapshot.status !== 'measured') return 'unmeasured';
+  const incomplete = snapshot.snapshot.writerObserved.invalidDropped !== 0;
+  if (!inspected.measured) return incomplete ? 'incomplete' : 'unmeasured';
+  return incomplete ? 'partial' : 'measured';
 }
 
 /** Validate all rows before a surviving row can certify logical participation. */
@@ -88,7 +90,7 @@ function isWindowedDevTrace(entry: ExecutionTraceEntry, runId: string, since: nu
   );
 }
 
-/** Missing/old/empty traces are unmeasured; one bad trace discards the entire run. */
+/** Missing/old traces are unmeasured; empty captures can still carry loss evidence. */
 function windowedPipelineRun(root: string, runId: string, since: number): PipelineTraceMeasurement {
   try {
     const path = resolveInsideRoot(join(root, runId, 'trace.jsonl'), root);
@@ -131,7 +133,7 @@ function readWeatherPipelineRuns(root: string, since: number): PipelineTraceRead
   for (const entry of entries) {
     const reading = windowedPipelineRun(root, entry.name, since);
     if (reading === 'measured' || reading === 'partial') runIds.push(entry.name);
-    hasIncompleteCapture ||= reading === 'partial';
+    hasIncompleteCapture ||= reading === 'partial' || reading === 'incomplete';
     if (reading === 'unreadable') unreadablePipelineTraces++;
   }
   return { runIds, unreadablePipelineTraces, hasIncompleteCapture };
