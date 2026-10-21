@@ -6531,6 +6531,7 @@ InterfaceDeclaration PanelDiversity
   readonly distinctFamilies: number
   readonly distinctModels: number
   readonly fallbacks: number
+  readonly reportCoverage?: undefined | { readonly reported: number; readonly total: number; }
   readonly unclassifiedSeats: number
   readonly unresolvedSeats?: number | undefined
 InterfaceDeclaration ParallelOptions

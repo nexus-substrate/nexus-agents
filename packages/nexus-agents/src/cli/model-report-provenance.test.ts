@@ -11,6 +11,10 @@ import { serializeValidatedRecord } from '../audit/ledger-append.js';
 import { buildLlmVoteResult } from './voter-attempt-usage.js';
 import { executeWithRetries } from './voter-execution.js';
 import type { AgentVoteResult } from './vote-types.js';
+import { votesToCostInputs } from '../mcp/tools/decision-cost-recording.js';
+import { rollupDecisionCost, UNKNOWN_MODEL } from '../observability/decision-cost.js';
+import { computeCostDetail } from '../learning/usage-log.js';
+import { servedOutcomeFields } from '../orchestration/outcomes/outcome-served-model.js';
 
 const CONFIGURED_MODEL = 'claude-fable-5';
 const SUBSTITUTED_MODEL = 'opus';
@@ -113,6 +117,75 @@ describe('model report provenance through the real retry and ledger projection',
     expect(evidence.servedModel).toBe('gpt-6.1-sol');
     expect(evidence.resolvedModel).toBe('gpt-6.1-sol');
     expect(evidence.model).toBe(CONFIGURED_MODEL);
+  });
+
+  it('retains reported tokens but leaves serving cost unmeasured without a model report', async () => {
+    const vote = await voteFrom({
+      text: VOTE_TEXT,
+      model: SUBSTITUTED_MODEL,
+      usage: { inputTokens: 1000, outputTokens: 200 },
+    });
+    const inputs = votesToCostInputs([vote]);
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]).toMatchObject({
+      inputTokens: 1000,
+      outputTokens: 200,
+      priceBasis: 'unknown',
+    });
+    expect(inputs[0]?.model).toBeUndefined();
+    expect(inputs[0]).not.toHaveProperty('costUsd');
+    const summary = rollupDecisionCost(inputs, 'api');
+    expect(summary).toMatchObject({
+      voterCount: 1,
+      measuredVoters: 0,
+      unmeasuredVoters: 1,
+      tokenMeasuredVoters: 1,
+      totalTokens: 1200,
+    });
+    expect(summary.perModel).toHaveLength(1);
+    expect(summary.perModel[0]?.model).toBe(UNKNOWN_MODEL);
+    expect(summary.perVoter[0]?.unmeasured).toBe(true);
+    expect(
+      servedOutcomeFields({
+        model: vote.servedModel,
+        inputTokens: vote.inputTokens,
+        outputTokens: vote.outputTokens,
+      })
+    ).toEqual({});
+  });
+
+  it('prices a genuine reported identity instead of configured or operational selection', async () => {
+    const report = 'claude-sonnet';
+    const vote = await voteFrom({
+      text: VOTE_TEXT,
+      model: SUBSTITUTED_MODEL,
+      reportedModel: report,
+      usage: { inputTokens: 1000, outputTokens: 200 },
+    });
+    const expected = computeCostDetail(report, 1000, 200);
+    const configured = computeCostDetail(CONFIGURED_MODEL, 1000, 200);
+    expect(expected.priced).toBe(true);
+    expect(expected.costUsd).toBeGreaterThan(0);
+    expect(configured.priced).toBe(true);
+    expect(expected.costUsd).not.toBe(configured.costUsd);
+    const inputs = votesToCostInputs([vote]);
+    expect(inputs[0]).toMatchObject({
+      model: report,
+      costUsd: expected.costUsd,
+      priceBasis: 'list',
+    });
+    const summary = rollupDecisionCost(inputs, 'api');
+    expect(summary.measuredVoters).toBe(1);
+    expect(summary.unmeasuredVoters).toBe(0);
+    expect(summary.perModel).toHaveLength(1);
+    expect(summary.perModel[0]?.model).toBe(report);
+    expect(
+      servedOutcomeFields({
+        model: vote.servedModel,
+        inputTokens: vote.inputTokens,
+        outputTokens: vote.outputTokens,
+      })
+    ).toMatchObject({ servedModel: report, costUsd: expected.costUsd, priceBasis: 'list' });
   });
 
   it('carries reporting evidence through both bridge directions', async () => {

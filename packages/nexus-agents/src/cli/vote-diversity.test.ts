@@ -180,7 +180,7 @@ describe('panelDiversityOf — unresolved seats (#6660)', () => {
       unresolvedSeats: 6,
     });
     expect(modelsLine(panel)).toBe(
-      'Models: 1 distinct, 1 family (6 seats unresolved), 0 fallbacks'
+      'Models: 1 distinct, 1 family (6 seats unresolved), 0 fallbacks; serving-model reports 0/7'
     );
   });
 });
@@ -188,7 +188,8 @@ describe('panelDiversityOf — unresolved seats (#6660)', () => {
 describe('singleFamilyPanelWarning (#6606)', () => {
   it('fires when a 3+ panel answered on several models of one family', () => {
     expect(singleFamilyPanelWarning(anthropicPanel())).toBe(
-      'All 3 answering seats ran anthropic models (3 distinct); independence is weaker than assigned.'
+      'All 3 answering seats attributed to anthropic models (3 distinct); ' +
+        'serving-model reports 0/3; independence is weaker than assigned.'
     );
   });
 
@@ -213,6 +214,7 @@ describe('singleFamilyPanelWarning (#6606)', () => {
 describe('panelDiversityOf (#6115)', () => {
   it('counts distinct models over the seats that answered, and seats that answered elsewhere', () => {
     expect(panelDiversityOf(collapsedPanel())).toEqual({
+      reportCoverage: { reported: 0, total: 7 },
       distinctModels: 1,
       distinctFamilies: 1,
       unclassifiedSeats: 0,
@@ -221,6 +223,7 @@ describe('panelDiversityOf (#6115)', () => {
     });
     // `codex-5.3` resolves to provider openai (#6635).
     expect(panelDiversityOf(diversePanel())).toEqual({
+      reportCoverage: { reported: 0, total: 3 },
       distinctModels: 3,
       distinctFamilies: 3,
       unclassifiedSeats: 0,
@@ -236,6 +239,7 @@ describe('panelDiversityOf (#6115)', () => {
       seat('scope_steward'),
     ];
     expect(panelDiversityOf(panelWithUnclassified)).toEqual({
+      reportCoverage: { reported: 0, total: 3 },
       distinctModels: 3,
       distinctFamilies: 2,
       unclassifiedSeats: 1,
@@ -249,6 +253,7 @@ describe('panelDiversityOf (#6115)', () => {
       seat(role, { source: 'error', model: undefined, error: 'boom' })
     );
     const zeros = {
+      reportCoverage: { reported: 0, total: 0 },
       distinctModels: 0,
       distinctFamilies: 0,
       unclassifiedSeats: 0,
@@ -265,6 +270,7 @@ describe('panelDiversityOf (#6115)', () => {
       seat('pm', { source: 'error', model: undefined, assignedCli: 'claude', error: 'boom' }),
     ];
     expect(panelDiversityOf(panel)).toEqual({
+      reportCoverage: { reported: 0, total: 3 },
       distinctModels: 3,
       distinctFamilies: 3,
       unclassifiedSeats: 0,
@@ -282,7 +288,8 @@ describe('panelDiversityOf (#6115)', () => {
 describe('singleModelPanelWarning (#6115)', () => {
   it('fires when every answering seat of a 3+ panel ran on one model', () => {
     expect(singleModelPanelWarning(collapsedPanel())).toBe(
-      'All 7 seats answered on gemini-3.1-pro-preview; independence is weaker than assigned.'
+      'All 7 answering seats attributed to gemini-3.1-pro-preview; ' +
+        'serving-model reports 0/7; independence is weaker than assigned.'
     );
   });
 
@@ -293,7 +300,8 @@ describe('singleModelPanelWarning (#6115)', () => {
       seat('scope_steward', { source: 'error', model: undefined, error: 'boom' }),
     ];
     expect(singleModelPanelWarning(panel)).toBe(
-      'All 5 seats answered on gemini-3.1-pro-preview (2 did not answer); independence is weaker than assigned.'
+      'All 5 answering seats attributed to gemini-3.1-pro-preview (2 did not answer); ' +
+        'serving-model reports 0/5; independence is weaker than assigned.'
     );
   });
 
@@ -326,14 +334,22 @@ describe('modelsLine (#6115)', () => {
       seat('security', { cli: 'cli-custom', model: 'unrecognised-custom-model' }),
     ];
     expect(modelsLine(panel)).toBe(
-      'Models: 3 distinct, 2 families (1 seat unclassified), 2 fallbacks (devex: codex→gemini, capacity; pm: claude-fable-5→claude-opus, capacity)'
+      'Models: 3 distinct, 2 families (1 seat unclassified), 2 fallbacks ' +
+        '(devex: codex→gemini, capacity; pm: claude-fable-5→claude-opus, capacity); ' +
+        'serving-model reports 0/4'
     );
   });
 
   it('renders explicit zeros for a clean panel and for a panel nobody answered', () => {
-    expect(modelsLine(diversePanel())).toBe('Models: 3 distinct, 3 families, 0 fallbacks');
-    expect(modelsLine(anthropicPanel())).toBe('Models: 3 distinct, 1 family, 0 fallbacks');
-    expect(modelsLine([])).toBe('Models: 0 distinct, 0 families, 0 fallbacks');
+    expect(modelsLine(diversePanel())).toBe(
+      'Models: 3 distinct, 3 families, 0 fallbacks; serving-model reports 0/3'
+    );
+    expect(modelsLine(anthropicPanel())).toBe(
+      'Models: 3 distinct, 1 family, 0 fallbacks; serving-model reports 0/3'
+    );
+    expect(modelsLine([])).toBe(
+      'Models: 0 distinct, 0 families, 0 fallbacks; serving-model reports 0/0'
+    );
   });
 });
 
@@ -409,8 +425,8 @@ describe('served model, not requested model (#7179)', () => {
 
   it('names the served model in the single-model warning, with the requested ones', () => {
     expect(singleModelPanelWarning(servedFallbackPanel())).toBe(
-      'All 7 seats answered on claude-fable-5, claude-sonnet → served claude-opus; ' +
-        'independence is weaker than assigned.'
+      'All 7 answering seats reported claude-fable-5, claude-sonnet → served claude-opus; ' +
+        'serving-model reports 7/7; independence is weaker than assigned.'
     );
   });
 
@@ -432,7 +448,7 @@ describe('served model, not requested model (#7179)', () => {
     ];
     expect(modelsLine(panel)).toBe(
       'Models: 1 distinct, 1 family, 1 fallbacks (pm: claude-fable-5→claude-opus, capacity; ' +
-        'devex: claude-fable-5 → served claude-opus)'
+        'devex: claude-fable-5 → served claude-opus); serving-model reports 2/2'
     );
   });
 
@@ -447,8 +463,8 @@ describe('served model, not requested model (#7179)', () => {
       })
     );
     expect(singleModelPanelWarning(panel)).toBe(
-      'All 7 seats answered on claude-fable-5 → served claude-opus; ' +
-        'independence is weaker than assigned.'
+      'All 7 answering seats reported claude-fable-5 → served claude-opus; ' +
+        'serving-model reports 7/7; independence is weaker than assigned.'
     );
     expect(panelDiversityOf(panel)).toMatchObject({
       distinctModels: 1,
@@ -457,13 +473,21 @@ describe('served model, not requested model (#7179)', () => {
     });
   });
 
-  it('leaves a no-fallback panel unchanged when the served model matches the request', () => {
+  it('preserves no-fallback attribution while distinguishing matching reports from requests', () => {
     const panel = diversePanel().map((v) => ({ ...v, servedModel: v.model }));
-    expect(panelDiversityOf(panel)).toEqual(panelDiversityOf(diversePanel()));
-    expect(modelsLine(panel)).toBe('Models: 3 distinct, 3 families, 0 fallbacks');
+    const { reportCoverage: reportedCoverage, ...reportedAttribution } = panelDiversityOf(panel);
+    const { reportCoverage: requestedCoverage, ...requestedAttribution } =
+      panelDiversityOf(diversePanel());
+    expect(reportedAttribution).toEqual(requestedAttribution);
+    expect(requestedCoverage).toEqual({ reported: 0, total: 3 });
+    expect(reportedCoverage).toEqual({ reported: 3, total: 3 });
+    expect(modelsLine(panel)).toBe(
+      'Models: 3 distinct, 3 families, 0 fallbacks; serving-model reports 3/3'
+    );
     const single = collapsedPanel().map((v) => ({ ...v, servedModel: v.model }));
     expect(singleModelPanelWarning(single)).toBe(
-      'All 7 seats answered on gemini-3.1-pro-preview; independence is weaker than assigned.'
+      'All 7 answering seats reported gemini-3.1-pro-preview; ' +
+        'serving-model reports 7/7; independence is weaker than assigned.'
     );
   });
 });

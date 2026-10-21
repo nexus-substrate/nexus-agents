@@ -11,6 +11,8 @@ import { FAKE_OPENAI_KEY } from '../../testing/test-secrets.js';
 vi.mock('ai', { spy: true });
 const CONFIGURED = 'gpt-4o';
 const REPORT = 'gpt-6.1-sol';
+const REPORT_200 = 'gpt-boundary-'.padEnd(200, 'a');
+const REPORT_201 = `${REPORT_200}a`;
 const CANARY = 'TEST_RESPONSE_BODY_CANARY_7550';
 
 function requestFor(
@@ -61,6 +63,16 @@ const cases = [
     response: { body: { model: REPORT, canary: CANARY } },
     expected: REPORT,
   },
+  {
+    name: 'exactly 200 raw identity characters survive byte-for-byte',
+    response: { body: { model: REPORT_200, canary: CANARY } },
+    expected: REPORT_200,
+  },
+  {
+    name: '201 raw identity characters are omitted rather than clipped',
+    response: { body: { model: REPORT_201, canary: CANARY } },
+    expected: undefined,
+  },
   { name: 'absent metadata', response: undefined, expected: undefined },
   {
     name: 'different normalized identity without body',
@@ -101,6 +113,13 @@ const cases = [
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.clearAllMocks();
+});
+
+it('pins the ASCII fixtures to either side of the identity length boundary', () => {
+  expect(REPORT_200).toHaveLength(200);
+  expect(Buffer.byteLength(REPORT_200, 'utf8')).toBe(200);
+  expect(REPORT_201).toHaveLength(201);
+  expect(REPORT_201.slice(0, 200)).toBe(REPORT_200);
 });
 
 describe.each(['text', 'json_object', 'json_schema'] as const)(

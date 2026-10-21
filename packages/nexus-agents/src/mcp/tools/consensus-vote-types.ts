@@ -27,6 +27,7 @@ import {
   assignedPanelDiversityOf,
   crossFamilyFallbackWarning,
   panelDiversityOf,
+  modelReportCoverageWarning,
   resolvedModel,
   singleFamilyPanelWarning,
   singleModelPanelWarning,
@@ -354,10 +355,10 @@ export interface AgentVoteSummary {
   /** True when this vote was generated from an error (Issue #815). */
   error: boolean;
   /**
-   * Model this seat ran on (Issue #817): the served model, qualified against
-   * the answering CLI when needed, falling back to the requested model only
-   * when no served model is known (#7239). Absent when neither resolves to a
-   * model. Clipped to {@link MODEL_USED_MAX_CHARS} to fit the output schema.
+   * Model attribution (Issue #817): an explicit report, else operational
+   * selection, else the configured request, qualified against the answering
+   * CLI when needed (#7239). This display field does not attest serving identity.
+   * Absent when no attribution resolves to a model. Clipped to {@link MODEL_USED_MAX_CHARS} to fit the output schema.
    */
   modelUsed?: string;
   /** Model assigned before execution, including seats that errored or abstained. */
@@ -559,7 +560,7 @@ export interface ConsensusVoteResponse {
    */
   panelWarning?: string;
   /**
-   * #6115: how many distinct models answered and how many seats answered
+   * #6115: distinct model attributions, report coverage, and how many seats answered
    * somewhere other than where they were assigned. Always present, explicit
    * zeros included — three consecutive 7-seat panels ran every seat on one
    * model after the claude and codex seats fell over, and the response read
@@ -1061,6 +1062,7 @@ function applyOptionalResponseFields(
   appendPanelWarning(response, singleFamilyPanelWarning(result.votes));
   // #7106: a recovered seat can change family while the panel stays diverse.
   appendPanelWarning(response, crossFamilyFallbackWarning(result.votes));
+  appendPanelWarning(response, modelReportCoverageWarning(result.votes));
   // #5360: a proposal that names alternatives while `options` is undefined
   // records a split as uniform approval — every voter approves the ACT of
   // deciding, not a side. A 3-3 tie was recorded as `APPROVED 83.3%` that way.

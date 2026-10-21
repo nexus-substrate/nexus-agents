@@ -208,6 +208,7 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
     );
     const response = buildResponse(INPUT, extended(votes));
     expect(response.panelDiversity).toEqual({
+      reportCoverage: { reported: 0, total: 7 },
       distinctModels: 1,
       distinctFamilies: 1,
       unclassifiedSeats: 0,
@@ -215,11 +216,12 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
       fallbacks: 4,
     });
     expect(response.panelWarning).toContain(
-      'All 7 seats answered on gemini-3.1-pro-preview; independence is weaker than assigned.'
+      'All 7 answering seats attributed to gemini-3.1-pro-preview; ' +
+        'serving-model reports 0/7; independence is weaker than assigned.'
     );
   });
 
-  it('a clean three-model panel reports fallbacks 0 and no warning', () => {
+  it('a configured-only three-model panel reports zero fallbacks and unmeasured serving identities', () => {
     const votes = [
       seat('architect', { cli: 'cli-claude', model: 'claude-opus', assignedCli: 'claude' }),
       seat('security', { cli: 'cli-codex', model: 'codex-5.3', assignedCli: 'codex' }),
@@ -227,13 +229,70 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
     ];
     const response = buildResponse(INPUT, extended(votes));
     expect(response.panelDiversity).toEqual({
+      reportCoverage: { reported: 0, total: 3 },
       distinctModels: 3,
       distinctFamilies: 3,
       unclassifiedSeats: 0,
       unresolvedSeats: 0,
       fallbacks: 0,
     });
+    expect(response.panelWarning).toBe(
+      'Serving-model reports 0/3; unreported serving identities are UNMEASURED. ' +
+        'Model/family counts include operational attribution.'
+    );
+  });
+
+  it('a fully reported three-model panel has complete coverage and no warning', () => {
+    const votes = [
+      seat('architect', {
+        cli: 'cli-claude',
+        model: 'claude-opus',
+        servedModel: 'claude-opus',
+        assignedCli: 'claude',
+      }),
+      seat('security', {
+        cli: 'cli-codex',
+        model: 'codex-5.3',
+        servedModel: 'codex-5.3',
+        assignedCli: 'codex',
+      }),
+      seat('scope_steward', { servedModel: 'gemini-3.1-pro-preview' }),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response.panelDiversity).toMatchObject({
+      distinctModels: 3,
+      distinctFamilies: 3,
+      reportCoverage: { reported: 3, total: 3 },
+    });
     expect(response.panelWarning).toBeUndefined();
+  });
+
+  it('a partial report cannot turn configured or operational models into complete coverage', () => {
+    const votes = [
+      seat('architect', {
+        cli: 'cli-claude',
+        model: 'claude-opus',
+        servedModel: 'claude-opus',
+        assignedCli: 'claude',
+      }),
+      seat('security', {
+        cli: 'cli-codex',
+        model: 'codex-5.3',
+        operationalModel: 'codex-5.3',
+        assignedCli: 'codex',
+      }),
+      seat('scope_steward'),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response.panelDiversity).toMatchObject({
+      distinctModels: 3,
+      distinctFamilies: 3,
+      reportCoverage: { reported: 1, total: 3 },
+    });
+    expect(response.panelWarning).toBe(
+      'Serving-model reports 1/3; unreported serving identities are UNMEASURED. ' +
+        'Model/family counts include operational attribution.'
+    );
   });
 
   it('reports unclassified seats when an answering model names no recognised vendor', () => {
@@ -244,6 +303,7 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
     ];
     const response = buildResponse(INPUT, extended(votes));
     expect(response.panelDiversity).toEqual({
+      reportCoverage: { reported: 0, total: 3 },
       distinctModels: 3,
       distinctFamilies: 2,
       unclassifiedSeats: 1,
@@ -256,6 +316,7 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
     const response = buildResponse(INPUT, extended([]));
     expect(Object.keys(response)).toContain('panelDiversity');
     expect(response.panelDiversity).toEqual({
+      reportCoverage: { reported: 0, total: 0 },
       distinctModels: 0,
       distinctFamilies: 0,
       unclassifiedSeats: 0,
@@ -271,7 +332,9 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
     ];
     const response = buildResponse(INPUT, extended(votes));
     expect(response.panelWarning).toContain('Panel degraded: 1 of 7 voters errored');
-    expect(response.panelWarning).toContain('All 6 seats answered on gemini-3.1-pro-preview');
+    expect(response.panelWarning).toContain(
+      'All 6 answering seats attributed to gemini-3.1-pro-preview'
+    );
   });
 });
 
@@ -286,7 +349,8 @@ describe('consensus_vote response: panel families (#6606)', () => {
     const response = buildResponse(INPUT, extended(oneFamily));
     expect(response.panelDiversity).toMatchObject({ distinctModels: 3, distinctFamilies: 1 });
     expect(response.panelWarning).toContain(
-      'All 3 answering seats ran openai models (3 distinct); independence is weaker than assigned.'
+      'All 3 answering seats attributed to openai models (3 distinct); ' +
+        'serving-model reports 0/3; independence is weaker than assigned.'
     );
   });
 
@@ -425,7 +489,7 @@ describe('consensus_vote response: cross-family fallback (#7106)', () => {
     const response = buildResponse(INPUT, extended([fallbackSeat, seat('architect')]));
     expect(response.panelWarning).toContain('security');
     expect(response.panelWarning).toContain('assigned openai');
-    expect(response.panelWarning).toContain('served anthropic');
+    expect(response.panelWarning).toContain('attributed to anthropic');
   });
 
   it('discloses an undetected Codex assignment using its assigned CLI family', () => {
@@ -439,7 +503,7 @@ describe('consensus_vote response: cross-family fallback (#7106)', () => {
         },
       ])
     );
-    expect(response.panelWarning).toContain('security: assigned openai, served anthropic');
+    expect(response.panelWarning).toContain('security: assigned openai, attributed to anthropic');
   });
 
   it('adds no fallback family warning for a same-family substitution', () => {
@@ -454,7 +518,9 @@ describe('consensus_vote response: cross-family fallback (#7106)', () => {
         },
       ])
     );
-    expect(response.panelWarning).toBeUndefined();
+    expect(response.panelWarning).not.toContain('Cross-family fallback:');
+    expect(response.panelWarning).toContain('Serving-model reports 0/1');
+    expect(response.panelWarning).toContain('UNMEASURED');
   });
 
   it('appends fallback disclosure without losing an existing degradation warning', () => {
@@ -467,7 +533,7 @@ describe('consensus_vote response: cross-family fallback (#7106)', () => {
       ])
     );
     expect(response.panelWarning).toContain('Panel degraded: 1 of 3 voters errored');
-    expect(response.panelWarning).toContain('security: assigned openai, served anthropic');
+    expect(response.panelWarning).toContain('security: assigned openai, attributed to anthropic');
   });
 
   it('does not claim a family change for unknown or unanswered seats or an empty panel', () => {

@@ -86,6 +86,50 @@ describe('SdkAdapter with real AI SDK dependencies (#7223)', () => {
     }
   );
 
+  it.each(['text', 'json_object', 'json_schema'] as const)(
+    'distinguishes explicit and absent HTTP model reports for %s',
+    async (format) => {
+      for (const responseModel of ['gpt-6.1-sol', null]) {
+        vi.clearAllMocks();
+        const reply = format === 'text' ? 'ok' : '{"reply":"ok"}';
+        gateway.setScript(() => ({ kind: 'text', content: reply, responseModel }));
+        const adapter = new SdkAdapter({
+          providerId: 'openai',
+          modelId: MODEL,
+          apiKey: FAKE_OPENAI_KEY,
+        });
+        const result = await adapter.complete({
+          ...REQUEST,
+          responseFormat:
+            format === 'json_schema'
+              ? {
+                  type: format,
+                  schema: {
+                    type: 'object',
+                    properties: { reply: { type: 'string' } },
+                    required: ['reply'],
+                    additionalProperties: false,
+                  },
+                }
+              : { type: format },
+        });
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw result.error;
+        const sdkResult = await vi.mocked(ai.generateText).mock.results[0]?.value;
+        if (sdkResult === undefined) throw new Error('No actual SDK result');
+        if (responseModel === null) {
+          expect(sdkResult.response.body).not.toHaveProperty('model');
+          expect(result.value).not.toHaveProperty('reportedModel');
+          expect(result.value.model).toBe(MODEL);
+        } else {
+          expect(sdkResult.response.body).toMatchObject({ model: responseModel });
+          expect(result.value.reportedModel).toBe(responseModel);
+        }
+        expect(result.value).not.toHaveProperty('body');
+      }
+    }
+  );
+
   it('preserves system-role messages when streaming', async () => {
     vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', 'responses');
     gateway.setScript(() => ({ kind: 'text', content: 'Hello back' }));
