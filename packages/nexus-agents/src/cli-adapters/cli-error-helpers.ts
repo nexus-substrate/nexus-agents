@@ -121,7 +121,11 @@ export function isHostUnavailableCliError(error: CliError): boolean {
 
 /** Bounded host-policy events before any completion spawn was attempted. */
 export type NativePreSpawnRefusalReason =
-  'invalid-policy' | 'invalid-deadline' | 'expired-before-spawn' | 'permit-consumed';
+  | 'invalid-policy'
+  | 'invalid-deadline'
+  | 'expired-before-spawn'
+  | 'permit-consumed'
+  | 'policy-retired';
 
 function boundedPreSpawnReason(reason: unknown): NativePreSpawnRefusalReason {
   switch (reason) {
@@ -129,6 +133,7 @@ function boundedPreSpawnReason(reason: unknown): NativePreSpawnRefusalReason {
     case 'invalid-deadline':
     case 'expired-before-spawn':
     case 'permit-consumed':
+    case 'policy-retired':
       return reason;
     default:
       return 'invalid-policy';

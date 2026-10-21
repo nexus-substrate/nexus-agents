@@ -21,7 +21,8 @@ vi.mock('node:child_process', async (original) => ({
   ...(await original<typeof import('node:child_process')>()),
   spawn: vi.fn(),
 }));
-vi.mock('./process-tree-kill.js', () => ({
+vi.mock('./process-tree-kill.js', async (original) => ({
+  ...(await original<typeof import('./process-tree-kill.js')>()),
   SIGKILL_GRACE_MS: 5_000,
   trackProcessTree: (child: ChildProcessWithoutNullStreams) => child,
   terminateProcessTree: vi.fn().mockResolvedValue([]),

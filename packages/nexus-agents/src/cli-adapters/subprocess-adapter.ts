@@ -29,6 +29,7 @@ import type {
   ICliResponseParser,
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
+import type { ExecFileTreeOptions } from './exec-file-tree.js';
 import { buildChildEnv } from './subprocess-env.js';
 import { SIGKILL_GRACE_MS, terminateProcessTree, trackProcessTree } from './process-tree-kill.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
@@ -45,6 +46,7 @@ import {
   NATIVE_EXECUTION_POLICY,
   hasIssuedNativeExecutionPolicy,
   resolveNativeSpawnOptions,
+  nativeResourcesForPolicy,
 } from './native-execution-policy.js';
 
 /** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
@@ -183,6 +185,25 @@ export function isTransientError(code: CliErrorCode): boolean {
   return TRANSIENT_ERROR_CODES.has(code);
 }
 
+/** Evaluate wrapper option/environment getters before the final spawn fence. */
+function materializeSpawnOptions(
+  options: Pick<ExecFileTreeOptions, 'env' | 'cwd'>
+): SpawnOptionsWithoutStdio {
+  const env = options.env;
+  const spawnEnv = env === undefined ? undefined : (Object.create(null) as NodeJS.ProcessEnv);
+  if (env !== undefined && spawnEnv !== undefined) {
+    // Node intentionally includes inherited enumerable env values. Flatten them too,
+    // so its own normalization cannot invoke host getters after the final guard.
+    for (const key in env) spawnEnv[key] = env[key];
+  }
+  const finalCwd = options.cwd;
+  return {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: spawnEnv,
+    ...(finalCwd !== undefined ? { cwd: finalCwd } : {}),
+  };
+}
+
 /**
  * Spawn the CLI and track it so server shutdown ends it (#6680). It stays in
  * the server's process group, so a signal to that group reaches it too.
@@ -214,24 +235,21 @@ function spawnCliChild(
   };
   // Fully evaluate host iterators/getters before the final cancellation/deadline fence.
   const spawnArgs = [...args];
-  const env = options.env;
-  const spawnEnv = env === undefined ? undefined : (Object.create(null) as NodeJS.ProcessEnv);
-  if (env !== undefined && spawnEnv !== undefined) {
-    // Node intentionally includes inherited enumerable env values. Flatten them too,
-    // so its own normalization cannot invoke host getters after the final guard.
-    for (const key in env) spawnEnv[key] = env[key];
-  }
-  const finalCwd = options.cwd;
-  const spawnOptions: SpawnOptionsWithoutStdio = {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: spawnEnv,
-    ...(finalCwd !== undefined ? { cwd: finalCwd } : {}),
-  };
+  const spawnOptions = materializeSpawnOptions(options);
   // No await, wrapper, iterator or host getter remains between consume and spawn.
   const checked = resolveNativeSpawnOptions(execution, cliName, true);
   if (!checked.ok) return checked;
-  const child = trackProcessTree(spawn(command, spawnArgs, spawnOptions));
-  return ok({ child, options: checked.value });
+  const resources = nativeResourcesForPolicy(execution[NATIVE_EXECUTION_POLICY]);
+  resources?.recordLaunchAttempt();
+  let child: ChildProcessWithoutNullStreams;
+  try {
+    child = spawn(command, spawnArgs, spawnOptions);
+  } catch (error: unknown) {
+    resources?.recordLaunchFailure();
+    throw error;
+  }
+  resources?.attachChild(child);
+  return ok({ child: trackProcessTree(child), options: checked.value });
 }
 
 /**
@@ -438,6 +456,9 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     child.once('close', () => {
       signal.removeEventListener('abort', onAbort);
     });
+    // Resource notifications run after spawn, before business listener setup.
+    // A notification may already have cancelled this now-physical child.
+    if (signal.aborted) onAbort();
   }
 
   /**
