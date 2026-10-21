@@ -15,10 +15,10 @@
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
-    "@astrojs/markdown-satteri": "^0.4.3",
+    "@astrojs/markdown-satteri": "^0.4.4",
     "@astrojs/sitemap": "^3.7.4",
-    "@astrojs/svelte": "~9.0.1",
-    "astro": "~7.3.8",
+    "@astrojs/svelte": "~9.1.0",
+    "astro": "~7.4.0",
     "astro-pagefind": "2.0.1",
     "mermaid": "^11.17.2",
     "remarque-tokens": "0.26.0",
@@ -28,9 +28,9 @@
     "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
+    "@axe-core/playwright": "4.14.0",
     "axe-core": "4.14.0",
-    "playwright": "1.64.0",
-    "vitest": "^4.1.11"
+    "playwright": "1.64.1",
+    "vitest": "^4.1.12"
   }
 }
