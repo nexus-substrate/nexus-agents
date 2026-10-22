@@ -659,8 +659,11 @@ jobs:
       # repo — exactly the npm-ahead skew the 2026-05-14 incident hit.
       - name: Guard — main only
         if: github.ref != 'refs/heads/main'
+        env:
+          PUBLISH_REF: ${{ github.ref }}
         run: |
-          echo "::error::Manual publish must run from 'main' — got '${{ github.ref }}'." \
+          printf "::error::Manual publish must run from 'main' — got '%s'. %s %s\n" \
+            "$PUBLISH_REF" \
             "Publishing from any other ref desyncs npm from the repo." \
             "Re-run with --ref main."
           exit 1

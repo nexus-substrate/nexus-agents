@@ -44,9 +44,9 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        MAX_SIZE: ${{ inputs.max-diff-size }}
       run: |
         PR_NUMBER=${{ github.event.pull_request.number }}
-        MAX_SIZE=${{ inputs.max-diff-size }}
 
         gh pr diff ${PR_NUMBER} > /tmp/pr-diff.txt
         DIFF_SIZE=$(wc -c < /tmp/pr-diff.txt)
