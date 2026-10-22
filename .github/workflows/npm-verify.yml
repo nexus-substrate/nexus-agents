@@ -111,8 +111,10 @@ jobs:
         run: docker build -t nexus-verify -f Dockerfile.npm-verify .
 
       - name: Run smoke test
+        env:
+          VERIFY_VERSION: ${{ github.event.inputs.version || 'latest' }}
         run: |
           docker run --rm \
             -e NEXUS_VERIFY_INSTALL_MODE=${{ matrix.install_mode }} \
             nexus-verify bash /home/verifier/verify.sh \
-            "${{ github.event.inputs.version || 'latest' }}"
+            "$VERIFY_VERSION"
