@@ -11,9 +11,9 @@
  * `fetch` nor the `openai` SDK (which calls it) honours `HTTP_PROXY` /
  * `HTTPS_PROXY` / `NO_PROXY` unless the process was STARTED with
  * `NODE_USE_ENV_PROXY=1` (a loopback proxy saw no request without it, and
- * CONNECT tunnels with it). The engines floor is 22.5, which predates that
- * variable, so the gateway gets an explicit undici `ProxyAgent` instead,
- * selected here from the standard variables.
+ * CONNECT tunnels with it). The supported runtime is now Node 24 or later;
+ * the gateway keeps its explicit undici `ProxyAgent`, selected here from the
+ * standard variables, independently of ambient fetch proxy settings.
  *
  * **Secrets.** The key, header values and the proxy URL (which can carry
  * `user:password@`) never reach a log line: warnings name the variable and
@@ -299,20 +299,14 @@ export function readGatewayTransport(
 /** One agent per proxy URL: a gateway builds an adapter per model. */
 const proxyAgents = new Map<string, ProxyAgent>();
 
-/**
- * The runtime's `RequestInit.dispatcher`, as `@types/node` declares it. The
- * agent comes from the `undici` package (major 6, the one Node 22 bundles),
- * whose types differ from the `undici-types` major that `@types/node` pins
- * only in optional-property spelling; the object is the dispatcher `fetch`
- * accepts at runtime, which the gateway proxy test exercises end to end.
- */
-type FetchDispatcher = NonNullable<RequestInit['dispatcher']>;
+/** The canonical direct-undici dispatcher shape used by the adapter config. */
+type FetchDispatcher = NonNullable<NonNullable<OpenAIAdapterConfig['fetchOptions']>['dispatcher']>;
 
 function proxyAgentFor(proxyUrl: string): FetchDispatcher {
   const existing = proxyAgents.get(proxyUrl);
   const agent = existing ?? new ProxyAgent(proxyUrl);
   if (existing === undefined) proxyAgents.set(proxyUrl, agent);
-  return agent as unknown as FetchDispatcher;
+  return agent;
 }
 
 /** The `openai` client options a gateway transport contributes. */

@@ -21,6 +21,8 @@
  * a documented architectural exception in the allowlist.
  */
 
+import type { RequestInit as UndiciRequestInit } from 'undici';
+
 import type { ILogger, ModelCapability } from '../core/index.js';
 import { ModelCapability as MC } from '../core/index.js';
 import type { ModelEntry } from '../config/model-registry.js';
@@ -102,7 +104,7 @@ export interface OpenAIAdapterConfig {
    * `fetch` options for every request — the gateway path sets a proxy
    * `dispatcher` here when `HTTPS_PROXY` / `HTTP_PROXY` applies (#6608).
    */
-  fetchOptions?: Pick<RequestInit, 'dispatcher'>;
+  fetchOptions?: Pick<UndiciRequestInit, 'dispatcher'>;
 }
 
 // Note: Token estimation moved to core/token-estimator.ts (unified TokenEstimator)
