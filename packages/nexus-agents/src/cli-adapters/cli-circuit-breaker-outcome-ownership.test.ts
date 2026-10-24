@@ -1,4 +1,4 @@
-/** Offline actual-Base/default-registry regression only; no production fix. */
+/** Regression coverage for exact shared circuit outcome ownership (#7543). */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { err, ok, type Result } from '../core/index.js';
 import { BaseCliAdapter } from './base-adapter.js';
