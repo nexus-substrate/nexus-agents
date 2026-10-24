@@ -83,13 +83,14 @@ function prepareFixture(directory: string): { pkgDir: string; logsDir: string; r
 }
 
 /** Resolve installed code only: never ask Corepack to download into the isolated HOME. */
-function installedPnpm(): string {
+function installedPnpm(cacheDirectory?: string, searchPath = process.env['PATH'] ?? ''): string {
   const cache =
+    cacheDirectory ??
     process.env['COREPACK_HOME'] ??
     join(process.env['XDG_CACHE_HOME'] ?? join(homedir(), '.cache'), 'node/corepack');
   const cached = join(cache, 'v1/pnpm/10.34.5/bin/pnpm.cjs');
   if (existsSync(cached)) return realpathSync(cached);
-  for (const entry of (process.env['PATH'] ?? '').split(':')) {
+  for (const entry of searchPath.split(':')) {
     const candidate = join(entry, 'pnpm');
     if (!existsSync(candidate)) continue;
     const resolved = realpathSync(candidate);
@@ -116,18 +117,39 @@ function writeParentCandidate(logsDir: string, startedAtMs: number): void {
   );
 }
 
-function runInstalledPublish(directory: string, pkgDir: string, logsDir: string): string {
+function fixtureLauncher(directory: string, kind: 'node' | 'shell'): string {
+  const installed = installedPnpm();
+  const bin = join(directory, 'installed-bin');
+  mkdirSync(bin);
+  const launcher = join(bin, 'pnpm');
+  const quote = (value: string): string => `'${value.replace(/'/g, "'\\''")}'`;
+  const body =
+    kind === 'shell'
+      ? `#!/bin/sh\n# Delegate every argument to the genuine installed CLI.\nexec ${quote(installed)} "$@"\n`
+      : `#!${process.execPath}\nconst { spawnSync } = require('node:child_process');\nconst child = spawnSync(${JSON.stringify(installed)}, process.argv.slice(2), { env: process.env, stdio: 'inherit' });\nif (child.error) throw child.error;\nprocess.exitCode = child.status ?? 1;\n`;
+  writeFileSync(launcher, body);
+  chmodSync(launcher, 0o755);
+  // Force PATH fallback: this owned cache contains no Corepack package.
+  return installedPnpm(join(directory, 'absent-corepack-cache'), bin);
+}
+
+function runInstalledPublish(
+  directory: string,
+  pkgDir: string,
+  logsDir: string,
+  kind: 'node' | 'shell'
+): string {
   const changesets = JSON.parse(
     readFileSync(join(ROOT, 'node_modules/@changesets/cli/package.json'), 'utf8')
   ) as { version: string };
   expect(changesets.version).toBe('3.0.3');
-  const pnpm = installedPnpm();
+  const pnpm = fixtureLauncher(directory, kind);
   const bin = join(directory, 'bin');
   mkdirSync(bin);
   const shim = join(bin, 'pnpm');
   writeFileSync(
     shim,
-    `#!${process.execPath}\nconst { spawnSync } = require('node:child_process');\nconst child = spawnSync(${JSON.stringify(process.execPath)}, [${JSON.stringify(pnpm)}, ...process.argv.slice(2)], { env: process.env, stdio: 'inherit' });\nif (child.error) throw child.error;\nprocess.exitCode = child.status ?? 1;\n`
+    `#!${process.execPath}\nconst { spawnSync } = require('node:child_process');\nconst child = spawnSync(${JSON.stringify(pnpm)}, process.argv.slice(2), { env: process.env, stdio: 'inherit' });\nif (child.error) throw child.error;\nprocess.exitCode = child.status ?? 1;\n`
   );
   chmodSync(shim, 0o755);
   const env = {
@@ -183,55 +205,58 @@ function runInstalledPublish(directory: string, pkgDir: string, logsDir: string)
   );
 }
 
-it('propagates owned logs through publishEnv, installed Changesets and real pnpm to SYNTHETIC npm child B', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'publish-diagnostics-composition-'));
-  try {
-    const { pkgDir, logsDir, record } = prepareFixture(directory);
-    const startedAtMs = Date.now();
-    writeParentCandidate(logsDir, startedAtMs);
-    const stdout = runInstalledPublish(directory, pkgDir, logsDir);
-    const endedAtMs = Date.now();
-    const child = JSON.parse(readFileSync(record, 'utf8')) as Record<string, unknown>;
-    expect(child).toMatchObject({
-      logsDir,
-      logsMax: '1000',
-      offline: 'true',
-      corepackNetwork: '0',
-      forbiddenEnvPresent: false,
-    });
-    expect(child['args']).toEqual(
-      expect.arrayContaining([
-        'publish',
-        '--ignore-scripts',
-        'test-fake-diagnostic-package-1.2.3.tgz',
-        '--tag',
-        'next',
-      ])
-    );
-    expect(child['cwd']).not.toBe(pkgDir);
-    expect(stdout).not.toContain('TEST_FAKE');
-    const diagnostics = collectPublishDiagnostics(
-      logsDir,
-      new Map([['test-fake-diagnostic-package', '1.2.3']]),
-      {
-        id: 'offline-synthetic-composition',
-        startedAtMs,
-        endedAtMs,
-      }
-    );
-    expect(diagnostics.measurement).toBe('observed');
-    expect(diagnostics.attempts).toHaveLength(1);
-    expect(diagnostics.attempts[0]).toMatchObject({
-      provenance: 'npm-debug-self-report',
-      identity: { npmVersion: '11.21.0', npmPath: '/usr/lib/node_modules/npm/bin/npm-cli.js' },
-      packageName: 'test-fake-diagnostic-package',
-      packageVersion: '1.2.3',
-      packageEvidence: 'publish-target-basename',
-      oidc: ['no-id-token-skipped'],
-    });
-    expect(diagnostics.attempts[0]?.identity?.npmVersion).not.toBe('11.19.1');
-    expect(diagnostics.attempts[0]?.identity?.npmPath).not.toBe('/usr/local/bin/npm');
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
+it.each(['node', 'shell'] as const)(
+  'propagates owned logs through %s launcher, installed Changesets and real pnpm to SYNTHETIC npm child B',
+  (kind) => {
+    const directory = mkdtempSync(join(tmpdir(), 'publish-diagnostics-composition-'));
+    try {
+      const { pkgDir, logsDir, record } = prepareFixture(directory);
+      const startedAtMs = Date.now();
+      writeParentCandidate(logsDir, startedAtMs);
+      const stdout = runInstalledPublish(directory, pkgDir, logsDir, kind);
+      const endedAtMs = Date.now();
+      const child = JSON.parse(readFileSync(record, 'utf8')) as Record<string, unknown>;
+      expect(child).toMatchObject({
+        logsDir,
+        logsMax: '1000',
+        offline: 'true',
+        corepackNetwork: '0',
+        forbiddenEnvPresent: false,
+      });
+      expect(child['args']).toEqual(
+        expect.arrayContaining([
+          'publish',
+          '--ignore-scripts',
+          'test-fake-diagnostic-package-1.2.3.tgz',
+          '--tag',
+          'next',
+        ])
+      );
+      expect(child['cwd']).not.toBe(pkgDir);
+      expect(stdout).not.toContain('TEST_FAKE');
+      const diagnostics = collectPublishDiagnostics(
+        logsDir,
+        new Map([['test-fake-diagnostic-package', '1.2.3']]),
+        {
+          id: 'offline-synthetic-composition',
+          startedAtMs,
+          endedAtMs,
+        }
+      );
+      expect(diagnostics.measurement).toBe('observed');
+      expect(diagnostics.attempts).toHaveLength(1);
+      expect(diagnostics.attempts[0]).toMatchObject({
+        provenance: 'npm-debug-self-report',
+        identity: { npmVersion: '11.21.0', npmPath: '/usr/lib/node_modules/npm/bin/npm-cli.js' },
+        packageName: 'test-fake-diagnostic-package',
+        packageVersion: '1.2.3',
+        packageEvidence: 'publish-target-basename',
+        oidc: ['no-id-token-skipped'],
+      });
+      expect(diagnostics.attempts[0]?.identity?.npmVersion).not.toBe('11.19.1');
+      expect(diagnostics.attempts[0]?.identity?.npmPath).not.toBe('/usr/local/bin/npm');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }
-});
+);
