@@ -95,9 +95,9 @@
     "tiktoken": "^1.0.22",
     "ts-morph": "^28.0.0",
     "typescript": "^6.0.3",
-    "undici": "^6.29.0",
+    "undici": "^6.29.1",
     "yaml": "^2.9.1",
-    "zod": "^4.6.2"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^3.0.129",

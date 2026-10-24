@@ -198,7 +198,7 @@ if (command === 'npm') {
     fs.mkdirSync('node_modules/@types/node', { recursive: true });
     fs.mkdirSync('node_modules/undici', { recursive: true });
     fs.writeFileSync('node_modules/typescript/bin/tsc', 'FAKE compiler boundary');
-    for (const [name, version] of [['typescript','6.0.3'], ['@types/node','24.19.2'], ['undici','6.29.0']]) {
+    for (const [name, version] of [['typescript','6.0.3'], ['@types/node','24.19.2'], ['undici','6.29.1']]) {
       fs.writeFileSync('node_modules/' + name + '/package.json', JSON.stringify({ name, version }));
     }
   }
@@ -255,6 +255,20 @@ if (command === 'node' && fixture?.endsWith('.ts') && process.env.TYPE_FIXTURE_M
 }
 
 describe('permanent installed package TypeScript phase (unit wiring only)', () => {
+  it('keeps the patched Undici install and installed-version gate aligned', () => {
+    const script = readFileSync(join(import.meta.dirname, 'verify-npm-install.sh'), 'utf8');
+    const start = script.indexOf(
+      'step "Public TypeScript declarations: installed package consumer (#7576)"'
+    );
+    const end = script.indexOf('step "Phase 4: --help lists core commands"', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const phase = script.slice(start, end);
+    expect(phase).toContain('typescript@6.0.3 @types/node@24.19.2 undici@6.29.1');
+    expect(phase).toContain("['undici', '6.29.1']");
+    expect(phase).not.toContain('6.29.0');
+  });
+
   it.each(['ignore-scripts', 'default', 'npm12', 'npm12-strict', 'update', 'pnpm'])(
     'uses the installed package and pinned private tooling under %s',
     (installMode) => {
@@ -273,7 +287,7 @@ describe('permanent installed package TypeScript phase (unit wiring only)', () =
         '--save-exact',
         'typescript@6.0.3',
         '@types/node@24.19.2',
-        'undici@6.29.0',
+        'undici@6.29.1',
       ]);
       expect(install.manifest).toMatchObject({ private: true, type: 'module' });
       expect(install.cwd).toMatch(/node_modules\/\.nexus-types\./);
