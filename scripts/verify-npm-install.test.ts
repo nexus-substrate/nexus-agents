@@ -255,19 +255,43 @@ if (command === 'node' && fixture?.endsWith('.ts') && process.env.TYPE_FIXTURE_M
 }
 
 describe('permanent installed package TypeScript phase (unit wiring only)', () => {
-  it('keeps the patched Undici install and installed-version gate aligned', () => {
-    const script = readFileSync(join(import.meta.dirname, 'verify-npm-install.sh'), 'utf8');
-    const start = script.indexOf(
-      'step "Public TypeScript declarations: installed package consumer (#7576)"'
-    );
-    const end = script.indexOf('step "Phase 4: --help lists core commands"', start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    const phase = script.slice(start, end);
-    expect(phase).toContain('typescript@6.0.3 @types/node@24.19.2 undici@6.29.1');
-    expect(phase).toContain("['undici', '6.29.1']");
-    expect(phase).not.toContain('6.29.0');
-  });
+  it.each(['6.29.1', '6.29.0'])(
+    'executes the installed-version gate against an actual Undici%s manifest',
+    (undiciVersion) => {
+      const script = readFileSync(join(import.meta.dirname, 'verify-npm-install.sh'), 'utf8');
+      const gate = /<<'TYPE_VERSIONS'\n([\s\S]*?)\nTYPE_VERSIONS/.exec(script)?.[1];
+      if (gate === undefined) throw new Error('Installed-version gate is missing');
+      const root = mkdtempSync(join(tmpdir(), 'nexus-toolchain-version-gate-'));
+      roots.push(root);
+      for (const [name, version] of [
+        ['typescript', '6.0.3'],
+        ['@types/node', '24.19.2'],
+        ['undici', undiciVersion],
+      ] as const) {
+        const directory = join(root, 'node_modules', name);
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(join(directory, 'package.json'), JSON.stringify({ name, version }));
+      }
+      // Real Node executes the real gate over synthetic manifests; no compiler attestation.
+      const result = spawnSync(process.execPath, ['--input-type=module'], {
+        cwd: root,
+        env: {},
+        input: gate,
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      expect(result.error).toBeUndefined();
+      if (undiciVersion === '6.29.1') {
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain('TypeScript consumer toolchain: undici@6.29.1');
+      } else {
+        expect(result.status).not.toBeNull();
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('TypeScript consumer toolchain mismatch: undici');
+        expect(result.stderr).not.toMatch(/ENOENT|Cannot find module/);
+      }
+    }
+  );
 
   it.each(['ignore-scripts', 'default', 'npm12', 'npm12-strict', 'update', 'pnpm'])(
     'uses the installed package and pinned private tooling under %s',
