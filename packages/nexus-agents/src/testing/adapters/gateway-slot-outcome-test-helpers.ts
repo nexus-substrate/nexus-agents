@@ -1,15 +1,21 @@
 /** Offline actual-factory fixtures for outcome ownership; no process or provider execution. */
 import { vi, type Mock } from 'vitest';
-import type { CliCircuitBreaker } from './circuit-breaker.js';
-import { err, ModelError, type Result } from '../core/index.js';
-import { BaseCliAdapter } from './base-adapter.js';
-import { buildGatewaySlotRouterArm } from './gateway-slot-arm.js';
-import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
-import { setGatewaySlotCatalog } from '../adapters/gateway-family-slots.js';
-import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
-import { breakerKeys } from './breaker-key.js';
-import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
-import type { CliError, CliResponse, ModelInfo, ICliAdapter, CliName } from './types.js';
+import type { CliCircuitBreaker } from '../../cli-adapters/circuit-breaker.js';
+import { err, ModelError, type Result } from '../../core/index.js';
+import { BaseCliAdapter } from '../../cli-adapters/base-adapter.js';
+import { buildGatewaySlotRouterArm } from '../../cli-adapters/gateway-slot-arm.js';
+import { getDefaultCliCircuitBreakerRegistry } from '../../cli-adapters/cli-circuit-breaker.js';
+import { setGatewaySlotCatalog } from '../../adapters/gateway-family-slots.js';
+import { fakeGatewayModel } from './fake-gateway-model.js';
+import { breakerKeys } from '../../cli-adapters/breaker-key.js';
+import { getCliModelName, getDefaultModelForCli } from '../../config/model-config-helpers.js';
+import type {
+  CliError,
+  CliResponse,
+  ModelInfo,
+  ICliAdapter,
+  CliName,
+} from '../../cli-adapters/types.js';
 
 export const failure: CliError = {
   code: 'EXECUTION_ERROR',

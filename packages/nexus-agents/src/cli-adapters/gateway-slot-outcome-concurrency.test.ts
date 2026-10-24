@@ -16,7 +16,7 @@ import {
   makeSlot,
   slotBreaker,
   deferred,
-} from './gateway-slot-outcome-test-helpers.js';
+} from '../testing/adapters/gateway-slot-outcome-test-helpers.js';
 
 vi.mock('./cli-binary-on-path.js', () => ({ isCliBinaryOnPath: vi.fn(() => true) }));
 beforeEach(() => {
