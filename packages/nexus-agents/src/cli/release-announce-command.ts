@@ -2,7 +2,7 @@
  * Release Announce Command
  *
  * CLI command for generating release announcements.
- * Supports blog posts and Bluesky social media.
+ * Generates blog posts for manual publication.
  *
  * @module cli/release-announce-command
  * (Source: Issue #641 - Release announcement bot)
@@ -18,7 +18,6 @@ import {
   type ChannelAnnouncementResult,
   type BlogPostMetadata,
   type AnnouncementChannel,
-  BLUESKY_LIMITS,
 } from './release-announce-types.js';
 import {
   getLatestTag,
@@ -26,17 +25,27 @@ import {
   parseConventionalCommit,
   groupCommitsByCategory,
 } from './release-notes-helpers.js';
-import { getBlueskyConfig, createBlueskyPost } from './bluesky-client.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 
 /**
  * Default options for the release-announce command.
  */
 const DEFAULT_OPTIONS: Partial<ReleaseAnnounceOptions> = {
-  channels: ['blog', 'bluesky'],
+  channels: ['blog'],
   dryRun: false,
   verbose: false,
 };
+
+/** Retired requests fail as a whole, before any other channel has side effects. */
+function retiredChannelError(channels: readonly string[]): string | undefined {
+  return channels.some((channel) => channel.trim().toLowerCase() === 'bluesky')
+    ? 'Bluesky announcement channel is retired. Generate a blog announcement and post to Bluesky manually.'
+    : undefined;
+}
+
+function isBlogChannel(channel: string): boolean {
+  return channel === 'blog';
+}
 
 /** An optional CLI/config string given as the empty string is treated as not given. */
 function isNonEmpty(value: string | undefined): value is string {
@@ -270,35 +279,6 @@ function generateBlogPost(options: ReleaseAnnounceOptions): string {
 }
 
 /**
- * Generates Bluesky post content.
- *
- * @param options - Announcement options
- * @returns Bluesky post content (within character limit)
- */
-function generateBlueskyPost(options: ReleaseAnnounceOptions): string {
-  const highlights = resolveHighlights(options);
-  // A blank first highlight is nothing to announce, the same as none.
-  const firstHighlight = highlights[0];
-  const highlight = isNonEmpty(firstHighlight) ? firstHighlight : 'new features and improvements';
-
-  const releaseUrl = resolveReleaseUrl(options);
-
-  // Build post within character limit
-  let post = `🚀 nexus-agents v${options.version} released!\n\n`;
-  post += `Highlights: ${highlight}\n\n`;
-  post += `${releaseUrl}\n\n`;
-  post += `#AI #MCP #MultiAgent #OpenSource`;
-
-  // Truncate if needed
-  if (post.length > BLUESKY_LIMITS.MAX_CHARS) {
-    const truncateLength = BLUESKY_LIMITS.MAX_CHARS - 3;
-    post = post.substring(0, truncateLength) + '...';
-  }
-
-  return post;
-}
-
-/**
  * Announces to blog channel. Synchronous: it only renders the post; publishing
  * is a manual step (see below).
  *
@@ -333,58 +313,6 @@ function announceToBlog(options: ReleaseAnnounceOptions): ChannelAnnouncementRes
 }
 
 /**
- * Announces to Bluesky channel.
- *
- * @param options - Announcement options
- * @returns Channel result
- */
-async function announceToBluesky(
-  options: ReleaseAnnounceOptions
-): Promise<ChannelAnnouncementResult> {
-  const content = generateBlueskyPost(options);
-
-  if (options.dryRun) {
-    return {
-      channel: 'bluesky',
-      success: true,
-      content,
-      url: '(dry-run)',
-    };
-  }
-
-  // Check for Bluesky credentials
-  const config = getBlueskyConfig();
-
-  if (!config) {
-    return {
-      channel: 'bluesky',
-      success: false,
-      content,
-      error: 'BLUESKY_HANDLE and BLUESKY_APP_PASSWORD environment variables required.',
-    };
-  }
-
-  // Post to Bluesky via AT Protocol
-  const result = await createBlueskyPost(config, content);
-
-  if (!result.success) {
-    return {
-      channel: 'bluesky',
-      success: false,
-      content,
-      ...(result.error !== undefined && { error: result.error }),
-    };
-  }
-
-  return {
-    channel: 'bluesky',
-    success: true,
-    content,
-    ...(result.url !== undefined && { url: result.url }),
-  };
-}
-
-/**
  * Runs the release-announce command.
  *
  * @param options - Command options
@@ -395,6 +323,20 @@ export async function runReleaseAnnounce(
 ): Promise<ReleaseAnnounceResult> {
   const startTime = Date.now();
   const opts = { ...DEFAULT_OPTIONS, ...options } as ReleaseAnnounceOptions;
+  const retiredError = retiredChannelError(opts.channels);
+  if (retiredError !== undefined) {
+    return Promise.resolve({
+      success: false,
+      version: opts.version,
+      channels: opts.channels.map((channel) => ({
+        channel,
+        success: false,
+        content: '',
+        error: retiredError,
+      })),
+      durationMs: Date.now() - startTime,
+    });
+  }
 
   if (opts.verbose) {
     console.log(`${colors.cyan}${colors.bold}Release Announcement Generator${colors.reset}`);
@@ -410,22 +352,9 @@ export async function runReleaseAnnounce(
       console.log(`${colors.dim}Generating ${channel} announcement...${colors.reset}`);
     }
 
-    let result: ChannelAnnouncementResult;
-    switch (channel) {
-      case 'blog':
-        result = announceToBlog(opts);
-        break;
-      case 'bluesky':
-        result = await announceToBluesky(opts);
-        break;
-      default:
-        result = {
-          channel,
-          success: false,
-          content: '',
-          error: `Unknown channel: ${String(channel)}`,
-        };
-    }
+    const result: ChannelAnnouncementResult = isBlogChannel(channel)
+      ? announceToBlog(opts)
+      : { channel, success: false, content: '', error: `Unknown channel: ${channel}` };
     results.push(result);
   }
 
@@ -433,12 +362,12 @@ export async function runReleaseAnnounce(
   // is `true`, so a filtered-to-empty channel list used to report a clean run.
   const allSuccess = allOf(results, (r) => r.success, false);
 
-  return {
+  return Promise.resolve({
     success: allSuccess,
     version: opts.version,
     channels: results,
     durationMs: Date.now() - startTime,
-  };
+  });
 }
 
 /**
@@ -515,22 +444,23 @@ export async function releaseAnnounceCommand(args: {
     releaseUrl?: string;
   };
 }): Promise<number> {
-  const version = resolveAnnounceVersion(args.options.version);
-  if (version === undefined) {
-    console.error(`${colors.red}Error: Could not determine version${colors.reset}`);
+  const channelList = args.options.channels?.split(',') ?? ['blog'];
+  const retiredError = retiredChannelError(channelList);
+  if (retiredError !== undefined) {
+    console.error(`${colors.red}Error: ${retiredError}${colors.reset}`);
     return 1;
   }
-
-  // Parse channels
-  const channelList = args.options.channels?.split(',') ?? ['blog', 'bluesky'];
-  const channels = channelList.filter(
-    (c): c is AnnouncementChannel => c === 'blog' || c === 'bluesky'
-  );
+  const channels = channelList.filter((c): c is AnnouncementChannel => isBlogChannel(c));
   if (channels.length === 0) {
     console.error(
       `${colors.red}Error: No known announcement channels in "${channelList.join(',')}" ` +
-        `(known: blog, bluesky)${colors.reset}`
+        `(known: blog)${colors.reset}`
     );
+    return 1;
+  }
+  const version = resolveAnnounceVersion(args.options.version);
+  if (version === undefined) {
+    console.error(`${colors.red}Error: Could not determine version${colors.reset}`);
     return 1;
   }
 

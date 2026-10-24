@@ -74,9 +74,6 @@
     "docs:api:md": "typedoc --options typedoc.markdown.json",
     "prepublishOnly": "pnpm run build && pnpm exec tsx ../../scripts/check-publish-stage.ts"
   },
-  "optionalDependencies": {
-    "@atproto/api": "^0.24.3"
-  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@ast-grep/lang-go": "0.0.6",
