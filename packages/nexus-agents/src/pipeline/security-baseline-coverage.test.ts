@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
 import { compareSecurityBaseline } from './security-baseline.js';
 import type { SecurityScanInput } from '../mcp/tools/security-scan-types.js';
 import type { ScannerParseDiagnostic, SarifParseResult } from '../security/sarif-types.js';
@@ -20,11 +23,41 @@ vi.mock('../mcp/tools/security-scan.js', () => ({
 }));
 
 describe('baseline parse coverage (#7238)', () => {
-  const repository = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    encoding: 'utf8',
-  }).trim();
-  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const target = join(repository, 'packages/nexus-agents');
+  let repository = '';
+  let sha: string;
+  let target: string;
+
+  beforeAll(() => {
+    repository = mkdtempOutsideRepo('baseline-coverage-');
+    target = join(repository, 'packages/nexus-agents');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'package.json'), '{"name":"test-fake-baseline","private":true}\n');
+    const env = {
+      ...hermeticGitEnv(),
+      GIT_AUTHOR_NAME: 'TEST_FAKE baseline fixture',
+      GIT_AUTHOR_EMAIL: 'test-fake@example.invalid',
+      GIT_COMMITTER_NAME: 'TEST_FAKE baseline fixture',
+      GIT_COMMITTER_EMAIL: 'test-fake@example.invalid',
+    };
+    const git = (args: string[]): string =>
+      execFileSync(
+        'git',
+        ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args],
+        {
+          cwd: repository,
+          env,
+          encoding: 'utf8',
+        }
+      ).trim();
+    git(['init', '--quiet']);
+    git(['add', 'packages/nexus-agents/package.json']);
+    git(['commit', '--quiet', '-m', 'TEST_FAKE pinned baseline']);
+    sha = git(['rev-parse', 'HEAD']);
+  });
+  afterAll(() => {
+    if (repository !== '') rmSync(repository, { recursive: true, force: true });
+  });
+
   const compare = (): ReturnType<typeof compareSecurityBaseline> =>
     compareSecurityBaseline(target, ['p/default'], {
       root: target,
