@@ -10,6 +10,15 @@ import { publishEnv } from './publish-env.js';
 import { ROOT } from './script-paths.js';
 
 describe('publishEnv', () => {
+  it('preserves owned diagnostic log routing without changing existing Node options', () => {
+    const routing = {
+      npm_config_logs_dir: '/tmp/TEST_FAKE_OWNED_PUBLISH_LOGS',
+      npm_config_logs_max: '100',
+      NODE_OPTIONS: '--no-warnings',
+    };
+    expect(publishEnv(routing)).toMatchObject(routing);
+  });
+
   it('removes pnpm-only npm config while preserving npm auth and provenance', () => {
     const original = {
       npm_config_node_linker: 'isolated',

@@ -72,7 +72,7 @@ export async function handleReleaseValidateCommand(args: ParsedCliArgs): Promise
  */
 export async function handleReleaseAnnounceCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const version = args.positionals[1];
-  const channels = args.positionals[2];
+  const channels = args.options.channels ?? args.positionals[2];
 
   const exitCode = await releaseAnnounceCommand({
     positionals: args.positionals,

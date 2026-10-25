@@ -198,7 +198,7 @@ if (command === 'npm') {
     fs.mkdirSync('node_modules/@types/node', { recursive: true });
     fs.mkdirSync('node_modules/undici', { recursive: true });
     fs.writeFileSync('node_modules/typescript/bin/tsc', 'FAKE compiler boundary');
-    for (const [name, version] of [['typescript','6.0.3'], ['@types/node','24.19.2'], ['undici','6.29.0']]) {
+    for (const [name, version] of [['typescript','6.0.3'], ['@types/node','24.19.2'], ['undici','6.29.1']]) {
       fs.writeFileSync('node_modules/' + name + '/package.json', JSON.stringify({ name, version }));
     }
   }
@@ -255,6 +255,44 @@ if (command === 'node' && fixture?.endsWith('.ts') && process.env.TYPE_FIXTURE_M
 }
 
 describe('permanent installed package TypeScript phase (unit wiring only)', () => {
+  it.each(['6.29.1', '6.29.0'])(
+    'executes the installed-version gate against an actual Undici%s manifest',
+    (undiciVersion) => {
+      const script = readFileSync(join(import.meta.dirname, 'verify-npm-install.sh'), 'utf8');
+      const gate = /<<'TYPE_VERSIONS'\n([\s\S]*?)\nTYPE_VERSIONS/.exec(script)?.[1];
+      if (gate === undefined) throw new Error('Installed-version gate is missing');
+      const root = mkdtempSync(join(tmpdir(), 'nexus-toolchain-version-gate-'));
+      roots.push(root);
+      for (const [name, version] of [
+        ['typescript', '6.0.3'],
+        ['@types/node', '24.19.2'],
+        ['undici', undiciVersion],
+      ] as const) {
+        const directory = join(root, 'node_modules', name);
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(join(directory, 'package.json'), JSON.stringify({ name, version }));
+      }
+      // Real Node executes the real gate over synthetic manifests; no compiler attestation.
+      const result = spawnSync(process.execPath, ['--input-type=module'], {
+        cwd: root,
+        env: {},
+        input: gate,
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      expect(result.error).toBeUndefined();
+      if (undiciVersion === '6.29.1') {
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain('TypeScript consumer toolchain: undici@6.29.1');
+      } else {
+        expect(result.status).not.toBeNull();
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('TypeScript consumer toolchain mismatch: undici');
+        expect(result.stderr).not.toMatch(/ENOENT|Cannot find module/);
+      }
+    }
+  );
+
   it.each(['ignore-scripts', 'default', 'npm12', 'npm12-strict', 'update', 'pnpm'])(
     'uses the installed package and pinned private tooling under %s',
     (installMode) => {
@@ -273,7 +311,7 @@ describe('permanent installed package TypeScript phase (unit wiring only)', () =
         '--save-exact',
         'typescript@6.0.3',
         '@types/node@24.19.2',
-        'undici@6.29.0',
+        'undici@6.29.1',
       ]);
       expect(install.manifest).toMatchObject({ private: true, type: 'module' });
       expect(install.cwd).toMatch(/node_modules\/\.nexus-types\./);

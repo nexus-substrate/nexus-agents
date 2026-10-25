@@ -35,22 +35,12 @@ vi.mock('./release-notes-helpers.js', () => ({
   groupCommitsByCategory: vi.fn(),
 }));
 
-vi.mock('./bluesky-client.js', () => ({
-  getBlueskyConfig: vi.fn().mockReturnValue(undefined),
-  createBlueskyPost: vi
-    .fn()
-    .mockReturnValue(
-      Promise.resolve({ success: true, url: 'https://bsky.app/profile/test/post/123' })
-    ),
-}));
-
 import { readFileSync, existsSync } from 'node:fs';
 import {
   runReleaseAnnounce,
   printReleaseAnnounceResult,
   releaseAnnounceCommand,
 } from './release-announce-command.js';
-import { getBlueskyConfig, createBlueskyPost } from './bluesky-client.js';
 import {
   getLatestTag,
   getCommitsBetween,
@@ -141,7 +131,6 @@ describe('runReleaseAnnounce', () => {
     vi.clearAllMocks();
     setupReleaseNotesMocks();
     vi.mocked(existsSync).mockReturnValue(false);
-    vi.mocked(getBlueskyConfig).mockReturnValue(undefined);
   });
 
   it('should return success for blog dry-run', async () => {
@@ -205,73 +194,6 @@ describe('runReleaseAnnounce', () => {
     expect(result.channels[0]?.content).toContain('https://github.com/custom/release/v3.0.0');
   });
 
-  it('should handle bluesky dry-run', async () => {
-    const result = await runReleaseAnnounce({
-      version: '3.0.0',
-      channels: ['bluesky'],
-      dryRun: true,
-      verbose: false,
-    });
-
-    expect(result.channels[0]?.channel).toBe('bluesky');
-    expect(result.channels[0]?.success).toBe(true);
-    expect(result.channels[0]?.url).toBe('(dry-run)');
-  });
-
-  it('should fail bluesky without credentials', async () => {
-    vi.mocked(getBlueskyConfig).mockReturnValue(undefined);
-
-    const result = await runReleaseAnnounce({
-      version: '3.0.0',
-      channels: ['bluesky'],
-      dryRun: false,
-      verbose: false,
-    });
-
-    expect(result.channels[0]?.success).toBe(false);
-    expect(result.channels[0]?.error).toContain('BLUESKY_HANDLE');
-  });
-
-  it('should succeed bluesky with valid credentials', async () => {
-    vi.mocked(getBlueskyConfig).mockReturnValue({
-      handle: 'test.bsky.social',
-      appPassword: 'secret',
-    });
-    vi.mocked(createBlueskyPost).mockReturnValue(
-      Promise.resolve({ success: true, url: 'https://bsky.app/profile/test/post/abc' })
-    );
-
-    const result = await runReleaseAnnounce({
-      version: '3.0.0',
-      channels: ['bluesky'],
-      dryRun: false,
-      verbose: false,
-    });
-
-    expect(result.channels[0]?.success).toBe(true);
-    expect(result.channels[0]?.url).toBe('https://bsky.app/profile/test/post/abc');
-  });
-
-  it('should handle bluesky post failure', async () => {
-    vi.mocked(getBlueskyConfig).mockReturnValue({
-      handle: 'test.bsky.social',
-      appPassword: 'secret',
-    });
-    vi.mocked(createBlueskyPost).mockReturnValue(
-      Promise.resolve({ success: false, error: 'Rate limited' })
-    );
-
-    const result = await runReleaseAnnounce({
-      version: '3.0.0',
-      channels: ['bluesky'],
-      dryRun: false,
-      verbose: false,
-    });
-
-    expect(result.channels[0]?.success).toBe(false);
-    expect(result.channels[0]?.error).toBe('Rate limited');
-  });
-
   it('should handle unknown channel gracefully', async () => {
     const result = await runReleaseAnnounce({
       version: '3.0.0',
@@ -282,33 +204,6 @@ describe('runReleaseAnnounce', () => {
 
     expect(result.channels[0]?.success).toBe(false);
     expect(result.channels[0]?.error).toContain('Unknown channel');
-  });
-
-  it('should handle multiple channels', async () => {
-    const result = await runReleaseAnnounce({
-      version: '3.0.0',
-      channels: ['blog', 'bluesky'],
-      dryRun: true,
-      verbose: false,
-    });
-
-    expect(result.channels).toHaveLength(2);
-    expect(result.channels[0]?.channel).toBe('blog');
-    expect(result.channels[1]?.channel).toBe('bluesky');
-  });
-
-  it('should report allSuccess false if any channel fails', async () => {
-    vi.mocked(getBlueskyConfig).mockReturnValue(undefined);
-
-    const result = await runReleaseAnnounce({
-      version: '3.0.0',
-      channels: ['blog', 'bluesky'],
-      dryRun: false,
-      verbose: false,
-    });
-
-    // Blog succeeds but bluesky fails (no credentials)
-    expect(result.success).toBe(false);
   });
 
   it('should log verbose output when verbose is true', async () => {
@@ -431,7 +326,6 @@ describe('releaseAnnounceCommand', () => {
     vi.clearAllMocks();
     setupReleaseNotesMocks();
     vi.mocked(existsSync).mockReturnValue(false);
-    vi.mocked(getBlueskyConfig).mockReturnValue(undefined);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -480,34 +374,31 @@ describe('releaseAnnounceCommand', () => {
     expect(exitCode).toBe(1);
   });
 
-  it('should parse comma-separated channels', async () => {
+  it('should parse repeated supported channels', async () => {
     const exitCode = await releaseAnnounceCommand({
       positionals: ['release-announce'],
-      options: { version: '3.0.0', channels: 'blog,bluesky', dryRun: true },
+      options: { version: '3.0.0', channels: 'blog,blog', dryRun: true },
     });
-
     expect(exitCode).toBe(0);
   });
 
-  it('should filter out invalid channels', async () => {
+  it('should retain supported channels when another unknown channel is filtered', async () => {
     const exitCode = await releaseAnnounceCommand({
       positionals: ['release-announce'],
-      options: { version: '3.0.0', channels: 'blog,slack,bluesky', dryRun: true },
+      options: { version: '3.0.0', channels: 'blog,slack', dryRun: true },
     });
-
-    // 'slack' is filtered out; blog and bluesky remain valid
     expect(exitCode).toBe(0);
   });
 
-  it('should return 1 when a channel fails', async () => {
-    vi.mocked(getBlueskyConfig).mockReturnValue(undefined);
-
+  it('should reject an explicit empty channel list', async () => {
     const exitCode = await releaseAnnounceCommand({
       positionals: ['release-announce'],
-      options: { version: '3.0.0', channels: 'bluesky', dryRun: false },
+      options: { version: '3.0.0', channels: '', dryRun: true },
     });
-
     expect(exitCode).toBe(1);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('No known announcement channels')
+    );
   });
 
   it('should pass releaseUrl option through', async () => {
@@ -542,4 +433,88 @@ describe('releaseAnnounceCommand', () => {
     expect(output).toContain('No announcements');
     logSpy.mockRestore();
   });
+});
+
+describe('Bluesky retirement draft', () => {
+  let logSpy: MockInstance;
+  let errorSpy: MockInstance;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupReleaseNotesMocks();
+    vi.mocked(existsSync).mockReturnValue(false);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('uses a blog-only default without requesting another channel', async () => {
+    const result = await runReleaseAnnounce({ version: '3.0.0', dryRun: true });
+    expect(result.success).toBe(true);
+    expect(result.channels.map((channel) => channel.channel)).toEqual(['blog']);
+  });
+
+  it('rejects a mixed programmatic request before generating blog content', async () => {
+    const result = await runReleaseAnnounce({
+      version: '3.0.0',
+      channels: ['blog', 'bluesky' as 'blog'],
+      dryRun: false,
+    });
+    expect(result.success).toBe(false);
+    expect(result.channels).toHaveLength(2);
+    for (const channel of result.channels) {
+      expect(channel.content).toBe('');
+      expect(channel.error).toContain('Bluesky announcement channel is retired');
+    }
+    expect(getLatestTag).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['bluesky', false],
+    ['blog,bluesky', false],
+    ['bluesky,blog', false],
+    ['blog, bluesky', false],
+    ['blog,Bluesky', false],
+    ['bluesky ', false],
+    [' Bluesky,blog', false],
+    ['bluesky', true],
+    ['blog,bluesky', true],
+    ['bluesky,blog', true],
+    ['blog, bluesky', true],
+    ['blog,Bluesky', true],
+    ['bluesky ', true],
+    [' Bluesky,blog', true],
+  ] as const)(
+    'rejects retired %s before any announcement (dryRun=%s)',
+    async (channels, dryRun) => {
+      const result = await releaseAnnounceCommand({
+        positionals: ['release-announce'],
+        options: { version: '3.0.0', channels, dryRun },
+      });
+      expect(result).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Bluesky announcement channel is retired')
+      );
+      expect(getLatestTag).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([false, true])(
+    'rejects a noncanonical retired programmatic token before blog generation (dryRun=%s)',
+    async (dryRun) => {
+      const result = await runReleaseAnnounce({
+        version: '3.0.0',
+        channels: ['blog', ' Bluesky ' as 'blog'],
+        dryRun,
+      });
+      expect(result.success).toBe(false);
+      expect(result.channels).toHaveLength(2);
+      for (const channel of result.channels) {
+        expect(channel.content).toBe('');
+        expect(channel.error).toContain('Bluesky announcement channel is retired');
+      }
+      expect(getLatestTag).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+    }
+  );
 });
