@@ -29,6 +29,8 @@ test('an out-of-gamut site override fails the audit', async (t) => {
   const r = run('--tokens', fixture);
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /remarque-audit: passed=false/);
+  // The fixture also misses dark-theme contrast; pin the gamut rule itself.
+  assert.match(r.stderr, /--color-syntax-constant .* outside sRGB gamut/);
 });
 
 test('--json-out without a file is a usage error, not a silent pass', () => {
