@@ -84,7 +84,7 @@ If ANY clause fails, wait it out — auto-merge with the existing required-CI ga
 
 When admin-merging, **state the bypass reason** in the merge commit body and add a comment on the outage issue noting which PR was admin-merged and why. The audit chain matters more than the convenience.
 
-### Proposed delegated-review route — inactive (#7615)
+## Proposed delegated-review route — inactive (#7615)
 
 **Inactive: this proposal grants no healthy-CI administrative merge authority.**
 The outage-only rule above remains operative. A genuine eligible GitHub approval
@@ -92,12 +92,19 @@ uses the ordinary merge route, including a disclosed automated review of a
 bot-authored PR by a distinct authorized reviewer. An account cannot approve its
 own PR; do not assume a bot identity or acquire credentials to evade that limit.
 
-Activation requires **both** human owner ratification of this governor amendment
-with valid committed, head-bound ledger evidence, **and** the tested canonical
-enforcement prerequisite in [#7616](https://github.com/nexus-substrate/nexus-agents/issues/7616)
-to land. Neither a panel decision, this prose, nor an agent-authored owner-account
-approval or label supplies human ratification. Until both prerequisites are
-verified, retain the restriction and work another actionable item.
+Activation requires a **separate human-ratified governor change** that explicitly
+removes this inactive marker **after** the tested canonical guard in
+[#7616](https://github.com/nexus-substrate/nexus-agents/issues/7616) has landed.
+The guard's authority decision must live on a governor-protected canonical path;
+an ordinary-path implementation cannot activate this route. Accepting this
+inactive proposal or completing an issue is not activation.
+
+Both this proposal and the later activation change require actual human owner
+ratification with valid committed, head-bound ledger evidence under the existing
+gates. Neither a panel decision, this prose, nor an agent-authored owner-account
+approval or label supplies human ratification. Until the separate activation
+change is ratified and landed, retain the restriction and work another actionable
+item.
 
 After activation, the proposed exception is limited to explicit owner delegation
 of ordinary PR merges and replacement review. Prefer a genuine eligible GitHub
@@ -121,7 +128,9 @@ beyond the authorized scope. The canonical guard must establish all of these:
 5. A recorded preflight and explicit disclosure of the actual GitHub review gap,
    panel tally, dissent, coverage limits and bypass reason in the merge record.
    Verify the resulting commit's parent, tree and exact patch immediately after
-   merging. Any mismatch requires investigation and a tracked disposition.
+   merging. Any mismatch stops further merges and requires investigation and a
+   tracked disposition. Default to a reviewed revert of unintended changes;
+   document a safer alternative if reversal would cause greater harm.
 
 These are proposed guard requirements, **not existing GitHub enforcement**.
 Administrative merge can bypass protections beyond reviews; a local guard cannot
