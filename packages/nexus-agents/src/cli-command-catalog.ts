@@ -308,7 +308,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     command: 'release-announce',
-    description: 'Generate release announcements (blog, social)',
+    description: 'Generate blog release announcements',
     audience: 'maintainer',
   },
 
