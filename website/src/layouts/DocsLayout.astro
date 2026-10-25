@@ -21,6 +21,7 @@ import type { MarkdownHeading } from 'astro';
 import SiteHead from '../components/SiteHead.astro';
 import PageScripts from '../components/PageScripts.astro';
 import ThemeInit from '../components/ThemeInit.astro';
+import DeckInit from '../components/DeckInit.astro';
 import SiteMasthead from '../components/SiteMasthead.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import TocSpy from '../components/TocSpy.svelte';
@@ -118,6 +119,7 @@ const [beforeToc, afterToc] = split ?? ['', bodyHtml];
   <head>
     <SiteHead title={title} description={description} />
     <ThemeInit />
+    <DeckInit />
   </head>
   <body>
     <a class="docs-skip-link" href="#main">Skip to content</a>

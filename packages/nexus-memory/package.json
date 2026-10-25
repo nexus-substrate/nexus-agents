@@ -1,6 +1,6 @@
 {
   "name": "nexus-memory",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Unified memory subsystem for nexus-agents and nexus-eval-* — IMemoryBackend contract, MemoryRegistry, telemetry, one-shot importer",
   "license": "MIT",
   "repository": {
@@ -43,7 +43,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "zod": "^4.6.2"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
