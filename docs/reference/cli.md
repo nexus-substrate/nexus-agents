@@ -47,7 +47,7 @@ Run `nexus-agents <command> --help` for command options.
 | `model-drift` | maintainer | Report models the registry does not know and registry models no source lists (#6625). --json; --file-issue opt-in. |
 | `orchestrate` | essential | Execute a task via CLI tools (standalone mode) |
 | `registry` | advanced | Inspect + refresh the dynamic model registry (doctor / refresh) |
-| `release-announce` | maintainer | Generate release announcements (blog, social) |
+| `release-announce` | maintainer | Generate blog release announcements |
 | `release-notes` | maintainer | Generate release notes from git commits |
 | `release-validate` | maintainer | Run expert swarm validation for releases |
 | `remediation-review` | maintainer | Review audit-mode selections: list · panel-judge --batch N [--quick] · sample --n 10 [--seed S] · mark --evaluator --sound\|--unsound [--sample id] · sign-off --owner · readiness (human, panel and owner-sample judgments + soak-store alarm). |

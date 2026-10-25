@@ -27,11 +27,22 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ROOT } from './script-paths.js';
 import { publishEnv } from './publish-env.js';
+import { collectPublishDiagnostics } from './publish-diagnostics.js';
 
 export interface PublishFailure {
   readonly name: string;
@@ -154,24 +165,106 @@ export function teeCommand(
   });
 }
 
+interface DiagnosticScope {
+  readonly directory: string;
+  readonly id: string;
+  readonly startedAtMs: number;
+}
+
+/** Optional diagnostics must never replace a publishing failure or its exit. */
+export function emitDiagnostic(value: unknown): void {
+  try {
+    const frame = Buffer.from(`publish-diagnostics: ${JSON.stringify(value)}\n`);
+    let offset = 0;
+    while (offset < frame.length) {
+      const remaining = frame.length - offset;
+      const written = writeSync(2, frame, offset, remaining);
+      if (!Number.isSafeInteger(written) || written <= 0 || written > remaining) return;
+      offset += written;
+    }
+  } catch {
+    // A broken diagnostic sink leaves evidence unavailable, never successful.
+    // Do not add a global stream/error handler or change publishing semantics.
+  }
+}
+
+function beginDiagnostics(env: NodeJS.ProcessEnv): DiagnosticScope | undefined {
+  let directory: string | undefined;
+  try {
+    directory = mkdtempSync(join(tmpdir(), 'nexus-publish-logs-'));
+    chmodSync(directory, 0o700);
+    const scope = { directory, id: randomUUID(), startedAtMs: Date.now() };
+    env['npm_config_logs_dir'] = directory;
+    env['npm_config_logs_max'] = '100';
+    return scope;
+  } catch {
+    if (directory !== undefined) {
+      try {
+        rmSync(directory, { recursive: true, force: true });
+      } catch {
+        /* Unavailable. */
+      }
+    }
+    emitDiagnostic({ measurement: 'unmeasured', reason: 'setup-unavailable' });
+    return undefined;
+  }
+}
+
+function finishDiagnostics(scope: DiagnosticScope): void {
+  try {
+    emitDiagnostic(
+      collectPublishDiagnostics(scope.directory, readLocalVersions(ROOT), {
+        id: scope.id,
+        startedAtMs: scope.startedAtMs,
+        endedAtMs: Date.now(),
+      })
+    );
+  } catch {
+    emitDiagnostic({ measurement: 'unmeasured', reason: 'collection-unavailable' });
+  } finally {
+    try {
+      // Raw npm logs can contain sensitive text. Never retain or export them.
+      rmSync(scope.directory, { recursive: true, force: true });
+    } catch {
+      emitDiagnostic({ measurement: 'unmeasured', reason: 'cleanup-unavailable' });
+    }
+  }
+}
+
+/** Keep the existing command chain; only an explicit flag changes log routing. */
+async function runPublish(
+  argv: readonly string[]
+): Promise<{ exitCode: number | null; output: string }> {
+  const enabled = argv.includes('--diagnostics');
+  const forwarded = enabled ? argv.filter((arg) => arg !== '--diagnostics') : argv;
+  const args =
+    forwarded.includes('--tag') || forwarded.some((arg) => arg.startsWith('--tag='))
+      ? forwarded
+      : ['--tag', 'next', ...forwarded];
+  const env = publishEnv(process.env);
+  const scope = enabled ? beginDiagnostics(env) : undefined;
+  try {
+    return await teeCommand(
+      'pnpm',
+      [
+        '--config.node-linker=hoisted',
+        'exec',
+        'tsx',
+        'scripts/publish-env.ts',
+        'changeset',
+        'publish',
+        ...args,
+      ],
+      env,
+      { stdout: (c) => process.stdout.write(c), stderr: (c) => process.stderr.write(c) }
+    );
+  } finally {
+    if (scope !== undefined) finishDiagnostics(scope);
+  }
+}
+
 async function main(argv: readonly string[]): Promise<number> {
-  const { exitCode, output } = await teeCommand(
-    'pnpm',
-    // Clean after pnpm exec regenerates npm_config_* in its child env.
-    [
-      '--config.node-linker=hoisted',
-      'exec',
-      'tsx',
-      'scripts/publish-env.ts',
-      'changeset',
-      'publish',
-      ...(argv.includes('--tag') || argv.some((arg) => arg.startsWith('--tag='))
-        ? argv
-        : ['--tag', 'next', ...argv]),
-    ],
-    publishEnv(process.env),
-    { stdout: (c) => process.stdout.write(c), stderr: (c) => process.stderr.write(c) }
-  );
+  const { exitCode, output } = await runPublish(argv);
   const verdict = evaluatePublishExit({ exitCode, output, localVersions: readLocalVersions(ROOT) });
   if (!verdict.ok) {
     console.error(`release-publish: changeset publish failed (${verdict.reason}).`);

@@ -235,6 +235,7 @@ export interface ParsedCliArgs {
     format: string;
     input?: string;
     dryRun: boolean;
+    channels?: string;
     banditStats: boolean;
     // Review command options
     setup: boolean;
@@ -432,6 +433,7 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    channels: { type: 'string' as const },
     'bandit-stats': {
       type: 'boolean' as const,
       default: false,

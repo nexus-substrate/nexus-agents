@@ -61,6 +61,8 @@
  * (muted 47–49.9, border-bold 37.9–39.2 dark/surface, seven syntax slots
  * 45.9–49.8). Each override keeps remarque's chroma and hue and moves only
  * lightness, by the smallest step that clears the contract with a 0.5 margin.
+ * Two light-theme chromas (constant, type) are trimmed by ~0.002–0.003 so the
+ * values sit inside sRGB (remarque 0.28+ audits gamut); lightness is unchanged.
  */
 :root {
   --color-muted: light-dark(oklch(0.51 0.01 80), oklch(0.63 0.01 80));
@@ -68,10 +70,10 @@
 
   --color-syntax-keyword: light-dark(oklch(0.5 0.12 250), oklch(0.64 0.11 250));
   --color-syntax-string: light-dark(oklch(0.49 0.12 145), oklch(0.63 0.11 145));
-  --color-syntax-constant: light-dark(oklch(0.505 0.105 85), oklch(0.645 0.11 84));
+  --color-syntax-constant: light-dark(oklch(0.505 0.103 85), oklch(0.645 0.11 84));
   --color-syntax-comment: light-dark(oklch(0.5 0.01 80), oklch(0.64 0.005 80));
   --color-syntax-function: light-dark(oklch(0.515 0.12 310), oklch(0.655 0.11 310));
-  --color-syntax-type: light-dark(oklch(0.49 0.085 196), oklch(0.63 0.1 195));
+  --color-syntax-type: light-dark(oklch(0.49 0.082 196), oklch(0.63 0.1 195));
   --color-syntax-punctuation: light-dark(oklch(0.5 0.01 80), oklch(0.64 0.005 80));
 }
 
@@ -81,4 +83,18 @@
   :root {
     --color-border-bold: light-dark(oklch(0.55 0.01 80), oklch(0.58 0.01 80));
   }
+}
+
+/* ─── Palette Deck: swatches for the site's own palette ───────────────────
+ * The picker's "Site default" option. deck.css ships a default-swatch block
+ * for the package palette; this one names the site's palette and outranks it
+ * by specificity, whatever order the stylesheets load in. Literal values, not
+ * var(--color-*): a swatch must keep showing the site palette while a deck
+ * palette is active. Keep in step with --color-bg / -fg / -accent above and in
+ * remarque's tokens-palette.css (the site overrides none of the three). */
+:root [data-palette-swatch='default'] {
+  --swatch-bg: light-dark(oklch(0.975 0.005 80), oklch(0.16 0.01 80));
+  --swatch-surface: light-dark(oklch(0.965 0.005 80), oklch(0.19 0.01 80));
+  --swatch-fg: light-dark(oklch(0.18 0.01 80), oklch(0.9 0.005 80));
+  --swatch-accent: light-dark(oklch(0.5 0.14 250), oklch(0.68 0.12 250));
 }
