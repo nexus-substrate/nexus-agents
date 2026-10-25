@@ -1,5 +1,11 @@
 # nexus-memory
 
+## 3.0.1
+
+### Patch Changes
+
+- [#7591](https://github.com/nexus-substrate/nexus-agents/pull/7591) [`99f4681`](https://github.com/nexus-substrate/nexus-agents/commit/99f4681e96eff16829f0ccd00dcd414bb9321acf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Raise the minimum Zod dependency from `^4.6.2` to `^4.6.6` so consumers receive the corrected dependency floor.
+
 ## 3.0.0
 
 ### Major Changes
