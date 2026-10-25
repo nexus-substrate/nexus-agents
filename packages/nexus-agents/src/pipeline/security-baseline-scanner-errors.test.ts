@@ -1,8 +1,10 @@
 /** File-local scanner failures require two-sided unchanged coverage (#7294). */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
 import { parseSarif } from '../security/sarif-parser.js';
 import type { SecurityScanInput } from '../mcp/tools/security-scan-types.js';
 import { checkSecurityScan } from './security-gate.js';
@@ -57,11 +59,9 @@ vi.mock('../mcp/tools/security-scan.js', () => ({
   prepareSecurityScan: vi.fn().mockResolvedValue({ version: '1.128.1' }),
 }));
 
-const repository = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-  encoding: 'utf8',
-}).trim();
-const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-const target = join(repository, 'packages/nexus-agents');
+let repository = '';
+let sha: string;
+let target: string;
 const rule = 'yaml.github-actions.security.gha-curl-pipe-shell.gha-curl-pipe-shell';
 const gate = (): ReturnType<ReturnType<typeof checkSecurityScan>> =>
   checkSecurityScan(target, ['p/default'], {
@@ -120,6 +120,37 @@ function result(
 }
 
 describe('two-sided file-local scanner errors (#7294)', () => {
+  beforeAll(() => {
+    repository = mkdtempOutsideRepo('baseline-scanner-errors-');
+    target = join(repository, 'packages/nexus-agents');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'package.json'), '{"name":"test-fake-baseline","private":true}\n');
+    const env = {
+      ...hermeticGitEnv(),
+      GIT_AUTHOR_NAME: 'TEST_FAKE baseline fixture',
+      GIT_AUTHOR_EMAIL: 'test-fake@example.invalid',
+      GIT_COMMITTER_NAME: 'TEST_FAKE baseline fixture',
+      GIT_COMMITTER_EMAIL: 'test-fake@example.invalid',
+    };
+    const git = (args: string[]): string =>
+      execFileSync(
+        'git',
+        ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args],
+        {
+          cwd: repository,
+          env,
+          encoding: 'utf8',
+        }
+      ).trim();
+    git(['init', '--quiet']);
+    git(['add', 'packages/nexus-agents/package.json']);
+    git(['commit', '--quiet', '-m', 'TEST_FAKE pinned baseline']);
+    sha = git(['rev-parse', 'HEAD']);
+  });
+  afterAll(() => {
+    if (repository !== '') rmSync(repository, { recursive: true, force: true });
+  });
+
   beforeEach(() => {
     // Shallow-checkout TMPDIR is in the scanned repo; use the real OS fallback.
     vi.stubEnv('TMPDIR', process.env['VITEST_SYSTEM_TMPDIR']);
