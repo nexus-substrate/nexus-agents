@@ -35,8 +35,8 @@ importers:
         specifier: ^11.17.2
         version: 11.17.2
       remarque-tokens:
-        specifier: 0.26.0
-        version: 0.26.0
+        specifier: 0.31.1
+        version: 0.31.1
       satteri:
         specifier: ^0.10.5
         version: 0.10.5
@@ -1928,9 +1928,9 @@ packages:
   regex@6.1.0:
     resolution: {integrity: sha512-6VwtthbV4o/7+OaAF9I5L5V3llLEsoPyq9P1JVXkedTP33c7MfCG0/5NOPcSJn0TzXcG9YUrR0gQSWioew3LDg==}
 
-  remarque-tokens@0.26.0:
-    resolution: {integrity: sha512-3J9wrhGbqQMAlhy8LOwy6QF2Xmdpm/ERqLjoSmezOT1pGtILo/DVnwkR+jpyD62OyqR9rTi/xSydZ8jXTzBVGg==}
-    engines: {node: '>=18'}
+  remarque-tokens@0.31.1:
+    resolution: {integrity: sha512-8Udh5zq3IN9qBxXclQ/cBsC11++5CxmXVYrNdnDQIs1dULJpadjS4Zv14/BmvIOFZr4/HTezmtWPDOh9LeWK4A==}
+    engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
       '@williamzujkowski/oklch-terminal-themes': '>=0.1.0 <1.0.0'
@@ -4298,7 +4298,7 @@ snapshots:
     dependencies:
       regex-utilities: 2.3.0
 
-  remarque-tokens@0.26.0: {}
+  remarque-tokens@0.31.1: {}
 
   request-light@0.5.8: {}
 
