@@ -35,8 +35,8 @@ importers:
         specifier: ^11.17.2
         version: 11.17.2
       remarque-tokens:
-        specifier: 0.31.1
-        version: 0.31.1
+        specifier: 0.32.0
+        version: 0.32.0
       satteri:
         specifier: ^0.10.5
         version: 0.10.5
@@ -1928,8 +1928,8 @@ packages:
   regex@6.1.0:
     resolution: {integrity: sha512-6VwtthbV4o/7+OaAF9I5L5V3llLEsoPyq9P1JVXkedTP33c7MfCG0/5NOPcSJn0TzXcG9YUrR0gQSWioew3LDg==}
 
-  remarque-tokens@0.31.1:
-    resolution: {integrity: sha512-8Udh5zq3IN9qBxXclQ/cBsC11++5CxmXVYrNdnDQIs1dULJpadjS4Zv14/BmvIOFZr4/HTezmtWPDOh9LeWK4A==}
+  remarque-tokens@0.32.0:
+    resolution: {integrity: sha512-IdmCztmnGP3j9rPjS9Wvj2f2bVIjizBItNDw5wWJS5b5T4aatVv/q0ald1SlFE0Eu0zcbyH9qVJ3EcxppVRXhA==}
     engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
@@ -4298,7 +4298,7 @@ snapshots:
     dependencies:
       regex-utilities: 2.3.0
 
-  remarque-tokens@0.31.1: {}
+  remarque-tokens@0.32.0: {}
 
   request-light@0.5.8: {}
 

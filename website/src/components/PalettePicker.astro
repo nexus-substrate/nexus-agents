@@ -1,0 +1,49 @@
+---
+// Reader's choice of color theme (remarque-tokens/deck + chrome.css, 0.32),
+// in the masthead beside the light/dark toggle. It uses the popover variant:
+// a footer-only picker was missed on long pages (remarque 0.32.0).
+// Server-renders the deck-picker markup contract (REMARQUE.md "Palette Deck",
+// "Picker markup contract"): a <details> holding native radios, one per
+// palette in deck.json plus the site's own (value=""). Swatch colors come
+// from deck.css, and from docs.css for the site's own. PalettePicker.svelte
+// wraps this markup as a slot and wires the radios.
+import manifest from 'remarque-tokens/deck.json';
+import { DEFAULT_PALETTE_LABEL } from '../lib/palette-deck.ts';
+import PalettePickerIsland from './PalettePicker.svelte';
+
+const palettes: { name: string; label: string }[] = manifest.palettes;
+---
+
+<PalettePickerIsland client:load palettes={palettes.map(({ name, label }) => ({ name, label }))}>
+  <details class="remarque-deck-picker remarque-deck-picker--popover" id="palette-picker">
+    <summary class="docs-control docs-icon-button" aria-label="Color theme" title="Color theme">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"
+        ><path
+          d="M4.098 19.902a3.75 3.75 0 0 0 5.304 0l6.401-6.402M6.75 21A3.75 3.75 0 0 1 3 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 0 0 3.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008Z"
+        ></path></svg
+      >
+      <span class="remarque-sr-only" data-deck-current>{DEFAULT_PALETTE_LABEL}</span>
+    </summary>
+    <fieldset>
+      <legend class="remarque-sr-only">Color theme</legend>
+      <label class="remarque-deck-option">
+        <input type="radio" name="remarque-palette" value="" checked />
+        <span class="remarque-deck-swatches" data-palette-swatch="default" aria-hidden="true"
+          ><span></span><span></span><span></span></span
+        >
+        {DEFAULT_PALETTE_LABEL}
+      </label>
+      {
+        palettes.map((p) => (
+          <label class="remarque-deck-option">
+            <input type="radio" name="remarque-palette" value={p.name} />
+            <span class="remarque-deck-swatches" data-palette-swatch={p.name} aria-hidden="true"
+              ><span></span><span></span><span></span></span
+            >
+            {p.label}
+          </label>
+        ))
+      }
+    </fieldset>
+  </details>
+</PalettePickerIsland>

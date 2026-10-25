@@ -1,6 +1,6 @@
 ---
-// Site header shared by every page (#7199): wordmark, Primary nav, search and
-// theme toggle. The four section links go to the generated section index
+// Site header shared by every page (#7199): wordmark, Primary nav, search,
+// color theme (Palette Deck) and light/dark toggle. The four section links go to the generated section index
 // pages (src/pages/docs/[section].astro).
 //
 // Layout: one row at every width. From 64rem it is wordmark, Primary nav,
@@ -21,6 +21,7 @@
 // the section it gets aria-current="true".
 import SearchBox from './SearchBox.svelte';
 import ThemeToggle from './ThemeToggle.svelte';
+import PalettePicker from './PalettePicker.astro';
 import MenuDrawer from './MenuDrawer.svelte';
 import { BASE } from '../lib/docs-collection.ts';
 import {
@@ -63,6 +64,7 @@ const links = PRIMARY_SECTIONS.map((key) => ({
     </nav>
     <div class="docs-masthead-tools">
       <SearchBox base={BASE} client:load />
+      <PalettePicker />
       <ThemeToggle client:load />
       <MenuDrawer client:load />
     </div>
