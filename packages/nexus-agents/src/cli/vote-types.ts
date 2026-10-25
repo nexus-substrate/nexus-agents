@@ -246,15 +246,16 @@ export interface AgentVoteResult {
    */
   readonly model?: string | undefined;
   /**
-   * Model id the adapter REPORTED serving this vote (`CompletionResponse.model`),
+   * Model id explicitly reported for this vote (`CompletionResponse.reportedModel`),
    * when it reported one (#6660). Differs from {@link model} — the adapter's
-   * construction-time id, i.e. the model REQUESTED — when the transport answered
-   * on another model: the claude adapter's in-family substitution after an
-   * out-of-credits envelope (#6120) is the known case. The outcome row's
+   * construction-time id, i.e. the model REQUESTED. A derived CLI fallback alias
+   * is operational selection, not a report. The outcome row's
    * `servedModel` and its price are taken from this field, never from `model`.
    * Absent for error/simulation votes and when the adapter reported no model.
    */
   readonly servedModel?: string | undefined;
+  /** Per-completion operational selection; never serving evidence or a pricing input. */
+  readonly operationalModel?: string | undefined;
   /**
    * Model assigned to this role before execution. Unlike `model`, this stays on
    * the primary assignment when router failover serves the vote elsewhere.

@@ -54,7 +54,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   memory_query: 'Query across all memory backends with unified results and relevance scoring.',
   memory_stats: 'Get memory system statistics dashboard showing backend availability and metrics.',
   weather_report:
-    'Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.',
+    'Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses. Pipeline join coverage is unmeasured when trace invalid losses are counted or unknown; validated retained logical joins remain visible.',
   issue_triage: 'Triage GitHub issues with trust classification and typed action recommendations.',
   run_graph_workflow:
     "Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Checkpoints drive the executor in-process recovery (crash-resume + selective node retry) and inspection — the MCP call is fire-and-forget with NO caller resume input, and the checkpoint store is in-memory (not durable across process restarts). For straight linear templates, use `run_workflow` instead. The security-audit, test-generation and documentation templates run local heuristic keyword checks and call no model. Their steps are labelled `[heuristic]` (#6676). Supports dispatch: 'async' — returns a jobId immediately; poll get_job_result.",
@@ -63,7 +63,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   registry_import:
     'Draft a registry ENTRY YAML for a NEW model so routing can consider it later. Returns the YAML to stdout for human review; does not write the registry. For picking among already-registered models, use `delegate_to_model`.',
   query_trace:
-    'Query execution traces by run ID. Returns agent and model attribution for pipeline runs including decision paths, error taxonomy, timing and snapshot-bound attribution counts. run_related is logical session participation only: reused/concurrent invocations are indistinguishable; no attempt, worker or settlement proof.',
+    'Query execution traces by run ID. Returns agent and model attribution for pipeline runs including decision paths, error taxonomy, timing and snapshot-bound attribution counts. run_related is logical session participation only: reused/concurrent invocations are indistinguishable; no attempt, worker or settlement proof. writerObserved.invalidDropped counts rejected conversions or rows, and is null for historical snapshots without that measurement. Counted or unknown loss does not certify complete capture.',
   memory_write:
     'Write a memory entry to a specific backend. Supports session, belief, agentic, adaptive, and typed backends.',
   repo_analyze:

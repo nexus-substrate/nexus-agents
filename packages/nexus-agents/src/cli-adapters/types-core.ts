@@ -225,8 +225,10 @@ export interface CliResponse {
   readonly sessionId?: string;
   /** Cost in USD (if available) */
   readonly costUsd?: number;
-  /** Model used for generation */
+  /** Operational model attribution; a configured or derived selection is allowed. */
   readonly model?: string;
+  /** Raw upstream response identity, never a selected alias or provider attestation. */
+  readonly reportedModel?: string;
   /**
    * The gateway arm that served this response, when a gateway model answered
    * it (#6624). Set by the model-to-CLI bridge from the model adapter's

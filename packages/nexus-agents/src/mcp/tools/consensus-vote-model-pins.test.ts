@@ -30,7 +30,7 @@ const INPUT = {
   quickMode: true,
 } as const;
 
-function adapter(modelId: string): IModelAdapter {
+function adapter(modelId: string, reportedModel?: string): IModelAdapter {
   return {
     providerId: 'openai',
     modelId,
@@ -44,6 +44,7 @@ function adapter(modelId: string): IModelAdapter {
           confidence: 0.8,
         }),
         model: modelId,
+        ...(reportedModel === undefined ? {} : { reportedModel }),
         stopReason: 'end_turn',
         usage: {},
       },
@@ -129,7 +130,9 @@ describe('ignored vote model pins', () => {
     expect(response.panelWarning).toContain('NEXUS_VOTER_MODEL_SECURITY="gpt-4o"');
     expect(response.panelWarning).toContain('single-model gateway');
     expect(response.panelWarning).toContain('assigned model "gpt-4o"');
-    expect(response.panelWarning).toContain('All 3 seats answered');
+    expect(response.panelWarning).toContain('All 3 answering seats attributed to gpt-4o');
+    expect(response.panelWarning).toContain('Serving-model reports 0/3');
+    expect(response.panelWarning).toContain('UNMEASURED');
   });
 
   it('names a pin that has no effect without a gateway (1c)', async () => {
@@ -167,11 +170,30 @@ describe('ignored vote model pins', () => {
     expect(response.panelWarning).toContain('assigned model "claude-opus-4-1"');
   });
 
-  it('does not warn about an honoured role pin or valid custom model', async () => {
+  it('honours valid pins but keeps configured-only serving identities unmeasured', async () => {
     vi.stubEnv('NEXUS_VOTER_MODEL_ARCHITECT', 'GPT-4O');
     vi.stubEnv('NEXUS_CUSTOM_MODEL', 'gpt-4o');
     const { votes, response } = await panel([adapter('gpt-4o'), adapter('claude-opus-4-1')]);
     expect(votes[0]?.pinnedModel).toBe('gpt-4o');
+    expect(votes.map((vote) => vote.servedModel)).toEqual([undefined, undefined, undefined]);
+    expect(response.panelWarning).not.toContain('NEXUS_VOTER_MODEL_');
+    expect(response.panelWarning).not.toContain('NEXUS_CUSTOM_MODEL');
+    expect(response.panelWarning).toBe(
+      'Serving-model reports 0/3; unreported serving identities are UNMEASURED. ' +
+        'Model/family counts include operational attribution.'
+    );
+    expect(response.panelDiversity.reportCoverage).toEqual({ reported: 0, total: 3 });
+  });
+
+  it('adds no warning for honoured pins when every answering model explicitly reports', async () => {
+    vi.stubEnv('NEXUS_VOTER_MODEL_ARCHITECT', 'GPT-4O');
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', 'gpt-4o');
+    const { votes, response } = await panel([
+      adapter('gpt-4o', 'gpt-4o'),
+      adapter('claude-opus-4-1', 'claude-opus-4-1'),
+    ]);
+    expect(votes[0]?.pinnedModel).toBe('gpt-4o');
+    expect(response.panelDiversity.reportCoverage).toEqual({ reported: 3, total: 3 });
     expect(response.panelWarning).toBeUndefined();
   });
 });

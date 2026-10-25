@@ -1,7 +1,8 @@
 /**
  * The seam from a voter completion to the persisted vote record (#6967).
  *
- * The adapter reports the model it served on `CompletionResponse.model`.
+ * The adapter reports the model it served on `CompletionResponse.reportedModel`.
+ * `CompletionResponse.model` supplies operational attribution only.
  * `executeAgentVote` carries it as `AgentVoteResult.servedModel`; the vote
  * record must carry it as `voters[].servedModel`, hash-covered, so the
  * two-model-family ratification floor can withhold credit on a mismatch.
@@ -19,7 +20,10 @@ import { VOTE_RECORDS_PATH_ENV, parseVoteRecordsText } from '../../audit/vote-re
 import { verifyVoteRecordSet } from '../../audit/vote-record.js';
 import type { ConsensusResult } from '../../consensus/types.js';
 import { executeAgentVote } from '../../cli/voter-agents.js';
-import type { ILogger, IModelAdapter } from '../../core/index.js';
+import type { CompletionResponse, ILogger, IModelAdapter } from '../../core/index.js';
+import type { AgentVoteResult } from '../../cli/vote-types.js';
+import { votesToCostInputs } from './decision-cost-recording.js';
+import { rollupDecisionCost } from '../../observability/decision-cost.js';
 
 vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => ({
@@ -48,15 +52,20 @@ function silentLogger(): ILogger {
   };
 }
 
-/** An adapter built for `claude-fable-5` whose completion reports `reported` as the served model. */
-function adapterReporting(reported: string): IModelAdapter {
+type CompletionIdentity = Pick<
+  CompletionResponse,
+  'model' | 'reportedModel' | 'fallbackFrom' | 'usage'
+>;
+
+/** A configured fable adapter with explicitly separate completion attribution and reports. */
+function adapterCompleting(completion: CompletionIdentity): IModelAdapter {
   return {
     providerId: 'cli-claude',
     modelId: 'claude-fable-5',
     capabilities: [],
     complete: vi.fn().mockResolvedValue({
       ok: true,
-      value: { content: APPROVE, stopReason: 'end_turn', model: reported },
+      value: { content: APPROVE, stopReason: 'end_turn', ...completion },
     }),
     stream: vi.fn(),
     countTokens: vi.fn().mockResolvedValue(10),
@@ -95,11 +104,14 @@ describe('the adapter-reported served model reaches the persisted vote record (#
   });
 
   /** One live-shaped seat through the real voter execution, persisted through the real store. */
-  async function persistSeatReporting(reported: string): Promise<string> {
+  async function persistSeat(completion: CompletionIdentity): Promise<{
+    text: string;
+    seat: AgentVoteResult;
+  }> {
     const seat = await executeAgentVote(
       'architect',
       'Ratify',
-      adapterReporting(reported),
+      adapterCompleting(completion),
       silentLogger(),
       { timeoutMs: 5000, maxRetries: 0 }
     );
@@ -114,11 +126,11 @@ describe('the adapter-reported served model reaches the persisted vote record (#
       votes: [seat],
     });
     expect(outcome.persisted).toBe(true);
-    return readFileSync(filePath, 'utf-8');
+    return { text: readFileSync(filePath, 'utf-8'), seat };
   }
 
   it('writes the served model, distinct from the requested model, and the record verifies', async () => {
-    const text = await persistSeatReporting('claude-sonnet');
+    const { text } = await persistSeat({ model: 'claude-sonnet', reportedModel: 'claude-sonnet' });
     const { records, invalidLines } = parseVoteRecordsText(text);
     expect(invalidLines).toEqual([]);
     expect(records).toHaveLength(1);
@@ -130,7 +142,8 @@ describe('the adapter-reported served model reaches the persisted vote record (#
   });
 
   it('persists resolved opus and original fable assignment through execution and recording (#7333)', async () => {
-    const { records, invalidLines } = parseVoteRecordsText(await persistSeatReporting('opus'));
+    const { text } = await persistSeat({ model: 'opus', reportedModel: 'opus' });
+    const { records, invalidLines } = parseVoteRecordsText(text);
     expect(invalidLines).toEqual([]);
     expect(records).toHaveLength(1);
     expect(records[0]?.voters[0]).toMatchObject({
@@ -143,7 +156,7 @@ describe('the adapter-reported served model reaches the persisted vote record (#
   });
 
   it('the served model is hash-covered: tampering it on disk breaks verification', async () => {
-    const text = await persistSeatReporting('claude-sonnet');
+    const { text } = await persistSeat({ model: 'claude-sonnet', reportedModel: 'claude-sonnet' });
     const tampered = text.replace('"servedModel":"claude-sonnet"', '"servedModel":"gpt-5.5"');
     expect(tampered).not.toBe(text);
     const { records, invalidLines } = parseVoteRecordsText(tampered);
@@ -152,7 +165,7 @@ describe('the adapter-reported served model reaches the persisted vote record (#
   });
 
   it('records no servedModel when the adapter reported none — never the configured model', async () => {
-    const text = await persistSeatReporting('');
+    const { text } = await persistSeat({ model: '' });
     const { records } = parseVoteRecordsText(text);
     const voter = records[0]?.voters[0];
     expect(voter?.model).toBe('claude-fable-5');
@@ -163,11 +176,51 @@ describe('the adapter-reported served model reaches the persisted vote record (#
   });
 
   it('omits a reported value the reader would reject, and still persists the record', async () => {
-    const text = await persistSeatReporting('claude sonnet<script>');
+    const { text } = await persistSeat({
+      model: 'claude-sonnet',
+      reportedModel: 'claude sonnet<script>',
+    });
     const { records, invalidLines } = parseVoteRecordsText(text);
     expect(invalidLines).toEqual([]);
     expect(records).toHaveLength(1);
     expect(records[0]?.voters[0]).not.toHaveProperty('servedModel');
+    expect(records[0]?.voters[0]?.resolvedModel).toBe('claude-sonnet');
     expect(verifyVoteRecordSet(records).ok).toBe(true);
+  });
+
+  it('keeps an operational capacity alias unreported and unpriced while preserving usage', async () => {
+    const usage = { inputTokens: 13, outputTokens: 7, totalTokens: 20 };
+    const { text, seat } = await persistSeat({ model: 'opus', fallbackFrom: 'fable', usage });
+    const { records, invalidLines } = parseVoteRecordsText(text);
+    expect(invalidLines).toEqual([]);
+    expect(seat).toMatchObject({
+      operationalModel: 'opus',
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+    });
+    expect(seat.servedModel).toBeUndefined();
+    const voter = records[0]?.voters[0];
+    expect(voter).toMatchObject({
+      model: 'claude-fable-5',
+      assignedModel: 'claude-fable-5',
+      resolvedModel: 'claude-opus',
+      fallback: { fromModel: 'fable', reason: 'capacity' },
+    });
+    expect(voter).not.toHaveProperty('servedModel');
+    const costs = votesToCostInputs([seat]);
+    expect(costs[0]).toMatchObject({
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      priceBasis: 'unknown',
+    });
+    expect(costs[0]?.model).toBeUndefined();
+    expect(costs[0]).not.toHaveProperty('costUsd');
+    expect(rollupDecisionCost(costs, 'api')).toMatchObject({
+      totalTokens: usage.totalTokens,
+      measuredVoters: 0,
+      unmeasuredVoters: 1,
+      tokenMeasuredVoters: 1,
+    });
+    expect(verifyVoteRecordSet(records)).toEqual({ ok: true, recordCount: 1 });
   });
 });

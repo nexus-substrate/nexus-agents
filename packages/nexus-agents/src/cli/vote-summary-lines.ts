@@ -12,6 +12,7 @@ import type { AgentVoteResult, VotingResult } from './vote-types.js';
 import { VOTER_ROLES } from './voter-roles.js';
 import {
   panelDiversityOf,
+  modelReportCoverage,
   seatFallbacks,
   servedSubstitutions,
   type SeatFallbackDetail,
@@ -107,10 +108,12 @@ export function modelsLine(votes: readonly AgentVoteResult[]): string {
     seatCount(unresolvedSeats ?? 0, 'unresolved'),
   ].filter((part) => part !== '');
   const caveat = uncounted.length === 0 ? '' : ` (${uncounted.join(', ')})`;
+  const coverage = modelReportCoverage(votes);
   return (
     `Models: ${String(distinctModels)} distinct, ${families}${caveat}, ` +
     `${String(fallbacks)} fallbacks` +
-    (detail === '' ? '' : ` (${detail})`)
+    (detail === '' ? '' : ` (${detail})`) +
+    `; serving-model reports ${String(coverage.reported)}/${String(coverage.total)}`
   );
 }
 

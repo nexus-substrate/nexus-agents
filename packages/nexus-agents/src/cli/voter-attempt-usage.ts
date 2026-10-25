@@ -28,6 +28,24 @@ import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import type { VoteOutcome, VoteUsage } from './voter-execution.js';
 import { inFamilyFallback } from './voter-fallback.js';
 
+/** A successful completion plus all settled usage; preserve both identity dimensions. */
+export function toVoteOutcome(
+  result: Omit<VoteOutcome, 'attemptUsage' | 'attemptTelemetry'>,
+  prior: AttemptUsage | undefined
+): VoteOutcome & { ok: true } {
+  const { vote, usage, cliStderr, fallbackFrom, servedModel, operationalModel } = result;
+  return {
+    vote,
+    usage,
+    cliStderr,
+    fallbackFrom,
+    servedModel,
+    operationalModel,
+    attemptUsage: foldCompletionUsage(prior, usage),
+    ok: true,
+  };
+}
+
 /**
  * `onto`, with `from`'s attempt usage added to its own. Unchanged when
  * neither carried any: the empty case stays absent, never a zero record.
@@ -57,7 +75,7 @@ export function carryAttemptUsage(
  */
 export function buildLlmVoteResult(
   role: VoterRole,
-  { vote, usage, fallbackFrom, servedModel, attemptUsage }: VoteOutcome,
+  { vote, usage, fallbackFrom, servedModel, operationalModel, attemptUsage }: VoteOutcome,
   adapter: IModelAdapter,
   processingTimeMs: number
 ): AgentVoteResult {
@@ -71,6 +89,7 @@ export function buildLlmVoteResult(
     // #6660: the model that answered, as the adapter reported it — the
     // outcome row names and prices this one, not the requested `model`.
     ...(servedModel !== undefined ? { servedModel } : {}),
+    ...(operationalModel !== undefined ? { operationalModel } : {}),
     // #4392 step 4: which gateway arm served the seat, so the cost rollup
     // prices it by the arm's declaration and not the model id's list price.
     ...(isGatewayModelAdapter(adapter) ? { gatewayArm: adapter.gatewayArm } : {}),

@@ -32,6 +32,7 @@ import type { Result } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 import { GatewayRediscovery, setGatewayRediscovery } from '../adapters/gateway-rediscovery.js';
+import { resolvedModel } from './vote-diversity.js';
 
 describe('voter-agents', () => {
   describe('VOTER_SYSTEM_PROMPTS', () => {
@@ -869,13 +870,18 @@ That's my vote.`;
     // `pending-detection` at assignment time, so an equality check saw "one
     // model" and warned on EVERY vote — while a genuinely collapsed panel
     // produced the identical line. Both directions are pinned here.
-    function votingAdapter(modelId: string, providerId = modelId): IModelAdapter {
+    function votingAdapter(
+      modelId: string,
+      providerId = modelId,
+      reportedModel?: string
+    ): IModelAdapter {
       return {
         providerId,
         modelId,
         complete: vi.fn().mockResolvedValue({
           ok: true,
           value: {
+            ...(reportedModel === undefined ? {} : { reportedModel }),
             content: [
               {
                 type: 'text' as const,
@@ -917,7 +923,7 @@ That's my vote.`;
       vi.unstubAllEnvs();
     });
 
-    async function warnsAfterVoting(modelId: string): Promise<string[]> {
+    async function warnsAfterVoting(modelId: string, reportedModel?: string): Promise<string[]> {
       const warnings: string[] = [];
       const logger = {
         debug: vi.fn(),
@@ -929,7 +935,7 @@ That's my vote.`;
       await collectRealVotes({
         roles: ['architect', 'security', 'devex'] as VoterRole[],
         proposal: 'Panel independence',
-        adapter: votingAdapter(modelId),
+        adapter: votingAdapter(modelId, modelId, reportedModel),
         interAgentDelayMs: 0,
         logger,
       });
@@ -937,9 +943,33 @@ That's my vote.`;
     }
 
     it('warns when every role really did run on one model', async () => {
-      const warnings = await warnsAfterVoting('gpt-5.5');
+      const warnings = await warnsAfterVoting('gpt-5.5', 'gpt-5.5');
 
       expect(warnings.some((w) => w.includes('ran on ONE model'))).toBe(true);
+      expect(warnings.some((w) => w.includes('UNMEASURED'))).toBe(false);
+    });
+
+    it('keeps configured-only answering models unmeasured instead of claiming correlation', async () => {
+      const { logger, warnings } = captureWarnings();
+      const results = await collectRealVotes({
+        roles: ['architect', 'security', 'devex'],
+        proposal: 'Configured identity is not a serving report',
+        adapter: votingAdapter('gpt-5.5'),
+        interAgentDelayMs: 0,
+        logger,
+      });
+
+      expect(results.map((result) => result.servedModel)).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      expect(results.map(resolvedModel)).toEqual(['gpt-5.5', 'gpt-5.5', 'gpt-5.5']);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('UNMEASURED'),
+        expect.objectContaining({ unresolved: 3, total: 3, roleCount: 3 })
+      );
+      expect(warnings.some((warning) => warning.includes('ran on ONE model'))).toBe(false);
     });
 
     it('does not claim correlation from an undetected placeholder', async () => {
@@ -953,7 +983,7 @@ That's my vote.`;
 
     it('warns when diverse primaries fail and one fallback model serves every vote', async () => {
       const roles: VoterRole[] = ['architect', 'security', 'devex'];
-      const fallback = votingAdapter('fallback-model');
+      const fallback = votingAdapter('fallback-model', 'fallback-model', 'fallback-model');
       const primaries = roles.map((role) => failingAdapter(`primary-${role}`));
       pinRolesTo(new Map(roles.map((role, index) => [role, primaries[index]!] as const)));
       const { logger, warnings } = captureWarnings();
@@ -1044,11 +1074,13 @@ That's my vote.`;
         'gpt-5.5',
         'claude-fable-5',
       ]);
-      expect(results.map((vote) => vote.servedModel)).toEqual([
+      expect(results.map((vote) => vote.servedModel)).toEqual([undefined, undefined, undefined]);
+      expect(results.map((vote) => vote.operationalModel)).toEqual([
         'claude-opus',
         undefined,
         'claude-opus',
       ]);
+      expect(results.map(resolvedModel)).toEqual(['claude-opus', 'gpt-5.5', 'claude-opus']);
       expect(results.map((vote) => vote.fallback?.fromModel)).toEqual([
         'fable',
         undefined,
@@ -1063,23 +1095,24 @@ That's my vote.`;
         roles: ['architect', 'security', 'devex'],
         proposal: 'Diverse provenance',
         gatewayAdapters: [
-          votingAdapter('gpt-5.5'),
-          votingAdapter('claude-sonnet-4-6'),
-          votingAdapter('gemini-3-pro'),
+          votingAdapter('gpt-5.5', 'gpt-5.5', 'gpt-5.5'),
+          votingAdapter('claude-sonnet-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-6'),
+          votingAdapter('gemini-3-pro', 'gemini-3-pro', 'gemini-3-pro'),
         ],
         interAgentDelayMs: 0,
         logger,
       });
 
       expect(warnings.some((warning) => warning.includes('ran on ONE model'))).toBe(false);
+      expect(warnings.some((warning) => warning.includes('UNMEASURED'))).toBe(false);
     });
 
     it('excludes error votes from the post-vote model count', async () => {
       const roles: VoterRole[] = ['architect', 'security', 'devex'];
       const fallback = failingAdapter('fallback-error', 'cli-codex');
-      const sameModelA = votingAdapter('gpt-5.5');
+      const sameModelA = votingAdapter('gpt-5.5', 'gpt-5.5', 'gpt-5.5');
       const failedPrimary = failingAdapter('failed-primary');
-      const sameModelB = votingAdapter('gpt-5.5');
+      const sameModelB = votingAdapter('gpt-5.5', 'gpt-5.5', 'gpt-5.5');
       pinRolesTo(
         new Map<VoterRole, IModelAdapter>([
           ['architect', sameModelA],

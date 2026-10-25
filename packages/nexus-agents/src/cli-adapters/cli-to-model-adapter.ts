@@ -30,6 +30,7 @@ import type { ExecutionAccessMode } from '../core/types/model.js';
 import { declaredAccessModeSupport, unenforcedAccessModeRefusal } from './access-mode.js';
 import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
+import { validatedModelIdentity } from './model-identity.js';
 import {
   isCallerInputCliError,
   isHostUnavailableCliError,
@@ -175,6 +176,7 @@ export class CliToModelAdapter implements IModelAdapter {
    */
   private toCompletionResponse(response: CliResponse, forwarded?: string): CompletionResponse {
     const u = response.usage;
+    const reportedModel = validatedModelIdentity(response.reportedModel);
     return {
       content: [{ type: 'text', text: response.text }],
       // #4439: this used to be `response.usage?.x ?? 0`, which turned "the CLI
@@ -188,7 +190,8 @@ export class CliToModelAdapter implements IModelAdapter {
       // Provider-reported identity wins. Otherwise attribute the configured
       // selection (including documented native alias migration), not proof of
       // a provider-served model. The CLI response itself remains unmeasured.
-      model: response.model ?? this.reportedForwardedModel(forwarded) ?? this.modelId,
+      model: response.model ?? this.forwardedModelAttribution(forwarded) ?? this.modelId,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
       // #6094: carry the transport's captured stderr up to the model boundary
       // so the voter path can read the structured "could not read" signal.
       // Absent stays absent; an empty string is not a signal.
@@ -224,7 +227,7 @@ export class CliToModelAdapter implements IModelAdapter {
    * claimed. The native Gemini adapter explicitly migrates accepted Flash
    * aliases, so attribution follows that selection instead of the old alias.
    */
-  private reportedForwardedModel(forwarded: string | undefined): string | undefined {
+  private forwardedModelAttribution(forwarded: string | undefined): string | undefined {
     // Endpoint model IDs are discovered, never looked up as CLI models.
     if (forwarded === undefined || !isCliName(this.cliAdapter.name)) return undefined;
     if (this.cliAdapter instanceof GeminiCliAdapter) {

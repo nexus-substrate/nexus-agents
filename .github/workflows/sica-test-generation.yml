@@ -251,7 +251,7 @@ jobs:
           echo "### 🤖 SICA Test Generation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Target Coverage:** ${{ env.TARGET_COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
+          printf '**Target Coverage:** %s%%\n' "$TARGET_COVERAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Coverage Before" >> $GITHUB_STEP_SUMMARY
           echo "- Line: ${{ steps.coverage.outputs.line_coverage }}" >> $GITHUB_STEP_SUMMARY

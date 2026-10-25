@@ -1,5 +1,47 @@
 # nexus-agents
 
+## 13.0.0
+
+### Major Changes
+
+- [#7584](https://github.com/nexus-substrate/nexus-agents/pull/7584) [`920e17f`](https://github.com/nexus-substrate/nexus-agents/commit/920e17fdc3b80b3fd449e6781d9cba0e87ca2daa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make `OpenAIAdapterConfig.fetchOptions` use the direct undici 6 dispatcher type, fixing public declaration imports in TypeScript consumers that include both DOM and Node libraries.
+
+  This narrows the public type contract. Previously, a Node-only consumer could assign an ambient `undici-types` 7 dispatcher; the gateway's undici 6 dispatcher was rejected by that ambient type. The config now accepts the dispatcher from undici 6, which the gateway already constructs, and no longer accepts the previously accepted Node 7 shape.
+
+  To migrate an injected dispatcher, use `Agent` or `ProxyAgent` from undici 6 (the tested version is 6.29.0), rather than an ambient Node 7 dispatcher:
+
+  ```diff
+   import type { OpenAIAdapterConfig } from 'nexus-agents';
+  -import type { Dispatcher } from 'undici-types'; // ambient Node 7 type
+  -declare const dispatcher: Dispatcher;
+  +import { ProxyAgent } from 'undici'; // install undici@6.29.0
+  +const dispatcher = new ProxyAgent('http://127.0.0.1:8080');
+
+   const fetchOptions: OpenAIAdapterConfig['fetchOptions'] = { dispatcher };
+  ```
+
+  Gateway proxy selection, authentication, host guards and SDK forwarding keep their existing runtime behavior. This does not establish undici 7/8 dispatcher support. Separate Node-only compilation still reports the bundled SDK's missing `HeadersInit` declaration; that failure is not resolved by this change.
+
+## 12.8.0
+
+### Minor Changes
+
+- [#7575](https://github.com/nexus-substrate/nexus-agents/pull/7575) [`47702d9`](https://github.com/nexus-substrate/nexus-agents/commit/47702d9147c004fc9e41e0364c92c895fe4c22ad) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Count trace conversion and validation failures as `writerObserved.invalidDropped` without discarding subsequent valid rows. Validate retained rows with the canonical schema, keep invalid losses separate from foreign drops and eviction, and bound diagnostic warnings without logging event payloads.
+
+  New snapshots explicitly report zero or counted loss. Historical omission remains unknown (`null` in `query_trace`), although legacy conservation arithmetic accepts omission as zero. Weather retains validated logical joins but withholds its coverage ratio when invalid loss is nonzero or unknown; none of these measurements proves complete bus capture. This prerequisite does not enable producer origins, replay integration, worker execution or settlement evidence.
+
+  Reader compatibility: upgrade readers alongside writers. Existing strict readers reject the new metadata field, including explicit zero, as unmeasured; newer readers continue to accept historical metadata without inventing loss-free history. Historical files are not rewritten.
+
+## 12.7.1
+
+### Patch Changes
+
+- [#7567](https://github.com/nexus-substrate/nexus-agents/pull/7567) [`147f43b`](https://github.com/nexus-substrate/nexus-agents/commit/147f43b53fb03cfc94fc35e5041b29750165e30f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Separate explicitly reported model identity from operational model selection. Both adapter bridges preserve the optional `reportedModel`; consensus records populate `servedModel` only from validated reporting evidence while retaining configured, assigned, fallback, and resolved selection identities.
+
+  Seats without a model report retain their token counts but now have unknown, unpriced serving cost and use the unknown-model cost grouping. Panel summaries disclose zero, partial, or complete report coverage alongside model attribution; configured-only identities do not measure serving-model independence. Historical `servedModel` values may contain configured fallbacks; existing ledger records are not rewritten.
+
+  AI SDK reporting uses explicit raw response evidence for Anthropic and OpenAI chat/Responses. Google generateContent and unsupported response shapes remain unmeasured. AI SDK 6 is uncharacterized. Transport reports do not constitute independent provider identity attestation.
+
 ## 12.7.0
 
 ### Minor Changes

@@ -12,7 +12,7 @@ keywords: [mcp, tool, reference, weather_report]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.
+Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses. Pipeline join coverage is unmeasured when trace invalid losses are counted or unknown; validated retained logical joins remain visible.
 
 ## Parameters
 

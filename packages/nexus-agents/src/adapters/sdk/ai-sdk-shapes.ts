@@ -19,7 +19,7 @@ export interface GenerateTextResult {
     outputTokens: number | undefined;
     totalTokens: number | undefined;
   };
-  response: { modelId: string };
+  response: { modelId: string; body?: unknown };
 }
 
 /** AI SDK streamText result shape (duck-typed). */

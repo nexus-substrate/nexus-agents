@@ -31,11 +31,12 @@ import type { WeatherReportDeps } from './weather-report.js';
 
 /** Same per-file read bound as query_trace (100 MB). */
 const MAX_TRACE_FILE_BYTES = 100 * 1024 * 1024;
+type PipelineTraceMeasurement = 'measured' | 'partial' | 'incomplete' | 'unmeasured' | 'unreadable';
 
 /** Validate the whole trace before allowing any surviving row to certify a run. */
-function traceInWindow(path: string, runId: string, since: number): boolean {
+function traceInWindow(path: string, runId: string, since: number): PipelineTraceMeasurement {
   const stat = statSync(path);
-  if (stat.mtimeMs < since) return false;
+  if (stat.mtimeMs < since) return 'unmeasured';
   if (stat.size > MAX_TRACE_FILE_BYTES) throw new Error('pipeline trace exceeds read cap');
   const content = readFileSync(path);
   const decoded = decodeTraceBytes(content);
@@ -45,7 +46,10 @@ function traceInWindow(path: string, runId: string, since: number): boolean {
   if (inspected.requiresBinding && snapshot.status === 'unmeasured') {
     throw new Error('Unmeasured pipeline trace snapshot binding');
   }
-  return inspected.measured && snapshot.status === 'measured';
+  if (snapshot.status !== 'measured') return 'unmeasured';
+  const incomplete = snapshot.snapshot.writerObserved.invalidDropped !== 0;
+  if (!inspected.measured) return incomplete ? 'incomplete' : 'unmeasured';
+  return incomplete ? 'partial' : 'measured';
 }
 
 /** Validate all rows before a surviving row can certify logical participation. */
@@ -86,16 +90,12 @@ function isWindowedDevTrace(entry: ExecutionTraceEntry, runId: string, since: nu
   );
 }
 
-/** Missing/old/empty traces are unmeasured; one bad trace discards the entire run. */
-function windowedPipelineRun(
-  root: string,
-  runId: string,
-  since: number
-): 'measured' | 'unmeasured' | 'unreadable' {
+/** Missing/old traces are unmeasured; empty captures can still carry loss evidence. */
+function windowedPipelineRun(root: string, runId: string, since: number): PipelineTraceMeasurement {
   try {
     const path = resolveInsideRoot(join(root, runId, 'trace.jsonl'), root);
     if (path === null) return 'unreadable';
-    return existsSync(path) && traceInWindow(path, runId, since) ? 'measured' : 'unmeasured';
+    return existsSync(path) ? traceInWindow(path, runId, since) : 'unmeasured';
   } catch {
     return 'unreadable';
   }
@@ -104,6 +104,7 @@ function windowedPipelineRun(
 interface PipelineTraceRead {
   readonly runIds: readonly string[];
   readonly unreadablePipelineTraces: number;
+  readonly hasIncompleteCapture: boolean;
 }
 
 /** Read each run independently; unreadable runs cannot certify coverage. */
@@ -112,23 +113,30 @@ function resolveWeatherPipelineRunIds(
   injected?: readonly string[],
   hasInjectedCosts = false
 ): PipelineTraceRead {
-  const empty = { runIds: [], unreadablePipelineTraces: 0 };
+  const empty = { runIds: [], unreadablePipelineTraces: 0, hasIncompleteCapture: false };
   if (injected !== undefined) return { ...empty, runIds: injected };
   if (hasInjectedCosts || !isPersistenceEnabled()) return empty;
   const root = nexusDataPath('runs');
   if (!existsSync(root)) return empty;
   const since = windowMs > 0 ? Date.now() - windowMs : -Infinity;
+  return readWeatherPipelineRuns(root, since);
+}
+
+/** Preserve retained joins while withholding coverage for counted or unknown loss. */
+function readWeatherPipelineRuns(root: string, since: number): PipelineTraceRead {
   const runIds: string[] = [];
   let unreadablePipelineTraces = 0;
+  let hasIncompleteCapture = false;
   const entries = readdirSync(root, { withFileTypes: true }).filter(
     (entry) => entry.isDirectory() && isPipelineRunId(entry.name)
   );
   for (const entry of entries) {
     const reading = windowedPipelineRun(root, entry.name, since);
-    if (reading === 'measured') runIds.push(entry.name);
+    if (reading === 'measured' || reading === 'partial') runIds.push(entry.name);
+    hasIncompleteCapture ||= reading === 'partial' || reading === 'incomplete';
     if (reading === 'unreadable') unreadablePipelineTraces++;
   }
-  return { runIds, unreadablePipelineTraces };
+  return { runIds, unreadablePipelineTraces, hasIncompleteCapture };
 }
 
 /** Use the injected snapshot or the existing durable cost store, within lookback. */
@@ -188,7 +196,9 @@ function withTraceReading(
     ...tokens,
     unreadablePipelineTraces: traces.unreadablePipelineTraces,
     pipelineOutcomeJoinCoverage:
-      traces.unreadablePipelineTraces > 0 || traces.runIds.length === 0
+      traces.unreadablePipelineTraces > 0 ||
+      traces.hasIncompleteCapture ||
+      traces.runIds.length === 0
         ? null
         : (tokens.pipelineOutcomeJoinCoverage ?? null),
   };

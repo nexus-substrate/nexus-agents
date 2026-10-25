@@ -1,4 +1,6 @@
 import type { ExecutionAccessMode } from '../core/types/model.js';
+import { validatedModelIdentity } from '../cli-adapters/model-identity.js';
+
 /**
  * nexus-agents/adapters - OpenAI Model Adapter
  *
@@ -25,12 +27,12 @@ import { BaseAdapter, requireApiKey, validateApiKeyPresence } from './base-adapt
 import type { BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
-  DEFAULT_MAX_TOKENS,
   getModelCapabilities,
+  defaultMaxCompletionTokens,
+  isReasoningFamily,
   type OpenAIAdapterConfig,
 } from './openai-types.js';
 import { planOptionalParams, type DroppedParam } from './optional-params.js';
-import { getMaxTokensParamForModel } from '../config/model-parameter-support.js';
 import {
   mapMessage,
   mapTool,
@@ -423,7 +425,7 @@ export class OpenAIAdapter extends BaseAdapter {
       model: this.modelId,
       messages,
       ...(request.maxTokens !== undefined || !this.omitDefaultTokenCap
-        ? { max_completion_tokens: request.maxTokens ?? this.defaultMaxCompletionTokens() }
+        ? { max_completion_tokens: request.maxTokens ?? defaultMaxCompletionTokens(this.modelId) }
         : {}),
     };
 
@@ -528,43 +530,24 @@ export class OpenAIAdapter extends BaseAdapter {
         response.model
       );
     }
-    const nonAnswer = detectNonAnswer(firstChoice, response.usage, this.isReasoningFamily());
+    const nonAnswer = detectNonAnswer(firstChoice, response.usage, isReasoningFamily(this.modelId));
     if (nonAnswer !== undefined)
       throw nonAnswerError(`${this.providerId}/${this.modelId}`, nonAnswer, response.model);
 
     const content = mapChoiceToContentBlocks(firstChoice);
     const usage: TokenUsage | undefined = mapResponseUsage(response);
+    const reportedModel = validatedModelIdentity(response.model);
 
     return {
       content,
       ...(usage !== undefined ? { usage } : {}),
       stopReason: mapStopReason(firstChoice.finish_reason),
       model: response.model,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
       // #4069: surface dropped params (e.g. an omitted temperature). Omitted
       // entirely when nothing was dropped (exactOptionalPropertyTypes).
       ...(dropped.length > 0 ? { warnings: dropped } : {}),
     };
-  }
-
-  /**
-   * Reasoning families are the models that take `max_completion_tokens`
-   * (o-series, gpt-5, codex); the registry answers first, a regex second.
-   */
-  private isReasoningFamily(): boolean {
-    return getMaxTokensParamForModel(this.modelId) === 'max_completion_tokens';
-  }
-
-  /**
-   * Default completion cap when the request sets none (#6607). On a reasoning
-   * model the cap covers hidden reasoning tokens AND the visible reply, and
-   * 4,096 can be spent entirely on reasoning, leaving an empty reply. OpenAI's
-   * reasoning guide recommends reserving at least 25,000 tokens for reasoning
-   * and output when starting out, so that is the reasoning default. It is a
-   * ceiling, not a spend: a reply that finishes early is billed for what it
-   * used. Other models keep `DEFAULT_MAX_TOKENS`.
-   */
-  private defaultMaxCompletionTokens(): number {
-    return this.isReasoningFamily() ? REASONING_DEFAULT_MAX_COMPLETION_TOKENS : DEFAULT_MAX_TOKENS;
   }
 
   /**
@@ -617,9 +600,6 @@ export class OpenAIAdapter extends BaseAdapter {
 }
 
 const LIST_MODELS_TTL_MS = 5 * 60 * 1000;
-
-/** See `defaultMaxCompletionTokens` for why 25,000 (#6607). */
-const REASONING_DEFAULT_MAX_COMPLETION_TOKENS = 25_000;
 
 /**
  * A non-answer as a non-retryable `MODEL_ERROR` (#6607). `context.reason`

@@ -63,7 +63,12 @@ export interface ScriptedToolCall {
 
 /** What the gateway does with one chat-completions request. */
 export type ChatScript =
-  | { readonly kind: 'text'; readonly content: string }
+  | {
+      readonly kind: 'text';
+      readonly content: string;
+      /** Undefined echoes the request; null omits reporting; a string is the raw report. */
+      readonly responseModel?: string | null;
+    }
   | { readonly kind: 'tool_calls'; readonly calls: readonly ScriptedToolCall[] }
   | { readonly kind: 'content_filter'; readonly partial: string }
   | { readonly kind: 'empty_choices' }
@@ -230,11 +235,12 @@ function completionFor(
   model: string,
   script: Exclude<ChatScript, { kind: 'rate_limited' }>
 ): CompletionBody {
+  const responseModel = script.kind === 'text' ? script.responseModel : undefined;
   const envelope = {
     id: `chatcmpl-fake-${String(Date.now())}`,
     object: 'chat.completion',
     created: Math.floor(Date.now() / 1000),
-    model,
+    ...(responseModel === null ? {} : { model: responseModel ?? model }),
     usage: SCRIPTED_USAGE,
   };
   switch (script.kind) {

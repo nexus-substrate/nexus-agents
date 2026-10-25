@@ -213,7 +213,12 @@ const TraceRelationCountsSchema = z
   .strict();
 export type TraceRelationCounts = z.infer<typeof TraceRelationCountsSchema>;
 
-/** One writer's observations of the exact retained JSONL snapshot, never all-run history. */
+/**
+ * One writer's observations of the exact snapshot, never all-run completeness.
+ * Version 1 adds optional invalidDropped: legacy omission is zero only for
+ * conservation arithmetic, not evidence of measured historical loss coverage.
+ * New writers emit it explicitly; older strict readers fail closed on the field.
+ */
 export const TraceAttributionSnapshotSchema = z
   .object({
     attributionVersion: z.literal(1),
@@ -221,14 +226,24 @@ export const TraceAttributionSnapshotSchema = z
     captureOrigin: TraceRunOriginSchema.optional(),
     traceSha256: z.string().regex(/^[a-f0-9]{64}$/),
     traceBytes: count,
-    writerObserved: z.object({ observed: count, foreignDropped: count, evicted: count }).strict(),
+    writerObserved: z
+      .object({
+        observed: count,
+        foreignDropped: count,
+        evicted: count,
+        invalidDropped: count.optional(),
+      })
+      .strict(),
     retained: TraceRelationCountsSchema,
   })
   .strict()
   .superRefine((snapshot, ctx) => {
     const retained = Object.values(snapshot.retained).reduce((sum, value) => sum + value, 0);
     const total =
-      retained + snapshot.writerObserved.foreignDropped + snapshot.writerObserved.evicted;
+      retained +
+      snapshot.writerObserved.foreignDropped +
+      snapshot.writerObserved.evicted +
+      (snapshot.writerObserved.invalidDropped ?? 0);
     if (
       !Number.isSafeInteger(total) ||
       total !== snapshot.writerObserved.observed ||
