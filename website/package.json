@@ -9,7 +9,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "test": "vitest run && node --test scripts/a11y-check.test.mjs",
+    "test": "vitest run && node --test scripts/a11y-check.test.mjs scripts/audit-remarque.test.mjs",
     "a11y": "node scripts/a11y-check.mjs",
     "menu-check": "node scripts/menu-check.mjs",
     "audit:remarque": "node scripts/audit-remarque.mjs"

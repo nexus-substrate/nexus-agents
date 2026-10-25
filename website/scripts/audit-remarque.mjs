@@ -2,14 +2,18 @@
 /**
  * Runs remarque-audit and remarque-drift against the palette this site
  * actually serves: remarque's tokens-palette.css followed by this site's
- * overrides in src/styles/tokens.css (later declarations win, exactly as in
- * the browser). Auditing the package file alone passes no matter what the
- * overrides do, e.g. an out-of-gamut value.
+ * overrides in src/styles/tokens.css. Concatenating makes the later
+ * declaration win, as in the browser, for equal-specificity :root
+ * declarations; a package token redeclared under a more specific selector
+ * (e.g. `:root.dark`) would not be overridden this way. Auditing the package
+ * file alone passes no matter what the overrides do, e.g. an out-of-gamut
+ * value.
  *
- *   node scripts/audit-remarque.mjs [--json-out file]
+ *   node scripts/audit-remarque.mjs [--json-out file] [--tokens file]
  *
- * Prints a one-line summary per tool and exits non-zero if either fails.
- * --json-out writes the full audit report.
+ * Prints a one-line summary per tool and exits 1 if either fails, 2 on a
+ * usage error. --json-out writes the full audit report; --tokens replaces
+ * src/styles/tokens.css (used by the test's fixture palette).
  */
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -19,15 +23,22 @@ import { dirname, join, resolve } from 'node:path';
 
 const require = createRequire(import.meta.url);
 const root = resolve(import.meta.dirname, '..');
-const outIdx = process.argv.indexOf('--json-out');
-const jsonOut = outIdx === -1 ? undefined : process.argv[outIdx + 1];
+function option(name) {
+  const i = process.argv.indexOf(name);
+  if (i === -1) return undefined;
+  const value = process.argv[i + 1];
+  if (value === undefined || value.startsWith('--')) {
+    console.error(`${name} needs a file argument`);
+    process.exit(2);
+  }
+  return value;
+}
+const jsonOut = option('--json-out');
+const tokens = resolve(option('--tokens') ?? join(root, 'src/styles/tokens.css'));
 
 const packagePalette = require.resolve('remarque-tokens/tokens-palette.css');
 const packageDir = dirname(packagePalette);
-const merged = [
-  readFileSync(packagePalette, 'utf8'),
-  readFileSync(join(root, 'src/styles/tokens.css'), 'utf8'),
-].join('\n');
+const merged = [readFileSync(packagePalette, 'utf8'), readFileSync(tokens, 'utf8')].join('\n');
 const palette = join(mkdtempSync(join(tmpdir(), 'remarque-palette-')), 'palette.css');
 writeFileSync(palette, merged);
 
@@ -49,7 +60,11 @@ if (jsonOut) writeFileSync(jsonOut, JSON.stringify(audit.report, null, 2));
 const drift = run('drift-check.mjs', ['--css-file', palette, '--package-dir', '.', '--json']);
 
 const a = audit.report;
-console.log(`remarque-audit: passed=${a.passed} failures=${a.failures.length} warnings=${a.warnings.length}`);
-console.log(`remarque-drift: passed=${drift.report.passed} ${JSON.stringify(drift.report.summary)}`);
+console.log(
+  `remarque-audit: passed=${a.passed} failures=${a.failures.length} warnings=${a.warnings.length}`
+);
+console.log(
+  `remarque-drift: passed=${drift.report.passed} ${JSON.stringify(drift.report.summary)}`
+);
 for (const f of a.failures) console.error(`  audit failure: ${f}`);
 process.exit(audit.status === 0 && a.passed && drift.status === 0 && drift.report.passed ? 0 : 1);
