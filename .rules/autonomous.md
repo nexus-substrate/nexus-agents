@@ -84,6 +84,52 @@ If ANY clause fails, wait it out — auto-merge with the existing required-CI ga
 
 When admin-merging, **state the bypass reason** in the merge commit body and add a comment on the outage issue noting which PR was admin-merged and why. The audit chain matters more than the convenience.
 
+### Proposed delegated-review route — inactive (#7615)
+
+**Inactive: this proposal grants no healthy-CI administrative merge authority.**
+The outage-only rule above remains operative. A genuine eligible GitHub approval
+uses the ordinary merge route, including a disclosed automated review of a
+bot-authored PR by a distinct authorized reviewer. An account cannot approve its
+own PR; do not assume a bot identity or acquire credentials to evade that limit.
+
+Activation requires **both** human owner ratification of this governor amendment
+with valid committed, head-bound ledger evidence, **and** the tested canonical
+enforcement prerequisite in [#7616](https://github.com/nexus-substrate/nexus-agents/issues/7616)
+to land. Neither a panel decision, this prose, nor an agent-authored owner-account
+approval or label supplies human ratification. Until both prerequisites are
+verified, retain the restriction and work another actionable item.
+
+After activation, the proposed exception is limited to explicit owner delegation
+of ordinary PR merges and replacement review. Prefer a genuine eligible GitHub
+review. Refuse governor changes, breaking APIs, exceptional risk, and operations
+beyond the authorized scope. The canonical guard must establish all of these:
+
+1. Exact current PR, base commit, head, tree and complete feature hash; zero
+   governor paths using the canonical CODEOWNERS parser against the trusted base.
+2. A source-bound live seven-seat panel, `strategy: supermajority`,
+   `errorPolicy: absolute_quorum`, and at least five choices for the **same merge
+   action**. Missing, errored or unverifiable seats cannot pass; abstentions never
+   reduce five. Record dissent and every condition's disposition. Any unresolved
+   concrete-defect dissent blocks the action. Simulated votes grant no authority.
+3. Complete reviewed-artifact binding and each seat's actual coverage and
+   provenance. A partial review or unmeasured binding cannot authorize this route;
+   do not relabel a generic readiness envelope's `partial` result as full coverage.
+4. Fresh unchanged protection, nonempty required checks from their expected apps
+   succeeding at the exact head, and applicable CI and local-gate receipts.
+   Empty, missing, unreadable, stale, pending or failed evidence refuses the route.
+   Record skipped checks honestly; a required check cannot pass by being skipped.
+5. A recorded preflight and explicit disclosure of the actual GitHub review gap,
+   panel tally, dissent, coverage limits and bypass reason in the merge record.
+   Verify the resulting commit's parent, tree and exact patch immediately after
+   merging. Any mismatch requires investigation and a tracked disposition.
+
+These are proposed guard requirements, **not existing GitHub enforcement**.
+Administrative merge can bypass protections beyond reviews; a local guard cannot
+remove that capability. Expected-head matching does not atomically lock the base:
+post-merge verification detects a base race rather than preventing it. Reuse the
+existing merge-readiness evidence and governor primitives; do not create another
+review engine. Preserve the owner-ratification gate and post-merge backstop.
+
 ## Hard stop conditions (only these)
 
 Genuinely pause and surface to the user ONLY when:
