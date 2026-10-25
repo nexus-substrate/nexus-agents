@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import manifest from 'remarque-tokens/deck.json';
-import { DEFAULT_PALETTE_LABEL, PALETTE_STORAGE_KEY, paletteLabel } from './palette-deck.ts';
+import { DEFAULT_PALETTE_LABEL, paletteLabel } from './palette-deck.ts';
 
 const palettes = [
   { name: 'nord', label: 'Nord' },
@@ -29,11 +29,5 @@ describe('remarque deck manifest', () => {
       expect(p.name).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(p.label).not.toBe('');
     }
-  });
-});
-
-describe('PALETTE_STORAGE_KEY', () => {
-  it('matches the key remarque-tokens/deck persists under', () => {
-    expect(PALETTE_STORAGE_KEY).toBe('remarque-palette');
   });
 });

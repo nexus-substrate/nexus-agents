@@ -3,7 +3,7 @@
  * createDeck/bindPicker; this holds the site's few choices around it.
  */
 
-/** deck.js's default storage key; DeckInit.astro's pre-paint restore reads it too. */
+/** The palette's localStorage key, shared by DeckInit's pre-paint restore and the picker's createDeck. */
 export const PALETTE_STORAGE_KEY = 'remarque-palette';
 
 /** The label for the site's own palette (the radio with value=""). */

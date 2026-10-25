@@ -768,7 +768,9 @@ pre:hover .copy-btn,
   /* Four 48px controls share the row with the wordmark (search, color
      theme, light/dark, Menu). The Menu button keeps its text as its
      accessible name but shows only the icon, and the gaps tighten; without
-     this the controls ran over the wordmark below ~430px. */
+     this the controls ran over the wordmark below ~430px. The span is hidden
+     with the .remarque-sr-only declarations restated here, because the class
+     cannot be applied only below 40rem. */
   .docs-masthead-inner {
     column-gap: var(--space-2);
   }

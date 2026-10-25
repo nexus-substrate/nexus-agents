@@ -15,7 +15,7 @@
   // the new colors.
   import { onMount, type Snippet } from 'svelte';
   import { createDeck, bindPicker } from 'remarque-tokens/deck';
-  import { paletteLabel, type DeckPalette } from '../lib/palette-deck.ts';
+  import { PALETTE_STORAGE_KEY, paletteLabel, type DeckPalette } from '../lib/palette-deck.ts';
 
   interface Props {
     palettes: DeckPalette[];
@@ -32,7 +32,9 @@
     const picker = root?.querySelector<HTMLElement>('#palette-picker');
     if (picker === null || picker === undefined) return;
     const label = picker.querySelector('[data-deck-current]');
-    const deck = createDeck(palettes);
+    // The same key DeckInit's pre-paint restore reads, passed explicitly so
+    // the two can't drift apart if deck.js's default ever changes.
+    const deck = createDeck(palettes, { storageKey: PALETTE_STORAGE_KEY });
     deck.restore();
     let shown: string | null = deck.current();
     bindPicker(deck, picker, {
