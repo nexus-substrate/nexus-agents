@@ -24,6 +24,7 @@
 #  10 — the package manager blocked, ignored or asked about a dependency install
 #        script (#6481): pnpm 12 in a terminal stalls on that prompt, npm 12 under
 #        strict-allow-scripts fails; the published tarball bundles those deps
+#  11 — installed public TypeScript consumer or its pinned toolchain failed
 set -euo pipefail
 
 VERSION="${1:-latest}"
@@ -219,6 +220,84 @@ if [[ -n "$EXPECTED_VERSION" && "$ACTUAL_VERSION" != "$EXPECTED_VERSION"* ]]; th
   fail "version mismatch: expected $EXPECTED_VERSION, got $ACTUAL_VERSION" 3
 fi
 ok "INSTALL_MODE=$INSTALL_MODE: install ok ($ACTUAL_VERSION)"
+
+step "Public TypeScript declarations: installed package consumer (#7576)"
+# The consumer is a sibling of the package in node_modules, including pnpm's
+# virtual store layout. Bare resolution reaches the ACTUAL installed package;
+# only compiler tools go into this private consumer. No second product install.
+(
+  TYPE_CONSUMER=$(mktemp -d "$(dirname "$PACKAGE_ROOT")/.nexus-types.XXXXXX") || fail "could not create owned TypeScript consumer" 11
+  trap 'rm -rf "$TYPE_CONSUMER"' EXIT
+  cd "$TYPE_CONSUMER"
+  printf '%s\n' '{"name":"nexus-public-type-consumer","private":true,"type":"module"}' > package.json
+  if ! PACKAGE_ROOT="$PACKAGE_ROOT" INSTALLED_VERSION="$ACTUAL_VERSION" node --input-type=module <<'TYPE_IDENTITY'
+import { readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = realpathSync(process.env.PACKAGE_ROOT);
+const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const resolved = realpathSync(fileURLToPath(import.meta.resolve('nexus-agents')));
+if (manifest.name !== 'nexus-agents' || manifest.version !== process.env.INSTALLED_VERSION ||
+    resolved !== realpathSync(join(root, 'dist/index.js'))) {
+  throw new Error('Bare nexus-agents specifier does not identify the installed package');
+}
+console.log(`Installed TypeScript consumer resolves nexus-agents to ${resolved}`);
+TYPE_IDENTITY
+  then
+    fail "installed package identity check failed" 11
+  fi
+  if ! npm install --prefix "$TYPE_CONSUMER" --ignore-scripts --save-dev --save-exact \
+      typescript@6.0.3 @types/node@24.19.2 undici@6.29.0; then
+    fail "pinned TypeScript consumer toolchain installation failed" 11
+  fi
+  if [[ ! -f "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" ]]; then
+    fail "pinned TypeScript consumer toolchain is unavailable" 11
+  fi
+  if ! node --input-type=module <<'TYPE_VERSIONS'
+import { readFileSync } from 'node:fs';
+for (const [name, expected] of [['typescript', '6.0.3'], ['@types/node', '24.19.2'], ['undici', '6.29.0']]) {
+  const version = JSON.parse(readFileSync(`node_modules/${name}/package.json`, 'utf8')).version;
+  if (version !== expected) throw new Error(`TypeScript consumer toolchain mismatch: ${name}`);
+  console.log(`TypeScript consumer toolchain: ${name}@${version}`);
+}
+TYPE_VERSIONS
+  then
+    fail "pinned TypeScript consumer toolchain version check failed" 11
+  fi
+  cat > bare-consumer.ts <<'BARE_CONSUMER'
+import { EventBus } from 'nexus-agents';
+void new EventBus();
+BARE_CONSUMER
+  cat > dispatcher-consumer.ts <<'DISPATCHER_CONSUMER'
+import { type OpenAIAdapterConfig } from 'nexus-agents';
+import { ProxyAgent } from 'undici';
+const dispatcher = new ProxyAgent('http://127.0.0.1:8080');
+const valid: OpenAIAdapterConfig['fetchOptions'] = { dispatcher };
+// @ts-expect-error dispatcher strings are invalid
+const invalidString: OpenAIAdapterConfig['fetchOptions'] = { dispatcher: 'FAKE_INVALID_DISPATCHER' };
+// @ts-expect-error arbitrary objects are not dispatchers
+const invalidObject: OpenAIAdapterConfig['fetchOptions'] = { dispatcher: { notADispatcher: true } };
+// @ts-expect-error this public projection accepts dispatcher only
+const unrelatedOption: OpenAIAdapterConfig['fetchOptions'] = { dispatcher, headers: { 'x-test': 'FAKE' } };
+void [valid, invalidString, invalidObject, unrelatedOption];
+DISPATCHER_CONSUMER
+  # Default TypeScript libraries intentionally include DOM. The explicit type
+  # root selects pinned Node declarations, without workspace tsconfig aliases.
+  TYPE_FLAGS=(--ignoreConfig --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --types node --typeRoots "$TYPE_CONSUMER/node_modules/@types")
+  printf 'Compiler command:'
+  printf ' %q' node "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" "${TYPE_FLAGS[@]}" bare-consumer.ts
+  printf '\n'
+  if ! node "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" "${TYPE_FLAGS[@]}" bare-consumer.ts; then
+    fail "installed public TypeScript declarations failed (bare EventBus consumer)" 11
+  fi
+  printf 'Compiler command:'
+  printf ' %q' node "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" "${TYPE_FLAGS[@]}" dispatcher-consumer.ts
+  printf '\n'
+  if ! node "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" "${TYPE_FLAGS[@]}" dispatcher-consumer.ts; then
+    fail "installed dispatcher TypeScript controls failed" 11
+  fi
+)
+ok "installed package public declarations and dispatcher controls compile"
 
 step "Phase 4: --help lists core commands"
 HELP_OUT=$(nexus-agents --help 2>&1 || true)

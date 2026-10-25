@@ -6257,7 +6257,7 @@ InterfaceDeclaration OpenAIAdapterConfig
   baseUrl?: string | undefined
   defaultHeaders?: Readonly<Record<string, null | string>> | undefined
   fetch?: typeof fetch | undefined
-  fetchOptions?: Pick<RequestInit, "dispatcher"> | undefined
+  fetchOptions?: Pick<UndiciRequestInit, "dispatcher"> | undefined
   logger?: ILogger | undefined
   maxRetries?: number | undefined
   modelId: string
