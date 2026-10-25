@@ -166,11 +166,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir website menu-check
 
-      # Audits the actual remarque palette plus source policy (blocking gate #7231).
+      # Audits the palette the site serves (remarque defaults + src/styles/tokens.css
+      # overrides) plus source policy and token drift (blocking gate #7231).
       - name: Audit remarque palette and source policy
         if: ${{ !cancelled() }}
         working-directory: website
-        run: npx remarque-audit --palette node_modules/remarque-tokens/tokens-palette.css --src src --json > /tmp/remarque-report.json
+        run: pnpm audit:remarque --json-out /tmp/remarque-report.json
 
       - name: Upload accessibility measurements
         if: ${{ !cancelled() }}

@@ -120,7 +120,7 @@ prints flags and examples for any of them.
 | `health`             | Swarm health metrics dashboard                                                                                                                                                                                                                   |
 | `release-notes`      | Generate release notes from git commits                                                                                                                                                                                                          |
 | `release-validate`   | Run expert swarm validation for releases                                                                                                                                                                                                         |
-| `release-announce`   | Generate release announcements (blog, social)                                                                                                                                                                                                    |
+| `release-announce`   | Generate blog release announcements                                                                                                                                                                                                              |
 
 ### Internal — dev/eval loops (hidden from --help)
 
@@ -137,6 +137,14 @@ prints flags and examples for any of them.
 _Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 53 commands._
 
 <!-- GOVERNANCE:ENTRYPOINTS_CLI:END -->
+
+### Release announcements
+
+`nexus-agents release-announce --channels blog --dry-run` generates a blog preview.
+The default channel is `blog`; blog content remains available for manual publication.
+Automatic Bluesky posting is retired. Explicit `--channels bluesky` and mixed
+`--channels blog,bluesky` requests fail before generating any announcement.
+To announce on Bluesky, compose a post manually using the release URL and highlights.
 
 ### Subcommands and modes
 

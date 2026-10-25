@@ -27,13 +27,14 @@ root). If a build serves stale content, delete
 Every interactive widget is a Svelte component in `src/components/`,
 hydrated with `client:load` (#7313):
 
-| Island               | Behaviour                                                        |
-| -------------------- | ---------------------------------------------------------------- |
-| `SearchBox.svelte`   | Header search over the Pagefind index.                           |
-| `ThemeToggle.svelte` | Light/dark toggle (`aria-pressed`, follows the OS until chosen). |
-| `MenuDrawer.svelte`  | "Menu" button and the `<dialog>` navigation drawer below 64rem.  |
-| `TocSpy.svelte`      | Marks the "On this page" link of the section being read.         |
-| `CodeCopy.svelte`    | Manages copy buttons with 48px touch target and live announce.   |
+| Island                 | Behaviour                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `SearchBox.svelte`     | Header search over the Pagefind index.                                                                              |
+| `ThemeToggle.svelte`   | Light/dark toggle (`aria-pressed`, follows the OS until chosen).                                                    |
+| `MenuDrawer.svelte`    | "Menu" button and the `<dialog>` navigation drawer below 64rem.                                                     |
+| `TocSpy.svelte`        | Marks the "On this page" link of the section being read.                                                            |
+| `CodeCopy.svelte`      | Manages copy buttons with 48px touch target and live announce.                                                      |
+| `PalettePicker.svelte` | Palette Deck: reader-chosen terminal theme, a masthead popover beside the light/dark toggle (remarque-tokens/deck). |
 
 Rules for a new widget:
 

@@ -10,6 +10,7 @@ import SiteMasthead from '../components/SiteMasthead.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import PageScripts from '../components/PageScripts.astro';
 import ThemeInit from '../components/ThemeInit.astro';
+import DeckInit from '../components/DeckInit.astro';
 import '../styles/docs.css';
 
 interface Props {
@@ -26,6 +27,7 @@ const { title, description, noindex = false } = Astro.props;
   <head>
     <SiteHead title={title} description={description} noindex={noindex} />
     <ThemeInit />
+    <DeckInit />
   </head>
   <body>
     <a class="docs-skip-link" href="#main">Skip to content</a>

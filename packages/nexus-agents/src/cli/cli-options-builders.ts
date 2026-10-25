@@ -31,6 +31,7 @@ export interface ParsedValues extends SubcommandFlagValues {
   format: string;
   input?: string;
   'dry-run': boolean;
+  channels?: string;
   'bandit-stats': boolean;
   setup: boolean;
   'skip-checks': boolean;
@@ -286,6 +287,7 @@ function buildBaseOptions(values: ParsedValues, mode: ServerMode): Record<string
     force: values.force,
     format: values.format,
     dryRun: values['dry-run'],
+    ...(values.channels !== undefined && { channels: values.channels }),
     banditStats: values['bandit-stats'],
     setup: values.setup,
     skipChecks: values['skip-checks'],
