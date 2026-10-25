@@ -59,7 +59,9 @@ function run(script, args) {
 }
 
 const audit = run('audit.mjs', ['--palette', palette, '--src', 'src', '--json']);
-if (jsonOut) writeFileSync(jsonOut, JSON.stringify(audit.report, null, 2));
+// The report's own `palette` is the temp file, deleted on exit; name the real inputs.
+const inputs = [packagePalette, tokens];
+if (jsonOut) writeFileSync(jsonOut, JSON.stringify({ ...audit.report, inputs }, null, 2));
 const drift = run('drift-check.mjs', ['--css-file', palette, '--package-dir', '.', '--json']);
 
 const a = audit.report;
