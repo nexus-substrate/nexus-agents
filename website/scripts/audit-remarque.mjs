@@ -16,7 +16,7 @@
  * src/styles/tokens.css (used by the test's fixture palette).
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -39,7 +39,10 @@ const tokens = resolve(option('--tokens') ?? join(root, 'src/styles/tokens.css')
 const packagePalette = require.resolve('remarque-tokens/tokens-palette.css');
 const packageDir = dirname(packagePalette);
 const merged = [readFileSync(packagePalette, 'utf8'), readFileSync(tokens, 'utf8')].join('\n');
-const palette = join(mkdtempSync(join(tmpdir(), 'remarque-palette-')), 'palette.css');
+const tmp = mkdtempSync(join(tmpdir(), 'remarque-palette-'));
+// 'exit' listeners run synchronously on process.exit, so every path cleans up.
+process.on('exit', () => rmSync(tmp, { recursive: true, force: true }));
+const palette = join(tmp, 'palette.css');
 writeFileSync(palette, merged);
 
 function run(script, args) {
