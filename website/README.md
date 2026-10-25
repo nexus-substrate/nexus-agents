@@ -34,6 +34,7 @@ hydrated with `client:load` (#7313):
 | `MenuDrawer.svelte`  | "Menu" button and the `<dialog>` navigation drawer below 64rem.  |
 | `TocSpy.svelte`      | Marks the "On this page" link of the section being read.         |
 | `CodeCopy.svelte`    | Manages copy buttons with 48px touch target and live announce.   |
+| `PalettePicker.svelte` | Palette Deck: reader-chosen terminal theme in the footer (remarque-tokens/deck). |
 
 Rules for a new widget:
 

@@ -5,7 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-palette-deck.mjs",
     "dev": "astro dev",
+    "prebuild": "node scripts/copy-palette-deck.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",

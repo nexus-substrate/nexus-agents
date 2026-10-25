@@ -22,6 +22,9 @@
 @import 'remarque-tokens/tokens.css';
 @import 'remarque-tokens/essay.css';
 @import 'remarque-tokens/print.css';
+/* Chrome module: the Palette Deck picker styles (and the skip link, breadcrumb,
+   pager and tag styles the site has not adopted yet). */
+@import 'remarque-tokens/chrome.css';
 /* Site token layer (USWDS-derived) and palette overrides — after remarque. */
 @import './tokens.css';
 /* Content components (callouts, tables, process list, summary box). */
@@ -652,6 +655,12 @@ pre:hover .copy-btn,
 }
 .docs-footer-inner p + p {
   margin-top: var(--space-2);
+}
+.docs-footer-theme {
+  margin-top: var(--space-2);
+}
+.docs-footer-theme:has(.palette-picker[hidden]) {
+  display: none;
 }
 
 /* ─── Breakpoints ───────────────────────────────────────────────────────────

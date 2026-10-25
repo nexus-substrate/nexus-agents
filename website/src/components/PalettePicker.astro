@@ -1,0 +1,40 @@
+---
+// Reader's choice of color theme (remarque-tokens/deck + chrome.css, 0.31).
+// Server-renders the deck-picker markup contract (REMARQUE.md "Palette Deck",
+// "Picker markup contract"): a <details> holding native radios, one per
+// palette in deck.json plus the site's own (value=""). Swatch colors come
+// from deck.css, and from docs.css for the site's own. PalettePicker.svelte
+// wraps this markup as a slot and wires the radios.
+import manifest from 'remarque-tokens/deck.json';
+import { DEFAULT_PALETTE_LABEL } from '../lib/palette-deck.ts';
+import PalettePickerIsland from './PalettePicker.svelte';
+
+const palettes: { name: string; label: string }[] = manifest.palettes;
+---
+
+<PalettePickerIsland client:load palettes={palettes.map(({ name, label }) => ({ name, label }))}>
+  <details class="remarque-deck-picker" id="palette-picker">
+    <summary>Theme: <span data-deck-current>{DEFAULT_PALETTE_LABEL}</span></summary>
+    <fieldset>
+      <legend class="remarque-sr-only">Color theme</legend>
+      <label class="remarque-deck-option">
+        <input type="radio" name="remarque-palette" value="" checked />
+        <span class="remarque-deck-swatches" data-palette-swatch="default" aria-hidden="true"
+          ><span></span><span></span><span></span></span
+        >
+        {DEFAULT_PALETTE_LABEL}
+      </label>
+      {
+        palettes.map((p) => (
+          <label class="remarque-deck-option">
+            <input type="radio" name="remarque-palette" value={p.name} />
+            <span class="remarque-deck-swatches" data-palette-swatch={p.name} aria-hidden="true"
+              ><span></span><span></span><span></span></span
+            >
+            {p.label}
+          </label>
+        ))
+      }
+    </fieldset>
+  </details>
+</PalettePickerIsland>

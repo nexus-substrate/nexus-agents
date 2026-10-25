@@ -5,6 +5,7 @@
 // documentation patterns are adapted from it, nothing of it is loaded.
 import { NEXUS_AGENTS_VERSION } from '../data/site-data';
 import { docsHref } from '../lib/docs-collection.ts';
+import PalettePicker from './PalettePicker.astro';
 ---
 
 <footer class="docs-footer">
@@ -17,5 +18,8 @@ import { docsHref } from '../lib/docs-collection.ts';
   <p class="docs-footer-credit">
     Patterns adapted from <a href="https://github.com/uswds/uswds">USWDS</a> (CC0)
   </p>
+  <div class="docs-footer-theme">
+    <PalettePicker />
+  </div>
   </div>
 </footer>

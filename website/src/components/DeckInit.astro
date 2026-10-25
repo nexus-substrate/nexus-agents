@@ -1,0 +1,27 @@
+---
+// Palette Deck head wiring (remarque-tokens/deck, 0.31): the stylesheet and
+// the no-flash restore. The stylesheet is deck.css copied into
+// public/palettes/ by scripts/copy-palette-deck.mjs at prebuild. Every
+// palette in it is inert ([data-palette="…"]-scoped) until chosen, outranks
+// the site palette whatever the load order, and follows the light/dark toggle
+// through light-dark(). The site's own palette stays the default.
+//
+// The restore is a synchronous classic script, like ThemeInit: a module
+// would be deferred past first paint and the default palette would flash.
+// It duplicates deck.js's three-line read-and-apply on purpose (REMARQUE.md
+// "Palette Deck"); a stale or unknown stored name matches no CSS and so is
+// inert, and PalettePicker.svelte's createDeck().restore() ignores it.
+import { PALETTE_STORAGE_KEY } from '../lib/palette-deck.ts';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<link rel="stylesheet" href={`${base}/palettes/deck.css`} />
+<script is:inline define:vars={{ KEY: PALETTE_STORAGE_KEY }}>
+  try {
+    const stored = localStorage.getItem(KEY);
+    if (stored) document.documentElement.setAttribute('data-palette', stored);
+  } catch {
+    // Storage unavailable: the site's own palette.
+  }
+</script>
