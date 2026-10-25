@@ -3,8 +3,9 @@
   // interactive widget here (README.md). It wraps the <details> markup that
   // PalettePicker.astro server-renders, passed in as the default slot, so
   // Svelte adopts those nodes and there is one copy. DeckInit.astro restored
-  // the stored palette before paint; this wires the radios (bindPicker) and
-  // updates the "Theme:" label.
+  // the stored palette before paint; this wires the radios (bindPicker,
+  // dismissible so Escape and an outside click close the popover) and
+  // updates the summary's screen-reader label.
   //
   // Server-rendered hidden and revealed on mount, like ThemeToggle: without
   // JS the radios would do nothing.
@@ -35,6 +36,7 @@
     deck.restore();
     let shown: string | null = deck.current();
     bindPicker(deck, picker, {
+      dismissible: true,
       onChange: (name) => {
         if (label !== null) label.textContent = paletteLabel(palettes, name);
         if (name === shown) return;
