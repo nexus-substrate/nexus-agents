@@ -84,3 +84,17 @@
     --color-border-bold: light-dark(oklch(0.55 0.01 80), oklch(0.58 0.01 80));
   }
 }
+
+/* ─── Palette Deck: swatches for the site's own palette ───────────────────
+ * The picker's "Site default" option. deck.css ships a default-swatch block
+ * for the package palette; this one names the site's palette and outranks it
+ * by specificity, whatever order the stylesheets load in. Literal values, not
+ * var(--color-*): a swatch must keep showing the site palette while a deck
+ * palette is active. Keep in step with --color-bg / -fg / -accent above and in
+ * remarque's tokens-palette.css (the site overrides none of the three). */
+:root [data-palette-swatch='default'] {
+  --swatch-bg: light-dark(oklch(0.975 0.005 80), oklch(0.16 0.01 80));
+  --swatch-surface: light-dark(oklch(0.965 0.005 80), oklch(0.19 0.01 80));
+  --swatch-fg: light-dark(oklch(0.18 0.01 80), oklch(0.9 0.005 80));
+  --swatch-accent: light-dark(oklch(0.5 0.14 250), oklch(0.68 0.12 250));
+}

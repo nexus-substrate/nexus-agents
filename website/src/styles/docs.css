@@ -22,6 +22,9 @@
 @import 'remarque-tokens/tokens.css';
 @import 'remarque-tokens/essay.css';
 @import 'remarque-tokens/print.css';
+/* Chrome module: the Palette Deck picker styles (and the skip link, breadcrumb,
+   pager and tag styles the site has not adopted yet). */
+@import 'remarque-tokens/chrome.css';
 /* Site token layer (USWDS-derived) and palette overrides — after remarque. */
 @import './tokens.css';
 /* Content components (callouts, tables, process list, summary box). */
@@ -761,6 +764,47 @@ pre:hover .copy-btn,
 @media (max-width: 39.99rem) {
   .docs-wordmark {
     font-size: 1.375rem;
+  }
+  /* Four 48px controls share the row with the wordmark (search, color
+     theme, light/dark, Menu). The Menu button keeps its text as its
+     accessible name but shows only the icon, and the gaps tighten; without
+     this the controls ran over the wordmark below ~430px. The span is hidden
+     with the .remarque-sr-only declarations restated here, because the class
+     cannot be applied only below 40rem. */
+  .docs-masthead-inner {
+    column-gap: var(--space-2);
+  }
+  .docs-masthead-tools {
+    gap: var(--space-1);
+  }
+  .docs-control.docs-menu-button {
+    inline-size: var(--touch-target);
+    justify-content: center;
+    padding: 0;
+  }
+  .docs-menu-button > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (max-width: 23.99rem) {
+  .docs-wordmark {
+    font-size: 1.125rem;
+  }
+}
+/* Below 360px even that row does not fit: the controls take a second row. */
+@media (max-width: 22.49rem) {
+  .docs-masthead-inner {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'brand'
+      'tools'
+      'nav';
   }
 }
 
