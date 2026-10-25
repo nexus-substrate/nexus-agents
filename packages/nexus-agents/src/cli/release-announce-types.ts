@@ -28,7 +28,7 @@ export interface ReleaseAnnounceOptions {
 /**
  * Supported announcement channels.
  */
-export type AnnouncementChannel = 'blog' | 'bluesky';
+export type AnnouncementChannel = 'blog';
 
 /**
  * Result from a single channel announcement.
@@ -75,13 +75,3 @@ export interface ReleaseAnnounceResult {
   /** Duration in milliseconds. */
   durationMs: number;
 }
-
-/**
- * Bluesky post limits.
- */
-export const BLUESKY_LIMITS = {
-  /** Maximum characters per post. */
-  MAX_CHARS: 300,
-  /** Maximum hashtags recommended. */
-  MAX_HASHTAGS: 5,
-};

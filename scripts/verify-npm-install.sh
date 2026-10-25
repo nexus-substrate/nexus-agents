@@ -247,7 +247,7 @@ TYPE_IDENTITY
     fail "installed package identity check failed" 11
   fi
   if ! npm install --prefix "$TYPE_CONSUMER" --ignore-scripts --save-dev --save-exact \
-      typescript@6.0.3 @types/node@24.19.2 undici@6.29.0; then
+      typescript@6.0.3 @types/node@24.19.2 undici@6.29.1; then
     fail "pinned TypeScript consumer toolchain installation failed" 11
   fi
   if [[ ! -f "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" ]]; then
@@ -255,7 +255,7 @@ TYPE_IDENTITY
   fi
   if ! node --input-type=module <<'TYPE_VERSIONS'
 import { readFileSync } from 'node:fs';
-for (const [name, expected] of [['typescript', '6.0.3'], ['@types/node', '24.19.2'], ['undici', '6.29.0']]) {
+for (const [name, expected] of [['typescript', '6.0.3'], ['@types/node', '24.19.2'], ['undici', '6.29.1']]) {
   const version = JSON.parse(readFileSync(`node_modules/${name}/package.json`, 'utf8')).version;
   if (version !== expected) throw new Error(`TypeScript consumer toolchain mismatch: ${name}`);
   console.log(`TypeScript consumer toolchain: ${name}@${version}`);
