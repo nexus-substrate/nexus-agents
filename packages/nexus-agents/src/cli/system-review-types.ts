@@ -96,6 +96,9 @@ export interface IssueHealth {
  */
 export interface SecurityAudit {
   readonly totalVulns: number;
+  /** Optional for compatibility with existing result producers. */
+  readonly info?: number;
+  readonly critical?: number;
   readonly high: number;
   readonly moderate: number;
   readonly low: number;

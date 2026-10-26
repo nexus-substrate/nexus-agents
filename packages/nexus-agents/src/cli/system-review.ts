@@ -11,7 +11,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
-import { safeExecSandboxed } from './sandbox-exec.js';
+import { execSandboxed, safeExecSandboxed } from './sandbox-exec.js';
+import { parsePnpmAuditResult } from './system-review-audit.js';
 
 const logger = createLogger({ component: 'system-review' });
 import {
@@ -24,7 +25,6 @@ import {
   type SecurityAudit,
   type CodeQuality,
   type GhIssueItem,
-  type AuditMetadata,
   type CoverageData,
 } from './system-review-types.js';
 import {
@@ -50,7 +50,7 @@ export type { SystemReviewOptions, SystemReviewResult } from './system-review-ty
 // Re-export printSystemReviewResult for backward compatibility
 export { printSystemReviewResult } from './system-review-helpers.js';
 
-function safeExec(command: string, cwd?: string, allowNonZeroExit = false): string | null {
+function safeExec(command: string, cwd?: string): string | null {
   // Use sandbox-aware execution with appropriate context
   // gh/git = git context, pnpm = write context (runs build/lint), others = read
   const context = command.startsWith('gh ')
@@ -62,8 +62,8 @@ function safeExec(command: string, cwd?: string, allowNonZeroExit = false): stri
         : 'read';
   // Only include cwd if defined (exactOptionalPropertyTypes)
   return cwd !== undefined
-    ? safeExecSandboxed(command, { context, cwd, allowNonZeroExit })
-    : safeExecSandboxed(command, { context, allowNonZeroExit });
+    ? safeExecSandboxed(command, { context, cwd })
+    : safeExecSandboxed(command, { context });
 }
 
 function parseGhIssueList(json: string, context: string): GhIssueItem[] {
@@ -148,35 +148,21 @@ function runPhase3(): IssueHealth {
 }
 
 function runPhase4(projectRoot: string): SecurityAudit {
-  const def = { totalVulns: 0, high: 0, moderate: 0, low: 0, parseError: false };
-  // allowNonZeroExit: `pnpm audit` exits 1 *because* it found vulnerabilities,
-  // while still writing the full JSON report to stdout. Discarding that output
-  // made the detection path and the failure path the same path — a vulnerable
-  // repo scored as clean (#4838).
-  const out = safeExec('pnpm audit --json', projectRoot, true);
-  if (out === null) {
-    logger.warn('pnpm audit command failed or returned null', { projectRoot });
-    return { ...def, parseError: true };
-  }
+  let execution: unknown;
   try {
-    const a: unknown = JSON.parse(out);
-    const m = (a as { metadata?: AuditMetadata }).metadata?.vulnerabilities ?? {};
-    return {
-      totalVulns: m.total ?? 0,
-      high: m.high ?? 0,
-      moderate: m.moderate ?? 0,
-      low: m.low ?? 0,
-      parseError: false,
-    };
+    // Retain the original thrown error: exit 1 can mean findings, while signals,
+    // timeouts and other failures can carry equally plausible captured stdout.
+    execution = execSandboxed('pnpm audit --json', { context: 'write', cwd: projectRoot });
   } catch (error) {
-    // Issue #515: Log parse errors instead of silent swallow
-    const message = getErrorMessage(error);
-    logger.warn('Failed to parse pnpm audit JSON', {
-      error: message,
-      outputPreview: out.slice(0, 200),
-    });
-    return { ...def, parseError: true };
+    execution = error;
   }
+  const audit = parsePnpmAuditResult(execution);
+  if (audit.status === 'unmeasured') {
+    logger.warn('Security audit is unmeasured', { reason: audit.reason, exitCode: audit.exitCode });
+    return { totalVulns: 0, info: 0, critical: 0, high: 0, moderate: 0, low: 0, parseError: true };
+  }
+  const { total: totalVulns, ...counts } = audit.counts;
+  return { totalVulns, ...counts, parseError: false };
 }
 
 function runPhase5(projectRoot: string): CodeQuality {
@@ -213,12 +199,16 @@ function getQualityItems(q: CodeQuality): string[] {
 /** Get security-related action items. (Issue #515) */
 function getSecurityItems(security: SecurityAudit): string[] {
   if (security.parseError === true) {
-    return ['WARNING: Security audit parsing failed - verify pnpm audit manually'];
+    return ['WARNING: Security audit is unmeasured - verify pnpm audit manually'];
+  }
+  const items: string[] = [];
+  if ((security.critical ?? 0) > 0) {
+    items.push(`Address ${String(security.critical)} critical-severity vulnerabilities`);
   }
   if (security.high > 0) {
-    return [`Address ${String(security.high)} high-severity vulnerabilities`];
+    items.push(`Address ${String(security.high)} high-severity vulnerabilities`);
   }
-  return [];
+  return items;
 }
 
 /** Get stale doc items. */

@@ -17,6 +17,7 @@ import {
 // Mock sandbox-exec module
 vi.mock('./sandbox-exec.js', () => ({
   safeExecSandboxed: vi.fn(),
+  execSandboxed: vi.fn(),
 }));
 
 vi.mock('node:fs', () => ({
@@ -29,11 +30,13 @@ vi.mock('../indexer/freshness-analyzer.js', () => ({
   analyzeFreshness: vi.fn(),
 }));
 
-import { safeExecSandboxed } from './sandbox-exec.js';
+import { execSandboxed, safeExecSandboxed } from './sandbox-exec.js';
 import * as fs from 'node:fs';
 import { analyzeFreshness } from '../indexer/freshness-analyzer.js';
 
 const mockExecSync = vi.mocked(safeExecSandboxed);
+const mockAuditExec = vi.mocked(execSandboxed);
+const auditCounts = { info: 0, critical: 0, high: 0, moderate: 0, low: 0 };
 const mockExistsSync = vi.mocked(fs.existsSync);
 const mockReadFileSync = vi.mocked(fs.readFileSync);
 const mockAnalyzeFreshness = vi.mocked(analyzeFreshness);
@@ -51,6 +54,7 @@ describe('system-review', () => {
     // `mockReturnValueOnce`/`mockImplementation` calls.
     mockExistsSync.mockImplementation((p: fs.PathLike) => String(p).endsWith('CLAUDE.md'));
     mockExecSync.mockReturnValue('');
+    mockAuditExec.mockImplementation((command, options) => mockExecSync(command, options) ?? '');
     mockAnalyzeFreshness.mockReturnValue({
       documents: [],
       summary: { total: 0, fresh: 0, warning: 0, stale: 0, unknown: 0 },
@@ -178,6 +182,8 @@ describe('system-review', () => {
           return JSON.stringify({
             metadata: {
               vulnerabilities: {
+                info: 0,
+                critical: 0,
                 total: 5,
                 high: 1,
                 moderate: 2,
@@ -496,7 +502,7 @@ describe('system-review', () => {
       mockExecSync.mockImplementation((cmd) => {
         if (typeof cmd === 'string' && cmd.includes('pnpm audit')) {
           return JSON.stringify({
-            metadata: { vulnerabilities: { total: 1, high: 1, moderate: 0, low: 0 } },
+            metadata: { vulnerabilities: { ...auditCounts, total: 1, high: 1 } },
           });
         }
         return '[]';
@@ -509,44 +515,40 @@ describe('system-review', () => {
   });
 });
 
-describe('phase 4 asks for output a non-zero audit still produced (#4838)', () => {
-  // `pnpm audit --json` exits 1 *because* it found vulnerabilities. Without
-  // allowNonZeroExit the JSON is discarded and a vulnerable repo is reported
-  // clean — the failure path and the detection path are the same path.
-  it('passes allowNonZeroExit for the pnpm audit call', () => {
+describe('phase 4 retains non-zero audit execution metadata (#4838)', () => {
+  it('uses the throwing sandbox API rather than discard the exit evidence', () => {
     mockExistsSync.mockReturnValue(false);
     mockExecSync.mockReturnValue('');
-
+    mockAuditExec.mockReturnValue('');
     runSystemReview();
-
-    expect(mockExecSync).toHaveBeenCalledWith(
+    expect(mockAuditExec).toHaveBeenCalledWith(
       'pnpm audit --json',
-      expect.objectContaining({ allowNonZeroExit: true })
+      expect.objectContaining({ context: 'write' })
     );
   });
 
-  it('counts vulnerabilities reported through a non-zero exit', () => {
+  it('counts vulnerabilities reported through a normal findings exit', () => {
     mockExistsSync.mockReturnValue(false);
-    mockExecSync.mockImplementation((cmd: string) =>
-      cmd === 'pnpm audit --json'
-        ? JSON.stringify({
-            metadata: { vulnerabilities: { total: 3, high: 2, moderate: 1, low: 0 } },
-          })
-        : ''
-    );
-
+    mockExecSync.mockReturnValue('');
+    mockAuditExec.mockImplementation(() => {
+      throw Object.assign(new Error('audit findings'), {
+        status: 1,
+        signal: null,
+        stdout: JSON.stringify({
+          metadata: { vulnerabilities: { ...auditCounts, high: 2, moderate: 1 } },
+        }),
+      });
+    });
     const result = runSystemReview();
-
     expect(result.security.high).toBe(2);
+    expect(result.security.totalVulns).toBe(3);
     expect(result.security.parseError).toBe(false);
   });
 
   it('marks the audit unmeasured when it produced nothing at all', () => {
-    // The distinction that must survive: an audit that could not run is not
-    // an audit that found nothing.
     mockExistsSync.mockReturnValue(false);
-    mockExecSync.mockImplementation((cmd: string) => (cmd === 'pnpm audit --json' ? null : ''));
-
+    mockExecSync.mockReturnValue('');
+    mockAuditExec.mockReturnValue('');
     expect(runSystemReview().security.parseError).toBe(true);
   });
 });
