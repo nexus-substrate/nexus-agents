@@ -1,5 +1,6 @@
 /** One attempt, explicit commit binding, independent readback, and no merge operation. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import type { Mock } from 'vitest';
 import type { IScmReviewer } from '../scm/types.js';
 import type { CanaryRead } from './native-approval-canary-read.js';
@@ -298,3 +299,39 @@ it('serializes both actual native state observations', async () => {
     },
   });
 });
+
+it.each(['read-error', 'malformed-status', 'graphql-errors'] as const)(
+  'retains completed post-write evidence when final native read has %s',
+  async (mode) => {
+    const { run, read, write } = setup();
+    read.mockReset().mockResolvedValueOnce(BASELINE);
+    if (mode === 'read-error') read.mockRejectedValueOnce(new Error('fixture-sensitive-message'));
+    else
+      read.mockResolvedValueOnce(
+        mode === 'malformed-status'
+          ? null
+          : {
+              ...STATUS,
+              errors: [{ message: 'fixture-sensitive-message' }],
+            }
+      );
+    const text = JSON.stringify(await run());
+    const serialized: unknown = JSON.parse(text);
+    expect(serialized).toMatchObject({
+      status: 'unmeasured',
+      reason: 'post-write-read-unmeasured',
+      writeAttempted: true,
+      before: F,
+      after: AFTER(),
+      receipt: RECEIPT,
+      reviewId: RECEIPT.id,
+      afterSha256: createHash('sha256').update(JSON.stringify(AFTER())).digest('hex'),
+      baseline: { reviewDecision: 'REVIEW_REQUIRED', mergeStateStatus: 'BLOCKED' },
+      diagnostic: { code: mode === 'read-error' ? 'unexpected-error' : 'invalid-evidence-shape' },
+    });
+    expect(write.mock.calls.length).toBe(1);
+    expect(read.mock.calls.length).toBe(2);
+    expect(collector.mock.calls.length).toBe(2);
+    expect(text).not.toContain('fixture-sensitive-message');
+  }
+);

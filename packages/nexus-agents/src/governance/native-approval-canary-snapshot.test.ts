@@ -124,6 +124,49 @@ describe('isolated one-shot canary source snapshot', () => {
     const bin = gitWrapper(`process.stdout.write('x'.repeat(16000001));`);
     expect(run(root, '--check', { PATH: bin }).stdout).toContain('git-output-limit');
   });
+  it.each([
+    {
+      limit: 'MAX_FILE',
+      value: 1,
+      call: "scope['regular_file'](root,'source.txt','100644')",
+      reason: 'source-file-size-limit',
+    },
+    {
+      limit: 'MAX_TOTAL',
+      value: 1,
+      call: "scope['source_digest'](root,scope['index_rows'](root,40))",
+      reason: 'source-total-size-limit',
+    },
+    {
+      limit: 'MAX_ROWS',
+      value: 1,
+      call: "scope['index_rows'](root,40)",
+      reason: 'source-row-limit',
+    },
+  ])('enforces $limit through the actual checker functions', ({ limit, value, call, reason }) => {
+    const root = ready();
+    const code = `import runpy,sys\nfrom pathlib import Path\nns=runpy.run_path(sys.argv[1])\nscope=ns['git'].__globals__\nroot=Path.cwd()\nscope[${JSON.stringify(limit)}]=${String(value)}\ntry:\n ${call}\nexcept ns['Refusal'] as error:\n print(error.reason)\n`;
+    const result = execFileSync(PYTHON, ['-I', '-S', '-c', code, CHECKER], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+      timeout: 3000,
+    });
+    expect(result.trim()).toBe(reason);
+  });
+  it('terminates a Git subprocess at the elapsed time bound', () => {
+    const root = ready();
+    const bin = gitWrapper('setTimeout(()=>{},10000);');
+    const code =
+      "import runpy,sys,time\nfrom pathlib import Path\nns=runpy.run_path(sys.argv[1])\nscope=ns['git'].__globals__\nscope['START']=time.monotonic()-119.8\ntry:\n ns['git'](Path.cwd(),['--version'])\nexcept ns['Refusal'] as error:\n print(error.reason)\n";
+    const result = execFileSync(PYTHON, ['-I', '-S', '-c', code, CHECKER], {
+      cwd: root,
+      env: { ...env, PATH: bin },
+      encoding: 'utf8',
+      timeout: 3000,
+    });
+    expect(result.trim()).toBe('git-time-limit');
+  });
   it('refuses a manifest authored for another object format', () => {
     const root = ready();
     editManifest(root, (value) => {

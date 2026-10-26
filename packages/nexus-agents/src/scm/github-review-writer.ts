@@ -31,7 +31,19 @@ function postReview(
     `event=${REVIEW_DECISIONS[decision].event}`,
   ];
   if (commitId !== undefined) args.push('-f', `commit_id=${commitId}`);
-  return execGhApiRaw(args);
+  return execGhApiRaw(args, commitId === undefined ? 'inherit-cli-environment' : 'resolved-token');
+}
+
+function legacyReviewResult(result: Result<string, ScmError>): Result<void, ScmError> {
+  if (result.ok) return ok(undefined);
+  return err(
+    new ScmError(
+      result.error.message.replace(/^gh api failed: /, 'Failed to create review: '),
+      'github',
+      result.error.statusCode,
+      result.error.context
+    )
+  );
 }
 
 /** Same capability as the trait methods, without loading provider or logger modules. */
@@ -42,8 +54,7 @@ export function createGitHubReviewWriter(repo: string): GitHubReviewWriter {
       body: string,
       decision: ScmReviewDecision
     ): Promise<Result<void, ScmError>> => {
-      const result = await postReview(repo, prNumber, body, decision);
-      return result.ok ? ok(undefined) : result;
+      return legacyReviewResult(await postReview(repo, prNumber, body, decision));
     },
     createReviewAtCommit: async (
       prNumber: number,

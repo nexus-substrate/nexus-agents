@@ -113,6 +113,63 @@ it('routes the legacy class and minimal writer through identical single POST req
   expect(mocked.execute.mock.calls.length).toBe(2);
   expect(mocked.execute.mock.calls[0]?.[1]).toEqual(mocked.execute.mock.calls[1]?.[1]);
 });
+it('preserves native gh credential selection for legacy three-argument reviews', async () => {
+  const { GitHubReviewer } = await import('./github-provider-traits.js');
+  const { GitHubProvider } = await import('./github-provider.js');
+  await new GitHubReviewer(new GitHubProvider('fixture/repo')).createReview(
+    1,
+    'fixture body',
+    'approve'
+  );
+  const options = mocked.execute.mock.calls[0]?.[2];
+  expect(options?.env).toBeUndefined();
+  expect(mocked.execute.mock.calls.length).toBe(1);
+});
+it('does not introduce an auth lookup for a legacy review with no environment tokens', async () => {
+  vi.stubEnv('GITHUB_TOKEN', '');
+  vi.stubEnv('GH_TOKEN', '');
+  await (await minimalWriter()).createReview(1, 'fixture body', 'approve');
+  expect(mocked.execute.mock.calls[0]?.[1][0]).toBe('api');
+  expect(mocked.execute.mock.calls.length).toBe(1);
+});
+it('restores the legacy failure prefix while retaining canonical transport context', async () => {
+  mocked.execute.mockRejectedValueOnce(
+    Object.assign(new Error('test-legacy-denied'), { stderr: 'test-stderr' })
+  );
+  const result = await (await minimalWriter()).createReview(1, 'test body', 'approve');
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error('test failure was lost');
+  expect(result.error.message).toBe('Failed to create review: test-legacy-denied');
+  expect(result.error.context).toMatchObject({
+    endpoint: 'repos/fixture/repo/pulls/1/reviews',
+    stderr: 'test-stderr',
+  });
+});
+it.each([false, true])(
+  'isolates inherited auth from resolved cache (prepopulated=%s)',
+  async (prepopulated) => {
+    if (prepopulated) await execGhApiRaw(request);
+    const writer = await minimalWriter();
+    await writer.createReview(1, 'test legacy', 'approve');
+    const legacyIndex = prepopulated ? 1 : 0;
+    expect(mocked.execute.mock.calls[legacyIndex]?.[2].env).toBeUndefined();
+    vi.stubEnv('GITHUB_TOKEN', 'test-next-resolved-token');
+    mocked.execute.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        id: 7,
+        commit_id: HEAD,
+        state: 'APPROVED',
+        user: { id: 1, login: 'test-bot', type: 'Bot' },
+      }),
+    });
+    const result = await writer.createReviewAtCommit(1, 'test bound', 'approve', HEAD);
+    expect(result.ok).toBe(true);
+    expect(mocked.execute.mock.calls[legacyIndex + 1]?.[2].env?.['GH_TOKEN']).toBe(
+      prepopulated ? 'fixture-primary-token' : 'test-next-resolved-token'
+    );
+    expect(mocked.execute.mock.calls.length).toBe(legacyIndex + 2);
+  }
+);
 it('returns the parsed commit-bound receipt from the minimal writer', async () => {
   mocked.execute.mockResolvedValueOnce({
     stdout: JSON.stringify({
@@ -130,6 +187,7 @@ it('returns the parsed commit-bound receipt from the minimal writer', async () =
     value: { id: 7, commitId: HEAD, state: 'APPROVED', reviewerId: 1 },
   });
   expect(mocked.execute.mock.calls[0]?.[1]).toContain(`commit_id=${HEAD}`);
+  expect(mocked.execute.mock.calls[0]?.[2].env?.['GH_TOKEN']).toBe('fixture-primary-token');
   expect(mocked.execute.mock.calls.length).toBe(1);
 });
 it.each([undefined, 12, 'short', 'A'.repeat(40), { toString: (): string => HEAD }])(

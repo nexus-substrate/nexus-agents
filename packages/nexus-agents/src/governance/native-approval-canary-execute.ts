@@ -159,13 +159,22 @@ async function measureReadback(
   };
   if (!readbackPolicy(before, after, receipt))
     return { status: 'unmeasured', reason: 'readback-policy-mismatch', ...evidence };
-  const readback = await nativeReadback(input.read, input.expected);
-  return {
-    status: readback.status,
-    reason: `native-approval-${readback.status}`,
-    readback,
-    ...evidence,
-  };
+  try {
+    const readback = await nativeReadback(input.read, input.expected);
+    return {
+      status: readback.status,
+      reason: `native-approval-${readback.status}`,
+      readback,
+      ...evidence,
+    };
+  } catch (cause) {
+    return {
+      status: 'unmeasured',
+      reason: 'post-write-read-unmeasured',
+      diagnostic: canaryFailureCause(cause),
+      ...evidence,
+    };
+  }
 }
 
 function failedMeasurement(

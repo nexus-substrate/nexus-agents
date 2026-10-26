@@ -46,13 +46,20 @@ async function resolveGhTokenImpl(): Promise<string | undefined> {
   return cachedGhToken;
 }
 
-export async function execGhApiRaw(args: readonly string[]): Promise<Result<string, ScmError>> {
+type GitHubApiAuthentication = 'resolved-token' | 'inherit-cli-environment';
+
+export async function execGhApiRaw(
+  args: readonly string[],
+  authentication: GitHubApiAuthentication = 'resolved-token'
+): Promise<Result<string, ScmError>> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const exec = promisify(execFile);
 
   // Inject token into subprocess environment to prevent keyring access failures
-  const token = await resolveGhToken();
+  // Legacy unbound reviews delegate authentication to gh, including its native
+  // environment precedence/keyring behavior, without reading or filling our cache.
+  const token = authentication === 'resolved-token' ? await resolveGhToken() : undefined;
   const env = token !== undefined ? { ...process.env, GH_TOKEN: token } : undefined;
 
   try {
