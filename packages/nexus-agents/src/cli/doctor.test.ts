@@ -1578,6 +1578,7 @@ describe('Doctor Command', () => {
               resetTime: new Date(),
               utilizationPercent: 15,
               rateLimited: false,
+              // eslint-disable-next-line @typescript-eslint/no-deprecated -- fixture supplies the required public compatibility alias
               exhausted: false,
               quotaExhausted: false,
               observed: true,

@@ -408,7 +408,6 @@ async function runPipelineHandler(
     const task = await resolveTask(input.task, input.specFile);
     const agentStages = createPipelineAgentStages(input, {
       callerTrustTier,
-      trustTier: callerTrustTier,
       ...sanitization,
       budget: resolveRunBudget(task, input.template, logger),
     });

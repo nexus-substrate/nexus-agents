@@ -61,3 +61,26 @@ export interface AiSdkFunctions {
   objectOutput: (options: { schema: AiSdkSchema }) => unknown;
   jsonSchema: (schema: Record<string, unknown>) => AiSdkSchema;
 }
+
+/**
+ * Runtime-validates the duck-typed `generateText` result shape (#3433).
+ *
+ * `generateText` comes from the optional `ai` peer dependency, so its
+ * result is `unknown` to us. We narrow it here rather than casting, so a
+ * shape change in the SDK surfaces as a clear error instead of a silent
+ * `undefined` downstream.
+ */
+export function isStructuredTextResult(value: unknown): value is StructuredTextResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (typeof record['text'] !== 'string' || !('output' in record)) return false;
+  if (typeof record['finishReason'] !== 'string') return false;
+  const usage = record['usage'];
+  if (typeof usage !== 'object' || usage === null) return false;
+  return hasModelId(record['response']);
+}
+
+function hasModelId(response: unknown): boolean {
+  if (typeof response !== 'object' || response === null) return false;
+  return typeof (response as Record<string, unknown>)['modelId'] === 'string';
+}

@@ -230,6 +230,7 @@ export class CapacityTracker {
       // information, so `MemberExpression[property.name='exhausted']` would also
       // flag `outcome.exhausted` in `fallback-chains.ts`, an unrelated field on
       // an unrelated type. The type-aware rule is what makes the guard possible.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- produce the public alias until major removal; consumers use rateLimited
       exhausted: rateLimited,
       quotaExhausted,
       ...(this.quotaExhaustedUntil !== null
