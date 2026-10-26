@@ -3,6 +3,7 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { check } from 'prettier';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { markUnpublishedChangelog } from './mark-unpublished-changelog.js';
 
@@ -52,10 +53,24 @@ afterEach(() => {
 });
 
 describe('markUnpublishedChangelog', () => {
+  it.each(['lf', 'crlf'] as const)(
+    'keeps formatted Markdown valid after inserting a marker with %s endings',
+    async (endOfLine) => {
+      const original = endOfLine === 'crlf' ? CHANGELOG.replaceAll('\n', '\r\n') : CHANGELOG;
+      const options = { parser: 'markdown', endOfLine };
+      expect(await check(original, options)).toBe(true);
+      writeFileSync(changelogPath, original);
+
+      expect(mark(changelogPath, 'example-package', lookup)).toEqual(['4.1.2']);
+
+      expect(await check(readFileSync(changelogPath, 'utf-8'), options)).toBe(true);
+    }
+  );
+
   it('marks a skipped version directly below its heading with the next published version', () => {
     expect(mark(changelogPath, 'example-package', lookup)).toEqual(['4.1.2']);
     expect(readFileSync(changelogPath, 'utf-8')).toBe(
-      CHANGELOG.replace('## 4.1.2\n', `## 4.1.2\n${MARKER}\n`)
+      CHANGELOG.replace('## 4.1.2\n', `## 4.1.2\n\n${MARKER}\n`)
     );
   });
 
@@ -139,7 +154,7 @@ describe('markUnpublishedChangelog', () => {
   it('preserves CRLF line endings', () => {
     writeFileSync(changelogPath, CHANGELOG.replaceAll('\n', '\r\n'));
     mark(changelogPath, 'example-package', lookup);
-    expect(readFileSync(changelogPath, 'utf-8')).toContain(`## 4.1.2\r\n${MARKER}\r\n`);
+    expect(readFileSync(changelogPath, 'utf-8')).toContain(`## 4.1.2\r\n\r\n${MARKER}\r\n`);
   });
 
   it('leaves a changelog without release headings unchanged', () => {
@@ -161,7 +176,7 @@ describe('markUnpublishedChangelog', () => {
     writeFileSync(changelogPath, `${example}## 4.1.2\n\nSkipped.\n`);
     expect(mark(changelogPath, 'example-package', lookup)).toEqual(['4.1.2']);
     expect(readFileSync(changelogPath, 'utf-8')).toBe(
-      `${example}## 4.1.2\n${MARKER}\n\nSkipped.\n`
+      `${example}## 4.1.2\n\n${MARKER}\n\nSkipped.\n`
     );
   });
 
