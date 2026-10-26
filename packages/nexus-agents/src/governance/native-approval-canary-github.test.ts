@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { collectCanaryEvidence } from './native-approval-canary-github.js';
 import { assessNativeApprovalCanary } from './native-approval-canary.js';
-import { FIXTURE as F } from './native-approval-canary.test-fixtures.js';
+import { FIXTURE as F } from '../testing/native-approval-canary-fixtures.js';
 import type { CanaryRead } from './native-approval-canary-read.js';
 
 vi.mock('./native-approval-canary-files.js', () => ({

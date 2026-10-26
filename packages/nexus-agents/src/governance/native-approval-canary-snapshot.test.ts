@@ -128,7 +128,7 @@ describe('isolated one-shot canary source snapshot', () => {
     const root = ready();
     editManifest(root, (value) => {
       value['objectFormat'] = 'sha256';
-      value['authoredBaseTree'] = 'a'.repeat(64);
+      value['baseTreeSha'] = 'a'.repeat(64);
     });
     expect(run(root).stdout).toContain('object-format-mismatch');
   });

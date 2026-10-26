@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { assessNativeApprovalCanary } from './native-approval-canary.js';
 
-import { FIXTURE } from './native-approval-canary.test-fixtures.js';
+import { FIXTURE } from '../testing/native-approval-canary-fixtures.js';
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
 const PATH = 'docs/fixtures/native-approval-canary.txt';

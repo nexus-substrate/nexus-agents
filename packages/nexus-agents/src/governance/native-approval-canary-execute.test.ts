@@ -7,7 +7,7 @@ import { ok, err } from '../core/index.js';
 import { ScmError } from '../scm/types.js';
 import { executeNativeApprovalCanary } from './native-approval-canary-execute.js';
 import { collectCanaryEvidence } from './native-approval-canary-github.js';
-import { FIXTURE as F } from './native-approval-canary.test-fixtures.js';
+import { FIXTURE as F } from '../testing/native-approval-canary-fixtures.js';
 import type { NativeCanaryEvidence } from './native-approval-canary.js';
 
 vi.mock('./native-approval-canary-github.js', () => ({ collectCanaryEvidence: vi.fn() }));

@@ -4,7 +4,7 @@ import { resetGhTokenCache } from '../scm/github-api-transport.js';
 import { createGitHubReviewWriter } from '../scm/github-review-writer.js';
 import { executeNativeApprovalCanary } from './native-approval-canary-execute.js';
 import { readCanaryJson } from './native-approval-canary-read.js';
-import { FIXTURE as F } from './native-approval-canary.test-fixtures.js';
+import { FIXTURE as F } from '../testing/native-approval-canary-fixtures.js';
 import { NATIVE_CANARY_POLICY as P } from './native-approval-canary.js';
 
 const state = vi.hoisted(() => ({ calls: [] as string[][], posts: 0, mode: '' }));

@@ -195,7 +195,7 @@ def read_manifest(root):
         value = json.loads(raw)
     except (OSError, ValueError):
         raise Refusal("manifest-unmeasured") from None
-    keys = {"version", "scope", "authoredBaseTree", "objectFormat", "excludedPaths",
+    keys = {"version", "scope", "baseTreeSha", "objectFormat", "excludedPaths",
             "sourceFileCount", "sourceSha256"}
     require(isinstance(value, dict) and set(value) == keys, "manifest-malformed")
     require(type(value["version"]) is int and value["version"] == 1
@@ -206,9 +206,9 @@ def read_manifest(root):
     require(isinstance(value["sourceSha256"], str) and
             re.fullmatch("[0-9a-f]{64}", value["sourceSha256"]), "manifest-hash-invalid")
     require(value["objectFormat"] in ("sha1", "sha256") and
-            isinstance(value["authoredBaseTree"], str) and
+            isinstance(value["baseTreeSha"], str) and
             re.fullmatch("[0-9a-f]{" + str(40 if value["objectFormat"] == "sha1" else 64) + "}",
-                         value["authoredBaseTree"]), "manifest-tree-invalid")
+                         value["baseTreeSha"]), "manifest-tree-invalid")
     return value, hashlib.sha256(raw).hexdigest()
 
 
@@ -227,7 +227,7 @@ def measure(root, write, record):
         regular_file(root, path, index[path][0])
     if not write:
         manifest, manifest_hash = read_manifest(root)
-        record.update(authoredBaseTree=manifest["authoredBaseTree"], manifestSha256=manifest_hash)
+        record.update(authoredBaseTree=manifest["baseTreeSha"], manifestSha256=manifest_hash)
         require(manifest["objectFormat"] == format_, "object-format-mismatch")
         head = head_rows(root, size)
         source_index = {p: v for p, v in index.items() if p not in EXCLUDED}
@@ -241,7 +241,7 @@ def measure(root, write, record):
     record.update(sourceFileCount=count, sourceSha256=digest)
     if write:
         value = {"version": 1, "scope": "one-shot-7629-canary-readiness-only",
-                 "authoredBaseTree": tree, "objectFormat": format_, "excludedPaths": EXCLUDED,
+                 "baseTreeSha": tree, "objectFormat": format_, "excludedPaths": EXCLUDED,
                  "sourceFileCount": count, "sourceSha256": digest}
         (root / MANIFEST).write_text(json.dumps(value, indent=2)+"\n", encoding="utf-8")
         record["status"] = "candidate-written"
