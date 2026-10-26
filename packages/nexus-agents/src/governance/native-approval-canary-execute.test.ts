@@ -299,6 +299,30 @@ it('serializes both actual native state observations', async () => {
     },
   });
 });
+it.each([
+  ['Invalid review receipt JSON', 'review-receipt-json-invalid'],
+  ['Invalid review receipt fields', 'review-receipt-fields-invalid'],
+  ['Review receipt does not match requested commit and decision', 'review-receipt-mismatch'],
+  ['Invalid review receipt fields test-private-suffix', 'unexpected-error'],
+])('retains a safe POST diagnostic for %s', async (message, code) => {
+  const { run, write } = setup();
+  write.mockResolvedValueOnce(
+    err(new ScmError(message, 'github', undefined, { stderr: 'test-private-stderr' }))
+  );
+  const text = JSON.stringify(await run());
+  expect(JSON.parse(text) as unknown).toMatchObject({
+    status: 'unmeasured',
+    reason: 'review-post-failed',
+    writeAttempted: true,
+    diagnostic: { code, operation: 'review-post' },
+    before: F,
+    beforeSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+    baseline: { reviewDecision: 'REVIEW_REQUIRED' },
+  });
+  expect(write.mock.calls.length).toBe(1);
+  expect(text).not.toContain('test-private-stderr');
+  expect(text).not.toContain('test-private-suffix');
+});
 
 it.each(['read-error', 'malformed-status', 'graphql-errors'] as const)(
   'retains completed post-write evidence when final native read has %s',

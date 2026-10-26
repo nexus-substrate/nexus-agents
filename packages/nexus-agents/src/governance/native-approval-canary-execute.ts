@@ -257,6 +257,7 @@ export async function executeNativeApprovalCanary(
       return {
         status: 'unmeasured',
         reason: 'review-post-failed',
+        diagnostic: { ...canaryFailureCause(posted.error), operation: 'review-post' },
         writeAttempted,
         baseline,
         ...observedBefore(before),

@@ -54,6 +54,12 @@ export interface CanaryFailureCause {
   omittedFieldErrors?: number;
 }
 
+const REVIEW_RECEIPT_FAILURES = new Map([
+  ['Invalid review receipt JSON', 'review-receipt-json-invalid'],
+  ['Invalid review receipt fields', 'review-receipt-fields-invalid'],
+  ['Review receipt does not match requested commit and decision', 'review-receipt-mismatch'],
+]);
+
 export class CanaryReadFailure extends Error {
   readonly operation: CanaryReadOperation;
   readonly httpStatus: number | undefined;
@@ -98,6 +104,10 @@ export function canaryFailureCause(error: unknown): CanaryFailureCause {
     };
   if (error instanceof z.ZodError) return schemaCause(error);
   if (error instanceof SyntaxError) return { code: 'invalid-json' };
+  if (error instanceof Error) {
+    const code = REVIEW_RECEIPT_FAILURES.get(error.message);
+    if (code !== undefined) return { code, operation: 'review-post' };
+  }
   if (error instanceof Error && KNOWN.has(error.message)) return { code: error.message };
   return { code: 'unexpected-error' };
 }

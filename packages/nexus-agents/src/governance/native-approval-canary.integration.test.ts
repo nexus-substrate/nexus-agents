@@ -148,6 +148,11 @@ function endpointFor(args: string[]): { raw: string | undefined; endpoint: strin
   return { raw, endpoint };
 }
 
+function postReceipt(): unknown {
+  if (state.mode === 'malformed-receipt') return {};
+  return state.mode === 'wrong-receipt' ? { ...REVIEW, commit_id: BASE } : REVIEW;
+}
+
 function respond(args: string[]): unknown {
   if (args[1] === 'graphql') {
     if (args.some((arg) => arg.includes('defaultBranchRef'))) return protection();
@@ -173,7 +178,7 @@ function respond(args: string[]): unknown {
     state.posts++;
     if (endpoint !== `pulls/${String(F.expected.pr)}/reviews`)
       throw new Error('unexpected-fixture-write');
-    return state.mode === 'wrong-receipt' ? { ...REVIEW, commit_id: BASE } : REVIEW;
+    return postReceipt();
   }
   if (endpoint === `pulls/${String(F.expected.pr)}/reviews`) return reviewFixture(raw);
   const routes = restFixtures();
@@ -222,11 +227,18 @@ describe('native canary transport integration', () => {
       expect(state.posts).toBe(0);
     }
   );
-  it.each(['wrong-receipt', 'head-race'])(
+  it.each(['wrong-receipt', 'malformed-receipt', 'head-race'])(
     'reports %s after one POST without retrying',
     async (mode) => {
       state.mode = mode;
-      expect(await run()).toMatchObject({ status: 'unmeasured', writeAttempted: true });
+      const result = await run();
+      expect(result).toMatchObject({ status: 'unmeasured', writeAttempted: true });
+      if (mode !== 'head-race')
+        expect(result.diagnostic).toEqual({
+          code:
+            mode === 'wrong-receipt' ? 'review-receipt-mismatch' : 'review-receipt-fields-invalid',
+          operation: 'review-post',
+        });
       expect(state.posts).toBe(1);
     }
   );

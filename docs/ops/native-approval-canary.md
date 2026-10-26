@@ -19,6 +19,16 @@ Use this experiment to measure whether the existing GitHub Actions token's revie
 
 Before creating or dispatching the canary, finish artifact review, a whole-panel supermajority vote with `absolute_quorum`, committed head-bound ledger evidence, and all nonhuman gates. The owner must then ratify and personally merge the governor PR. Agents must not supply the owner's label, approval, signature, or merge. Landing the implementation does not dispatch the workflow.
 
+Local test prerequisites are Node/pnpm, Git, Python 3 and `jq`; the workflow-filter tests execute real `jq`. CI already provides these tools.
+
+### Confirm read access without spending the canary invocation
+
+The implementation PR's existing governor job performs a bounded, read-only GraphQL preflight using its Actions token with declared `contents: read` and `pull-requests: read`. It runs only for the same-repository implementation branch, after the ratification gate even when that gate fails. It neither changes that verdict nor counts as a canary dispatch. The fixed query is tested against the canary's exact query; no PR source is imported or executed by this step.
+
+Before dispatch, retain a live `READABLE` receipt from that step for the final implementation head. The receipt binds the repository, workflow SHA, run/attempt, head, observed main, query/response digests and declared token permissions. Verify that the reviewed tree became trusted main. This lower-privilege read is capability evidence, not token-identity attestation or approval eligibility. The canary's fresh in-run checks remain authoritative.
+
+`UNMEASURED`, a skipped step, or a missing receipt prohibits dispatch. Hold the experiment inactive and investigate the prerequisite; do not retrigger workflows or expand permissions to force a preferred result. The older required-jobs REST read and an owner-authenticated read do not satisfy this GraphQL Actions-token condition. Expected read failures are classified and exit cleanly; unexpected script faults fail visibly. No `continue-on-error` flag masks them.
+
 ### Author and verify the one-shot source freeze
 
 The protected manifest freezes the entire tracked source tree for this experiment. It excludes exactly its own file, `governance/native-approval-canary-source-snapshot.json`, and the separately verified append-only ledger, `governance/vote-records.jsonl`. These are passive data; neither exclusion may become a runtime or loader configuration input.
@@ -72,6 +82,8 @@ Concurrency is fixed and reruns are refused. **Every invocation consumes the exp
 ## Interpret the evidence and close the PR
 
 Download `native-approval-eligibility-<run-id>`. Its `result.json` retains measured evidence and SHA256 digests, the known receipt when available, and `writeAttempted` separately from eligibility. It also retains validated source-snapshot and manifest hashes. `source-snapshot.json` records the pre-install check, and `source-closure.json` lists the measured project runtime closure and governor-pattern count. An early refusal may leave only the snapshot report. Reports are created once in a fresh checkout and never overwritten.
+
+The current CLI transport does not supply structured HTTP status. That value is unmeasured and omitted, rather than inferred from raw stderr. Fixed receipt-validation causes and stage names are retained without raw error messages or credential values.
 
 | Result       | Meaning                                                                                           |
 | ------------ | ------------------------------------------------------------------------------------------------- |
