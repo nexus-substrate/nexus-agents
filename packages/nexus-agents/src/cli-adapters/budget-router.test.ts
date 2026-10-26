@@ -71,6 +71,7 @@ function createMockAdapter(
       resetTime: new Date(Date.now() + 3600000),
       utilizationPercent: 10,
       rateLimited: false,
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- fixture supplies the required public compatibility alias
       exhausted: false,
       quotaExhausted: false,
       observed: true,
