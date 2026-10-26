@@ -1,0 +1,86 @@
+name: Native approval eligibility canary
+
+# Inert until owner-ratified code is on main. One invocation consumes the experiment,
+# including a refused or failed invocation. Never rerun it or merge its fixture PR.
+# The source freeze is solely for the one-shot #7629 experiment. Any reuse in
+# another workflow requires a fresh panel decision. Staleness never gates ordinary CI.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Owner-authored fixed canary PR; close unmerged after measurement'
+        required: true
+        type: string
+      head_sha:
+        description: 'Exact 40-character canary commit SHA'
+        required: true
+        type: string
+      base_sha:
+        description: 'Exact trusted main SHA used as its direct parent'
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: native-approval-eligibility-v1
+  cancel-in-progress: false
+
+jobs:
+  eligibility:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'nexus-substrate/nexus-agents' &&
+      github.repository_id == '1127393912' &&
+      github.actor_id == '14303249' &&
+      github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
+      - name: Verify the frozen checkout before any project tooling
+        run: |
+          command -v python3
+          python3 -I -S scripts/check-native-canary-snapshot.py --check
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Install frozen dependencies without lifecycle execution
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check governed project imports before exposing credentials
+        run: pnpm exec tsx scripts/check-native-canary-source.ts
+      - name: Measure the fixed-content canary once
+        run: pnpm exec tsx scripts/native-approval-canary.ts
+        env:
+          GH_HOST: github.com
+          GH_CONFIG_DIR: ${{ runner.temp }}/native-canary-gh
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CANARY_OWNER_ID: ${{ github.repository_owner_id }}
+          CANARY_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CANARY_PR: ${{ inputs.pr_number }}
+          CANARY_HEAD_SHA: ${{ inputs.head_sha }}
+          CANARY_BASE_SHA: ${{ inputs.base_sha }}
+      - name: Retain the measured evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-approval-eligibility-${{ github.run_id }}
+          path: |
+            .nexus-agents/native-approval-canary/result.json
+            .nexus-agents/native-approval-canary/source-closure.json
+            .nexus-agents/native-approval-canary/source-snapshot.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

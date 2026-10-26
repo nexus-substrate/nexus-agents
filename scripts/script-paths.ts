@@ -12,6 +12,9 @@
 
 import { join } from 'node:path';
 
+/** Actual repository location, independent of the shared test override. */
+export const REPOSITORY_ROOT = join(import.meta.dirname, '..');
+
 /**
  * Repository root directory.
  *
@@ -26,7 +29,7 @@ import { join } from 'node:path';
 export const ROOT =
   process.env['NEXUS_SCRIPT_ROOT'] !== undefined && process.env['NEXUS_SCRIPT_ROOT'] !== ''
     ? process.env['NEXUS_SCRIPT_ROOT']
-    : join(import.meta.dirname, '..');
+    : REPOSITORY_ROOT;
 
 /** Main package source directory. */
 export const SRC_ROOT = join(ROOT, 'packages/nexus-agents/src');

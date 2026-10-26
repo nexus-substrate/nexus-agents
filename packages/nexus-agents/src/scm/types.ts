@@ -173,6 +173,16 @@ export interface ScmCommentDetail extends ScmComment {
 /** Review decision for a pull request. */
 export type ScmReviewDecision = 'approve' | 'request_changes' | 'comment';
 
+/** Observed identity of a review created at an explicit commit. */
+export interface ScmReviewReceipt {
+  readonly id: number;
+  readonly commitId: string;
+  readonly state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED';
+  readonly reviewerId: number;
+  readonly reviewerLogin: string;
+  readonly reviewerType: 'User' | 'Bot';
+}
+
 /** User metadata for reputation assessment. */
 export interface ScmUserMetadata {
   readonly login: string;
@@ -242,6 +252,14 @@ export interface IScmReviewer {
     body: string,
     decision: ScmReviewDecision
   ): Promise<Result<void, ScmError>>;
+
+  /** Optional commit-bound posting capability; does not grant review authority. */
+  createReviewAtCommit?(
+    prNumber: number,
+    body: string,
+    decision: ScmReviewDecision,
+    commitId: string
+  ): Promise<Result<ScmReviewReceipt, ScmError>>;
 
   /** Fetch issue with author association and state. */
   getIssueDetail(issueNumber: number): Promise<Result<ScmIssueDetail, ScmError>>;

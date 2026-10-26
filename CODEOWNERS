@@ -31,6 +31,19 @@
 /packages/nexus-agents/src/security/audit-bridge.ts @williamzujkowski
 # Governance source
 /packages/nexus-agents/src/governance/ @williamzujkowski
+# Native approval canary's canonical write and receipt boundary (#7621).
+/packages/nexus-agents/src/scm/types.ts @williamzujkowski
+/packages/nexus-agents/src/scm/github-provider-traits.ts @williamzujkowski
+/packages/nexus-agents/src/scm/github-review-receipt.ts @williamzujkowski
+/packages/nexus-agents/src/scm/github-api-transport.ts @williamzujkowski
+/packages/nexus-agents/src/scm/github-review-writer.ts @williamzujkowski
+/packages/nexus-agents/src/config/subprocess-timeouts.ts @williamzujkowski
+/packages/nexus-agents/src/core/result.ts @williamzujkowski
+/scripts/script-paths.ts @williamzujkowski
+/scripts/check-native-canary-source.ts @williamzujkowski
+/scripts/check-native-canary-snapshot.py @williamzujkowski
+/.github/workflows/native-approval-canary.yml @williamzujkowski
+/scripts/native-approval-canary.ts @williamzujkowski
 # Governance-drift injection machinery
 /scripts/inject-governance.ts @williamzujkowski
 # Claims registry — the durable claim inventory (#3825 lands it at
