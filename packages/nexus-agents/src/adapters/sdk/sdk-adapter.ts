@@ -47,12 +47,12 @@ import {
 } from '../openai-compat-adapter.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import { readSdkReportedModel } from './sdk-model-report.js';
+import { isStructuredTextResult } from './ai-sdk-shapes.js';
 import type {
   AiSdkFunctions,
   AiSdkModel,
   GenerateTextResult,
   StreamTextResult,
-  StructuredTextResult,
 } from './ai-sdk-shapes.js';
 
 /** Maps SDK counters without presenting a partial component sum as a total. */
@@ -168,29 +168,6 @@ export function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFuncti
 }
 
 /**
- * Runtime-validates the duck-typed `generateText` result shape (#3433).
- *
- * `generateText` comes from the optional `ai` peer dependency, so its
- * result is `unknown` to us. We narrow it here rather than casting, so a
- * shape change in the SDK surfaces as a clear error instead of a silent
- * `undefined` downstream.
- */
-function isStructuredTextResult(value: unknown): value is StructuredTextResult {
-  if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
-  if (typeof record['text'] !== 'string' || !('output' in record)) return false;
-  if (typeof record['finishReason'] !== 'string') return false;
-  const usage = record['usage'];
-  if (typeof usage !== 'object' || usage === null) return false;
-  return hasModelId(record['response']);
-}
-
-function hasModelId(response: unknown): boolean {
-  if (typeof response !== 'object' || response === null) return false;
-  return typeof (response as Record<string, unknown>)['modelId'] === 'string';
-}
-
-/**
  * Resolves the API key for a given provider.
  * Priority: explicit config > environment variable. The `custom-openai`
  * key goes through the canonical gateway-env resolver.
@@ -244,7 +221,7 @@ function mapFinishReason(reason: string): CompletionResponse['stopReason'] {
 /** A completion that must surface as an error, never as an empty success (#6607, #6618). */
 interface NonAnswer {
   /** Why the completion carries no answer. */
-  readonly reason: 'content_filter' | 'reasoning_truncated';
+  readonly reason: 'content_filter' | 'reasoning_truncated' | 'completion_interrupted';
   readonly detail: string;
   readonly reasoningTokens?: number;
 }
@@ -252,6 +229,11 @@ interface NonAnswer {
 const CONTENT_FILTERED: NonAnswer = {
   reason: 'content_filter',
   detail: 'the reply was blocked by a content filter',
+};
+
+const COMPLETION_INTERRUPTED: NonAnswer = {
+  reason: 'completion_interrupted',
+  detail: 'the provider ended the response without a completion signal (finish interrupted)',
 };
 
 const REASONING_TRUNCATED: NonAnswer = {
@@ -287,6 +269,9 @@ function assertValidCompletion(
   hasContent: boolean,
   servedModel?: string
 ): void {
+  if (finishReason === 'interrupted') {
+    throw nonAnswerError(source, COMPLETION_INTERRUPTED, servedModel);
+  }
   if (finishReason === 'content-filter') {
     throw nonAnswerError(source, CONTENT_FILTERED, servedModel);
   }
