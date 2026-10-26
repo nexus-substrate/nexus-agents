@@ -33,6 +33,8 @@ Before dispatch, retain a live `READABLE` receipt from that step for the final i
 
 The protected manifest freezes the entire tracked source tree for this experiment. It excludes exactly its own file, `governance/native-approval-canary-source-snapshot.json`, and the separately verified append-only ledger, `governance/vote-records.jsonl`. These are passive data; neither exclusion may become a runtime or loader configuration input.
 
+Local `--write` and `--check` commands require `GH_TOKEN` and `GITHUB_TOKEN` to be unset; the checker refuses with `credentials-exposed-before-snapshot` when either variable is present. The manifest must already be tracked before either command runs.
+
 After staging the complete candidate implementation, author the manifest locally with:
 
 ```sh
