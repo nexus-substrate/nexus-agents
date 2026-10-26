@@ -79,7 +79,7 @@
     "@ast-grep/lang-go": "0.0.6",
     "@ast-grep/lang-python": "0.0.6",
     "@ast-grep/napi": "0.51.0",
-    "@google/genai": "^2.30.0",
+    "@google/genai": "^2.31.0",
     "@modelcontextprotocol/client": "^2.3.1",
     "@modelcontextprotocol/core": "^2.3.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
