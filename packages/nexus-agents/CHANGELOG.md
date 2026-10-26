@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 14.0.1
+
+### Patch Changes
+
+- [#7622](https://github.com/nexus-substrate/nexus-agents/pull/7622) [`53435ab`](https://github.com/nexus-substrate/nexus-agents/commit/53435aba272c844a77760f721295a4a35bdf318b) Thanks [@dependabot](https://github.com/apps/dependabot)! - Reject interrupted AI SDK text, structured completions and streams as typed model errors. Preserve streamed partial output without emitting successful final stop markers. Fixes [#7623](https://github.com/nexus-substrate/nexus-agents/issues/7623).
+
 ## 14.0.0
 
 ### Major Changes
@@ -11,6 +17,7 @@
   `AnnouncementChannel` is narrowed from `'blog' | 'bluesky'` to `'blog'`, including channel fields in announcement options and results. The exported `BLUESKY_LIMITS` constant is removed. Update typed callers to request only `blog` and remove imports of the retired client exports and constant. Spaced or case-varied Bluesky tokens also fail the entire request before blog output, including dry runs. Generate a blog preview and use its release URL and highlights for a manual Bluesky post.
 
 ## 13.0.0
+> **Not published to npm.** This version was superseded before release; its changes shipped in 14.0.0.
 
 ### Major Changes
 
