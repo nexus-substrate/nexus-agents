@@ -42,6 +42,7 @@ import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { breakerKeys } from './breaker-key.js';
+import { withCliOutcomeOwner, transferCliOutcomeOwner } from './cli-outcome-ownership.js';
 import { createCliError } from './cli-error-helpers.js';
 import { hasIssuedNativeExecutionPolicy } from './native-execution-policy.js';
 import { unenforcedAccessModeRefusal, withEnforcedAccessMode } from './access-mode.js';
@@ -211,7 +212,9 @@ export abstract class BaseCliAdapter implements ICliAdapter {
     const result = await this.executeWithRetry(task, opts);
     // #6792: the refusal above passed, so this adapter ran the task under the
     // task's mode; the response says so for the caller's record.
-    return result.ok ? ok(withEnforcedAccessMode(result.value, task)) : result;
+    return result.ok
+      ? transferCliOutcomeOwner(result, ok(withEnforcedAccessMode(result.value, task)))
+      : result;
   }
 
   /**
@@ -282,7 +285,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         durationMs: result.value.response.durationMs,
         tokensUsed: result.value.response.usage?.totalTokens,
       });
-      return { ok: true, value: result.value.response };
+      return withCliOutcomeOwner(ok(result.value.response), this, circuitBreaker);
     }
 
     this.recordQuotaSignal(result.error);
@@ -291,7 +294,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       error: result.error.message,
       retryable: result.error.retryable,
     });
-    return result;
+    return withCliOutcomeOwner(err(result.error), this, circuitBreaker);
   }
 
   /**

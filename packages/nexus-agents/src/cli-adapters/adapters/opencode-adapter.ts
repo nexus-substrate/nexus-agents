@@ -24,6 +24,7 @@ import {
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
 import { createCallerInputCliError } from '../cli-error-helpers.js';
+import { transferCliOutcomeOwner } from '../cli-outcome-ownership.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import { getAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
@@ -339,7 +340,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     const { cliId, reportedAs } = resolved.value;
     const result = await super.execute({ ...task, model: cliId }, options);
     if (!result.ok) return result;
-    return ok({ ...result.value, model: reportedAs });
+    return transferCliOutcomeOwner(result, ok({ ...result.value, model: reportedAs }));
   }
 
   /** Appends --model if the resolved model is usable (#1402, #3407, #3408). */

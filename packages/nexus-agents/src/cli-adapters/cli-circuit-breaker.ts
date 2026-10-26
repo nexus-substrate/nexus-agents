@@ -22,6 +22,7 @@ import type {
   ObservedArmId,
 } from './types.js';
 import { breakerKeys } from './breaker-key.js';
+import { consumeCliOutcomeOwner } from './cli-outcome-ownership.js';
 import { gatewayServedSlotOf, resolveGatewayServedSlot } from './gateway-slot-arm.js';
 import {
   CircuitBreakerRegistry,
@@ -304,7 +305,7 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     breaker: CliCircuitBreaker,
     execResult: Result<CliResponse, CliError>
   ): Result<CliResponse, CircuitError | CliError> {
-    const recordsOutcome = this.ownsBreakerOutcome(adapter);
+    const recordsOutcome = this.ownsBreakerOutcome(adapter, breaker, execResult);
     if (!execResult.ok) {
       // The endpoint owns admission, but its model-to-CLI bridge wraps the
       // refusal. Restore the original breaker verdict for automatic fallback.
@@ -354,11 +355,16 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     };
   }
 
-  /** Gateway arms/slots record in the shared registry; private registries own their records. */
-  private ownsBreakerOutcome(adapter: ICliAdapter): boolean {
+  /** Preserve gateway/private policy; suppress only an exact execution-owned outcome. */
+  private ownsBreakerOutcome(
+    adapter: ICliAdapter,
+    breaker: CliCircuitBreaker,
+    result: Result<CliResponse, CliError>
+  ): boolean {
     return (
-      this.registry !== defaultCliCircuitBreakerRegistry ||
-      (gatewayServedSlotOf(adapter)?.arm === undefined && !adapter.name.startsWith('api:'))
+      (this.registry !== defaultCliCircuitBreakerRegistry ||
+        (gatewayServedSlotOf(adapter)?.arm === undefined && !adapter.name.startsWith('api:'))) &&
+      !consumeCliOutcomeOwner(result, adapter, breaker)
     );
   }
 
