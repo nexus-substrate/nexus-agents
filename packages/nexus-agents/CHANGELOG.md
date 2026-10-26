@@ -17,6 +17,7 @@
   `AnnouncementChannel` is narrowed from `'blog' | 'bluesky'` to `'blog'`, including channel fields in announcement options and results. The exported `BLUESKY_LIMITS` constant is removed. Update typed callers to request only `blog` and remove imports of the retired client exports and constant. Spaced or case-varied Bluesky tokens also fail the entire request before blog output, including dry runs. Generate a blog preview and use its release URL and highlights for a manual Bluesky post.
 
 ## 13.0.0
+
 > **Not published to npm.** This version was superseded before release; its changes shipped in 14.0.0.
 
 ### Major Changes
