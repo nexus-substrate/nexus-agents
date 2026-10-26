@@ -129,7 +129,7 @@ export function markUnpublishedChangelog(
       const line = `${MARKER} This version was superseded before release${shipped}.`;
       marked.push(version);
       const header = heading[0].endsWith('\n') ? heading[0] : `${heading[0]}${newline}`;
-      return `${header}${line}${newline}${section.slice(heading[0].length)}`;
+      return `${header}${newline}${line}${newline}${section.slice(heading[0].length)}`;
     })
     .join('');
   if (marked.length > 0) writeFileSync(changelogPath, updated, 'utf-8');
