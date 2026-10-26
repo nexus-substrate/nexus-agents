@@ -776,6 +776,7 @@ describe('doctor-formatting', () => {
           resetTime: new Date(),
           utilizationPercent: tc.util,
           rateLimited: tc.util >= 100,
+          // eslint-disable-next-line @typescript-eslint/no-deprecated -- fixture supplies the required public compatibility alias
           exhausted: tc.util >= 100,
           quotaExhausted: false,
           // #4374: these cases assert the percentage banding, which only applies
@@ -808,6 +809,7 @@ describe('doctor-formatting', () => {
         resetTime: new Date(),
         utilizationPercent: 0,
         rateLimited: false,
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- fixture supplies the required public compatibility alias
         exhausted: false,
         quotaExhausted: false,
         observed: false,
@@ -832,6 +834,7 @@ describe('doctor-formatting', () => {
         resetTime: new Date(),
         utilizationPercent: 0,
         rateLimited: false,
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- fixture supplies the required public compatibility alias
         exhausted: false,
         quotaExhausted: false,
         observed: true,

@@ -160,6 +160,7 @@ export function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFuncti
   return {
     generateText: generateText as AiSdkFunctions['generateText'],
     streamText: streamText as AiSdkFunctions['streamText'],
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- preserve the exported legacy handle; execution uses generateText
     generateObject: generateObject as AiSdkFunctions['generateObject'],
     objectOutput: objectOutput as AiSdkFunctions['objectOutput'],
     jsonSchema: jsonSchema as AiSdkFunctions['jsonSchema'],

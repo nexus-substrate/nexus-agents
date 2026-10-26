@@ -98,6 +98,7 @@ describe('opted-in endpoint arms through production wiring (#7151)', () => {
       resetTime: new Date(),
       utilizationPercent: 0,
       rateLimited: false,
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- fixture supplies the required public compatibility alias
       exhausted: false,
       quotaExhausted: false,
       observed: false,
