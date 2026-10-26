@@ -52,6 +52,7 @@ import {
   type GatewaySlotResolution,
 } from '../adapters/gateway-family-slots.js';
 import { isCliDisabled } from './disabled-clis.js';
+import { delegateGatewaySlotOutcomeOwner } from './cli-outcome-ownership.js';
 import { lookupInTreeCapability } from '../config/model-config-helpers.js';
 import { isCliBinaryOnPath } from './cli-binary-on-path.js';
 import { createModelToCliAdapter } from './model-to-cli-adapter.js';
@@ -186,7 +187,9 @@ class GatewaySlotArm implements ICliAdapter {
       this.resolved = undefined;
       this.freshProbe = true;
     }
-    return result;
+    return target === this.deps.cliAdapter
+      ? delegateGatewaySlotOutcomeOwner(result, target, this)
+      : result;
   }
 
   /** Auth belongs to the selected target; absent external contract evidence remains unknown. */

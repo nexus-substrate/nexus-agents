@@ -48,3 +48,17 @@ export function consumeCliOutcomeOwner(
   owners.delete(result);
   return owner?.adapter === adapter && owner.breaker === breaker;
 }
+
+/** Only GatewaySlotArm's captured CLI forwarding site may delegate child evidence. */
+export function delegateGatewaySlotOutcomeOwner(
+  result: CliResult,
+  sourceChild: ICliAdapter,
+  wrapper: ICliAdapter
+): CliResult {
+  const owner = owners.get(result);
+  if (owner?.adapter !== sourceChild) return result;
+  owners.delete(result);
+  const fresh = { ...result };
+  owners.set(fresh, { adapter: wrapper, breaker: owner.breaker });
+  return fresh;
+}
