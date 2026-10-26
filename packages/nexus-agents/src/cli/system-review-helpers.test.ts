@@ -215,7 +215,7 @@ describe('an unmeasured security audit is not reported as clean (#4838)', () => 
     const output = capturePhase4(unmeasured);
 
     expect(output).not.toContain('No vulnerabilities found');
-    expect(output).toContain('did not run');
+    expect(output).toContain('did not produce a usable result');
   });
 
   it('still prints the clean verdict when the audit did run', () => {
@@ -236,10 +236,12 @@ describe('an unmeasured security audit is not reported as clean (#4838)', () => 
     // likely to be trusted later without the context that produced it.
     const body = createIssueBody(makeReviewResult({ security: unmeasured }));
 
-    expect(body).toContain('did not run');
+    expect(body).toContain('did not produce a usable result');
   });
 
   it('does not caveat the issue body when the audit did run', () => {
-    expect(createIssueBody(makeReviewResult({ security: clean }))).not.toContain('did not run');
+    expect(createIssueBody(makeReviewResult({ security: clean }))).not.toContain(
+      'did not produce a usable result'
+    );
   });
 });
