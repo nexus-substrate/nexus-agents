@@ -285,19 +285,33 @@ describe('formatComment (#4334)', () => {
 });
 
 describe('local pre-builder reduction provenance (#7604, TEST_FAKE unit I/O)', () => {
-  it.each(['ASCII', 'surrogate', 'uncapped'] as const)(
-    'persists actual single-shot reduction (%s) before a long title without claiming inspection',
+  it.each([
+    'ASCII',
+    'surrogate',
+    'uncapped',
+    'builder-comment',
+    'cap-comment-before',
+    'cap-comment-beyond',
+    'title-comment',
+    'description-comment',
+  ] as const)(
+    'persists actual single-shot provenance (%s) before a long title without claiming inspection',
     async (kind) => {
       const ledgerDir = mkdtempSync(join(tmpdir(), 'TEST_FAKE-local-cap-'));
       const ledgerPath = join(ledgerDir, 'records.jsonl');
       const header =
         'diff --git a/TEST_FAKE.txt b/TEST_FAKE.txt\n--- a/TEST_FAKE.txt\n+++ b/TEST_FAKE.txt\n@@ -1 +1,2 @@\n-old\n+';
-      const body =
-        kind === 'ASCII'
-          ? 'TEST_FAKE_PADDING '.repeat(3600)
-          : kind === 'uncapped'
-            ? 'TEST_FAKE short'
-            : 'é'.repeat(100) + 'a'.repeat(49999 - header.length - 100) + '😀';
+      const bodies = {
+        ASCII: 'TEST_FAKE_PADDING '.repeat(3600),
+        uncapped: 'TEST_FAKE short',
+        'title-comment': 'TEST_FAKE short',
+        'description-comment': 'TEST_FAKE short',
+        'builder-comment': '<!-- TEST_FAKE_BUILDER_REMOVAL -->',
+        'cap-comment-before': '<!-- TEST_FAKE_BUILDER_REMOVAL -->' + 'x'.repeat(51000),
+        'cap-comment-beyond': 'x'.repeat(51000) + '<!-- TEST_FAKE_BUILDER_REMOVAL -->',
+        surrogate: 'é'.repeat(100) + 'a'.repeat(49999 - header.length - 100) + '😀',
+      };
+      const body = bodies[kind];
       const full = header + body + '\n+TEST_FAKE_TAIL\n';
       let proposal = '';
       vi.resetModules();
@@ -328,8 +342,12 @@ describe('local pre-builder reduction provenance (#7604, TEST_FAKE unit I/O)', (
           ...real,
           fetchPrMeta: vi.fn(() =>
             Promise.resolve({
-              title: 'T'.repeat(600),
-              body: 'TEST_FAKE unit only',
+              title:
+                (kind === 'title-comment' ? '<!-- TEST_FAKE_BUILDER_REMOVAL -->' : '') +
+                'T'.repeat(600),
+              body:
+                'TEST_FAKE unit only' +
+                (kind === 'description-comment' ? '<!-- TEST_FAKE_BUILDER_REMOVAL -->' : ''),
               baseRef: 'TEST_FAKE_base',
               headRef: 'TEST_FAKE_head',
               baseSha: 'a'.repeat(40),
@@ -385,7 +403,7 @@ describe('local pre-builder reduction provenance (#7604, TEST_FAKE unit I/O)', (
         expect(records).toHaveLength(1);
         const record = records[0];
         if (record === undefined) throw new Error('Expected TEST_FAKE record');
-        if (kind === 'uncapped') {
+        if (full.length <= 50_000) {
           expect(record.summary).not.toContain('pre-builder');
           expect(proposal).toContain('TEST_FAKE_TAIL');
         } else {
@@ -398,6 +416,31 @@ describe('local pre-builder reduction provenance (#7604, TEST_FAKE unit I/O)', (
           expect(record.summary.slice(0, 500)).toContain('additional inspection UNMEASURED]');
           expect(proposal).toContain('[...truncated]');
           expect(proposal).not.toContain('TEST_FAKE_TAIL');
+        }
+        if (
+          [
+            'builder-comment',
+            'cap-comment-before',
+            'title-comment',
+            'description-comment',
+          ].includes(kind)
+        ) {
+          expect(record.summary).toContain(
+            'builder sanitization: 1 comments, 0 tags, 1 changed fields'
+          );
+          expect(record.summary).toContain('modified=true; incomplete=false');
+          expect(record.summary).toContain('additional inspection UNMEASURED');
+          expect(proposal).toContain('1 HTML comment(s) were removed');
+          expect(proposal).not.toContain('TEST_FAKE_BUILDER_REMOVAL');
+        }
+        if (['uncapped', 'cap-comment-beyond'].includes(kind)) {
+          expect(record.summary).toContain(
+            'builder sanitization: 0 comments, 0 tags, 0 changed fields'
+          );
+          expect(record.summary).toContain('modified=false; incomplete=false');
+        }
+        if (['cap-comment-before', 'cap-comment-beyond'].includes(kind)) {
+          expect(record.summary.slice(0, 500)).toContain('additional inspection UNMEASURED]');
         }
         if (kind === 'surrogate') {
           expect(full.charCodeAt(49999)).toBe(0xd83d);

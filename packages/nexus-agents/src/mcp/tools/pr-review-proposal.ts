@@ -21,6 +21,21 @@ import { fenceExternalContent } from '../../dogfooding/pr-diff-fence.js';
 import { FINDINGS_FORMAT_INSTRUCTIONS } from './pr-review-findings.js';
 import type { PrReviewInput } from './pr-review-tool.js';
 
+/** Builder-own aggregate facts over title, description, diff and context, not inspection. */
+export interface BuilderSanitizationFacts {
+  readonly commentsRemoved: number;
+  readonly tagsRemoved: number;
+  readonly modifiedCount: number;
+  readonly wasModified: boolean;
+  readonly sanitizationIncomplete: boolean;
+}
+
+/** Internal result seam; the legacy public string API delegates to this single engine. */
+interface PrReviewProposalResult {
+  readonly proposal: string;
+  readonly builderSanitization: BuilderSanitizationFacts;
+}
+
 /**
  * The removal disclosure a voter reads, or `''` when nothing was removed.
  *
@@ -122,7 +137,7 @@ function sanitizationNote(
  * it, and it strips rather than refuses so the script paths degrade instead of
  * failing shut. Double-sanitizing on the MCP path is idempotent and harmless.
  */
-export function buildPrReviewProposal(
+export function buildPrReviewProposalResult(
   input: Pick<
     PrReviewInput,
     'prTitle' | 'prDescription' | 'prDiff' | 'repoContext' | 'baseRef' | 'headRef'
@@ -140,7 +155,7 @@ export function buildPrReviewProposal(
     fields: 0,
     tags: 0,
   }
-): string {
+): PrReviewProposalResult {
   // Every field below is attacker-controlled on the CI path: title, body and
   // diff all come straight from `github.event.pull_request.*`.
   const sanitizeResult = sanitizeToolInput({
@@ -185,5 +200,34 @@ export function buildPrReviewProposal(
   parts.push(`- **ABSTAIN** if the diff is outside your role's concerns.\n`);
   parts.push(`\n${FINDINGS_FORMAT_INSTRUCTIONS}\n`);
 
-  return parts.join('');
+  return {
+    proposal: parts.join(''),
+    builderSanitization: copyBuilderFacts(sanitizeResult),
+  };
+}
+
+/** Copy only this builder's measured stage, excluding sanitized payload and inherited counts. */
+function copyBuilderFacts(facts: BuilderSanitizationFacts): BuilderSanitizationFacts {
+  return Object.freeze({
+    commentsRemoved: facts.commentsRemoved,
+    tagsRemoved: facts.tagsRemoved,
+    modifiedCount: facts.modifiedCount,
+    wasModified: facts.wasModified,
+    sanitizationIncomplete: facts.sanitizationIncomplete,
+  });
+}
+
+/** Legacy string contract, including the optional inherited-removal argument. */
+export function buildPrReviewProposal(
+  input: Pick<
+    PrReviewInput,
+    'prTitle' | 'prDescription' | 'prDiff' | 'repoContext' | 'baseRef' | 'headRef'
+  >,
+  removedBefore: { comments: number; fields: number; tags: number } = {
+    comments: 0,
+    fields: 0,
+    tags: 0,
+  }
+): string {
+  return buildPrReviewProposalResult(input, removedBefore).proposal;
 }
