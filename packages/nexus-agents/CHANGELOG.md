@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 14.0.4
+
+### Patch Changes
+
+- [#7607](https://github.com/nexus-substrate/nexus-agents/pull/7607) [`ddc2095`](https://github.com/nexus-substrate/nexus-agents/commit/ddc209542969af8515e8424e45f93905e445d81c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve known local PR-review pre-builder diff-prefix reduction in the hash-covered review summary, including separate JavaScript code-unit and UTF-8 extents. Additional repository inspection remains unmeasured; absent inspection coverage remains unspecified.
+
 ## 14.0.3
 
 ### Patch Changes
