@@ -412,6 +412,55 @@ describe('working tree is part of the scan (#6139)', () => {
   const DEAD = join(SRC, 'dead.ts');
 
   it.each([
+    { label: 'production-only', production: true, testSupport: false, accepted: 1 },
+    { label: 'test-support-only', production: false, testSupport: true, accepted: 1 },
+    { label: 'mixed', production: true, testSupport: true, accepted: 2 },
+  ])(
+    'reports neutral accepted-consumer counts for $label imports',
+    ({ production, testSupport, accepted }) => {
+      const fx = buildFixture();
+      try {
+        if (production) {
+          fx.write(join(SRC, 'feature.ts'), 'export const feature = 1;\n');
+          fx.write(
+            join(SRC, 'use.ts'),
+            "import { keep } from './foo.js';\nimport { feature } from './feature.js';\nconsole.log(keep, feature);\n"
+          );
+        }
+        if (testSupport) {
+          fx.write(join(SRC, 'testing', 'helper.ts'), 'export const helper = 1;\n');
+          fx.write(
+            join(SRC, 'testing', 'helper.test.ts'),
+            "import { helper } from './helper.js';\nconsole.log(helper);\n"
+          );
+        }
+        const { status, output } = runGate(fx.root);
+        expect(status).toBe(0);
+        expect(output).toContain(`Producer/consumer check: ${String(accepted)} new file(s)`);
+        expect(output).toContain(
+          `Producer/consumer check: ${String(accepted)} new file(s) have accepted consumers — OK.`
+        );
+        expect(output).not.toContain('have production consumers');
+      } finally {
+        rmSync(fx.root, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('still rejects test support with no consumer through the actual CLI', () => {
+    const fx = buildFixture();
+    try {
+      fx.write(join(SRC, 'testing', 'unused-helper.ts'), 'export const unusedHelper = 1;\n');
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(1);
+      expect(output).toContain('Producer-without-consumer detected');
+      expect(output).toContain('testing/unused-helper.ts');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
     ['scripts/operator.ts', 0],
     ['scripts/operator.test.ts', 1],
     ['scripts/operator.spec.ts', 1],
@@ -428,7 +477,7 @@ describe('working tree is part of the scan (#6139)', () => {
       expect(status).toBe(expectedStatus);
       expect(output).toMatch(/scanned 1 added, 0 modified source files since main/);
       if (expectedStatus === 0) {
-        expect(output).toMatch(/1 new file\(s\) have production consumers/);
+        expect(output).toMatch(/1 new file\(s\) have accepted consumers/);
       } else {
         expect(output).toMatch(/Producer-without-consumer detected/);
       }

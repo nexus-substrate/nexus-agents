@@ -388,7 +388,7 @@ export interface CheckResult {
   preexistingDeadExports: DeadExport[];
   /** New source files that opted out via the marker. */
   optedOut: string[];
-  /** New source files with at least one production consumer. */
+  /** New source files with at least one accepted consumer. */
   consumed: { file: string; consumers: string[] }[];
   /** Files skipped (tests, barrels, declarations). */
   skipped: string[];
@@ -451,7 +451,7 @@ export function checkAddedFiles(files: string[]): CheckResult {
 function logSummary(result: CheckResult): void {
   if (result.consumed.length > 0) {
     console.log(
-      `Producer/consumer check: ${String(result.consumed.length)} new file(s) have production consumers — OK.`
+      `Producer/consumer check: ${String(result.consumed.length)} new file(s) have accepted consumers — OK.`
     );
   }
   if (result.optedOut.length > 0) {
