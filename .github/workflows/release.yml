@@ -18,14 +18,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false # Never cancel a release mid-flight
 jobs:
-  # Pre-publish install smoke (#6770, option B). The Version Packages PR is
-  # UNGATED BY CONSTRUCTION: changesets/action opens it with GITHUB_TOKEN, and
-  # GitHub starts no workflow for an event that token created, so every
-  # pull_request check on it (npm-verify.yml included) ends with zero jobs and
-  # an empty status rollup. That stays true until #6788 (option A: open the PR
-  # with an App/PAT token, an owner action) lands. Until then, THIS job is the
-  # only install check that runs before a version reaches npm, and it gates the
-  # publish, not the PR.
+  # Pre-publish install smoke (#6770, option B). Version Packages PRs can have
+  # existing approval-required pull_request runs. An empty check rollup is
+  # UNMEASURED; diagnose the exact-head workflow inventory before approving
+  # trusted existing runs (docs/ops/release-changeset-race.md, #7650).
+  # This job independently gates publishing, whether or not the PR's workflow
+  # execution has been approved; execution approval does not make CI green.
   #
   # It runs on every push to main but only SMOKES when this run will publish.
   # Both publish routes in the release job share one precondition: zero
