@@ -10,7 +10,6 @@
 import { z } from 'zod';
 import { VotingStrategySchema } from './consensus-vote-types.js';
 import { dispatchFieldDefaultSync, modeEnumErrorNamingDispatch } from './async-dispatch-input.js';
-import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '../sdk-types.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
@@ -33,6 +32,7 @@ import { measuredTrustTier } from '../middleware/request-context.js';
 import type { TrustTier } from '../../security/trust-types.js';
 import { TaskSourceTrustTierSchema } from './task-source-trust-tier.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
+import { resolveDevPipelineInput } from './dev-pipeline-input.js';
 import {
   toolStructuredError,
   structuredToolSuccess,
@@ -203,35 +203,6 @@ export interface DevPipelineToolDeps extends BaseMcpToolDeps {
 // ============================================================================
 // Input Resolution
 // ============================================================================
-
-/**
- * Resolve task input from direct instructions or file.
- *
- * Async because plan files can be large and the previous synchronous read
- * blocked libuv for the duration, stalling concurrent MCP requests (#2354).
- */
-async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
-  if (input.task !== undefined && input.task.trim() !== '') {
-    return input.task;
-  }
-  if (input.planFile !== undefined) {
-    // Path traversal guard — restrict to the cwd subtree, following symlinks
-    // (security audit 2026-04-10).
-    const resolved = resolveInsideRoot(input.planFile);
-    if (resolved === null) {
-      throw new Error(`Path traversal denied: planFile must be within ${process.cwd()}`);
-    }
-    try {
-      return await fs.promises.readFile(resolved, 'utf-8');
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Error(`Plan file not found: ${resolved}`);
-      }
-      throw err;
-    }
-  }
-  throw new Error('Either task or planFile must be provided');
-}
 
 /**
  * Contain `workingDir` to the cwd subtree or the MCP client's declared
@@ -480,15 +451,28 @@ function parseHandlerInput(args: unknown): { input: DevPipelineInput } | { error
   }
 }
 
+/** Preserve existing input-error remediation alongside the structured refusal. */
+function inputFailureWithDispatchNote(error: ToolResult, dryRun: boolean): ToolResult {
+  return {
+    ...error,
+    content: error.content.map((item) => ({
+      ...item,
+      text: `${item.text} ${dispatchNoteFor(dryRun)}`,
+    })),
+  };
+}
+
 async function runDevPipelineHandler(
   args: unknown,
   logger: ILogger,
   trustTier?: string,
   auditLogger?: IAuditLogger,
-  inputSanitization: ReturnType<typeof measureInputSanitization> = {
-    inputSanitization: 'unmeasured',
-  }
+  inputContext: {
+    inputSanitization: ReturnType<typeof measureInputSanitization>;
+    requestContext?: HandlerContext['requestContext'] | undefined;
+  } = { inputSanitization: { inputSanitization: 'unmeasured' } }
 ): Promise<ToolResult> {
+  const { inputSanitization } = inputContext;
   const validated = parseHandlerInput(args);
   if ('error' in validated) return validated.error;
   const { input } = validated;
@@ -505,11 +489,17 @@ async function runDevPipelineHandler(
   try {
     // Sync prelude — fast: input resolution + stage wiring + option build.
     // Only the pipeline BODY backgrounds in async mode (#3726).
-    const taskText = await resolveTaskInput(input);
+    const acceptance = await resolveDevPipelineInput(input, {
+      logger,
+      trustTier,
+      auditLogger,
+      ...inputContext,
+    });
+    if (!acceptance.ok) return inputFailureWithDispatchNote(acceptance.error, input.dryRun);
+    const taskText = acceptance.value.projection.text;
     const stages = await createStages(input, trustTier, inputSanitization, auditLogger);
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
-    const hasOptions = Object.keys(pipelineOptions).length > 0;
-    const resolvedOptions = hasOptions ? pipelineOptions : undefined;
+    const resolvedOptions = Object.keys(pipelineOptions).length > 0 ? pipelineOptions : undefined;
     // #6305: the async dispatch passes `cancel_job`'s signal; the sync path
     // passes none, so its options are unchanged.
     const run = (signal?: AbortSignal): Promise<ToolResult> =>
@@ -623,7 +613,7 @@ export function registerDevPipelineTool(server: McpServer, deps: DevPipelineTool
         logger,
         ctx && measuredTrustTier(ctx.requestContext),
         deps.auditLogger,
-        measureInputSanitization(ctx)
+        { inputSanitization: measureInputSanitization(ctx), requestContext: ctx?.requestContext }
       ),
     { toolName: 'run_dev_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
