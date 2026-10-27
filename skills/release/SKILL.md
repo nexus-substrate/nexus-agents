@@ -46,7 +46,7 @@ The `pnpm changeset` workflow handles versioning, but the human-judgment gates b
 ### Pipeline health
 
 - [ ] Last 5 release runs on `main` succeeded (`gh run list --workflow=Release --limit 5`)
-- [ ] No release PR currently open (`gh pr list --search "version packages"`) — if one IS open, merge it FIRST (a stale version PR is how npm gets ahead of `main`); see "Avoid the publish race" below
+- [ ] Resolve any open release PR (`gh pr list --search "version packages"`) before tagging. Verify its current head, review and applicable CI before merging; retain the publish-race hold below. An empty check rollup is **UNMEASURED**: follow the [exact-head workflow diagnostic](../../docs/ops/release-changeset-race.md#diagnose-an-empty-version-packages-check-rollup), including REST run IDs, head/event, status and conclusion. Existing `action_required` runs may need authorized workflow execution approval; this is separate from native PR review, governor ratification and passing CI.
 - [ ] `npm view nexus-agents version` matches `packages/nexus-agents/package.json` — the `Detect npm-ahead version skew` step in `release.yml` also enforces this, but check before tagging
 - [ ] No changeset debt — every recent shippable-source PR shipped its own changeset (the `Changeset Presence` CI gate enforces this going forward)
 

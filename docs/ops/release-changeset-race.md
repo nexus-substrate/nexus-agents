@@ -156,13 +156,68 @@ The race is rare. To minimize the chance of triggering it:
 - **Never `workflow_dispatch` a publish from a non-`main` ref.** The `manual-publish` job's `Guard — main only` step now fails this, but the discipline still matters.
 - **Watch for the symptom early**: after merging a release PR, if `npm view nexus-agents version` still shows the old version after ~5 minutes, check for the skew. The `Detect publish-race version skew` step auto-recovers `package.json`-ahead; the `Detect npm-ahead version skew` step fails loudly on the inverse.
 
-## The Version Packages PR is ungated (#6770)
+## Diagnose an empty Version Packages check rollup
 
-No `pull_request` check evaluates the "Version Packages" PR. `changesets/action` opens it with `secrets.GITHUB_TOKEN`, and GitHub starts no workflow for an event that token created. Every `pull_request` workflow on that PR, `npm-verify.yml` included, ends `failure` with zero jobs. The status rollup is empty. A readiness check of the form "zero failures, zero pending" is vacuously true there. Treat an empty rollup on a version PR as **ungated**, not green.
+An empty PR check rollup is **UNMEASURED**, not evidence that CI passed or that no workflows exist. Check the exact head through the workflow-runs REST API before choosing a recovery action. This diagnostic assumes Bash, GitHub CLI (`gh`) with repository read access, and `jq`.
 
-This stays true until #6788 lands: the owner opens the PR with a GitHub App or PAT token (option A).
+GitHub documents an exception to `GITHUB_TOKEN` event suppression: token-created `pull_request` events of type `opened`, `synchronize` and `reopened` create approval-required workflow runs. Other token-created events retain their documented restrictions. See [GitHub's token-trigger rules](https://docs.github.com/en/actions/concepts/security/github_token) (retrieved 2026-10-26).
 
-Until then, the pre-publish gate lives in `release.yml`. The `publish-smoke` job runs before the `release` job on every push to `main`. It smokes only when the run will publish, which means zero non-empty pending changesets at the pushed commit and a `nexus-agents` or `nexus-memory` version that npm does not have yet. It packs the tarball the way `pnpm release` does (Node 24, npm 11, `pnpm build`, `scripts/stage-publish.ts`). It then installs the tarball in clean containers (`ignore-scripts`, `npm12-strict`, `pnpm`) through `.github/actions/tarball-smoke`, the same action `npm-verify.yml` uses. The smoke checks `--version`, `--help`, `doctor`, the MCP handshake, SQLite and the native grammars. A failure skips the `release` job, so nothing is published. When `nexus-memory` is ahead, the job also packs its tarball with `pnpm pack`, the packing its publish uses. It installs that tarball into a clean project and imports the entry point, which must export `getMemoryRegistry`. If `npm view` fails for either package, the job fails rather than skipping the smoke. The `manual-publish` `workflow_dispatch` job is not gated by this job.
+[ORIGINAL DATA] Release PR [#7646](https://github.com/nexus-substrate/nexus-agents/pull/7646), head `40afe06b7a1c5b0875eae3a3a69ee1319d0a9411`, had an empty rollup but eleven existing `pull_request` runs with conclusion `action_required`. Authorized approval started those existing runs without a new commit, reopening the PR or changing credentials ([example CI run](https://github.com/nexus-substrate/nexus-agents/actions/runs/40418959728), 2026-10-26; follow-up [#7650](https://github.com/nexus-substrate/nexus-agents/issues/7650)). This is a workflow execution hold, not a CI outage.
+
+### Read the exact-head inventory
+
+Replace `PR` with the current release PR. The [workflow-runs endpoint](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-repository) supports head and event filters. Paginate, then filter the returned head/event again and retain each run's lifecycle status and conclusion:
+
+```bash
+set -o pipefail
+REPO=nexus-substrate/nexus-agents
+PR=7646 # Replace with the current release PR.
+if ! HEAD_SHA=$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid); then
+  echo UNMEASURED
+  exit 1
+fi
+if ! RUN_PAGES=$(gh api --paginate "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100"); then
+  echo UNMEASURED
+  exit 1
+fi
+if ! printf '%s\n' "$RUN_PAGES" |
+  jq -s --arg head "$HEAD_SHA" '
+    if any(.[]; (.workflow_runs | type) != "array") then
+      error("unreadable run inventory")
+    else
+    [ .[] | .workflow_runs[] |
+      select(.head_sha == $head and .event == "pull_request") |
+      {id, name, head_sha, event, status, conclusion, html_url}
+    ] |
+    {diagnostic: (
+      if length == 0 or any(.[]; (.status | type) != "string") then "UNMEASURED"
+      elif any(.[]; .status == "completed" and .conclusion == "action_required")
+        then "WORKFLOW_EXECUTION_APPROVAL_REQUIRED"
+      else "OBSERVE_CHECK_RESULTS"
+      end
+    ), runs: .}
+    end
+  '; then
+  echo UNMEASURED
+  exit 1
+fi
+```
+
+Missing, unreadable or empty exact-head inventory remains UNMEASURED. `action_required` means execution approval is needed; queued or running jobs are pending. `OBSERVE_CHECK_RESULTS` is only a direction to inspect the listed results, never a readiness verdict. Check the current head again if it changes, and use the actual required checks and their results before merging. [`ci_health_check`](../reference/tools/ci_health_check.md) measures infrastructure activity; its healthy verdict does not establish PR readiness.
+
+### Approve only the existing trusted runs within your authority
+
+Verify the PR head, run `head_sha`, repository, workflow and source before approving execution. Run `ci_health_check` for the repository. Wait and recheck if the Actions status page reports degradation, outage or maintenance, or if its status is unavailable.
+
+If only the repository activity-window signal is degraded, its default 30-minute window and “could be wedge or quiet repo” evidence require diagnosis. Follow the [existing autonomous-rule wedge definition](../../.rules/autonomous.md#diagnose-first), “despite recent push events”, to check push/run coverage. Hold when a known recent push lacks its expected matching runs. A longer healthy window or stale public events does not prove coverage; unresolved evidence remains **UNMEASURED**.
+
+An authorized operator can use the PR's **Approve workflows to run** control. The [workflow-run approval endpoint](https://docs.github.com/en/rest/actions/workflow-runs#approve-a-workflow-run-for-a-fork-pull-request), `POST /repos/{owner}/{repo}/actions/runs/{run_id}/approve`, also started the measured runs above. Select a verified existing run ID; this procedure does not grant authority to execute arbitrary submitted code. A rejected request is not permission to change repository settings or credentials.
+
+Execution approval lets CI start. It supplies neither a native GitHub PR review nor governor-path owner ratification, and it does not make any check green. Re-read the head-specific checks after execution and wait for the applicable gates to pass. Do not substitute empty commits, closing/reopening the PR or a new workflow dispatch for diagnosing the existing runs.
+
+Closed [#5887](https://github.com/nexus-substrate/nexus-agents/issues/5887) already recorded approval-required version-PR runs. The jobless failures in [#6770](https://github.com/nexus-substrate/nexus-agents/issues/6770) remain historical evidence, not a universal event-suppression rule. An owner-managed App or personal access token remains an optional route for unattended execution ([#6788](https://github.com/nexus-substrate/nexus-agents/issues/6788)); it is not required to diagnose or approve the existing runs described here.
+
+The pre-publish gate remains in `release.yml`. The `publish-smoke` job runs before the `release` job on every push to `main`. It smokes only when the run will publish, which means zero non-empty pending changesets at the pushed commit and a `nexus-agents` or `nexus-memory` version that npm does not have yet. It packs the tarball the way `pnpm release` does (Node 24, npm 11, `pnpm build`, `scripts/stage-publish.ts`). It then installs the tarball in clean containers (`ignore-scripts`, `npm12-strict`, `pnpm`) through `.github/actions/tarball-smoke`, the same action `npm-verify.yml` uses. The smoke checks `--version`, `--help`, `doctor`, the MCP handshake, SQLite and the native grammars. A failure skips the `release` job, so nothing is published. When `nexus-memory` is ahead, the job also packs its tarball with `pnpm pack`, the packing its publish uses. It installs that tarball into a clean project and imports the entry point, which must export `getMemoryRegistry`. If `npm view` fails for either package, the job fails rather than skipping the smoke. The `manual-publish` `workflow_dispatch` job is not gated by this job.
 
 ## See also
 
