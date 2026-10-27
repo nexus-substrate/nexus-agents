@@ -1034,9 +1034,10 @@ async function runImplSecurityPhase(
 ): Promise<DevPipelineResult> {
   const { sid, qualityGateMode, limits, contentTier, checkpoint } = run;
   const implResult = await implementFreshTasks(tasks, stages, limits, checkpoint);
-  checkpoint.save({ type: 'implement', tasks: implResult.completedTasks });
-
   const { allTasksDone, taskStatus } = deriveTaskAggregate(tasks, implResult.completedTasks);
+  const incomplete = incompleteImplementationResult(planResult, tasks, implResult, taskStatus);
+  if (incomplete !== undefined) return incomplete;
+  checkpoint.save({ type: 'implement', tasks: implResult.completedTasks });
 
   const refusal = refuseUnsafeQualityGate({
     planResult,
@@ -1054,10 +1055,7 @@ async function runImplSecurityPhase(
   // security finding. In 'advisory' mode we record feedback but never fail.
   const qaGate = await runQualityGateStage(stages, qualityGateMode);
   // #6792: the gate ran scripts where the implement expert edited files.
-  const warnings =
-    qaGate.verdict === 'skip'
-      ? { warnings: [qaGate.feedback] }
-      : gateWorkspaceWarningFields(stages, qualityGateMode, implResult.totalIterations > 0);
+  const warnings = qualityGateWarnings(qaGate, stages, qualityGateMode, implResult.totalIterations);
   if (qualityGateMode === 'blocking' && !qaGate.passed) {
     const stopWarnings = { warnings: blockingQualityGateWarnings(qaGate, warnings.warnings) };
     return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, ...stopWarnings });
@@ -1078,6 +1076,30 @@ async function runImplSecurityPhase(
     ...securityNoteField(security),
     ...warnings,
   };
+}
+
+/** A thrown callback is incomplete execution, not a corrupted checkpoint. */
+function incompleteImplementationResult(
+  planResult: { plan: string; iterations: number },
+  tasks: PipelineTask[],
+  implResult: ImplLoopResult,
+  taskStatus: 'all_done' | 'partial' | 'none'
+): DevPipelineResult | undefined {
+  // No callbacks were expected for an empty task list; its existing aggregate verdict applies.
+  if (tasks.length === 0) return undefined;
+  if (implResult.completedTasks.length === tasks.length) return undefined;
+  return blockedAfterImplement({ planResult, tasks, implResult, taskStatus });
+}
+
+function qualityGateWarnings(
+  gate: QualityGateOutcome,
+  stages: DevPipelineStages,
+  mode: QualityGateMode,
+  iterations: number
+): Pick<DevPipelineResult, 'warnings'> {
+  return gate.verdict === 'skip'
+    ? { warnings: [gate.feedback] }
+    : gateWorkspaceWarningFields(stages, mode, iterations > 0);
 }
 
 /** A failed or skipped scan explains itself; a pass still discloses partial SAST or dependency coverage. */

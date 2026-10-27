@@ -213,18 +213,19 @@ export function createDecomposeStage({
       accessMode: 'read-only-analysis',
       acceptanceRequest: request,
     });
-    if (!r.success) {
-      emitStageEvent('decompose', 'failed', { error: 'Expert call unsuccessful' });
-      throw new Error('Decomposition failed: expert call unsuccessful');
-    }
-    const tasks = parseTasksFromResponse(r.text, plan);
-    emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
+    // Record the routed call even when its failed output cannot become tasks.
     recordOutcome({
       sessionId: config.sessionId,
       taskId: 'decompose',
       category: 'planning',
       ...outcomeFieldsFromBridge(r),
     });
+    if (!r.success) {
+      emitStageEvent('decompose', 'failed', { error: 'Expert call unsuccessful' });
+      throw new Error('Decomposition failed: expert call unsuccessful');
+    }
+    const tasks = parseTasksFromResponse(r.text, plan);
+    emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
     await postProgress(config, 'PM', `${String(tasks.length)} task(s)`);
     return tasks;
   };

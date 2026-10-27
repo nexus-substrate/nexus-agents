@@ -25,6 +25,8 @@ Before retrying, correct invalid input explicitly. Acceptance capture rejects in
 
 2. Distinguish a preflight block from a write failure. Invalid, unreadable, mismatched, or incomplete existing evidence stops before research, recall, stage execution, checkpoint append, or workspace creation. Those paths leave the checkpoint unchanged. `checkpoint-write-failed` means persistence failed; stage callbacks may already have run, and a failed append can leave a partial file. There is no automatic repair, rollback, or in-place conversion. A missing checkpoint file starts a fresh run; an existing empty file blocks. [Preflight and writer](../../packages/nexus-agents/src/pipeline/dev-pipeline-checkpoint.ts), [regression tests](../../packages/nexus-agents/src/pipeline/agent-executor-vote-recording.test.ts).
 
+   A checkpoint status alone does not identify when the run stopped. A binding change, missing approval persistence, or genuine task-definition mismatch discovered after a callback can also stop the run. Ordinary implementation callback failures instead retain the plan and `taskStatus` (`partial` or `none`), stop before security and the implementation checkpoint append, and do not request a new session as though the checkpoint were corrupt. [Implementation result handling](../../packages/nexus-agents/src/pipeline/dev-pipeline.ts).
+
 3. Keep the intended task or `planFile`, but use a new, previously unused ID:
 
    ```diff

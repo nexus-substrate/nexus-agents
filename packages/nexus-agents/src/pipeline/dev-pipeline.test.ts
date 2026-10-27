@@ -426,7 +426,10 @@ describe('runDevPipeline', () => {
 
     expect(result.completed).toBe(false);
     expect(result.taskStatus).toBe('partial');
-    expect(result.securityPassed).toBe(true);
+    expect(result.securityPassed).toBe(false);
+    expect(result.securityRan).toBe(false);
+    expect(stages.securityScan).not.toHaveBeenCalled();
+    expect(result.plan).toBe('Implementation plan: step 1, step 2, step 3');
   });
 
   it('#5645 empty-plan: zero tasks + security passes reports completed false and taskStatus none', async () => {
