@@ -53,11 +53,12 @@ import {
   getGateEnforcementMode,
   PolicyBlockedError,
 } from './policy-evaluator.js';
+import { cleanupCheckpoint } from './pipeline-checkpoint.js';
 import {
-  saveStageCheckpoint,
-  loadCheckpointState,
-  cleanupCheckpoint,
-} from './pipeline-checkpoint.js';
+  DevPipelineCheckpoint,
+  CheckpointStopError,
+  type CheckpointOutcome,
+} from './dev-pipeline-checkpoint.js';
 import type { PipelineCheckpointState } from './pipeline-checkpoint.js';
 import { TraceWriter } from './trace-writer.js';
 import { pipelineRunId } from './pipeline-run-id.js';
@@ -216,6 +217,8 @@ export interface DevPipelineResult {
     /** Tampered metadata refuses patch capture and returns an empty diff. */
     readonly status: 'no_changes' | 'changes' | 'tampered';
   };
+  /** Checkpoint qualification is separate from stage delivery observations. */
+  readonly checkpoint?: CheckpointOutcome;
   /**
    * Whether the pipeline completed successfully.
    *
@@ -574,19 +577,30 @@ export async function runDevPipeline(
   options?: DevPipelineOptions
 ): Promise<DevPipelineResult> {
   const sid = options?.sessionId;
-  const prior = sid !== undefined ? loadCheckpointState(sid) : null;
-
-  // Wire TraceWriter for execution replay (#1719)
-  const traceWriter = createTraceWriter(sid);
-
+  const bound = bindBuiltinRunAcceptance(task, stages, options);
+  let traceWriter: TraceWriter | null = null;
   try {
-    const bound = bindBuiltinRunAcceptance(task, stages, options);
+    const checkpoint = new DevPipelineCheckpoint(bound, sid);
+    traceWriter = createTraceWriter(sid);
     const gated = guardDevPipelineStages(bound, {
       signal: options?.signal,
       stageTimeoutMs: options?.stageTimeoutMs,
     });
-    const result = await runDevPipelineInner(task, gated, options, sid, prior);
-    return { ...result, acceptance: getAcceptanceSummary(gated) };
+    const result = await runDevPipelineInner(task, gated, options, sid, checkpoint);
+    return { ...result, checkpoint: checkpoint.outcome, acceptance: getAcceptanceSummary(gated) };
+  } catch (error: unknown) {
+    if (!(error instanceof CheckpointStopError)) throw error;
+    return {
+      completed: false,
+      plan: '',
+      tasks: [],
+      voteIterations: 0,
+      qaIterations: 0,
+      securityPassed: false,
+      securityRan: false,
+      checkpoint: { ...error.outcome, ...(sid !== undefined ? { sessionId: sid } : {}) },
+      acceptance: getAcceptanceSummary(bound),
+    };
   } finally {
     await flushTraceWriter(traceWriter);
   }
@@ -616,8 +630,9 @@ async function runDevPipelineInner(
   stages: DevPipelineStages,
   options: DevPipelineOptions | undefined,
   sid: string | undefined,
-  prior: PipelineCheckpointState | null
+  checkpoint: DevPipelineCheckpoint
 ): Promise<DevPipelineResult> {
+  const prior = checkpoint.prior;
   const { beliefMemory: bm, auditLogger, trustTier, sourceTrustTier } = options ?? {};
 
   // Phases 1-2: Research + Plan/Vote
@@ -625,7 +640,8 @@ async function runDevPipelineInner(
     task,
     stages,
     prior,
-    options
+    options,
+    checkpoint
   );
 
   // DRY RUN: stop after plan+vote, return partial result (#1717)
@@ -654,7 +670,7 @@ async function runDevPipelineInner(
 
   // Phase 3: Decompose
   const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, researchMaturity);
-  if (sid !== undefined) saveStageCheckpoint(sid, 'decompose', { type: 'decompose', tasks });
+  checkpoint.save({ type: 'decompose', tasks });
 
   // HARNESS MODE: stop after decompose, return tasks for external implementation (#1704)
   if (options?.mode === 'harness') {
@@ -669,6 +685,7 @@ async function runDevPipelineInner(
       qualityGateMode: options?.qualityGate ?? 'off',
       limits: resolveIterationLimits(options),
       contentTier: provenance.contentTier,
+      checkpoint,
     })
   );
 
@@ -910,7 +927,8 @@ async function runPlanningPhase(
   task: string,
   stages: DevPipelineStages,
   prior: PipelineCheckpointState | null,
-  options: DevPipelineOptions | undefined
+  options: DevPipelineOptions | undefined,
+  checkpoint: DevPipelineCheckpoint
 ): Promise<{
   planResult: PlanVoteResult;
   /** #3234: research-maturity of this run, attached to decomposed tasks. */
@@ -932,22 +950,21 @@ async function runPlanningPhase(
   const researchMaturity = deriveResearchMaturity(research.metadata);
   // #3234: persist text only (unchanged checkpoint shape — metadata is fresh-run
   // scoped and not resumable). plan/vote consume the text via research.text.
-  if (sid !== undefined) {
-    saveStageCheckpoint(sid, 'research', { type: 'research', text: research.text });
-  }
+  checkpoint.save({ type: 'research', text: research.text });
 
   const planContext = await assemblePlanContext(research.text, task, sid, bm);
   const planResult = await runPlanOrResume(prior, task, planContext, stages, {
     sid,
     limits: resolveIterationLimits(options),
+    checkpoint,
   });
-  if (sid !== undefined && planResult.planStatus === undefined) {
-    saveStageCheckpoint(sid, 'plan', {
+  if (planResult.planStatus === undefined) {
+    checkpoint.save({
       type: 'plan',
       text: planResult.plan,
       iterations: planResult.iterations,
     });
-    saveStageCheckpoint(sid, 'vote', {
+    checkpoint.save({
       type: 'vote',
       approved: true,
       iterations: planResult.iterations,
@@ -1012,12 +1029,12 @@ async function runImplSecurityPhase(
     qualityGateMode: QualityGateMode;
     limits: IterationLimits;
     contentTier: TrustTier | undefined;
+    checkpoint: DevPipelineCheckpoint;
   }
 ): Promise<DevPipelineResult> {
-  const { sid, qualityGateMode, limits, contentTier } = run;
-  const implResult = await implementQaLoop(tasks, stages, limits);
-  if (sid !== undefined)
-    saveStageCheckpoint(sid, 'implement', { type: 'implement', tasks: implResult.completedTasks });
+  const { sid, qualityGateMode, limits, contentTier, checkpoint } = run;
+  const implResult = await implementFreshTasks(tasks, stages, limits, checkpoint);
+  checkpoint.save({ type: 'implement', tasks: implResult.completedTasks });
 
   const { allTasksDone, taskStatus } = deriveTaskAggregate(tasks, implResult.completedTasks);
 
@@ -1046,7 +1063,7 @@ async function runImplSecurityPhase(
     return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, ...stopWarnings });
   }
 
-  const security = await runSecurityScanStage(stages, sid);
+  const security = await runSecurityScanStage(stages, sid, checkpoint);
 
   return {
     completed: allTasksDone && security.passed,
@@ -1109,7 +1126,8 @@ function blockedAfterImplement(input: {
 /** Scan after the quality gate and checkpoint the measured result. */
 async function runSecurityScanStage(
   stages: DevPipelineStages,
-  sid: string | undefined
+  sid: string | undefined,
+  checkpoint: DevPipelineCheckpoint
 ): ReturnType<DevPipelineStages['securityScan']> {
   const security = await withStep({ name: 'security-scan' }, async (ctx) => {
     const r = await stages.securityScan();
@@ -1117,7 +1135,7 @@ async function runSecurityScanStage(
     return r;
   });
   if (sid !== undefined) {
-    saveStageCheckpoint(sid, 'security', { type: 'security', passed: security.passed });
+    checkpoint.save({ type: 'security', passed: security.passed });
     if (security.passed) cleanupCheckpoint(sid);
   }
   return security;
@@ -1233,7 +1251,7 @@ async function runPlanOrResume(
   task: string,
   research: string,
   stages: DevPipelineStages,
-  run: { sid: string | undefined; limits: IterationLimits }
+  run: { sid: string | undefined; limits: IterationLimits; checkpoint: DevPipelineCheckpoint }
 ): Promise<PlanVoteResult> {
   const { sid: sessionId, limits } = run;
   if (prior?.plan !== undefined) {
@@ -1243,7 +1261,7 @@ async function runPlanOrResume(
       iterations: prior.voteIterations ?? 0,
     };
   }
-  return planVoteLoop(task, research, stages, sessionId, limits);
+  return planVoteLoop(task, research, stages, { sessionId, limits, checkpoint: run.checkpoint });
 }
 
 /** Result of the plan/revision loop, including terminal gate evidence. */
@@ -1295,9 +1313,9 @@ async function planVoteLoop(
   task: string,
   research: string,
   stages: DevPipelineStages,
-  sessionId: string | undefined,
-  limits: IterationLimits
+  run: { sessionId: string | undefined; limits: IterationLimits; checkpoint: DevPipelineCheckpoint }
 ): Promise<PlanVoteResult> {
+  const { sessionId, limits, checkpoint } = run;
   let feedback: string | undefined;
   let plan = '';
   let lastRejected: Extract<VoteResult, { kind: 'rejected' }> | undefined;
@@ -1333,6 +1351,7 @@ async function planVoteLoop(
     // was already in scope at the caller (#dev-pipeline runDevPipeline);
     // threaded through runPlanOrResume → planVoteLoop here.
     if (vote.kind === 'approved') {
+      checkpoint.accept(plan, vote);
       return buildApprovedPlanResult(plan, i, vote, sessionId);
     }
 
@@ -1586,4 +1605,14 @@ async function executeWithConcurrency<T>(
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => runNext());
   await Promise.all(workers);
   return results;
+}
+
+async function implementFreshTasks(
+  tasks: PipelineTask[],
+  stages: DevPipelineStages,
+  limits: IterationLimits,
+  checkpoint: DevPipelineCheckpoint
+): Promise<ImplLoopResult> {
+  if (tasks.length > 0) checkpoint.markFreshExecution();
+  return implementQaLoop(tasks, stages, limits);
 }

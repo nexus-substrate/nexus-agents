@@ -15,6 +15,16 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { createLogger } from '../core/index.js';
 import { ensureCheckpointDir } from '../agents/wave-checkpoint-persistence.js';
+import { previewNexusDataPath } from '../config/nexus-data-dir.js';
+import {
+  parseCheckpointBinding,
+  rebuildBoundCheckpoint,
+  validateBoundEntry,
+} from './pipeline-checkpoint-binding.js';
+import type {
+  PipelineCheckpointBinding,
+  BoundCheckpointState,
+} from './pipeline-checkpoint-binding.js';
 import type { PipelineTask, DevPipelineResult } from './dev-pipeline.js';
 
 const logger = createLogger({ component: 'pipeline-checkpoint' });
@@ -32,6 +42,7 @@ export interface PipelineCheckpointEntry {
   readonly stage: PipelineStage;
   readonly timestamp: string;
   readonly data: PipelineStageData;
+  readonly binding?: PipelineCheckpointBinding;
 }
 
 /** Discriminated union of stage data. */
@@ -120,18 +131,165 @@ export function loadCheckpointState(
   sessionId: string,
   customDir?: string
 ): PipelineCheckpointState | null {
-  if (!validateSessionId(sessionId)) return null;
+  const result = loadCheckpointDiagnostic(sessionId, customDir);
+  if (result.kind === 'legacy' || result.kind === 'bound') return result.state;
+  if (result.kind === 'invalid' && result.legacyState !== undefined) {
+    logger.warn('Recovered legacy checkpoint with malformed entries', {
+      sessionId,
+      reason: result.reason,
+    });
+    return result.legacyState;
+  }
+  return null;
+}
 
-  const filePath = getCheckpointPath(sessionId, customDir);
-  if (filePath === null || !fs.existsSync(filePath)) return null;
+export type CheckpointDiagnostic =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'legacy'; readonly state: PipelineCheckpointState }
+  | {
+      readonly kind: 'bound';
+      readonly state: PipelineCheckpointState;
+      readonly binding: BoundCheckpointState;
+    }
+  | {
+      readonly kind: 'invalid';
+      readonly reason:
+        | 'invalid-session'
+        | 'empty-checkpoint'
+        | 'invalid-encoding'
+        | 'malformed-checkpoint'
+        | 'checkpoint-lineage-mismatch';
+      readonly legacyState?: PipelineCheckpointState;
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'checkpoint-unreadable' | CheckpointPermissionFailure;
+    };
 
+type CheckpointPermissionFailure = 'checkpoint-permissions' | 'checkpoint-permissions-unmeasured';
+
+function errno(error: unknown): string | undefined {
+  return typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
+}
+
+/** POSIX evidence only: other platforms must not claim a measured owner/mode guarantee. */
+function permissionFailure(stat: fs.Stats): CheckpointPermissionFailure | undefined {
+  if (process.platform === 'win32' || typeof process.getuid !== 'function')
+    return 'checkpoint-permissions-unmeasured';
+  if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o777) !== 0o600)
+    return 'checkpoint-permissions';
+  return undefined;
+}
+
+/** One descriptor read, no mkdir, fatal decoding, and no permissive recovery of bound data. */
+export function loadCheckpointDiagnostic(
+  sessionId: string,
+  customDir?: string
+): CheckpointDiagnostic {
+  if (!validateSessionId(sessionId)) return { kind: 'invalid', reason: 'invalid-session' };
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.trim().split('\n').filter(Boolean);
-    return rebuildState(lines);
-  } catch (error) {
-    logger.debug('Failed to load checkpoints', { error: String(error) });
-    return null;
+    const directory =
+      customDir === undefined ? previewNexusDataPath('checkpoints') : path.resolve(customDir);
+    const { stat, bytes } = readCheckpointBytes(
+      path.join(directory, `pipeline-${sessionId}.jsonl`)
+    );
+    let text: string;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    } catch {
+      return { kind: 'invalid', reason: 'invalid-encoding' };
+    }
+    const result = diagnoseContent(text, sessionId);
+    const permission = result.kind === 'bound' ? permissionFailure(stat) : undefined;
+    return permission === undefined ? result : { kind: 'unavailable', reason: permission };
+  } catch (error: unknown) {
+    return errno(error) === 'ENOENT'
+      ? { kind: 'absent' }
+      : { kind: 'unavailable', reason: 'checkpoint-unreadable' };
+  }
+}
+
+function readCheckpointBytes(file: string): { stat: fs.Stats; bytes: Buffer } {
+  const fd = fs.openSync(
+    file,
+    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK
+  );
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) throw new Error('Checkpoint is not a regular file');
+    return { stat, bytes: fs.readFileSync(fd) };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+type BoundCheckpointWriteResult =
+  | { readonly status: 'saved' }
+  | { readonly status: 'invalid'; readonly reason: 'invalid-bound-entry' }
+  | {
+      readonly status: 'unavailable';
+      readonly reason:
+        | CheckpointPermissionFailure
+        | 'checkpoint-directory-unavailable'
+        | 'checkpoint-write-failed';
+    };
+
+/** Validate before creating anything; an unsafe existing file is never chmodded or repaired. */
+export function saveBoundStageCheckpoint(input: {
+  readonly sessionId: string;
+  readonly stage: PipelineStage;
+  readonly data: PipelineStageData;
+  readonly binding: PipelineCheckpointBinding;
+  readonly customDir?: string;
+}): BoundCheckpointWriteResult {
+  const binding = parseCheckpointBinding(input.binding);
+  const parsed = BoundCheckpointEntrySchema.safeParse({
+    sessionId: input.sessionId,
+    stage: input.stage,
+    data: input.data,
+    binding: input.binding,
+    timestamp: new Date().toISOString(),
+  });
+  if (!validateSessionId(input.sessionId) || !binding.ok || !parsed.success)
+    return { status: 'invalid', reason: 'invalid-bound-entry' };
+  const entry = { ...parsed.data, binding: binding.value } as PipelineCheckpointEntry;
+  if (!validateBoundEntry(entry)) return { status: 'invalid', reason: 'invalid-bound-entry' };
+  if (process.platform === 'win32' || typeof process.getuid !== 'function')
+    return { status: 'unavailable', reason: 'checkpoint-permissions-unmeasured' };
+  try {
+    const directory = ensureCheckpointDir(input.customDir);
+    if (!directory.ok) return { status: 'unavailable', reason: 'checkpoint-directory-unavailable' };
+    return appendBoundEntry(path.join(directory.value, `pipeline-${input.sessionId}.jsonl`), entry);
+  } catch {
+    return { status: 'unavailable', reason: 'checkpoint-write-failed' };
+  }
+}
+
+function appendBoundEntry(
+  file: string,
+  entry: PipelineCheckpointEntry
+): BoundCheckpointWriteResult {
+  const fd = fs.openSync(
+    file,
+    fs.constants.O_WRONLY |
+      fs.constants.O_APPEND |
+      fs.constants.O_CREAT |
+      fs.constants.O_NOFOLLOW |
+      fs.constants.O_NONBLOCK,
+    0o600
+  );
+  try {
+    const permission = permissionFailure(fs.fstatSync(fd));
+    if (permission !== undefined) return { status: 'unavailable', reason: permission };
+    fs.appendFileSync(fd, JSON.stringify(entry) + '\n');
+    return { status: 'saved' };
+  } finally {
+    fs.closeSync(fd);
   }
 }
 
@@ -178,52 +336,76 @@ const PipelineCheckpointEntrySchema = z.object({
   data: PipelineStageDataSchema,
 });
 
-/** Rebuild pipeline state from JSONL entries. Skipped malformed lines are
- *  counted and reported at warn level (closes #2981 — was previously silent). */
-function rebuildState(lines: string[]): PipelineCheckpointState {
-  const state: {
-    research?: string;
-    plan?: string;
-    voteIterations?: number;
-    tasks?: readonly PipelineTask[];
-    implementedTasks?: readonly PipelineTask[];
-    securityPassed?: boolean;
-    lastCompletedStage?: PipelineStage;
-  } = {};
+// Reuse the same stage schemas, but recognized new-format envelopes may not discard fields.
+const BoundCheckpointEntrySchema = PipelineCheckpointEntrySchema.extend({
+  binding: z.unknown(),
+  data: z.union(PipelineStageDataSchema.options.map((schema) => schema.strict())),
+}).strict();
 
-  let skippedCount = 0;
-  let firstSkipReason: string | undefined;
+/** Diagnose once; only legacy callers may project partial recovery, never strict bound resumes. */
+function diagnoseContent(text: string, sessionId: string): CheckpointDiagnostic {
+  const lines = text.trim().split('\n').filter(Boolean);
+  if (lines.length === 0) return { kind: 'invalid', reason: 'empty-checkpoint', legacyState: {} };
+  const { entries, invalid, recognizedBound } = parseHistory(lines, sessionId);
+  const state: Record<string, unknown> = {};
+  for (const entry of entries) applyEntry(state, entry);
+  if (invalid || (recognizedBound && entries.some((entry) => entry.binding === undefined))) {
+    return {
+      kind: 'invalid',
+      reason: 'malformed-checkpoint',
+      ...(!recognizedBound ? { legacyState: state } : {}),
+    };
+  }
+  if (!recognizedBound) return { kind: 'legacy', state };
+  const bound = rebuildBoundCheckpoint(entries);
+  return bound.ok
+    ? { kind: 'bound', state, binding: bound.value }
+    : { kind: 'invalid', reason: 'checkpoint-lineage-mismatch' };
+}
 
+function parseHistory(
+  lines: readonly string[],
+  sessionId: string
+): {
+  entries: PipelineCheckpointEntry[];
+  invalid: boolean;
+  recognizedBound: boolean;
+} {
+  const entries: PipelineCheckpointEntry[] = [];
+  let invalid = false;
+  let recognizedBound = lines.some((line) => /"binding"\s*(?::|$)/.test(line));
   for (const line of lines) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch (error) {
-      skippedCount++;
-      firstSkipReason ??= `JSON.parse failed: ${error instanceof Error ? error.message : String(error)}`;
+    const parsed = parseEntry(line);
+    recognizedBound ||= parsed.recognizedBound;
+    if (parsed.entry === undefined) {
+      invalid = true;
       continue;
     }
-    const result = PipelineCheckpointEntrySchema.safeParse(parsed);
-    if (!result.success) {
-      skippedCount++;
-      firstSkipReason ??= `schema validation failed: ${result.error.message}`;
-      continue;
-    }
-    // Cast tasks[] back to readonly PipelineTask[] — the schema captured them
-    // as unknown[] because the persistence layer doesn't narrow them.
-    applyEntry(state, result.data as unknown as PipelineCheckpointEntry);
+    entries.push(parsed.entry);
+    invalid ||=
+      parsed.entry.sessionId !== sessionId || parsed.entry.stage !== parsed.entry.data.type;
   }
+  return { entries, invalid, recognizedBound };
+}
 
-  if (skippedCount > 0) {
-    logger.warn('Skipped malformed checkpoint lines during state rebuild', {
-      skippedCount,
-      totalLines: lines.length,
-      firstSkipReason,
-      recovered: state.lastCompletedStage,
-    });
+function parseEntry(line: string): { entry?: PipelineCheckpointEntry; recognizedBound: boolean } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(line);
+  } catch {
+    return { recognizedBound: false };
   }
-
-  return state;
+  const recognizedBound = typeof raw === 'object' && raw !== null && 'binding' in raw;
+  const parsed = (
+    recognizedBound ? BoundCheckpointEntrySchema : PipelineCheckpointEntrySchema
+  ).safeParse(raw);
+  if (!parsed.success) return { recognizedBound };
+  const base = parsed.data as unknown as PipelineCheckpointEntry;
+  if (!recognizedBound) return { entry: base, recognizedBound };
+  const binding = parseCheckpointBinding((raw as { binding: unknown }).binding);
+  return binding.ok
+    ? { entry: { ...base, binding: binding.value }, recognizedBound }
+    : { recognizedBound };
 }
 
 /** Apply a single checkpoint entry to the state accumulator. */

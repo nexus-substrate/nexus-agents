@@ -1203,6 +1203,26 @@ describe('run_dev_pipeline path containment', () => {
 
 // #7297: text-only MCP callers need the reason; metadata retains full evidence.
 describe('run_dev_pipeline failure text (#7297)', () => {
+  it('reports checkpoint recovery in text and structured metadata without a vote claim', async () => {
+    const pipelineResult = {
+      ...PIPELINE_RESULT,
+      completed: false,
+      securityRan: false,
+      checkpoint: {
+        status: 'blocked',
+        reason: 'binding-mismatch',
+        recovery: 'new-session',
+        sessionId: 'old-session',
+      } as const,
+    };
+    runDevPipelineMock.mockResolvedValueOnce(pipelineResult);
+    const result = await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('new sessionId');
+    expect(JSON.stringify(result._meta)).toContain('binding-mismatch');
+    expect(JSON.stringify(result._meta)).toContain('old-session');
+  });
+
   it.each([
     {
       fields: { securityRan: true, securityNote: 'Critical SQL injection' },

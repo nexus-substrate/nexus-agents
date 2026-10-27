@@ -19,6 +19,7 @@ export function buildStructuredOutput(
     // a random demo panel can never pass as a real decision.
     ...(simulated ? { simulated: true } : {}),
     completed: result.completed,
+    ...checkpointField(result),
     ...(result.acceptance !== undefined ? { acceptance: result.acceptance } : {}),
     ...changesField(result),
     // Kept for compatibility: `false` here is NOT a verdict unless `securityRan`
@@ -120,4 +121,15 @@ export function inputFailureWithDispatchNote(error: ToolResult, note: string): T
     ...error,
     content: error.content.map((item) => ({ ...item, text: `${item.text} ${note}` })),
   };
+}
+
+function checkpointField(result: DevPipelineResult): Pick<DevPipelineResult, 'checkpoint'> {
+  return result.checkpoint === undefined ? {} : { checkpoint: result.checkpoint };
+}
+
+export function describeCheckpointFailure(result: DevPipelineResult): string | undefined {
+  if (result.checkpoint?.status === 'blocked' || result.checkpoint?.status === 'unavailable') {
+    return `Checkpoint ${result.checkpoint.status}: ${result.checkpoint.reason}. Start a new run with a new sessionId.`;
+  }
+  return undefined;
 }

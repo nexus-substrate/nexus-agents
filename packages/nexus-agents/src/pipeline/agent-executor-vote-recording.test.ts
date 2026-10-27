@@ -1,3 +1,10 @@
+import * as workspace from './dev-pipeline-workspace.js';
+import * as securityGate from './security-gate.js';
+import { DevPipelineCheckpoint, CheckpointStopError } from './dev-pipeline-checkpoint.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+import * as checkpointStore from './pipeline-checkpoint.js';
+import * as expertBridge from './expert-bridge.js';
+import { buildStructuredOutput } from '../mcp/tools/dev-pipeline-output.js';
 import { captureAcceptanceContext } from './acceptance-context.js';
 import { getBuiltinVoteEvidence, getAcceptanceSummary } from './acceptance-binding.js';
 import { reconstructPlanVoteProposal } from './plan-vote-proposal.js';
@@ -214,6 +221,292 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     expect(records[0]?.proposal).toBe(proposal.value.slice(0, 500) + '...');
     expect(records[0]?.proposal).not.toContain('Z');
     expect(records[0]?.proposalHash).toBe(hashProposal(proposal.value));
+  });
+
+  it('resumes an actual bound approval without another vote or duplicate checkpoint append', async () => {
+    const options = {
+      sessionId: 'strict-resume',
+      dryRun: true,
+      researchOverride: 'x'.repeat(999) + ' private tail',
+    };
+    const first = await runDevPipeline('Bound task', createAgentStages(), options);
+    expect(first.checkpoint?.status).toBe('fresh');
+    const file = join(directory, 'checkpoints', 'pipeline-strict-resume.jsonl');
+    const before = readFileSync(file, 'utf8');
+    const calls = vi.spyOn(expertBridge, 'executeExpert');
+    const second = await runDevPipeline('Bound task', createAgentStages(), options);
+    expect(second.checkpoint).toMatchObject({
+      status: 'verified',
+      voteRecordId: first.planVoteRecordId,
+    });
+    expect(second.planVoteDecision).toBeUndefined();
+    expect(calls).not.toHaveBeenCalled();
+    expect(readVoteRecords(ledger).records).toHaveLength(1);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    expect(JSON.stringify(buildStructuredOutput(second, false))).not.toContain('private tail');
+  });
+
+  it('blocks a different current baseline and missing ledger before any stage or append', async () => {
+    const options = { sessionId: 'strict-changed', dryRun: true, researchOverride: 'Research' };
+    await runDevPipeline('Bound task', createAgentStages(), options);
+    const file = join(directory, 'checkpoints', 'pipeline-strict-changed.jsonl');
+    const before = readFileSync(file, 'utf8');
+    const calls = vi.spyOn(expertBridge, 'executeExpert');
+    const changed = await runDevPipeline('Different task', createAgentStages(), options);
+    expect(changed.checkpoint).toMatchObject({ status: 'blocked', reason: 'binding-mismatch' });
+    writeFileSync(ledger, '');
+    const missing = await runDevPipeline('Bound task', createAgentStages(), options);
+    expect(missing.checkpoint).toMatchObject({
+      status: 'unavailable',
+      reason: 'approval-unavailable',
+    });
+    expect(calls).not.toHaveBeenCalled();
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('does not turn a bound approved vote without persisted proof into a successful dry run', async () => {
+    vi.spyOn(voteRecording, 'recordAuthenticVote').mockResolvedValueOnce({
+      persisted: false,
+      reason: 'write-failed',
+      detail: 'TEST failure',
+    });
+    const result = await runDevPipeline('Bound task', createAgentStages(), {
+      sessionId: 'missing-proof',
+      dryRun: true,
+      researchOverride: 'Research',
+    });
+    expect(result).toMatchObject({
+      completed: false,
+      securityRan: false,
+      checkpoint: {
+        status: 'unavailable',
+        reason: 'approval-unavailable',
+        recovery: 'new-session',
+      },
+    });
+    expect(result.dryRun).toBeUndefined();
+    expect(checkpointStore.loadCheckpointState('missing-proof')?.plan).toBeUndefined();
+  });
+
+  it('stops before planning when the bound research append fails', async () => {
+    vi.spyOn(checkpointStore, 'saveBoundStageCheckpoint').mockReturnValueOnce({
+      status: 'unavailable',
+      reason: 'checkpoint-write-failed',
+    });
+    const calls = vi.spyOn(expertBridge, 'executeExpert');
+    const result = await runDevPipeline('Bound task', createAgentStages(), {
+      sessionId: 'write-failure',
+      researchOverride: 'Research',
+    });
+    expect(result.checkpoint).toMatchObject({
+      status: 'unavailable',
+      reason: 'checkpoint-write-failed',
+    });
+    expect(calls).not.toHaveBeenCalled();
+    expect(readVoteRecords(ledger).records).toHaveLength(0);
+  });
+
+  it('rejects a cloned approved vote instead of inferring host evidence from its fields', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'task', source: 'Bound task' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages({ acceptance: snapshot.value });
+    const vote = await stages.vote('Measured plan', '');
+    const checkpoint = new DevPipelineCheckpoint(stages);
+    expect(() => {
+      checkpoint.accept('Measured plan', { ...vote });
+    }).toThrow(CheckpointStopError);
+    expect(() => {
+      checkpoint.accept('Measured plan', vote);
+    }).not.toThrow();
+  });
+
+  it.each(['plan', 'vote', 'decompose', 'implement', 'security'] as const)(
+    'surfaces a failed %s append without falling back to legacy writes',
+    async (stage) => {
+      const snapshot = captureAcceptanceContext({ kind: 'task', source: 'Bound task' });
+      if (!snapshot.ok) throw snapshot.error;
+      const stages = createAgentStages({ acceptance: snapshot.value });
+      const vote = await stages.vote('Measured plan', '');
+      const checkpoint = new DevPipelineCheckpoint(stages, 'write-stages');
+      checkpoint.accept('Measured plan', vote);
+      if (stage === 'implement') checkpoint.save({ type: 'decompose', tasks: [] });
+      const legacy = vi.spyOn(checkpointStore, 'saveStageCheckpoint');
+      const writer = vi.spyOn(checkpointStore, 'saveBoundStageCheckpoint').mockReturnValueOnce({
+        status: 'unavailable',
+        reason: 'checkpoint-write-failed',
+      });
+      const data =
+        stage === 'plan'
+          ? { type: stage, text: 'Measured plan', iterations: 1 }
+          : stage === 'vote'
+            ? { type: stage, approved: true, iterations: 1 }
+            : stage === 'security'
+              ? { type: stage, passed: true }
+              : { type: stage, tasks: [] };
+      expect(() => {
+        checkpoint.save(data);
+      }).toThrow(CheckpointStopError);
+      expect(writer).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ stage }));
+      expect(legacy).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([false, true])(
+    'treats stored implementation as history, with terminal=%s',
+    async (terminal) => {
+      const snapshot = captureAcceptanceContext({ kind: 'task', source: 'Bound task' });
+      if (!snapshot.ok) throw snapshot.error;
+      const stages = createAgentStages({ acceptance: snapshot.value });
+      const options = { sessionId: 'execution-history', researchOverride: 'Research' };
+      await runDevPipeline('Bound task', stages, { ...options, dryRun: true });
+      const coordinator = new DevPipelineCheckpoint(stages, options.sessionId);
+      const task = {
+        id: 'history',
+        title: 'Task',
+        description: 'Do work',
+        assignedTo: 'coder' as const,
+        status: 'pending' as const,
+      };
+      coordinator.save({ type: 'decompose', tasks: [task] });
+      coordinator.save({
+        type: 'implement',
+        tasks: [{ ...task, status: 'done', implementation: 'HISTORICAL_ONLY' }],
+      });
+      if (terminal) coordinator.save({ type: 'security', passed: false });
+      vi.spyOn(workspace, 'withDevPipelineWorkspace').mockImplementation(async (bound, body) =>
+        body(bound)
+      );
+      const experts = vi.spyOn(expertBridge, 'executeExpert').mockResolvedValue({
+        success: true,
+        text: 'PASS',
+        expertType: 'code',
+        cli: 'codex',
+        durationMs: 1,
+      });
+      let implementationEntries = 0;
+      const scan = vi.spyOn(securityGate, 'checkSecurityScan').mockReturnValue(() => {
+        const file = join(directory, 'checkpoints', 'pipeline-execution-history.jsonl');
+        implementationEntries = readFileSync(file, 'utf8')
+          .split('\n')
+          .filter((line) => line.includes('"stage":"implement"')).length;
+        return Promise.resolve({
+          name: 'security',
+          verdict: 'pass',
+          details: 'Local scan fixture',
+        });
+      });
+      const result = await runDevPipeline('Bound task', stages, options);
+      if (terminal) {
+        expect(result.checkpoint).toMatchObject({
+          status: 'blocked',
+          reason: 'checkpoint-terminal',
+        });
+        expect(experts).not.toHaveBeenCalled();
+        expect(scan).not.toHaveBeenCalled();
+      } else {
+        expect(result.completed).toBe(true);
+        expect(result.tasks[0]?.implementation).toBe('PASS');
+        expect(experts).toHaveBeenCalledTimes(2);
+        expect(scan).toHaveBeenCalledTimes(1);
+        expect(implementationEntries).toBe(2);
+        expect(result.checkpoint).toMatchObject({ status: 'verified', execution: 'fresh' });
+      }
+    }
+  );
+
+  it('blocks a partial bound plan and never manufactures an approved checkpoint line', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'task', source: 'Bound task' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages({ acceptance: snapshot.value });
+    const coordinator = new DevPipelineCheckpoint(stages, 'partial-plan');
+    const vote = await stages.vote('Measured plan', '');
+    coordinator.accept('Measured plan', vote);
+    coordinator.save({ type: 'research', text: 'Research' });
+    coordinator.save({ type: 'plan', text: 'Measured plan', iterations: 1 });
+    const file = join(directory, 'checkpoints', 'pipeline-partial-plan.jsonl');
+    const before = readFileSync(file, 'utf8');
+    const experts = vi.spyOn(expertBridge, 'executeExpert');
+    const result = await runDevPipeline('Bound task', stages, { sessionId: 'partial-plan' });
+    expect(result.checkpoint).toMatchObject({ status: 'blocked', reason: 'approval-missing' });
+    expect(experts).not.toHaveBeenCalled();
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('blocks factory mutation rather than treating an existing bound checkpoint as legacy', async () => {
+    const stages = createAgentStages();
+    const options = { sessionId: 'mutated-bound', dryRun: true, researchOverride: 'Research' };
+    await runDevPipeline('Bound task', stages, options);
+    const replacement = vi.fn().mockResolvedValue('Changed implementation');
+    stages.implement = replacement;
+    const result = await runDevPipeline('Bound task', stages, options);
+    expect(result.checkpoint).toMatchObject({ status: 'blocked', reason: 'binding-unavailable' });
+    expect(replacement).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'refuses incomplete implementation definitions before append, resumed=%s',
+    async (resumed) => {
+      const snapshot = captureAcceptanceContext({ kind: 'task', source: 'Bound task' });
+      if (!snapshot.ok) throw snapshot.error;
+      const stages = createAgentStages({ acceptance: snapshot.value });
+      const vote = await stages.vote('Measured plan', '');
+      let coordinator = new DevPipelineCheckpoint(stages, 'subset-history');
+      coordinator.accept('Measured plan', vote);
+      coordinator.save({ type: 'plan', text: 'Measured plan', iterations: 1 });
+      coordinator.save({ type: 'vote', approved: true, iterations: 1 });
+      coordinator.save({
+        type: 'decompose',
+        tasks: [
+          { id: 'one', title: 'Task', description: 'Work', assignedTo: 'coder', status: 'pending' },
+        ],
+      });
+      const file = join(directory, 'checkpoints', 'pipeline-subset-history.jsonl');
+      const before = readFileSync(file, 'utf8');
+      if (resumed) coordinator = new DevPipelineCheckpoint(stages, 'subset-history');
+      expect(() => {
+        coordinator.save({ type: 'implement', tasks: [] });
+      }).toThrow(CheckpointStopError);
+      expect(readFileSync(file, 'utf8')).toBe(before);
+      expect(checkpointStore.loadCheckpointDiagnostic('subset-history').kind).toBe('bound');
+    }
+  );
+
+  it('stops a resumed run with failed implementation before writing a subset or scanning', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'task', source: 'Bound task' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages({ acceptance: snapshot.value });
+    const options = { sessionId: 'subset-run', researchOverride: 'Research' };
+    await runDevPipeline('Bound task', stages, { ...options, dryRun: true });
+    const coordinator = new DevPipelineCheckpoint(stages, options.sessionId);
+    coordinator.save({
+      type: 'decompose',
+      tasks: [
+        { id: 'one', title: 'Task', description: 'Work', assignedTo: 'coder', status: 'pending' },
+      ],
+    });
+    const file = join(directory, 'checkpoints', 'pipeline-subset-run.jsonl');
+    const before = readFileSync(file, 'utf8');
+    vi.spyOn(workspace, 'withDevPipelineWorkspace').mockImplementation(async (bound, body) =>
+      body(bound)
+    );
+    vi.spyOn(expertBridge, 'executeExpert').mockResolvedValue({
+      success: false,
+      text: '',
+      error: 'TEST adapter failure',
+      expertType: 'code',
+      cli: 'codex',
+      durationMs: 1,
+    });
+    const scan = vi
+      .spyOn(securityGate, 'checkSecurityScan')
+      .mockReturnValue(() =>
+        Promise.resolve({ name: 'security', verdict: 'pass', details: 'Local scan fixture' })
+      );
+    const result = await runDevPipeline('Bound task', stages, options);
+    expect(result.checkpoint).toMatchObject({ status: 'blocked', reason: 'task-lineage-mismatch' });
+    expect(scan).not.toHaveBeenCalled();
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    expect(checkpointStore.loadCheckpointDiagnostic(options.sessionId).kind).toBe('bound');
   });
 
   it('retains no approval evidence when canonical persistence fails', async () => {

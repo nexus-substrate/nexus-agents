@@ -118,6 +118,8 @@ votes:
 
 ## Step 4 — Build it with `run_dev_pipeline`
 
+If an existing session stops with a checkpoint evidence block, follow the [resume migration steps](../ops/acceptance-bound-resume-migration.md) before retrying.
+
 Hand the approved proposal to the development pipeline. **Always `dryRun` first** — it stops after plan + vote so you can review the plan before any code is written:
 
 > "Run run_dev_pipeline in dryRun mode for: implement a token-bucket rate limiter on the public API with per-route configurable limits."

@@ -16,7 +16,11 @@ import type { McpServer } from '../sdk-types.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { truncateText } from '../../utils/text-utils.js';
-import { buildStructuredOutput, inputFailureWithDispatchNote } from './dev-pipeline-output.js';
+import {
+  buildStructuredOutput,
+  inputFailureWithDispatchNote,
+  describeCheckpointFailure,
+} from './dev-pipeline-output.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
@@ -382,6 +386,9 @@ async function executeDevPipelineBody(
  * actionable rather than a bare "failed".
  */
 function describeIncompleteRun(result: DevPipelineResult): string {
+  const checkpointFailure = describeCheckpointFailure(result);
+  if (checkpointFailure !== undefined) return checkpointFailure;
+
   if (result.planStatus !== undefined) {
     return `Pipeline stopped at the planning gate (planStatus: ${result.planStatus})`;
   }

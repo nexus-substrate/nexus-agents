@@ -597,7 +597,9 @@ describe('pipeline acceptance binding (#7664)', () => {
   it('captures a goal before the builtin factory without inventing sanitation', async () => {
     const factory = vi.spyOn(executor, 'createAgentStages');
     try {
-      await runPipelineForGoal('ACCEPTANCE_GOAL');
+      const result = await runPipelineForGoal('ACCEPTANCE_GOAL');
+      // Adaptive graph runs have no checkpoint-resume consumer; binding is not qualification.
+      expect(result).not.toHaveProperty('checkpoint');
       expect(factory).toHaveBeenCalledWith(
         expect.objectContaining({
           acceptance: expect.objectContaining({

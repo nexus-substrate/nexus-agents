@@ -2,7 +2,8 @@
  * Pipeline Checkpoint Tests (#1703 — checkpoint/resume for crash recovery)
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -11,16 +12,486 @@ import {
   loadCheckpointState,
   cleanupCheckpoint,
   checkpointToResult,
+  loadCheckpointDiagnostic,
+  saveBoundStageCheckpoint,
 } from './pipeline-checkpoint.js';
+import { captureAcceptanceContext } from './acceptance-context.js';
+import { buildPlanVoteProposal } from './plan-vote-proposal.js';
+import { checkpointTaskIdentities } from './pipeline-checkpoint-binding.js';
+import type { AcceptanceMetadata } from './acceptance-binding.js';
+import type { PipelineCheckpointBinding } from './pipeline-checkpoint-binding.js';
+import * as dataPaths from '../config/nexus-data-dir.js';
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    readFileSync: vi.fn(actual.readFileSync),
+    appendFileSync: vi.fn(actual.appendFileSync),
+    closeSync: vi.fn(actual.closeSync),
+  };
+});
 
 const TEST_DIR = path.join(os.tmpdir(), 'nexus-checkpoint-test');
 
 afterEach(() => {
+  vi.restoreAllMocks();
   try {
     fs.rmSync(TEST_DIR, { recursive: true, force: true });
   } catch {
     // ignore
   }
+});
+
+describe('bound checkpoint diagnostics and persistence', () => {
+  const sid = 'bound-test';
+  const file = path.join(TEST_DIR, `pipeline-${sid}.jsonl`);
+  const hash = (text: string): { sha256: string; bytes: number } => ({
+    sha256: createHash('sha256').update(text).digest('hex'),
+    bytes: Buffer.byteLength(text),
+  });
+  function acceptance(): AcceptanceMetadata {
+    const captured = captureAcceptanceContext({ kind: 'task', source: 'Build feature' });
+    if (!captured.ok) throw captured.error;
+    return {
+      source: captured.value.source,
+      projection: captured.value.projection.identity,
+      provenance: captured.value.provenance,
+    };
+  }
+  function binding(): PipelineCheckpointBinding {
+    return { format: 'pipeline-checkpoint-v1' as const, acceptance: acceptance() };
+  }
+  function line(
+    stage = 'research',
+    data: unknown = { type: 'research', text: 'Research' },
+    metadata: unknown = binding()
+  ): unknown {
+    return {
+      sessionId: sid,
+      stage,
+      timestamp: '2026-10-27T00:00:00.000Z',
+      data,
+      binding: metadata,
+    };
+  }
+  function write(...entries: readonly unknown[]): void {
+    fs.mkdirSync(TEST_DIR, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n', {
+      mode: 0o600,
+    });
+  }
+  it('reads an absent checkpoint without creating its directory', () => {
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toEqual({ kind: 'absent' });
+    expect(fs.existsSync(TEST_DIR)).toBe(false);
+  });
+  it('uses the canonical read-only resolver for the default checkpoint directory', () => {
+    const readOnly = vi.spyOn(dataPaths, 'previewNexusDataPath').mockReturnValue(TEST_DIR);
+    const mutating = vi.spyOn(dataPaths, 'nexusDataPath').mockReturnValue(TEST_DIR);
+    expect(loadCheckpointDiagnostic(sid)).toEqual({ kind: 'absent' });
+    expect(readOnly).toHaveBeenCalledExactlyOnceWith('checkpoints');
+    expect(mutating).not.toHaveBeenCalled();
+    expect(fs.existsSync(TEST_DIR)).toBe(false);
+  });
+  it('distinguishes an existing empty checkpoint from absence', () => {
+    write();
+    fs.writeFileSync(file, '');
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({
+      kind: 'invalid',
+      reason: 'empty-checkpoint',
+    });
+    expect(loadCheckpointState(sid, TEST_DIR)).toEqual({});
+  });
+  it('rejects malformed UTF-8 instead of replacement decoding', () => {
+    write();
+    fs.writeFileSync(file, Buffer.from([0xc3, 0x28]));
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({
+      kind: 'invalid',
+      reason: 'invalid-encoding',
+    });
+  });
+  it('reports permission and IO errors separately from ENOENT', () => {
+    write(line());
+    vi.mocked(fs.readFileSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error('private'), { code: 'EACCES' });
+    });
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toEqual({
+      kind: 'unavailable',
+      reason: 'checkpoint-unreadable',
+    });
+  });
+  it('allows bound research-only state without inventing approval', () => {
+    write(line());
+    const result = loadCheckpointDiagnostic(sid, TEST_DIR);
+    expect(result).toMatchObject({
+      kind: 'bound',
+      state: { research: 'Research' },
+      binding: { acceptance: acceptance() },
+    });
+    if (result.kind === 'bound') expect(result.binding.approval).toBeUndefined();
+  });
+  it.each([
+    null,
+    { ...binding(), format: 'pipeline-checkpoint-v2' },
+    { ...binding(), acceptance: {} },
+  ])('never strips malformed recognized binding into legacy', (metadata) => {
+    write(line('research', { type: 'research', text: 'Research' }, metadata));
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+    expect(loadCheckpointState(sid, TEST_DIR)).toBeNull();
+  });
+  it('poisons a bound session containing a malformed or legacy line', () => {
+    write(line());
+    fs.appendFileSync(file, '{truncated');
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+    expect(loadCheckpointState(sid, TEST_DIR)).toBeNull();
+    write(line(), {
+      sessionId: sid,
+      stage: 'plan',
+      timestamp: 'now',
+      data: { type: 'plan', text: 'Plan', iterations: 1 },
+    });
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+  });
+  it('keeps legacy partial recovery without certifying invalid input', () => {
+    write({
+      sessionId: sid,
+      stage: 'research',
+      timestamp: 'now',
+      data: { type: 'research', text: 'Old research' },
+    });
+    fs.appendFileSync(file, '{broken');
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+    expect(loadCheckpointState(sid, TEST_DIR)?.research).toBe('Old research');
+  });
+
+  it('warns on legacy recovery without logging malformed private input', () => {
+    const logs = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    write({
+      sessionId: sid,
+      stage: 'research',
+      timestamp: 'now',
+      data: { type: 'research', text: 'Old research' },
+    });
+    fs.appendFileSync(file, '{PRIVATE_SENTINEL');
+    expect(loadCheckpointState(sid, TEST_DIR)?.research).toBe('Old research');
+    expect(JSON.stringify(logs.mock.calls)).toContain('Recovered legacy checkpoint');
+    expect(JSON.stringify(logs.mock.calls)).not.toContain('PRIVATE_SENTINEL');
+  });
+  it('checks session identity and stage/data agreement', () => {
+    write({
+      sessionId: 'other',
+      stage: 'research',
+      data: { type: 'research', text: 'Research' },
+      timestamp: 'now',
+      binding: binding(),
+    });
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+    write(line('plan'));
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+  });
+  it('retains the exact final suffix, including cutoff whitespace', () => {
+    const plan = 'Implement feature';
+    const suffix = buildPlanVoteProposal(plan, 'x'.repeat(999) + ' Y').suffix;
+    const approval = {
+      format: 'bound-plan-vote-v1' as const,
+      voteRecordId: 'vote-test',
+      recordHash: 'a'.repeat(64),
+      proposalHash: 'b'.repeat(64),
+      suffix,
+    };
+    write(
+      line(),
+      line(
+        'plan',
+        { type: 'plan', text: plan, iterations: 1 },
+        { ...binding(), planIdentity: hash(plan) }
+      ),
+      line(
+        'vote',
+        { type: 'vote', approved: true, iterations: 1 },
+        { ...binding(), planIdentity: hash(plan), approval }
+      )
+    );
+    const result = loadCheckpointDiagnostic(sid, TEST_DIR);
+    expect(result.kind).toBe('bound');
+    if (result.kind === 'bound') expect(result.binding.approval?.suffix).toEqual(suffix);
+  });
+  it('rejects a mismatched plan identity and unsupported suffix format', () => {
+    write(
+      line(),
+      line(
+        'plan',
+        { type: 'plan', text: 'Plan', iterations: 1 },
+        { ...binding(), planIdentity: hash('other') }
+      )
+    );
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+    const approval = {
+      format: 'bound-plan-vote-v1',
+      voteRecordId: 'vote-test',
+      recordHash: 'a'.repeat(64),
+      proposalHash: 'b'.repeat(64),
+      suffix: { format: 'future' },
+    };
+    write(
+      line(
+        'vote',
+        { type: 'vote', approved: true, iterations: 1 },
+        { ...binding(), planIdentity: hash('Plan'), approval }
+      )
+    );
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+  });
+  it('writes sensitive metadata only to restrictive files and does not repair permissive ones', () => {
+    expect(
+      saveBoundStageCheckpoint({
+        sessionId: sid,
+        stage: 'research',
+        data: { type: 'research', text: 'R' },
+        binding: binding(),
+        customDir: TEST_DIR,
+      })
+    ).toEqual({ status: 'saved' });
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    fs.chmodSync(file, 0o644);
+    const before = fs.readFileSync(file);
+    expect(
+      saveBoundStageCheckpoint({
+        sessionId: sid,
+        stage: 'research',
+        data: { type: 'research', text: 'next' },
+        binding: binding(),
+        customDir: TEST_DIR,
+      })
+    ).toMatchObject({ status: 'unavailable', reason: 'checkpoint-permissions' });
+    expect(fs.readFileSync(file)).toEqual(before);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o644);
+  });
+  it('rejects invalid sensitive evidence before creating a checkpoint', () => {
+    expect(
+      saveBoundStageCheckpoint({
+        sessionId: sid,
+        stage: 'plan',
+        data: { type: 'plan', text: 'Plan', iterations: 1 },
+        binding: binding(),
+        customDir: TEST_DIR,
+      })
+    ).toMatchObject({ status: 'invalid' });
+    expect(fs.existsSync(TEST_DIR)).toBe(false);
+  });
+
+  it('keeps plan-only crash state partial and rejects task reuse without persisted approval', () => {
+    const planIdentity = hash('Plan');
+    const plan = line(
+      'plan',
+      { type: 'plan', text: 'Plan', iterations: 1 },
+      { ...binding(), planIdentity }
+    );
+    write(line(), plan);
+    const partial = loadCheckpointDiagnostic(sid, TEST_DIR);
+    expect(partial.kind).toBe('bound');
+    if (partial.kind === 'bound') expect(partial.binding.approval).toBeUndefined();
+    const tasks = [
+      {
+        id: 'one',
+        title: 'First',
+        description: 'Work',
+        assignedTo: 'coder' as const,
+        status: 'pending' as const,
+      },
+    ];
+    write(
+      line(),
+      plan,
+      line(
+        'decompose',
+        { type: 'decompose', tasks },
+        {
+          ...binding(),
+          planIdentity,
+          decision: { voteRecordId: 'missing', recordHash: 'a'.repeat(64) },
+          ...checkpointTaskIdentities(tasks),
+        }
+      )
+    );
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+  });
+
+  it('binds task definitions to the approved plan and permits implementation status changes', () => {
+    const planIdentity = hash('Plan');
+    const decision = { voteRecordId: 'vote-test', recordHash: 'a'.repeat(64) };
+    const approval = {
+      ...decision,
+      format: 'bound-plan-vote-v1',
+      proposalHash: 'b'.repeat(64),
+      suffix: buildPlanVoteProposal('Plan', '').suffix,
+    };
+    const tasks = [
+      {
+        id: 'one',
+        title: 'First',
+        description: 'Work',
+        assignedTo: 'coder' as const,
+        status: 'pending' as const,
+      },
+    ];
+    const prefix = [
+      line(),
+      line('plan', { type: 'plan', text: 'Plan', iterations: 1 }, { ...binding(), planIdentity }),
+      line(
+        'vote',
+        { type: 'vote', approved: true, iterations: 1 },
+        { ...binding(), planIdentity, approval }
+      ),
+      line(
+        'decompose',
+        { type: 'decompose', tasks },
+        { ...binding(), planIdentity, decision, ...checkpointTaskIdentities(tasks) }
+      ),
+    ];
+    const implemented = tasks.map((task) => ({
+      ...task,
+      status: 'done' as const,
+      implementation: 'Result',
+    }));
+    write(
+      ...prefix,
+      line(
+        'implement',
+        { type: 'implement', tasks: implemented },
+        { ...binding(), planIdentity, decision, ...checkpointTaskIdentities(implemented) }
+      )
+    );
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR).kind).toBe('bound');
+    const altered = implemented.map((task) => ({ ...task, description: 'Different work' }));
+    write(
+      ...prefix,
+      line(
+        'implement',
+        { type: 'implement', tasks: altered },
+        { ...binding(), planIdentity, decision, ...checkpointTaskIdentities(altered) }
+      )
+    );
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+  });
+
+  it.each([true, false])('rejects every stage appended after security passed=%s', (passed) => {
+    const planIdentity = hash('Plan');
+    const decision = { voteRecordId: 'vote-terminal', recordHash: 'a'.repeat(64) };
+    const approval = {
+      ...decision,
+      format: 'bound-plan-vote-v1',
+      proposalHash: 'b'.repeat(64),
+      suffix: buildPlanVoteProposal('Plan', '').suffix,
+    };
+    const tasks = [
+      {
+        id: 'one',
+        title: 'Task',
+        description: 'Work',
+        assignedTo: 'coder' as const,
+        status: 'done' as const,
+        implementation: 'Earlier work',
+      },
+    ];
+    const common = { ...binding(), planIdentity, decision };
+    const taskBinding = { ...common, ...checkpointTaskIdentities(tasks) };
+    const stages = [
+      line(),
+      line('plan', { type: 'plan', text: 'Plan', iterations: 1 }, { ...binding(), planIdentity }),
+      line(
+        'vote',
+        { type: 'vote', approved: true, iterations: 1 },
+        { ...binding(), planIdentity, approval }
+      ),
+      line('decompose', { type: 'decompose', tasks }, taskBinding),
+      line('implement', { type: 'implement', tasks }, taskBinding),
+      line('security', { type: 'security', passed }, common),
+    ];
+    write(...stages);
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({
+      kind: 'bound',
+      state: { securityPassed: passed },
+    });
+    for (const laterStage of stages) {
+      write(...stages, laterStage);
+      expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({
+        kind: 'invalid',
+        reason: 'checkpoint-lineage-mismatch',
+      });
+      expect(loadCheckpointState(sid, TEST_DIR)).toBeNull();
+    }
+  });
+
+  it('reports failed persistence without leaking sensitive text or claiming a resumable checkpoint', () => {
+    const sentinel = 'PRIVATE_SUFFIX_SENTINEL';
+    const logOutput = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    vi.mocked(fs.appendFileSync).mockImplementationOnce(() => {
+      throw new Error(sentinel);
+    });
+    const result = saveBoundStageCheckpoint({
+      sessionId: sid,
+      stage: 'research',
+      data: { type: 'research', text: sentinel },
+      binding: binding(),
+      customDir: TEST_DIR,
+    });
+    expect(result).toEqual({ status: 'unavailable', reason: 'checkpoint-write-failed' });
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(JSON.stringify(logOutput.mock.calls)).not.toContain(sentinel);
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({
+      kind: 'invalid',
+      reason: 'empty-checkpoint',
+    });
+  });
+
+  it('does not disclose invalid suffix values in diagnostics', () => {
+    const sentinel = 'PRIVATE_SUFFIX_SENTINEL';
+    write(
+      line(
+        'vote',
+        { type: 'vote', approved: true, iterations: 1 },
+        { ...binding(), approval: { suffix: sentinel } }
+      )
+    );
+    const result = loadCheckpointDiagnostic(sid, TEST_DIR);
+    expect(result.kind).toBe('invalid');
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+  });
+
+  it('rejects unknown fields in recognized bound data rather than silently stripping them', () => {
+    const data = { type: 'research' as const, text: 'Research', unrecognized: 'PRIVATE_SENTINEL' };
+    write(line('research', data));
+    expect(loadCheckpointDiagnostic(sid, TEST_DIR)).toMatchObject({ kind: 'invalid' });
+    expect(
+      saveBoundStageCheckpoint({
+        sessionId: sid,
+        stage: 'research',
+        data,
+        binding: binding(),
+        customDir: TEST_DIR,
+      })
+    ).toMatchObject({ status: 'invalid' });
+  });
+
+  it('reports unmeasured owner protection when platform APIs are unavailable', () => {
+    const original = process;
+    try {
+      vi.stubGlobal('process', { ...original, getuid: undefined });
+      expect(
+        saveBoundStageCheckpoint({
+          sessionId: sid,
+          stage: 'research',
+          data: { type: 'research', text: 'R' },
+          binding: binding(),
+          customDir: TEST_DIR,
+        })
+      ).toEqual({ status: 'unavailable', reason: 'checkpoint-permissions-unmeasured' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(fs.existsSync(TEST_DIR)).toBe(false);
+  });
 });
 
 describe('saveStageCheckpoint + loadCheckpointState', () => {

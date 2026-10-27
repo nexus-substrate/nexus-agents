@@ -6,7 +6,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadCheckpointState } from './pipeline-checkpoint.js';
+import { loadCheckpointState, saveBoundStageCheckpoint } from './pipeline-checkpoint.js';
+import { captureAcceptanceContext } from './acceptance-context.js';
+import { getAcceptanceMetadata } from './acceptance-binding.js';
+import { readFileSync } from 'node:fs';
 import { researchContextFromText } from './research-context.js';
 import { runDevPipeline, isApproved, getVoteFeedback } from './dev-pipeline.js';
 import { getPipelineEventBus } from './event-bus.js';
@@ -1721,5 +1724,64 @@ describe('runDevPipeline — cancellation at stage boundaries (#6305)', () => {
     });
     expect(result.completed).toBe(true);
     expect(stages.securityScan).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('strict checkpoint preflight (#7665)', () => {
+  it.each(['', '{invalid'])(
+    'blocks existing invalid data before research or recall: %j',
+    async (text) => {
+      const dir = mkdtempSync(join(tmpdir(), 'strict-checkpoint-'));
+      vi.stubEnv('NEXUS_DATA_DIR', dir);
+      try {
+        mkdirSync(join(dir, 'checkpoints'));
+        const file = join(dir, 'checkpoints', 'pipeline-invalid.jsonl');
+        writeFileSync(file, text);
+        const stages = createMockStages();
+        researchInsightsMock.mockClear();
+        const result = await runDevPipeline('Task', stages, { sessionId: 'invalid' });
+        expect(result).toMatchObject({
+          completed: false,
+          securityRan: false,
+          checkpoint: { status: 'blocked', recovery: 'new-session' },
+        });
+        expect(stages.research).not.toHaveBeenCalled();
+        expect(researchInsightsMock).not.toHaveBeenCalled();
+        expect(readFileSync(file, 'utf8')).toBe(text);
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('does not downgrade recognized bound data for an unknown stage set', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'strict-checkpoint-'));
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    try {
+      const captured = captureAcceptanceContext({ kind: 'task', source: 'Task' });
+      if (!captured.ok) throw captured.error;
+      expect(
+        saveBoundStageCheckpoint({
+          sessionId: 'bound',
+          stage: 'research',
+          data: { type: 'research', text: 'Research' },
+          binding: {
+            format: 'pipeline-checkpoint-v1',
+            acceptance: getAcceptanceMetadata(captured.value),
+          },
+        })
+      ).toEqual({ status: 'saved' });
+      const stages = createMockStages();
+      const result = await runDevPipeline('Task', stages, { sessionId: 'bound' });
+      expect(result).toMatchObject({
+        completed: false,
+        checkpoint: { status: 'blocked', reason: 'binding-unavailable' },
+      });
+      expect(stages.plan).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

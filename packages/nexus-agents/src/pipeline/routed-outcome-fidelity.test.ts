@@ -60,7 +60,10 @@ describe('routed outcomes reach the distiller with their failures (#6521 I1)', (
       .mockResolvedValueOnce(ARM_SUCCESS)
       .mockResolvedValueOnce(ARM_SUCCESS);
     const stages = createAgentStages();
-    for (let i = 0; i < 5; i++) await stages.plan(`task ${String(i)}`, '');
+    await expect(stages.plan('task 0', '')).rejects.toThrow(
+      'Planning failed: expert call unsuccessful'
+    );
+    for (let i = 1; i < 5; i++) await stages.plan(`task ${String(i)}`, '');
 
     const rows = store.query().filter((o) => o.model === 'pipeline');
     expect(rows).toHaveLength(5);
@@ -95,7 +98,10 @@ describe('routed outcomes reach the distiller with their failures (#6521 I1)', (
         },
       });
     const stages = createAgentStages();
-    for (let i = 0; i < 2; i++) await stages.plan(`task ${String(i)}`, '');
+    await expect(stages.plan('task 0', '')).rejects.toThrow(
+      'Planning failed: expert call unsuccessful'
+    );
+    await stages.plan('task 1', '');
 
     const rows = store.query().filter((o) => o.model === 'pipeline');
     expect(rows.map((o) => [o.cli, o.success])).toEqual([
