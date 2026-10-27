@@ -22,6 +22,12 @@ on:
       # #6481: the staging that produces the published tarball, the release
       # script that invokes it, and the lockfile that pins the build.
       - 'scripts/stage-publish.ts'
+      - 'scripts/check-publish-stage.ts'
+      - 'scripts/script-paths.ts'
+      - 'scripts/stage-publish-edges.ts'
+      - 'scripts/stage-publish-floors.ts'
+      - 'scripts/stage-publish-packlist.ts'
+      - 'scripts/publish-env.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'Dockerfile.npm-verify'
@@ -71,8 +77,9 @@ jobs:
       # prompt; non-interactively it prints the same list as "Ignored build
       # scripts", which verify.sh fails on). The six-mode matrix below verifies
       # packages only after publication. release.yml runs this same action
-      # before publishing (#6770), because on the Version Packages PR this
-      # workflow never runs (a GITHUB_TOKEN-opened PR triggers no workflows).
+      # before publishing (#6770). Token-created Version Packages PR checks
+      # may require workflow execution approval (#7650); the release smoke
+      # remains required independently of whether the PR workflow is approved.
       - name: Smoke the pre-publish tarball
         uses: ./.github/actions/tarball-smoke
         with:
