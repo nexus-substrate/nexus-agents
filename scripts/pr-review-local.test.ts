@@ -19,7 +19,12 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { EventEmitter } from 'node:events';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
+import { readPanelCoverage } from './governor-review-panel-coverage.js';
+import { computePrReviewRecordHash } from '../packages/nexus-agents/src/audit/pr-review-record.js';
 import { formatComment } from './pr-review-local.js';
 
 import {
@@ -277,4 +282,146 @@ describe('formatComment (#4334)', () => {
     });
     expect(comment).toContain('majority dissent');
   });
+});
+
+describe('local pre-builder reduction provenance (#7604, TEST_FAKE unit I/O)', () => {
+  it.each(['ASCII', 'surrogate', 'uncapped'] as const)(
+    'persists actual single-shot reduction (%s) before a long title without claiming inspection',
+    async (kind) => {
+      const ledgerDir = mkdtempSync(join(tmpdir(), 'TEST_FAKE-local-cap-'));
+      const ledgerPath = join(ledgerDir, 'records.jsonl');
+      const header =
+        'diff --git a/TEST_FAKE.txt b/TEST_FAKE.txt\n--- a/TEST_FAKE.txt\n+++ b/TEST_FAKE.txt\n@@ -1 +1,2 @@\n-old\n+';
+      const body =
+        kind === 'ASCII'
+          ? 'TEST_FAKE_PADDING '.repeat(3600)
+          : kind === 'uncapped'
+            ? 'TEST_FAKE short'
+            : 'é'.repeat(100) + 'a'.repeat(49999 - header.length - 100) + '😀';
+      const full = header + body + '\n+TEST_FAKE_TAIL\n';
+      let proposal = '';
+      vi.resetModules();
+      vi.stubEnv(PR_REVIEW_RECORDS_PATH_ENV, ledgerPath);
+      vi.doMock('../packages/nexus-agents/src/cli/voter-agents.js', () => ({
+        collectRealVotes: vi.fn((options: { roles: readonly string[]; proposal: string }) => {
+          proposal = options.proposal;
+          return Promise.resolve(
+            options.roles.map((role) => ({
+              role,
+              processingTimeMs: 1,
+              vote: {
+                decision: 'approve',
+                confidence: 1,
+                reasoning: 'TEST_FAKE unit prerequisite',
+              },
+              source: 'cli',
+              cli: 'TEST_FAKE_UNIT',
+            }))
+          );
+        }),
+      }));
+      vi.doMock('./pr-review-local-ledger.js', async () => {
+        const real = await vi.importActual<typeof import('./pr-review-local-ledger.js')>(
+          './pr-review-local-ledger.js'
+        );
+        return {
+          ...real,
+          fetchPrMeta: vi.fn(() =>
+            Promise.resolve({
+              title: 'T'.repeat(600),
+              body: 'TEST_FAKE unit only',
+              baseRef: 'TEST_FAKE_base',
+              headRef: 'TEST_FAKE_head',
+              baseSha: 'a'.repeat(40),
+              headSha: 'b'.repeat(40),
+            })
+          ),
+          ensurePrCommitsLocal: vi.fn(() => Promise.resolve()),
+          generateCanonicalReviewDiff: vi.fn(() => Promise.resolve(full)),
+        };
+      });
+      vi.doMock('node:child_process', async () => {
+        const real =
+          await vi.importActual<typeof import('node:child_process')>('node:child_process');
+        const exec = (
+          cmd: string,
+          args: readonly string[]
+        ): EventEmitter & {
+          stdin: { write: () => boolean; end: () => void };
+        } => {
+          if (cmd !== 'gh' || args[0] !== 'pr' || args[1] !== 'comment')
+            throw new Error('Unexpected TEST_FAKE child');
+          const child = new EventEmitter();
+          return Object.assign(child, {
+            stdin: {
+              write: () => true,
+              end: () => {
+                queueMicrotask(() => {
+                  child.emit('exit', 0);
+                });
+              },
+            },
+          });
+        };
+        Object.defineProperty(exec, promisify.custom, {
+          value: (cmd: string, args: readonly string[]) => {
+            if (cmd !== 'gh' || args[0] !== 'pr' || args[1] !== 'edit')
+              throw new Error('Unexpected TEST_FAKE async child');
+            return Promise.resolve({ stdout: '', stderr: '' });
+          },
+        });
+        return { ...real, execFile: exec };
+      });
+      const argv = process.argv;
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        process.argv = [
+          process.execPath,
+          fileURLToPath(new URL('./pr-review-local.ts', import.meta.url)),
+          '909090',
+        ];
+        await import('./pr-review-local.js');
+        const { records } = readPrReviewRecords(ledgerPath);
+        expect(records).toHaveLength(1);
+        const record = records[0];
+        if (record === undefined) throw new Error('Expected TEST_FAKE record');
+        if (kind === 'uncapped') {
+          expect(record.summary).not.toContain('pre-builder');
+          expect(proposal).toContain('TEST_FAKE_TAIL');
+        } else {
+          expect(record.summary).toContain('pre-builder diff prefix');
+          expect(record.summary).toContain(`50000/${String(full.length)} JS code units`);
+          expect(record.summary).toContain(
+            `UTF-8 ${String(Buffer.byteLength(full.slice(0, 50000)))}/${String(Buffer.byteLength(full))} bytes`
+          );
+          expect(record.summary).toContain('marker +15 JS code units/+15 bytes');
+          expect(record.summary.slice(0, 500)).toContain('additional inspection UNMEASURED]');
+          expect(proposal).toContain('[...truncated]');
+          expect(proposal).not.toContain('TEST_FAKE_TAIL');
+        }
+        if (kind === 'surrogate') {
+          expect(full.charCodeAt(49999)).toBe(0xd83d);
+          expect(full.charCodeAt(50000)).toBe(0xde00);
+          expect(Buffer.byteLength(full.slice(0, 50000))).not.toBe(50000);
+        }
+        expect(readPanelCoverage(record)).toBeUndefined();
+        expect(computePrReviewRecordHash(record)).toBe(record.hash);
+        expect(
+          computePrReviewRecordHash({ ...record, summary: record.summary + 'TEST_FAKE_TAMPER' })
+        ).not.toBe(record.hash);
+        expect(record?.reviewedDiffHash).toBe(computeReviewedDiffHash(full));
+        expect(record?.coverage).toBeUndefined();
+        expect(record?.bindingBounds).toBeUndefined();
+      } finally {
+        process.argv = argv;
+        log.mockRestore();
+        vi.unstubAllEnvs();
+        vi.doUnmock('node:child_process');
+        vi.doUnmock('./pr-review-local-ledger.js');
+        vi.doUnmock('../packages/nexus-agents/src/cli/voter-agents.js');
+        vi.resetModules();
+        rmSync(ledgerDir, { recursive: true, force: true });
+      }
+    }
+  );
 });

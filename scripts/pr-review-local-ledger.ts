@@ -25,6 +25,7 @@ import { PR_REVIEW_RECORDS_REL_PATH } from '../packages/nexus-agents/src/audit/p
 import {
   persistReviewRecord,
   type PrReviewCounts,
+  type LocalDiffReduction,
   type PrReviewRecordOutcome,
 } from '../packages/nexus-agents/src/mcp/tools/pr-review-record-producer.js';
 import {
@@ -216,12 +217,13 @@ export interface FeedLedgerParams {
   readonly counts: PrReviewCounts;
   readonly reviewCount: number;
   /**
-   * The EXACT canonical diff the voters reviewed (from {@link generateCanonicalReviewDiff}).
-   * When provided it is hashed verbatim — avoiding a re-diff race where a push
-   * between the review and the record binds the record to bytes the voters never
-   * saw. Omitted ⇒ the diff is (re)generated from `base..head`.
+   * Exact canonical diff retained for raw binding (from {@link generateCanonicalReviewDiff}).
+   * Provided bytes are hashed verbatim, avoiding a re-diff race after proposal
+   * construction. This does not attest full delivery or inspection: pre-builder
+   * input may be a reduced prefix. Omitted ⇒ regenerate from `base..head`.
    */
   readonly canonicalDiff?: string | undefined;
+  readonly localDiffReduction?: LocalDiffReduction | undefined;
   readonly exec?: GhGitExec | undefined;
   readonly cwd?: string | undefined;
   readonly logger?: ILogger | undefined;
@@ -296,6 +298,7 @@ export async function feedLedgerFromReview(
     // that; a zero-filled disclosure would instead claim a sanitizer ran and
     // removed nothing, which is a different (and false) claim.
     sanitization: undefined,
+    localDiffReduction: params.localDiffReduction,
     // #4459: this feeder ALWAYS hashes the pinned `git diff base..head` output —
     // either passed in from the review it just ran, or regenerated above by
     // `generateCanonicalReviewDiff`. There is no path here that writes a record
@@ -320,8 +323,9 @@ export interface LocalReviewSummary {
   readonly aggregate: PrReviewAggregate;
   readonly counts: PrReviewCounts;
   readonly reviewCount: number;
-  /** Canonical (ledger-excluded) diff the voters reviewed; undefined ⇒ no record. */
+  /** Raw canonical (ledger-excluded) diff retained for binding; undefined ⇒ no record. */
   readonly canonicalDiff: string | undefined;
+  readonly localDiffReduction?: LocalDiffReduction | undefined;
 }
 
 /**
@@ -347,6 +351,7 @@ export async function feedLedgerRecord(summary: LocalReviewSummary): Promise<voi
     description: summary.description,
     aggregate: summary.aggregate,
     canonicalDiff: summary.canonicalDiff,
+    localDiffReduction: summary.localDiffReduction,
     counts: summary.counts,
     reviewCount: summary.reviewCount,
   });
