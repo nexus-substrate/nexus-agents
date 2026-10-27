@@ -67,6 +67,22 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 describe('minimal launcher runtime boundary', () => {
+  it('matches the actual repository runtime closure to its committed snapshot', () => {
+    const closure = assessCanarySourceClosure(
+      REPOSITORY_ROOT,
+      ENTRY,
+      governorPathsFromCodeowners(readFileSync(join(REPOSITORY_ROOT, 'CODEOWNERS'), 'utf8'))
+    );
+    expect(closure).toMatchObject({ status: 'verified', complete: true });
+    expect(closure.modules.length).toBeGreaterThan(0);
+    const snapshot: unknown = JSON.parse(
+      readFileSync(
+        join(REPOSITORY_ROOT, 'governance/native-approval-canary-runtime-closure.json'),
+        'utf8'
+      )
+    );
+    expect(snapshot).toEqual({ version: 1, paths: closure.modules.map((module) => module.path) });
+  });
   it('has a sensitive control: an ordinary provider import executes the harmless marker', () => {
     const result = isolatedImport(true, false);
     expect(result.code).toBe(0);

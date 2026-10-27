@@ -5,7 +5,8 @@ diataxis: how-to
 audience: project
 prerequisites:
   - 'Node.js 24.x LTS, the runtime environment.'
-  - 'pnpm 9.x, the package manager.'
+  - 'pnpm at the version pinned in package.json, the package manager.'
+  - 'Python 3 and jq on PATH, for native-approval and governor script tests.'
   - 'Git (latest), for version control.'
   - 'GitHub CLI `gh` (latest), for issue and PR management.'
 tier: 2
@@ -33,6 +34,32 @@ This guide provides detailed contribution workflows for nexus-agents. For quick 
 ---
 
 ## Development Setup
+
+### Script test prerequisites
+
+Install Python 3 (`python3`) and `jq` on your `PATH` before running the repository
+script tests. The governor approval tests execute the real `jq` filters; the
+native-approval snapshot tests execute isolated Python. Check both tools locally:
+
+```bash
+python3 --version
+jq --version
+```
+
+If either command is missing, install it using your operating system's package
+manager before running `pnpm test:scripts`. A missing executable is a setup
+failure, not a passing or skipped governance check. Use the pnpm version pinned
+by `packageManager` in the root `package.json`.
+
+After installing repository dependencies, run the focused checks with:
+
+```bash
+pnpm test:scripts scripts/governor-human-approval.test.ts scripts/native-approval-canary-imports.test.ts
+```
+
+These local tests do not dispatch the approval experiment. Its separate review,
+owner ratification and live-read prerequisites remain in the
+[native approval canary runbook](../ops/native-approval-canary.md).
 
 ### Installation
 

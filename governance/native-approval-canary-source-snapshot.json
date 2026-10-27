@@ -1,12 +1,12 @@
 {
   "version": 1,
   "scope": "one-shot-7629-canary-readiness-only",
-  "baseTreeSha": "3eec25a18928ecb11dc51435be2340e5da970558",
+  "baseTreeSha": "1de8ed1a706fbbd2cdd0a348298cab4ae55a321c",
   "objectFormat": "sha1",
   "excludedPaths": [
     "governance/native-approval-canary-source-snapshot.json",
     "governance/vote-records.jsonl"
   ],
   "sourceFileCount": 4368,
-  "sourceSha256": "192959a546ca7ced287bdc0371328a7710ce50bbbfcac24a75a2ba38fa2fbbd4"
+  "sourceSha256": "5e6297c887458c129b4d397b1d4d68f6c83938b9a433047510477939e3ea96a7"
 }
