@@ -4,18 +4,31 @@
   "allowed": [
     {
       "name": "@ast-grep/lang-go",
-      "hooks": { "postinstall": "node postinstall.js" },
+      "hooks": {
+        "postinstall": "node postinstall.js"
+      },
       "why": "Verifies a prebuilt tree-sitter grammar that ships INSIDE the tarball (prebuilds/prebuild-{Linux,macOS}-{X64,ARM64}, prebuild-Windows-X64); it downloads nothing and builds nothing on a supported platform. Blocked, the .so is still present and parse() works — proven by Phase 9, which asserts real findings from a scripts-blocked install."
     },
     {
       "name": "@ast-grep/lang-python",
-      "hooks": { "postinstall": "node postinstall.js" },
+      "hooks": {
+        "postinstall": "node postinstall.js"
+      },
       "why": "Same package shape and same prebuilds/ layout as @ast-grep/lang-go. Covered by the same Phase 9 assertion."
     },
     {
       "name": "@google/genai",
-      "hooks": { "preinstall": "echo 'preinstall: no-op'" },
+      "hooks": {
+        "preinstall": "echo 'preinstall: no-op'"
+      },
       "why": "Literally an echo. The package's own `prepare` (node scripts/prepare.js) is not reachable from a registry install."
+    },
+    {
+      "name": "protobufjs",
+      "hooks": {
+        "postinstall": "node scripts/postinstall"
+      },
+      "why": "protobufjs 7 is bundled under @google/genai, which declares ^7 (#7614); 8.x had no hook. The script reads its own package.json and its dependent's, and if the dependent pins protobufjs without the `~` version scheme, it writes one advisory line to stderr. It fetches, builds and writes nothing. Blocked, the library is unchanged: the --ignore-scripts consumer install in #7651 runs the CLI."
     }
   ]
 }
