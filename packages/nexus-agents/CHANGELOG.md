@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 14.0.2
+
+### Patch Changes
+
+- [#7651](https://github.com/nexus-substrate/nexus-agents/pull/7651) [`3abe86a`](https://github.com/nexus-substrate/nexus-agents/commit/3abe86a9e81f82d25bd2d2dade8bd224fb8ccb1c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `npm ci` failing in any project that depends on `nexus-agents` ("Missing: protobufjs@7.6.6 from lock file"). The bundled dependency tree shipped `protobufjs` 8, `fast-uri` 4 and `path-to-regexp` 9 under packages that declare the previous major, so a consumer lockfile could never match it, and consumers cannot override a bundle. The bundle now ships the patched release inside each declared major (`protobufjs` 7.6.6, `fast-uri` 3.1.9, `path-to-regexp` 8.4.2), which keeps every security fix. Projects that added scoped `overrides` for `nexus-agents` as a workaround can remove them.
+
+- [#7595](https://github.com/nexus-substrate/nexus-agents/pull/7595) [`3675f1a`](https://github.com/nexus-substrate/nexus-agents/commit/3675f1ad4d0eeb35fbeb78d2913a034660bde667) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Count CLI outcomes forwarded through gateway slots once in the shared circuit breaker, while preserving separate private-registry accounting.
+
+- [#7594](https://github.com/nexus-substrate/nexus-agents/pull/7594) [`647d639`](https://github.com/nexus-substrate/nexus-agents/commit/647d63978ec015909c5dab52e441c220f88c39d6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Prevent duplicate terminal circuit-breaker accounting when an integration executes a Base adapter path that already records outcomes to the exact same shared breaker. Preserve private-registry accounting, model-specific breaker domains, admission checks and exempt-error handling. Wrapper forwarding remains outside this fix.
+
+- [#7647](https://github.com/nexus-substrate/nexus-agents/pull/7647) [`4acecd0`](https://github.com/nexus-substrate/nexus-agents/commit/4acecd0f9a6bd7999d53d2cbe1b486f2ab171696) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Distinguish unmeasured System Review audits from clean reports, compute findings from all five pnpm severities, and preserve critical findings in output, actions and health scores.
+
 ## 14.0.1
 
 ### Patch Changes
