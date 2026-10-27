@@ -17,7 +17,7 @@ import type { TimeoutConfig, SecurityConfig } from '../../config/schemas.js';
 import type { IPolicyFirewall, ExecutionMode } from './policy.js';
 import type { RateLimiterConfig } from './rate-limiter.js';
 import { RateLimiter } from './rate-limiter.js';
-import { VERSION } from '../../version.js';
+import { buildToolMetadata } from '../tool-build-metadata.js';
 import {
   withMiddleware,
   createMiddlewareFactory,
@@ -315,25 +315,6 @@ export function toSdkCallback(
 }
 
 /**
- * `_meta` key naming the build that produced a tool result (#5008).
- *
- * The MCP server a client is talking to is routinely a pinned global install
- * rather than the working tree, so a result read as evidence about "the
- * current code" could be answering from a months-old build with nothing in the
- * response to say so.
- *
- * It rides in `_meta` for the same reason the error envelope does (#2649):
- * `structuredContent` is validated against the tool's `outputSchema` with
- * `additionalProperties: false`, so an undeclared field there fails every call
- * with -32602 (#5044/#5045). `_meta` is the spec's out-of-band channel and is
- * never schema-validated.
- *
- * Kept module-private: the tests assert the literal wire name, which pins what
- * a client actually sees rather than agreeing with the constant.
- */
-const BUILD_META_KEY = 'nexus-agents/build';
-
-/**
  * Attaches the build stamp, preserving any `_meta` the handler already set.
  *
  * Applied inside `runWithContexts` rather than in the result factories or in
@@ -341,13 +322,13 @@ const BUILD_META_KEY = 'nexus-agents/build';
  * `toSdkCallbackWithTimeoutCheck`, the latter used by `consensus_vote`,
  * `orchestrate` and `run_workflow` — and stamping in one of them left the other
  * three tools unstamped. `runWithContexts` is what both call, on the ordinary
- * and the budget-mismatch path alike, so it is the actual chokepoint. A tool
+ * and the budget-mismatch path alike, so it is the ordinary-wrapper chokepoint. A tool
  * that assembles its result by hand is stamped here too.
  */
 function stampBuild(result: SdkToolResult): SdkToolResult {
   return {
     ...result,
-    _meta: { ...result._meta, [BUILD_META_KEY]: { version: VERSION } },
+    _meta: buildToolMetadata(result._meta),
   };
 }
 
