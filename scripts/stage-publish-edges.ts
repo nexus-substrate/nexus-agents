@@ -179,6 +179,17 @@ function packageDirs(nodeModules: string): string[] {
   return dirs;
 }
 
+/** npm optional entries replace same-name required entries, including their ranges. */
+function effectiveEntries(
+  manifest: Manifest,
+  kind: EdgeViolation['kind']
+): Array<[string, string]> {
+  const entries = Object.entries(manifest[kind] ?? {});
+  return kind === 'dependencies'
+    ? entries.filter(([name]) => !Object.hasOwn(manifest.optionalDependencies ?? {}, name))
+    : entries;
+}
+
 /**
  * Every declared edge of every package under `<stageDir>/node_modules` (and of
  * the staged package itself) that the shipped tree does not satisfy. A missing
@@ -189,7 +200,7 @@ export function edgeViolations(stageDir: string): EdgeViolation[] {
   const violations: EdgeViolation[] = [];
   const visit = (dir: string, manifest: Manifest): void => {
     for (const kind of KINDS) {
-      for (const [name, range] of Object.entries(manifest[kind] ?? {})) {
+      for (const [name, range] of effectiveEntries(manifest, kind)) {
         if (NON_SEMVER.test(range) || semver.validRange(range) === null) continue;
         const resolved = resolveVersion(stageDir, dir, name);
         const ok =

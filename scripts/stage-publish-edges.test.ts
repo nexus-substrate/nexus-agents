@@ -100,6 +100,52 @@ describe('edgeViolations', () => {
     });
     expect(edgeViolations(root)).toEqual([]);
   });
+
+  it('allows an absent optional dependency that overrides a required entry on the root', () => {
+    const root = stage();
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({
+        name: 'root',
+        version: '1.0.0',
+        dependencies: { extra: '^1' },
+        optionalDependencies: { extra: '^2' },
+      })
+    );
+    expect(edgeViolations(root)).toEqual([]);
+  });
+
+  it('checks the installed optional range instead of the shadowed required range', () => {
+    const root = stage();
+    put(root, ['ajv'], {
+      name: 'ajv',
+      version: '8.0.0',
+      dependencies: { extra: '^1' },
+      optionalDependencies: { extra: '^2' },
+    });
+    put(root, ['extra'], { name: 'extra', version: '2.0.0' });
+    expect(edgeViolations(root)).toEqual([]);
+  });
+
+  it('still rejects an installed copy that violates the overriding optional range', () => {
+    const root = stage();
+    put(root, ['ajv'], {
+      name: 'ajv',
+      version: '8.0.0',
+      dependencies: { extra: '^1' },
+      optionalDependencies: { extra: '^2' },
+    });
+    put(root, ['extra'], { name: 'extra', version: '3.0.0' });
+    expect(edgeViolations(root)).toEqual([
+      {
+        dependent: 'node_modules/ajv',
+        kind: 'optionalDependencies',
+        name: 'extra',
+        range: '^2',
+        resolved: '3.0.0',
+      },
+    ]);
+  });
 });
 
 describe('assertBundleEdges', () => {
