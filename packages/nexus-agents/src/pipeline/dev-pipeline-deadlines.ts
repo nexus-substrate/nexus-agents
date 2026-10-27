@@ -1,3 +1,4 @@
+import { forwardBuiltinStages } from './acceptance-binding.js';
 /**
  * Stage boundaries for the dev pipeline: cancellation (#6305) and per-stage
  * deadlines (#6736).
@@ -145,7 +146,11 @@ export function guardDevPipelineStages(
 ): DevPipelineStages {
   const qualityGate = stages.qualityGate?.bind(stages);
   const withWorkspace = stages.withWorkspace?.bind(stages);
-  return {
+  const withAcceptance = stages.withAcceptance?.bind(stages);
+  return forwardBuiltinStages<DevPipelineStages>(stages, {
+    ...(withAcceptance !== undefined
+      ? { withAcceptance: (binding) => guardDevPipelineStages(withAcceptance(binding), options) }
+      : {}),
     ...(withWorkspace !== undefined
       ? {
           withWorkspace: (binding: DevPipelineWorkspaceBinding) =>
@@ -168,5 +173,5 @@ export function guardDevPipelineStages(
     ...(stages.implementWorkspace !== undefined
       ? { implementWorkspace: stages.implementWorkspace }
       : {}),
-  };
+  });
 }

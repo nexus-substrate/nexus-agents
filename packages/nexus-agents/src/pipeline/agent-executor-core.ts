@@ -1,3 +1,9 @@
+import {
+  recordAcceptanceInvocation,
+  type AcceptanceRun,
+  type AcceptanceRequest,
+} from './acceptance-binding.js';
+import type { AcceptanceContext } from './acceptance-context.js';
 /**
  * Agent Executor core — the helpers every pipeline stage shares (#1684, #6331).
  *
@@ -226,6 +232,7 @@ function accessModeSignals(args: RecordOutcomeArgs): string[] {
 
 /** Configuration for the agent executor. */
 export interface AgentExecutorConfig {
+  readonly acceptance?: AcceptanceContext;
   /** Restrict every expert stage to read-only analysis during a dry run. */
   readonly dryRun?: boolean | undefined;
   /** Pipeline checkpoint session, also used by the run trace; absent means unscoped. */
@@ -304,6 +311,7 @@ function throwIfAborted(signal: AbortSignal | undefined, expertType: BuiltInExpe
 
 /** Per-call options for {@link runExpert}. */
 interface RunExpertOptions {
+  readonly acceptanceRequest?: AcceptanceRequest;
   /** Sandbox the complete expert subprocess when bound to scratch. */
   readonly wrapper?: CommandWrapper | undefined;
   /** Explicit working directory for scratch-bound implementation and review. */
@@ -364,6 +372,7 @@ export async function runExpert(
     ...(signal !== undefined && { signal }),
     ...(accessMode !== undefined && { accessMode }),
   };
+  recordAcceptanceInvocation(options.acceptanceRequest, 'bridgeInvoked');
   const result =
     Object.keys(bridgeOptions).length === 0
       ? await executeExpert(expertType, prompt)
@@ -401,6 +410,7 @@ function maybeEmitModelCalled(executionId: string | undefined, result: ExpertBri
 
 /** What every stage closure needs from the executor. */
 export interface StageDeps {
+  readonly acceptanceRun?: AcceptanceRun;
   /** Authoritative scratch root for security coverage of the captured patch. */
   readonly workspaceRoot?: string | undefined;
   readonly wrapper?: import('../cli-adapters/exec-file-tree.js').CommandWrapper | undefined;

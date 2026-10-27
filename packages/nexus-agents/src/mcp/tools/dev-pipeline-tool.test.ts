@@ -1186,6 +1186,14 @@ describe('run_dev_pipeline path containment', () => {
     expect(runDevPipelineMock.mock.calls[0]?.[0]).toBe('Accept café');
   });
 
+  it('binds the captured file snapshot before pipeline execution', async () => {
+    await captureHandler()({ planFile: join(fx.linkIn, 'plan.md') }, STDIO_CTX);
+    const stages = runDevPipelineMock.mock.calls[0]?.[1];
+    const { getBuiltinAcceptance } = await import('../../pipeline/acceptance-binding.js');
+    expect(getBuiltinAcceptance(stages as object)?.source.kind).toBe('planFile');
+    expect(getBuiltinAcceptance(stages as object)?.projection.text).toBe('# plan');
+  });
+
   it('reads a planFile through an inside symlink', async () => {
     await captureHandler()({ planFile: join(fx.linkIn, 'plan.md') }, STDIO_CTX);
 

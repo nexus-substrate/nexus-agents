@@ -334,3 +334,11 @@ export type {
 // Replay — decision trace comparison (#1688)
 export { parseTraceJsonl, extractDecisions, compareDecisions } from '../replay/replay-executor.js';
 export type { TracedDecision, ReplayComparison, ReplaySummary } from '../replay/replay-executor.js';
+
+/** Canonical immutable snapshots required by builtin withAcceptance. */
+export {
+  captureAcceptanceContext,
+  type AcceptanceContext,
+  type AcceptanceIdentity,
+  type AcceptanceSanitization,
+} from './acceptance-context.js';

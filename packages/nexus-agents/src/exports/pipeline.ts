@@ -200,3 +200,11 @@ export {
   // `DynamicExpertManager` were exported but never adopted by any
   // production path (only test-file instantiations existed).
 } from '../pipeline/index.js';
+
+/** Canonical immutable snapshots required by builtin withAcceptance. */
+export {
+  captureAcceptanceContext,
+  type AcceptanceContext,
+  type AcceptanceIdentity,
+  type AcceptanceSanitization,
+} from '../pipeline/index.js';

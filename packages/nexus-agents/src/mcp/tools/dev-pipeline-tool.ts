@@ -1,3 +1,4 @@
+import type { AcceptanceContext } from '../../pipeline/acceptance-context.js';
 /**
  * run_dev_pipeline MCP Tool (#1684)
  *
@@ -15,7 +16,7 @@ import type { McpServer } from '../sdk-types.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { truncateText } from '../../utils/text-utils.js';
-import { buildStructuredOutput } from './dev-pipeline-output.js';
+import { buildStructuredOutput, inputFailureWithDispatchNote } from './dev-pipeline-output.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
@@ -32,7 +33,11 @@ import { measuredTrustTier } from '../middleware/request-context.js';
 import type { TrustTier } from '../../security/trust-types.js';
 import { TaskSourceTrustTierSchema } from './task-source-trust-tier.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
-import { resolveDevPipelineInput } from './dev-pipeline-input.js';
+import {
+  resolveDevPipelineInput,
+  captureGoalAcceptance,
+  type AcceptanceResolveContext,
+} from './dev-pipeline-input.js';
 import {
   toolStructuredError,
   structuredToolSuccess,
@@ -236,11 +241,10 @@ function containWorkingDir(workingDir: string | undefined): string | undefined {
 /** Create pipeline stages wired to real agents via agent-executor. */
 async function createStages(
   input: DevPipelineInput,
-  // The stage record describes caller authentication, independently of input changes.
-  trustTier: string | undefined,
-  inputSanitization: ReturnType<typeof measureInputSanitization>,
-  auditLogger?: IAuditLogger
+  context: Pick<AcceptanceResolveContext, 'trustTier' | 'auditLogger' | 'inputSanitization'>,
+  acceptance?: AcceptanceContext
 ): Promise<ReturnType<typeof createAgentStages>> {
+  const { trustTier, auditLogger, inputSanitization } = context;
   // Auto-detect tracker backend if set to 'auto' or default
   const backendChoice = input.trackerBackend;
   const backend =
@@ -250,6 +254,7 @@ async function createStages(
       ? createTaskTracker({ backend, repo: input.repo, labels: input.labels })
       : undefined;
   return createAgentStages({
+    ...(acceptance !== undefined ? { acceptance } : {}),
     dryRun: input.dryRun,
     ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
     ...(trustTier !== undefined ? { callerTrustTier: trustTier, trustTier } : {}),
@@ -292,7 +297,13 @@ export async function runDevPipelineForGoal(
     ...(dryRun !== undefined ? { dryRun } : {}),
   });
   // This plain-goal entry point has no HandlerContext to measure input changes.
-  const stages = await createStages(input, trustTier, { inputSanitization: 'unmeasured' });
+  const captured = captureGoalAcceptance(goal, trustTier, sourceTrustTier);
+  if (!captured.ok) throw captured.error;
+  const stages = await createStages(
+    input,
+    { trustTier, inputSanitization: { inputSanitization: 'unmeasured' } },
+    captured.value
+  );
   // #3712: thread the caller authentication tier into the
   // consensus→execute policy snapshot. Undefined ⇒ seam fail-closes to tier 4
   // (never infer trust from absence). The `run` entry point passes the caller's
@@ -451,17 +462,6 @@ function parseHandlerInput(args: unknown): { input: DevPipelineInput } | { error
   }
 }
 
-/** Preserve existing input-error remediation alongside the structured refusal. */
-function inputFailureWithDispatchNote(error: ToolResult, dryRun: boolean): ToolResult {
-  return {
-    ...error,
-    content: error.content.map((item) => ({
-      ...item,
-      text: `${item.text} ${dispatchNoteFor(dryRun)}`,
-    })),
-  };
-}
-
 async function runDevPipelineHandler(
   args: unknown,
   logger: ILogger,
@@ -472,7 +472,6 @@ async function runDevPipelineHandler(
     requestContext?: HandlerContext['requestContext'] | undefined;
   } = { inputSanitization: { inputSanitization: 'unmeasured' } }
 ): Promise<ToolResult> {
-  const { inputSanitization } = inputContext;
   const validated = parseHandlerInput(args);
   if ('error' in validated) return validated.error;
   const { input } = validated;
@@ -489,15 +488,12 @@ async function runDevPipelineHandler(
   try {
     // Sync prelude — fast: input resolution + stage wiring + option build.
     // Only the pipeline BODY backgrounds in async mode (#3726).
-    const acceptance = await resolveDevPipelineInput(input, {
-      logger,
-      trustTier,
-      auditLogger,
-      ...inputContext,
-    });
-    if (!acceptance.ok) return inputFailureWithDispatchNote(acceptance.error, input.dryRun);
+    const context = { logger, trustTier, auditLogger, ...inputContext };
+    const acceptance = await resolveDevPipelineInput(input, context);
+    if (!acceptance.ok)
+      return inputFailureWithDispatchNote(acceptance.error, dispatchNoteFor(input.dryRun));
     const taskText = acceptance.value.projection.text;
-    const stages = await createStages(input, trustTier, inputSanitization, auditLogger);
+    const stages = await createStages(input, context, acceptance.value);
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const resolvedOptions = Object.keys(pipelineOptions).length > 0 ? pipelineOptions : undefined;
     // #6305: the async dispatch passes `cancel_job`'s signal; the sync path

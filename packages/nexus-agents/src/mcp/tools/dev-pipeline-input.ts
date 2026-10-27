@@ -18,7 +18,7 @@ import { toolStructuredError, type ToolResult } from './tool-result.js';
 import type { DevPipelineInput } from './dev-pipeline-tool.js';
 
 type InputObservation = ReturnType<typeof measureInputSanitization>;
-interface ResolveContext {
+export interface AcceptanceResolveContext {
   readonly logger: ILogger;
   readonly trustTier?: string | undefined;
   readonly auditLogger?: IAuditLogger | undefined;
@@ -44,16 +44,29 @@ async function readSource(
     return ok({ kind: 'task', source: input.task });
   if (input.planFile === undefined)
     return err(new Error('Either task or planFile must be provided'));
-  const resolved = resolveInsideRoot(input.planFile);
+  const source = await readAcceptanceFile(input.planFile, 'Plan');
+  return source.ok ? ok({ kind: 'planFile', source: source.value }) : source;
+}
+
+/** Shared contained, bounded file read for the two pipeline input boundaries. */
+export async function readAcceptanceFile(
+  filePath: string,
+  label: 'Plan' | 'Spec'
+): Promise<Result<Uint8Array, Error>> {
+  const resolved = resolveInsideRoot(filePath);
   if (resolved === null)
-    return err(new Error(`Path traversal denied: planFile must be within ${process.cwd()}`));
+    return err(
+      new Error(
+        `Path traversal denied: ${label === 'Plan' ? 'planFile' : 'specFile'} must be within ${process.cwd()}`
+      )
+    );
   try {
-    return ok({ kind: 'planFile', source: await readBoundedArtifact(resolved) });
+    return ok(await readBoundedArtifact(resolved));
   } catch (error: unknown) {
     return err(
       new Error(
         (error as NodeJS.ErrnoException).code === 'ENOENT'
-          ? `Plan file not found: ${resolved}`
+          ? `${label} file not found: ${resolved}`
           : getErrorMessage(error)
       )
     );
@@ -63,19 +76,15 @@ async function readSource(
 /** Standard tier matches run_dev_pipeline registration; no elevated trust is inferred. */
 function projectFile(
   text: string,
-  context: ResolveContext
+  context: AcceptanceResolveContext,
+  toolName: string
 ): Result<{ text: string; measurement: AcceptanceSanitization }, ToolResult> {
   const result = sanitizeToolInput(text);
-  logSanitizationResult(result, context.logger, 'run_dev_pipeline.planFile');
+  logSanitizationResult(result, context.logger, toolName);
   const refusal = checkSecurityTier('standard', result, context.logger);
   if (refusal !== null) {
     if (context.auditLogger !== undefined && context.requestContext !== undefined) {
-      emitSecurityTierAudit(
-        context.auditLogger,
-        'run_dev_pipeline.planFile',
-        context.requestContext,
-        refusal
-      );
+      emitSecurityTierAudit(context.auditLogger, toolName, context.requestContext, refusal);
     }
     return err(refusal.error);
   }
@@ -83,7 +92,7 @@ function projectFile(
     return err(
       toolStructuredError({
         errorCategory: 'internal',
-        message: 'Plan projection did not produce text',
+        message: 'File projection did not produce text',
       })
     );
   return ok({
@@ -104,33 +113,67 @@ function projectFile(
 /** Snapshot is returned for the builtin binding consumer; capability is not certified here. */
 export async function resolveDevPipelineInput(
   input: DevPipelineInput,
-  context: ResolveContext
+  context: AcceptanceResolveContext
 ): Promise<Result<AcceptanceContext, ToolResult>> {
   const resolved = await readSource(input);
   if (!resolved.ok)
     return err(
       toolStructuredError({ errorCategory: 'validation', message: resolved.error.message })
     );
-  const decoded = decodeAcceptanceSource(resolved.value.source);
+  return captureResolvedAcceptance(
+    {
+      ...resolved.value,
+      ...(input.sourceTrustTier !== undefined ? { sourceTrustTier: input.sourceTrustTier } : {}),
+    },
+    context,
+    'run_dev_pipeline.planFile'
+  );
+}
+
+/** Project a resolved input once, retaining argument and file observations separately. */
+export function captureResolvedAcceptance(
+  input: {
+    readonly kind: 'task' | 'planFile' | 'specFile';
+    readonly source: string | Uint8Array;
+    readonly sourceTrustTier?: import('../../security/trust-types.js').TrustTier;
+  },
+  context: AcceptanceResolveContext,
+  toolName: string
+): Result<AcceptanceContext, ToolResult> {
+  const decoded = decodeAcceptanceSource(input.source);
   if (!decoded.ok)
     return err(
       toolStructuredError({ errorCategory: 'validation', message: decoded.error.message })
     );
   const projection =
-    resolved.value.kind === 'planFile'
-      ? projectFile(decoded.value, context)
+    input.kind !== 'task'
+      ? projectFile(decoded.value, context, toolName)
       : ok({ text: decoded.value, measurement: { status: 'unmeasured' as const } });
   if (!projection.ok) return projection;
   const tier = TrustTierSchema.safeParse(context.trustTier);
   const snapshot = captureAcceptanceContext({
-    ...resolved.value,
+    ...input,
     projection: projection.value.text,
     ...(tier.success ? { callerTrustTier: tier.data } : {}),
-    ...(input.sourceTrustTier !== undefined ? { sourceTrustTier: input.sourceTrustTier } : {}),
     argumentSanitization: argumentObservation(context.inputSanitization),
     projectionSanitization: projection.value.measurement,
   });
   return snapshot.ok
     ? snapshot
     : err(toolStructuredError({ errorCategory: 'validation', message: snapshot.error.message }));
+}
+
+/** Plain-goal entrypoints have no middleware observation to promote into a measurement. */
+export function captureGoalAcceptance(
+  goal: string,
+  trustTier?: string,
+  sourceTrustTier?: import('../../security/trust-types.js').TrustTier
+): Result<AcceptanceContext, Error> {
+  const tier = TrustTierSchema.safeParse(trustTier);
+  return captureAcceptanceContext({
+    kind: 'goal',
+    source: goal,
+    ...(tier.success ? { callerTrustTier: tier.data } : {}),
+    ...(sourceTrustTier !== undefined ? { sourceTrustTier } : {}),
+  });
 }

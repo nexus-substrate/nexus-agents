@@ -1,3 +1,5 @@
+import { captureAcceptanceContext } from './acceptance-context.js';
+import { createAcceptanceRun } from './acceptance-binding.js';
 /** #7411: real requests/CLI bridge/durable record; transport and metadata are fixtures. */
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -167,8 +169,11 @@ vi.mock('../cli/voter-agents.js', async (importOriginal) => {
 });
 
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex');
-function stage(quickMode = false): ReturnType<typeof createVoteStage> {
+function stage(quickMode = false, bound = false): ReturnType<typeof createVoteStage> {
+  const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'Acceptance sentinel' });
+  if (!snapshot.ok) throw snapshot.error;
   return createVoteStage({
+    ...(bound ? { acceptanceRun: createAcceptanceRun(snapshot.value) } : {}),
     config: { quickMode, votingStrategy: 'supermajority' },
     guard: createBudgetGuard(),
     startStage: vi.fn(),
@@ -230,6 +235,19 @@ describe('complete pipeline plan delivery (#7411)', () => {
     vi.unstubAllEnvs();
     resetNexusDataDirCache();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('pins actual assigned seats even for a short bound proposal', async () => {
+    expect((await stage(false, true)('Short plan', '')).kind).toBe('approved');
+    expect(collector.pinned).toBe(true);
+    expect(transport.requests).toHaveLength(7);
+  });
+
+  it('blocks a short bound proposal when assigned model capacity is unknown', async () => {
+    transport.window = undefined;
+    expect((await stage(false, true)('Short plan', '')).kind).toBe('no_quorum');
+    expect(transport.requests).toHaveLength(0);
+    expect(readVoteRecords(ledger).records).toHaveLength(0);
   });
 
   it('delivers the exact full Unicode plan to all seven real requests and hashes the supplied proposal', async () => {

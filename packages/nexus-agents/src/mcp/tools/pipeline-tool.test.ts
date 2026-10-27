@@ -592,3 +592,24 @@ describe('pipeline input observations (#4733)', () => {
     );
   });
 });
+
+describe('pipeline acceptance binding (#7664)', () => {
+  it('captures a goal before the builtin factory without inventing sanitation', async () => {
+    const factory = vi.spyOn(executor, 'createAgentStages');
+    try {
+      await runPipelineForGoal('ACCEPTANCE_GOAL');
+      expect(factory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          acceptance: expect.objectContaining({
+            source: expect.objectContaining({ kind: 'goal' }),
+            provenance: expect.objectContaining({
+              projectionSanitization: { status: 'unmeasured' },
+            }),
+          }),
+        })
+      );
+    } finally {
+      factory.mockRestore();
+    }
+  });
+});

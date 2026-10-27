@@ -1,3 +1,7 @@
+import { captureAcceptanceContext } from './acceptance-context.js';
+import { getBuiltinVoteEvidence, getAcceptanceSummary } from './acceptance-binding.js';
+import { reconstructPlanVoteProposal } from './plan-vote-proposal.js';
+import { hashProposal } from '../audit/vote-record.js';
 /** Real plan-vote recording seam, with only voters and experts mocked (#6872). */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -22,6 +26,24 @@ const voters = vi.hoisted<{
   respondents: undefined,
   unverifiable: false,
 }));
+// These tests mock voters; supply explicit known seat metadata for bound preflight.
+// Real adapter dispatch and missing-capacity refusal are tested in complete-plan.test.ts.
+vi.mock('../mcp/tools/pr-review-panel-budget.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../mcp/tools/pr-review-panel-budget.js')>();
+  return {
+    ...actual,
+    resolvePanelSeats: (roles: readonly VoterRole[]) =>
+      Promise.resolve({
+        ok: true,
+        seats: new Map(
+          roles.map((role) => [
+            role,
+            { modelId: 'claude-sonnet' } as unknown as import('../core/index.js').IModelAdapter,
+          ])
+        ),
+      }),
+  };
+});
 vi.mock('../cli/voter-agents.js', async () => {
   const { extractBoundArtifact } = await import('../cli/vote-artifact.js');
   return {
@@ -147,6 +169,78 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     vi.unstubAllEnvs();
     resetNexusDataDirCache();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('privately captures the exact final suffix only for the actual bound approved vote', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'ACCEPTANCE_SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages({ acceptance: snapshot.value });
+    const vote = await stages.vote('Measured plan', 'x'.repeat(999) + ' private tail');
+    const evidence = getBuiltinVoteEvidence(stages, vote);
+    expect(evidence).toBeDefined();
+    if (evidence === undefined) return;
+    const restored = reconstructPlanVoteProposal('Measured plan', snapshot.value, evidence.suffix);
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) return;
+    expect(restored.value.endsWith(' ')).toBe(true);
+    expect(hashProposal(restored.value)).toBe(evidence.proposalHash);
+    expect(evidence.voteRecordId).toBe(vote.voteRecordId);
+    expect(evidence.recordHash).toBe(readVoteRecords(ledger).records[0]?.hash);
+    expect(getBuiltinVoteEvidence(stages, { ...vote })).toBeUndefined();
+    expect(JSON.stringify(vote)).not.toContain('suffix');
+    expect(JSON.stringify(getAcceptanceSummary(stages))).not.toContain('ACCEPTANCE_SENTINEL');
+  });
+
+  it('keeps even the shortest bound baseline outside the canonical ledger summary', async () => {
+    const snapshot = captureAcceptanceContext({
+      kind: 'task',
+      source: 'Z',
+      callerTrustTier: '1',
+      sourceTrustTier: '1',
+      argumentSanitization: { status: 'unmodified' },
+      projectionSanitization: { status: 'unmodified' },
+    });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages({ acceptance: snapshot.value });
+    const vote = await stages.vote('P', '');
+    expect(vote.kind).toBe('approved');
+    const evidence = getBuiltinVoteEvidence(stages, vote);
+    if (evidence === undefined) throw new Error('Expected persisted bound approval');
+    const proposal = reconstructPlanVoteProposal('P', snapshot.value, evidence.suffix);
+    if (!proposal.ok) throw proposal.error;
+    expect(proposal.value).toContain('\nZ\n');
+    const records = readVoteRecords(ledger).records;
+    expect(records).toHaveLength(1);
+    expect(records[0]?.proposal).toBe(proposal.value.slice(0, 500) + '...');
+    expect(records[0]?.proposal).not.toContain('Z');
+    expect(records[0]?.proposalHash).toBe(hashProposal(proposal.value));
+  });
+
+  it('retains no approval evidence when canonical persistence fails', async () => {
+    vi.spyOn(voteRecording, 'recordAuthenticVote').mockResolvedValueOnce({
+      persisted: false,
+      reason: 'write-failed',
+      detail: 'TEST disk failure',
+    });
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'BASELINE_SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages({ acceptance: snapshot.value });
+    const vote = await stages.vote('Measured plan', 'PRIVATE_TEST_SUFFIX');
+    expect(vote.kind).toBe('approved');
+    expect(vote.voteRecordId).toBeUndefined();
+    expect(getBuiltinVoteEvidence(stages, vote)).toBeUndefined();
+    expect(JSON.stringify(vote)).not.toContain('PRIVATE_TEST_SUFFIX');
+  });
+
+  it('does not expose the bound research suffix as a rejected public diagnostic proposal', async () => {
+    voters.decision = 'reject';
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'ACCEPTANCE_SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages({ acceptance: snapshot.value });
+    const vote = await stages.vote('Measured plan', 'PRIVATE_TEST_SUFFIX');
+    expect(vote.kind).toBe('rejected');
+    expect(JSON.stringify(vote)).not.toContain('PRIVATE_TEST_SUFFIX');
+    expect(getBuiltinVoteEvidence(stages, vote)).toBeUndefined();
   });
 
   it('records a live vote in a dryRun, joining seats, attempt cost and ledger by one decision ID', async () => {

@@ -1,3 +1,4 @@
+import { TrustTierSchema } from '../security/trust-types.js';
 /* eslint-disable max-lines -- 791 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); one orchestrator over the seven dev-pipeline stages with checkpoint/resume (hindsight and prior-research recall moved to dev-pipeline-context.ts); split tracked in #6148 */
 /**
  * Multi-Agent Development Pipeline (#1684)
@@ -19,6 +20,13 @@
  */
 
 import { realpathSync } from 'node:fs';
+import { captureAcceptanceContext, type AcceptanceContext } from './acceptance-context.js';
+import {
+  getAcceptanceSummary,
+  getBuiltinAcceptance,
+  isBuiltinStageSet,
+  type AcceptanceSummary,
+} from './acceptance-binding.js';
 import { isAbsolute, relative, sep } from 'node:path';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
@@ -192,6 +200,7 @@ export type DevPipelineDependencies =
 
 /** Overall pipeline result. */
 export interface DevPipelineResult {
+  readonly acceptance?: AcceptanceSummary;
   /** Operator-applied patch and the scratch checkout's cleanup status. */
   readonly changes?: {
     readonly diff: string;
@@ -329,6 +338,8 @@ export interface DevPipelineResult {
  * securityScan end their subprocess trees (#6747).
  */
 export interface DevPipelineStages {
+  /** Bind one immutable host-resolved baseline without changing stage arguments. */
+  withAcceptance?(binding: AcceptanceContext): DevPipelineStages;
   /**
    * Rebind execution stages to a per-run scratch directory, sharing the run's budget.
    * One binding object, not positional arguments: a wrapper that re-exposes this
@@ -569,14 +580,34 @@ export async function runDevPipeline(
   const traceWriter = createTraceWriter(sid);
 
   try {
-    const gated = guardDevPipelineStages(stages, {
+    const bound = bindBuiltinRunAcceptance(task, stages, options);
+    const gated = guardDevPipelineStages(bound, {
       signal: options?.signal,
       stageTimeoutMs: options?.stageTimeoutMs,
     });
-    return await runDevPipelineInner(task, gated, options, sid, prior);
+    const result = await runDevPipelineInner(task, gated, options, sid, prior);
+    return { ...result, acceptance: getAcceptanceSummary(gated) };
   } finally {
     await flushTraceWriter(traceWriter);
   }
+}
+
+/** Do not replace already-captured file provenance with projected task text. */
+function bindBuiltinRunAcceptance(
+  task: string,
+  stages: DevPipelineStages,
+  options?: DevPipelineOptions
+): DevPipelineStages {
+  if (!isBuiltinStageSet(stages) || getBuiltinAcceptance(stages) !== undefined) return stages;
+  const callerTier = TrustTierSchema.safeParse(options?.trustTier);
+  const snapshot = captureAcceptanceContext({
+    ...(callerTier.success ? { callerTrustTier: callerTier.data } : {}),
+    kind: 'task',
+    source: task,
+    ...(options?.sourceTrustTier !== undefined ? { sourceTrustTier: options.sourceTrustTier } : {}),
+  });
+  if (!snapshot.ok) throw snapshot.error;
+  return stages.withAcceptance?.(snapshot.value) ?? stages;
 }
 
 /** Core pipeline logic, separated for trace writer try/finally. */

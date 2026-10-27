@@ -185,7 +185,8 @@ describe('agent stage access modes (#6958)', () => {
     enforcement.readOnly = false;
     const stages = createAgentStages({ quickMode: true, dryRun: true });
 
-    expect(await stages.plan('Add helper', 'research')).toBe('');
+    // Adapter refusal must stop the stage, not masquerade as a generated empty plan.
+    await expect(stages.plan('Add helper', 'research')).rejects.toThrow('Planning failed');
 
     expect(executeMock).not.toHaveBeenCalled();
     expect(recordOutcomeMock).toHaveBeenCalledWith(

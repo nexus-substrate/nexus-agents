@@ -1,3 +1,8 @@
+import { captureAcceptanceContext } from '../../pipeline/acceptance-context.js';
+import { getAcceptanceSummary, type AcceptanceSummary } from '../../pipeline/acceptance-binding.js';
+import { resolvePipelineInput } from './pipeline-input.js';
+import type { AcceptanceResolveContext } from './dev-pipeline-input.js';
+import type { IAuditLogger } from '../../audit/audit-types.js';
 /**
  * run_pipeline MCP Tool (#1736, Phase 3)
  *
@@ -11,13 +16,11 @@
 import { z } from 'zod';
 import { VotingStrategySchema } from './consensus-vote-types.js';
 import { asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
-import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '../sdk-types.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
-import { resolveInsideRoot } from '../../security/safe-path.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
 import { planVoteVerdictFields } from './dev-pipeline-output.js';
@@ -214,21 +217,15 @@ function dryRunVoteFields(result: AdaptiveOrchestratorResult): Record<string, un
  * blocked libuv for the duration, stalling concurrent MCP requests (#2354).
  */
 async function resolveTask(task: string, specFile: string | undefined): Promise<string> {
-  if (specFile === undefined) return task;
-  // Path traversal guard — restrict to the cwd subtree, following symlinks.
-  const resolved = resolveInsideRoot(specFile);
-  if (resolved === null) {
-    throw new Error(`Path traversal denied: specFile must be within ${process.cwd()}`);
-  }
-  try {
-    const specContent = await fs.promises.readFile(resolved, 'utf-8');
-    return `${specContent}\n\n---\n\n${task}`;
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`Spec file not found: ${resolved}`);
+  const captured = await resolvePipelineInput(
+    { task, ...(specFile !== undefined ? { specFile } : {}) },
+    {
+      logger: createLogger({ tool: 'run_pipeline' }),
+      inputSanitization: { inputSanitization: 'unmeasured' },
     }
-    throw err;
-  }
+  );
+  if (!captured.ok) throw new Error(captured.error.content[0]?.text ?? 'Invalid pipeline input');
+  return captured.value.projection.text;
 }
 
 /** Fallback stage count when the effective template can't be resolved. */
@@ -295,15 +292,22 @@ export async function runPipelineForGoal(
   logger: ILogger = createLogger({ tool: 'run_pipeline' }),
   /** `run`'s async-job cancel signal (#6305): checked before every super-step. */
   signal?: AbortSignal
-): Promise<AdaptiveOrchestratorResult> {
+): Promise<AdaptiveOrchestratorResult & { readonly acceptance: AcceptanceSummary }> {
+  const captured = captureAcceptanceContext({ kind: 'goal', source: goal });
+  if (!captured.ok) throw captured.error;
   const budget = resolveRunBudget(goal, undefined, logger);
   const agentStages = createAgentStages({
+    acceptance: captured.value,
     budget,
     // Plain-goal pipeline/research strategies have no HandlerContext.
     inputSanitization: 'unmeasured',
   });
   const stages = selectStageRegistry(undefined, goal, agentStages);
-  return runAdaptiveOrchestrator(goal, { stages, ...(signal !== undefined ? { signal } : {}) });
+  const result = await runAdaptiveOrchestrator(goal, {
+    stages,
+    ...(signal !== undefined ? { signal } : {}),
+  });
+  return { ...result, acceptance: getAcceptanceSummary(agentStages) };
 }
 
 /** Per-run settings {@link executePipelineBody} hands to the orchestrator. */
@@ -337,7 +341,8 @@ function pipelineRunOptions(input: PipelineInput, simulated: boolean): PipelineR
 async function executePipelineBody(
   task: string,
   stages: ReturnType<typeof selectStageRegistry>,
-  run: PipelineRunOptions
+  run: PipelineRunOptions,
+  agentStages: ReturnType<typeof createAgentStages>
 ): Promise<ToolResult> {
   const { templateId, dryRun, simulated, stageTimeoutMs, signal } = run;
   const result = await runAdaptiveOrchestrator(task, {
@@ -347,7 +352,10 @@ async function executePipelineBody(
     stageTimeoutMs,
     ...(signal !== undefined ? { signal } : {}),
   });
-  const output = buildOutput(result, simulated);
+  const output = {
+    ...buildOutput(result, simulated),
+    acceptance: getAcceptanceSummary(agentStages),
+  };
   // #4363 caller audit: `toolSuccessStructured` nests the payload under
   // `structuredContent`, so a `success: false` run left the ToolResult's own
   // root clean and slipped past both the caller and `runAsJob`'s fail-closed
@@ -377,21 +385,29 @@ function createPipelineAgentStages(
   });
 }
 
+/** Boundary validation stays separate from async dispatch and stage wiring. */
+function parsePipelineInput(args: unknown): { input: PipelineInput } | { error: ToolResult } {
+  const parsed = PipelineInputSchema.safeParse(args);
+  return parsed.success
+    ? { input: parsed.data }
+    : {
+        error: toolStructuredError({
+          errorCategory: 'validation',
+          message: `Invalid input: ${formatZodError(parsed.error)}`,
+        }),
+      };
+}
+
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */
 async function runPipelineHandler(
   args: unknown,
   logger: ILogger,
   callerTrustTier: string | undefined,
-  sanitization: Pick<AgentExecutorConfig, 'inputSanitization' | 'inputSanitizationCounts'>
+  context: Omit<AcceptanceResolveContext, 'logger' | 'trustTier'>
 ): Promise<ToolResult> {
-  const parsed = PipelineInputSchema.safeParse(args);
-  if (!parsed.success) {
-    return toolStructuredError({
-      errorCategory: 'validation',
-      message: `Invalid input: ${formatZodError(parsed.error)}`,
-    });
-  }
-  const input = parsed.data;
+  const parsed = parsePipelineInput(args);
+  if ('error' in parsed) return parsed.error;
+  const { input } = parsed;
   // #4170: simulateVotes fails CLOSED outside test runners — BEFORE the try
   // block (its catch categorizes as `internal`) and BEFORE the async dispatch
   // (sync and async modes must reject identically).
@@ -405,10 +421,16 @@ async function runPipelineHandler(
   try {
     // Sync prelude — fast: input resolution + stage wiring. Only the
     // orchestrator BODY backgrounds in async mode (#3730).
-    const task = await resolveTask(input.task, input.specFile);
+    const captured = await resolvePipelineInput(
+      { task: input.task, ...(input.specFile !== undefined ? { specFile: input.specFile } : {}) },
+      { logger, trustTier: callerTrustTier, ...context }
+    );
+    if (!captured.ok) return captured.error;
+    const task = captured.value.projection.text;
     const agentStages = createPipelineAgentStages(input, {
       callerTrustTier,
-      ...sanitization,
+      ...context.inputSanitization,
+      acceptance: captured.value,
       budget: resolveRunBudget(task, input.template, logger),
     });
     const stages = selectStageRegistry(input.template, task, agentStages);
@@ -426,12 +448,13 @@ async function runPipelineHandler(
         freshJobId: () => `rp-${randomUUID()}`,
         // #5393 / #6305: arity 3 — the graph executor checks the signal before every
         // super-step, so a cancel stops the run at the next stage boundary.
-        run: (_jobId, _input, signal) => executePipelineBody(task, stages, { ...body, signal }),
+        run: (_jobId, _input, signal) =>
+          executePipelineBody(task, stages, { ...body, signal }, agentStages),
         logger,
       });
     }
 
-    return await executePipelineBody(task, stages, body);
+    return await executePipelineBody(task, stages, body, agentStages);
   } catch (error: unknown) {
     // #3730 discoverability: a sync run that times out (or otherwise fails
     // mid-pipeline) should point the caller at async mode — the durable fix
@@ -452,7 +475,10 @@ async function runPipelineHandler(
  * progress-token plumbing, and surfaced a `ZodError` on bad input as a raw
  * JSON-RPC `-32603` instead of a structured `validation` envelope.
  */
-export function registerPipelineTool(server: McpServer, deps: BaseMcpToolDeps): void {
+export function registerPipelineTool(
+  server: McpServer,
+  deps: BaseMcpToolDeps & { readonly auditLogger?: IAuditLogger }
+): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_pipeline' });
   // The context-aware form records caller authentication separately from
   // the sanitizer's observation of the handler input (#4733).
@@ -461,12 +487,11 @@ export function registerPipelineTool(server: McpServer, deps: BaseMcpToolDeps): 
     // without a context has genuinely NOT measured a tier, and that flows to
     // UNMEASURED_TRUST_TIER rather than to a default. Absence stays absence.
     (args: unknown, ctx?: HandlerContext) =>
-      runPipelineHandler(
-        args,
-        logger,
-        ctx && measuredTrustTier(ctx.requestContext),
-        measureInputSanitization(ctx)
-      ),
+      runPipelineHandler(args, logger, ctx && measuredTrustTier(ctx.requestContext), {
+        inputSanitization: measureInputSanitization(ctx),
+        requestContext: ctx?.requestContext,
+        auditLogger: deps.auditLogger,
+      }),
     { toolName: 'run_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
   const timeoutMs = getToolTimeout('run_pipeline', deps.security);

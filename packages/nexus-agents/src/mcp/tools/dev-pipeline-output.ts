@@ -1,3 +1,4 @@
+import type { ToolResult } from './tool-result.js';
 /**
  * The `run_dev_pipeline` tool's structured output (#1700), moved out of
  * `dev-pipeline-tool.ts` to keep that module under the line ceiling.
@@ -18,6 +19,7 @@ export function buildStructuredOutput(
     // a random demo panel can never pass as a real decision.
     ...(simulated ? { simulated: true } : {}),
     completed: result.completed,
+    ...(result.acceptance !== undefined ? { acceptance: result.acceptance } : {}),
     ...changesField(result),
     // Kept for compatibility: `false` here is NOT a verdict unless `securityRan`
     // is true. `security` below is the field that cannot misread (#7181).
@@ -109,5 +111,13 @@ export function planVoteVerdictFields(result: PlanVoteEvidence): PlanVoteEvidenc
     ...(result.planVoteRecordId !== undefined ? { planVoteRecordId: result.planVoteRecordId } : {}),
     ...(result.planVoteReason !== undefined ? { planVoteReason: result.planVoteReason } : {}),
     ...(result.planVoteFeedback !== undefined ? { planVoteFeedback: result.planVoteFeedback } : {}),
+  };
+}
+
+/** Preserve established remediation text without changing the structured error category. */
+export function inputFailureWithDispatchNote(error: ToolResult, note: string): ToolResult {
+  return {
+    ...error,
+    content: error.content.map((item) => ({ ...item, text: `${item.text} ${note}` })),
   };
 }
