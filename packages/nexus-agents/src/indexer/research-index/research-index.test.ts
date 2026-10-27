@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { getProjectRoot, REGISTRY_PATH } from '../../cli/research-helpers-io.js';
 import {
   parseRegistry,
   parsePapersRegistry,
@@ -37,14 +38,14 @@ import type {
 // Test Fixtures
 // ============================================================================
 
-const TEST_REGISTRY_PATH = 'docs/research/registry';
+const TEST_REGISTRY_PATH = path.join(getProjectRoot(), REGISTRY_PATH);
 
 // Check if real registry exists for integration tests. Inspects content
 // rather than just `existsSync` — #2470 auto-scaffolding can create an
 // empty papers.yaml that would falsely satisfy a presence check, which
 // would then make the real-registry-content assertions below fail.
 const hasRealRegistry = (() => {
-  const papersPath = path.join(process.cwd(), TEST_REGISTRY_PATH, 'papers.yaml');
+  const papersPath = path.join(TEST_REGISTRY_PATH, 'papers.yaml');
   if (!fs.existsSync(papersPath)) return false;
   return fs.readFileSync(papersPath, 'utf-8').includes('arxiv-');
 })();
