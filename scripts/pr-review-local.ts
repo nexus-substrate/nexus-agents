@@ -28,6 +28,7 @@ import { buildPrReviewProposalResult } from '../packages/nexus-agents/src/mcp/to
 import type { BuilderSanitizationFacts } from '../packages/nexus-agents/src/mcp/tools/pr-review-proposal.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { collectRealVotes } from '../packages/nexus-agents/src/cli/voter-agents.js';
 import {
   PR_REVIEW_ROLES,
@@ -515,7 +516,5 @@ async function main(): Promise<void> {
 // Run only when invoked directly (not when imported by the test suite), mirroring
 // scripts/check-governor-review.ts — so the exported ledger-feeder seams are unit
 // testable without executing the watcher.
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
-  await main();
-}
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) await main();
