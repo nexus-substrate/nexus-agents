@@ -17,6 +17,7 @@
  */
 
 import { z } from 'zod';
+import type { BuilderSanitizationFacts } from './pr-review-proposal.js';
 import type { ILogger } from '../../core/index.js';
 import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
@@ -151,6 +152,37 @@ function localReductionStamp(args: PersistReviewRecordArgs): string {
     ` [local pre-builder diff prefix ${String(r.prefixCodeUnits)}/${String(r.totalCodeUnits)} JS code units; ` +
     `UTF-8 ${String(r.prefixUtf8Bytes)}/${String(r.totalUtf8Bytes)} bytes; ` +
     `marker +${String(r.marker.length)} JS code units/+${String(Buffer.byteLength(r.marker))} bytes; ` +
+    'additional inspection UNMEASURED]'
+  );
+}
+
+const BuilderSanitizationFactsSchema = z
+  .object({
+    commentsRemoved: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    tagsRemoved: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    modifiedCount: z.number().int().min(0).max(4),
+    wasModified: z.boolean(),
+    sanitizationIncomplete: z.boolean(),
+  })
+  .strict();
+
+/** Distinct builder stage; no hashes or inherited middleware counts are inferred. */
+function builderSanitizationStamp(args: PersistReviewRecordArgs): string {
+  if (args.builderSanitization === undefined) return '';
+  const f = BuilderSanitizationFactsSchema.parse(args.builderSanitization);
+  if (
+    args.diffSource !== 'canonical-git' ||
+    args.sanitization !== undefined ||
+    args.coverage !== undefined ||
+    f.wasModified !== f.modifiedCount > 0 ||
+    ((f.commentsRemoved > 0 || f.tagsRemoved > 0) && !f.wasModified)
+  ) {
+    throw new Error('Invalid builder-own sanitization facts');
+  }
+  return (
+    ` [builder sanitization: ${String(f.commentsRemoved)} comments, ${String(f.tagsRemoved)} tags, ` +
+    `${String(f.modifiedCount)} changed fields; modified=${String(f.wasModified)}; ` +
+    `incomplete=${String(f.sanitizationIncomplete)}; scope=title/description/diff/context; ` +
     'additional inspection UNMEASURED]'
   );
 }
@@ -336,6 +368,8 @@ export interface PersistReviewRecordArgs {
   readonly coverage?: PrReviewCoverageStamp | undefined;
   /** Actual local pre-builder prefix reduction; absent means unspecified. */
   readonly localDiffReduction?: LocalDiffReduction | undefined;
+  /** Builder-own observations, separate from full-diff MCP sanitization and inspection. */
+  readonly builderSanitization?: BuilderSanitizationFacts | undefined;
   /**
    * The async job's cancel signal and the seats it collected (#6750). Checked
    * first, synchronously before the append, with no `await` between the check
@@ -406,9 +440,9 @@ function diffProvenanceOf(source: PrReviewDiffSource, diff: string): PrReviewDif
  * hash-covered `summary` — see `PrReviewSanitizationSchema.sanitizedDiffHash`
  * for why the two reductions are kept apart rather than folded into one hash.
  *
- * Returns `undefined` — not a zero-filled block — when no sanitizer was in the
- * path, because "no sanitizer" and "a sanitizer ran and removed nothing" are
- * different claims and the record must not collapse them.
+ * Returns undefined when no full-diff middleware observation was supplied.
+ * The local raw-binding branch can still sanitize a separate builder input;
+ * those facts do not describe this full once-sanitized-diff stage.
  */
 function sanitizationDisclosureOf(
   sanitization: ReviewSanitizationInput | undefined,
@@ -459,8 +493,8 @@ function buildAndPersist(
   // #5385: the RAW hash when the caller had one, so producer and gate agree by
   // construction. After the `raw-hash-absent` guard above, the fallback has
   // exactly ONE way to fire — `sanitization === undefined`, the local-ledger
-  // door, whose diff comes straight from git and was never sanitized, so
-  // `input.prDiff` already IS the canonical bytes.
+  // door, whose binding diff comes straight from git, so `input.prDiff` IS
+  // canonical. Its separate proposal-builder observations do not change it.
   const reviewedDiffHash = sanitization?.rawDiffHash ?? computeReviewedDiffHash(input.prDiff);
   // #4140/#6003/#6190: honest completeness — what the panel read and what the
   // hash binds go on the record as structured, hash-covered fields (every
@@ -468,7 +502,8 @@ function buildAndPersist(
   // reviewedDiffHash (the gate's binding), so gate parity is preserved. Stamped
   // BEFORE the title: the store caps the summary at 500 chars, and a title can
   // be 500 chars on its own.
-  const stamps = localReductionStamp(args) + coverageStamps(coverage);
+  const stamps =
+    localReductionStamp(args) + builderSanitizationStamp(args) + coverageStamps(coverage);
   const coverageFields = coverageFieldsOf(coverage);
   const disclosure = sanitizationDisclosureOf(sanitization, input.prDiff);
   warnIfDiffTruncated(resolveBindingMeasurement(input.prDiff, sanitization), prNumber, logger);

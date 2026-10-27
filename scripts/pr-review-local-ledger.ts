@@ -17,6 +17,7 @@
  * @module scripts/pr-review-local-ledger
  */
 
+import type { BuilderSanitizationFacts } from '../packages/nexus-agents/src/mcp/tools/pr-review-proposal.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -224,6 +225,7 @@ export interface FeedLedgerParams {
    */
   readonly canonicalDiff?: string | undefined;
   readonly localDiffReduction?: LocalDiffReduction | undefined;
+  readonly builderSanitization?: BuilderSanitizationFacts | undefined;
   readonly exec?: GhGitExec | undefined;
   readonly cwd?: string | undefined;
   readonly logger?: ILogger | undefined;
@@ -293,12 +295,12 @@ export async function feedLedgerFromReview(
       : {}),
   };
   return persistReviewRecord({
-    // #5385: no sanitizer is in this path at all — the diff comes straight from
-    // `git diff`, so `input.prDiff` IS the bound bytes. `undefined` says exactly
-    // that; a zero-filled disclosure would instead claim a sanitizer ran and
-    // removed nothing, which is a different (and false) claim.
+    // Raw binding retains canonical git bytes, bypassing MCP sanitization.
+    // The proposal builder sanitizes its separate input; its own facts travel
+    // independently and must not masquerade as a full once-sanitized diff.
     sanitization: undefined,
     localDiffReduction: params.localDiffReduction,
+    builderSanitization: params.builderSanitization,
     // #4459: this feeder ALWAYS hashes the pinned `git diff base..head` output —
     // either passed in from the review it just ran, or regenerated above by
     // `generateCanonicalReviewDiff`. There is no path here that writes a record
@@ -326,6 +328,7 @@ export interface LocalReviewSummary {
   /** Raw canonical (ledger-excluded) diff retained for binding; undefined ⇒ no record. */
   readonly canonicalDiff: string | undefined;
   readonly localDiffReduction?: LocalDiffReduction | undefined;
+  readonly builderSanitization?: BuilderSanitizationFacts | undefined;
 }
 
 /**
@@ -352,6 +355,7 @@ export async function feedLedgerRecord(summary: LocalReviewSummary): Promise<voi
     aggregate: summary.aggregate,
     canonicalDiff: summary.canonicalDiff,
     localDiffReduction: summary.localDiffReduction,
+    builderSanitization: summary.builderSanitization,
     counts: summary.counts,
     reviewCount: summary.reviewCount,
   });

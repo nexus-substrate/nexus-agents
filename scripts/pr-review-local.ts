@@ -24,12 +24,13 @@
  */
 
 import type { LocalDiffReduction } from '../packages/nexus-agents/src/mcp/tools/pr-review-record-producer.js';
+import { buildPrReviewProposalResult } from '../packages/nexus-agents/src/mcp/tools/pr-review-proposal.js';
+import type { BuilderSanitizationFacts } from '../packages/nexus-agents/src/mcp/tools/pr-review-proposal.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { collectRealVotes } from '../packages/nexus-agents/src/cli/voter-agents.js';
 import {
   PR_REVIEW_ROLES,
-  buildPrReviewProposal,
   mapVoteDecisionToPrDecision,
   aggregatePrDecisions,
   MAX_DIFF_LENGTH,
@@ -202,6 +203,7 @@ interface ReviewResult {
    */
   readonly canonicalDiff: string | undefined;
   readonly localDiffReduction?: LocalDiffReduction | undefined;
+  readonly builderSanitization?: BuilderSanitizationFacts | undefined;
 }
 
 /**
@@ -293,7 +295,7 @@ async function runReview(prNumber: number): Promise<ReviewResult> {
     }`
   );
 
-  const proposal = buildPrReviewProposal({
+  const { proposal, builderSanitization } = buildPrReviewProposalResult({
     prTitle: meta.title,
     prDescription: meta.body,
     prDiff: reviewDiff,
@@ -321,6 +323,7 @@ async function runReview(prNumber: number): Promise<ReviewResult> {
     headSha: meta.headSha,
     canonicalDiff,
     localDiffReduction,
+    builderSanitization,
   };
 }
 
@@ -453,6 +456,7 @@ async function runOnce(prNumber: number, post: boolean): Promise<void> {
     aggregate: result.aggregate,
     canonicalDiff: result.canonicalDiff,
     localDiffReduction: result.localDiffReduction,
+    builderSanitization: result.builderSanitization,
     counts: {
       approveCount: counts.approve,
       requestChangesCount: counts.rc,

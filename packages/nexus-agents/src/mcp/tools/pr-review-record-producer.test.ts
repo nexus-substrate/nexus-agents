@@ -63,6 +63,7 @@ describe('local pre-builder disclosure validation', () => {
     expect(persistReviewRecord(args()).persisted).toBe(true);
     const record = readPrReviewRecords(ledger).records[0];
     expect(record?.summary).not.toContain('pre-builder');
+    expect(record?.summary).not.toContain('builder sanitization');
     expect(record?.coverage).toBeUndefined();
     expect(record?.bindingBounds).toBeUndefined();
     expect(record?.reviewedDiffHash).toBe(computeReviewedDiffHash(DIFF));
@@ -112,6 +113,155 @@ describe('local pre-builder disclosure validation', () => {
   it('refuses local measurements on the caller-supplied MCP door', () => {
     const outcome = persistReviewRecord({ ...args(REDUCTION), diffSource: 'caller-supplied' });
     expect(outcome.persisted).toBe(false);
+    expect(readPrReviewRecords(ledger).records).toHaveLength(0);
+  });
+
+  function withBuilderFacts(facts: unknown): PersistReviewRecordArgs {
+    const value = args();
+    Reflect.set(value, 'builderSanitization', facts);
+    return value;
+  }
+
+  it('records measured clean builder facts explicitly without claiming inspection', () => {
+    const clean = {
+      commentsRemoved: 0,
+      tagsRemoved: 0,
+      modifiedCount: 0,
+      wasModified: false,
+      sanitizationIncomplete: false,
+    };
+    expect(persistReviewRecord(withBuilderFacts(clean)).persisted).toBe(true);
+    const record = readPrReviewRecords(ledger).records[0];
+    expect(record?.summary).toContain('builder sanitization: 0 comments, 0 tags, 0 changed fields');
+    expect(record?.summary).toContain('modified=false; incomplete=false');
+    expect(record?.coverage).toBeUndefined();
+    expect(record?.bindingBounds).toBeUndefined();
+  });
+
+  it('keeps maximum builder counters and supported diff/marker widths before a long title', () => {
+    // Actual tool acceptance is 2,000,000 JS units; use the widest UTF-8 BMP text.
+    const diff = DIFF + '界'.repeat(2_000_000 - DIFF.length);
+    const prefix = diff.slice(0, 50_000);
+    const value = {
+      ...args(),
+      input: { ...args().input, prTitle: '😀'.repeat(600), prDiff: diff },
+      localDiffReduction: {
+        prefixCodeUnits: prefix.length,
+        totalCodeUnits: diff.length,
+        prefixUtf8Bytes: Buffer.byteLength(prefix),
+        totalUtf8Bytes: Buffer.byteLength(diff),
+        marker: '界'.repeat(64),
+      },
+    };
+    const facts = {
+      commentsRemoved: Number.MAX_SAFE_INTEGER,
+      tagsRemoved: Number.MAX_SAFE_INTEGER,
+      modifiedCount: 4,
+      wasModified: true,
+      sanitizationIncomplete: true,
+    };
+    expect(persistReviewRecord({ ...value, builderSanitization: facts }).persisted).toBe(true);
+    const record = readPrReviewRecords(ledger).records[0];
+    if (record === undefined) throw new Error('Expected maximum-width record');
+    expect(record.summary.slice(0, 500)).toContain('scope=title/description/diff/context');
+    expect(record.summary.slice(0, 500)).toContain('incomplete=true');
+    expect(record.summary.slice(0, 500)).toContain('additional inspection UNMEASURED]');
+    expect(record.summary).toContain('9007199254740991 comments, 9007199254740991 tags');
+    expect(record.coverage).toBeUndefined();
+    expect(record.bindingBounds).toBeUndefined();
+    expect(computePrReviewRecordHash(record)).toBe(record.hash);
+    expect(
+      computePrReviewRecordHash({
+        ...record,
+        summary: record.summary.replace('incomplete=true', 'incomplete=false'),
+      })
+    ).not.toBe(record.hash);
+  });
+
+  it('refuses builder facts combined with MCP source or full-sanitization metadata', () => {
+    const facts = {
+      commentsRemoved: 0,
+      tagsRemoved: 0,
+      modifiedCount: 0,
+      wasModified: false,
+      sanitizationIncomplete: false,
+    };
+    for (const value of [
+      { ...args(), builderSanitization: facts, diffSource: 'caller-supplied' as const },
+      {
+        ...args(),
+        builderSanitization: facts,
+        sanitization: {
+          rawDiffHash: computeReviewedDiffHash(DIFF),
+          rawDiffBytes: Buffer.byteLength(DIFF),
+          rawTruncated: false,
+          commentsRemoved: 0,
+          fieldsModified: 0,
+          tagsRemoved: 0,
+        },
+      },
+    ]) {
+      expect(persistReviewRecord(value).persisted).toBe(false);
+    }
+    expect(readPrReviewRecords(ledger).records).toHaveLength(0);
+  });
+
+  it('refuses builder facts paired with panel coverage rather than claiming a combined measurement', () => {
+    const value: PersistReviewRecordArgs = {
+      ...withBuilderFacts({
+        commentsRemoved: 0,
+        tagsRemoved: 0,
+        modifiedCount: 0,
+        wasModified: false,
+        sanitizationIncomplete: false,
+      }),
+      coverage: {
+        reviewedFiles: 1,
+        totalFiles: 1,
+        droppedFiles: [],
+        partial: false,
+        panelRead: 'full',
+        binding: 'full',
+        bindingSource: 'input',
+        reviewedBytes: Buffer.byteLength(DIFF),
+        boundBytes: Buffer.byteLength(DIFF),
+        totalBytes: Buffer.byteLength(DIFF),
+        budgetSource: 'binding-cap-fallback',
+        budgetDetail: 'TEST_FAKE',
+      },
+    };
+    const outcome = persistReviewRecord(value);
+    expect(outcome.persisted).toBe(false);
+    if (outcome.persisted) throw new Error('Expected coverage combination refusal');
+    expect(outcome.reason).toBe('write-failed');
+    expect(readPrReviewRecords(ledger).records).toHaveLength(0);
+  });
+
+  it.each([
+    null,
+    {},
+    { commentsRemoved: -1 },
+    { tagsRemoved: NaN },
+    { commentsRemoved: Infinity },
+    { commentsRemoved: Number.MAX_SAFE_INTEGER + 1 },
+    { modifiedCount: 5 },
+    { wasModified: true },
+    { commentsRemoved: 1 },
+    { unexpected: 'TEST_FAKE' },
+  ])('refuses supplied invalid builder facts %j instead of inventing zero', (change) => {
+    const clean = {
+      commentsRemoved: 0,
+      tagsRemoved: 0,
+      modifiedCount: 0,
+      wasModified: false,
+      sanitizationIncomplete: false,
+    };
+    const facts =
+      change === null || Object.keys(change).length === 0 ? change : { ...clean, ...change };
+    const outcome = persistReviewRecord(withBuilderFacts(facts));
+    expect(outcome.persisted).toBe(false);
+    if (outcome.persisted) throw new Error('Expected invalid builder facts refusal');
+    expect(outcome.reason).toBe('write-failed');
     expect(readPrReviewRecords(ledger).records).toHaveLength(0);
   });
 });
