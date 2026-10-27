@@ -168,7 +168,7 @@ export function floorViolations(
       }
       if (semver.satisfies(pkg.version, floor.range, INCLUDE_PRERELEASE)) continue;
       // A patched release of the older major the dependent declares (#7614).
-      if (backportCovers(pkg.name, pkg.version)) continue;
+      if (backportCovers(pkg.name, pkg.version, floor.range)) continue;
       violations.push({ path: pkg.path, version: pkg.version, key: floor.key, range: floor.range });
     }
   }

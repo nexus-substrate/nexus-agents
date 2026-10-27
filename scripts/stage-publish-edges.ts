@@ -43,6 +43,12 @@ export interface InMajorBackport {
   minimum: string;
   /** Why this is safe: the advisories, all fixed at or below `minimum`. */
   advisories: string;
+  /**
+   * The workspace floor range `minimum` was verified against. A backport covers
+   * a version only while the floor still reads exactly this, so raising the
+   * floor for a new advisory fails the stage until the backport is re-verified.
+   */
+  verifiedFloor: string;
 }
 
 /**
@@ -59,6 +65,7 @@ export const IN_MAJOR_BACKPORTS: readonly InMajorBackport[] = [
     minimum: '3.1.9',
     advisories:
       'GHSA-w74x-v6f9-j3xg, -xhq7-xmqj-769h, -wjr9-j795-jxcr, -333x-w4r6-6crp (all fixed 3.1.9)',
+    verifiedFloor: '>=4.1.3',
   },
   {
     parent: '@google/genai',
@@ -66,6 +73,7 @@ export const IN_MAJOR_BACKPORTS: readonly InMajorBackport[] = [
     major: 7,
     minimum: '7.6.5',
     advisories: 'GHSA-j3f2-48v5-ccww (fixed 7.6.5), GHSA-f38q-mgvj-vph7 (7.6.3)',
+    verifiedFloor: '>=7.6.3',
   },
   {
     parent: 'router',
@@ -73,6 +81,7 @@ export const IN_MAJOR_BACKPORTS: readonly InMajorBackport[] = [
     major: 8,
     minimum: '8.4.0',
     advisories: 'GHSA-j3q9-mxjg-w52f, GHSA-27v5-c462-wpq7 (fixed 8.4.0)',
+    verifiedFloor: '>=8.4.0',
   },
 ];
 
@@ -81,15 +90,21 @@ export function backportRange(b: InMajorBackport): string {
   return `>=${b.minimum} <${String(b.major + 1)}`;
 }
 
-/** Whether `version` is a patched release of an older major named by a backport. */
+/**
+ * Whether `version` is a patched release of an older major named by a backport
+ * that was verified against exactly `floorRange`. A changed floor covers nothing.
+ */
 export function backportCovers(
   name: string,
   version: string,
+  floorRange: string,
   backports: readonly InMajorBackport[] = IN_MAJOR_BACKPORTS
 ): boolean {
   return backports.some(
     (b) =>
-      b.name === name && semver.satisfies(version, backportRange(b), { includePrerelease: true })
+      b.name === name &&
+      b.verifiedFloor === floorRange &&
+      semver.satisfies(version, backportRange(b), { includePrerelease: true })
   );
 }
 
@@ -131,7 +146,7 @@ type Manifest = {
 };
 
 const KINDS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const;
-/** Specs semver cannot judge: aliases, tarballs, git, tags, `*`. */
+/** Protocol specs semver cannot judge; tags such as `latest` fall out via `validRange`. */
 const NON_SEMVER = /^(npm:|git|https?:|file:|workspace:|link:)/;
 
 function readManifest(dir: string): Manifest | undefined {

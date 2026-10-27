@@ -259,4 +259,9 @@ describe('floorViolations with in-major backports (#7614)', () => {
   it('still rejects a release below the floor in the floor major', () => {
     expect(floorViolations(floors, [pkg('4.1.2')])).toHaveLength(1);
   });
+
+  it('rejects the backport once the floor is raised past what it was verified against', () => {
+    const raised = parseOverrideFloors({ 'fast-uri': '>=4.3.0' }).floors;
+    expect(floorViolations(raised, [pkg('3.1.9')])).toHaveLength(1);
+  });
 });

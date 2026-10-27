@@ -140,11 +140,15 @@ describe('in-major backports', () => {
   });
 
   it('covers only patched releases of the older major', () => {
-    expect(backportCovers('fast-uri', '3.1.9')).toBe(true);
-    expect(backportCovers('fast-uri', '3.1.8')).toBe(false);
-    expect(backportCovers('fast-uri', '4.2.3')).toBe(false);
-    expect(backportCovers('protobufjs', '7.6.6')).toBe(true);
-    expect(backportCovers('protobufjs', '7.6.4')).toBe(false);
-    expect(backportCovers('unrelated', '1.0.0')).toBe(false);
+    expect(backportCovers('fast-uri', '3.1.9', '>=4.1.3')).toBe(true);
+    expect(backportCovers('fast-uri', '3.1.8', '>=4.1.3')).toBe(false);
+    expect(backportCovers('fast-uri', '4.2.3', '>=4.1.3')).toBe(false);
+    expect(backportCovers('protobufjs', '7.6.6', '>=7.6.3')).toBe(true);
+    expect(backportCovers('protobufjs', '7.6.4', '>=7.6.3')).toBe(false);
+    expect(backportCovers('unrelated', '1.0.0', '>=1.0.0')).toBe(false);
+  });
+
+  it('covers nothing once the floor it was verified against changes', () => {
+    expect(backportCovers('fast-uri', '3.1.9', '>=4.3.0')).toBe(false);
   });
 });
