@@ -9,6 +9,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { VERSION } from '../../version.js';
+import type { CallToolResult } from '../sdk-facade/index.js';
 import type {
   CreateTaskRequestHandlerExtra,
   TaskRequestHandlerExtra,
@@ -223,6 +225,7 @@ describe('createTaskHandler background completion', () => {
 
     expect(h.storeTaskResult).toHaveBeenCalledWith('task-1', 'completed', {
       content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+      _meta: { 'nexus-agents/build': { version: VERSION } },
     });
     expect(eventsOf(h.notifier)).toEqual(['expert_start', 'expert_complete']);
     expect(completionOf(h.notifier)).toEqual({
@@ -343,6 +346,80 @@ describe('createTaskHandler background failure', () => {
         error: 'store down',
       });
     });
+  });
+});
+
+describe('createTaskHandler producer build evidence (#7577)', () => {
+  it.each(['success', 'error', 'thrown'] as const)(
+    'stores producer build metadata for %s',
+    async (outcome) => {
+      const h = createHarness(() =>
+        outcome === 'thrown'
+          ? Promise.reject(new Error('TEST_FAKE_THROWN_FAILURE'))
+          : Promise.resolve(
+              outcome === 'success'
+                ? {
+                    ok: true,
+                    value: {
+                      expertId: 'TEST_FAKE_EXPERT',
+                      role: 'code_expert',
+                      status: 'success',
+                      tokensUsed: 1,
+                    },
+                  }
+                : { ok: false, error: 'TEST_FAKE_OFFLINE_FAILURE' }
+            )
+      );
+      await runToCompletion(h);
+      const call = h.storeTaskResult.mock.calls[0];
+      if (call === undefined) throw new Error('Expected the background producer to store a result');
+      const result = call[2] as CallToolResult;
+      expect(call[1]).toBe(outcome === 'success' ? 'completed' : 'failed');
+      if (outcome !== 'success') {
+        expect(result.isError).toBe(true);
+        expect(result._meta?.['nexus-agents/error']).toBeDefined();
+      } else {
+        expect(result.content).toEqual([
+          { type: 'text', text: expect.stringContaining('TEST_FAKE_EXPERT') },
+        ]);
+      }
+      expect(result._meta?.['nexus-agents/build']).toEqual({ version: VERSION });
+    }
+  );
+
+  it('returns historical producer metadata and unrelated metadata without reader restamping', async () => {
+    const stored: CallToolResult = {
+      content: [{ type: 'text', text: 'TEST_FAKE historical result' }],
+      _meta: {
+        'nexus-agents/build': { version: 'TEST_FAKE_HISTORICAL_BUILD' },
+        TEST_FAKE_EXISTING: { preserved: true },
+      },
+    };
+    const h = createHarness(() => Promise.resolve({ ok: false, error: 'unused executor' }));
+    const getTaskResult = vi.fn().mockResolvedValue(stored);
+    const extra = {
+      taskId: 'TEST_FAKE_OLD_TASK',
+      taskStore: { getTaskResult },
+    } as unknown as TaskRequestHandlerExtra;
+    const result = await h.handler.getTaskResult(VALID_ARGS, extra);
+    expect(result).toEqual(stored);
+    expect(result._meta?.['nexus-agents/build']).not.toEqual({ version: VERSION });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+  it('keeps historical absence and unrelated metadata through the reader', async () => {
+    const stored: CallToolResult = {
+      content: [{ type: 'text', text: 'TEST_FAKE unstamped historical result' }],
+      _meta: { TEST_FAKE_EXISTING: { preserved: true } },
+    };
+    const h = createHarness(() => Promise.resolve({ ok: false, error: 'unused executor' }));
+    const extra = {
+      taskId: 'TEST_FAKE_UNSTAMPED_TASK',
+      taskStore: { getTaskResult: vi.fn().mockResolvedValue(stored) },
+    } as unknown as TaskRequestHandlerExtra;
+    const result = await h.handler.getTaskResult(VALID_ARGS, extra);
+    expect(result).toEqual(stored);
+    expect(result._meta?.['nexus-agents/build']).toBeUndefined();
+    expect(h.execute).not.toHaveBeenCalled();
   });
 });
 

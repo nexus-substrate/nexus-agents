@@ -94,6 +94,7 @@ import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 import { release, suggestRetryAfterMs, tryAcquire } from '../jobs/job-concurrency.js';
 import { defaultBusyEnvelope } from '../jobs/run-as-job.js';
 import { toolStructuredError, toolSuccess } from './tool-result.js';
+import { buildToolMetadata } from '../tool-build-metadata.js';
 import { ExpertRecoveryPolicySchema } from '../../agents/index.js';
 
 /** The slice of the tool deps this handler reads itself; the rest passes through to `execute`. */
@@ -417,9 +418,10 @@ async function storeResult(
   result: CallToolResult,
   sessionId?: string
 ): Promise<void> {
+  const producedResult = { ...result, _meta: buildToolMetadata(result._meta) };
   if (sessionId !== undefined) {
-    await taskStore.storeTaskResult(taskId, status, result, sessionId);
+    await taskStore.storeTaskResult(taskId, status, producedResult, sessionId);
   } else {
-    await taskStore.storeTaskResult(taskId, status, result);
+    await taskStore.storeTaskResult(taskId, status, producedResult);
   }
 }
