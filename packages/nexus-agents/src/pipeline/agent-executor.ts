@@ -1,3 +1,5 @@
+import { createAcceptanceRun, registerBuiltinStages } from './acceptance-binding.js';
+import type { StageDeps } from './agent-executor-core.js';
 /**
  * Agent Executor — Connects pipeline stages to nexus-agents infrastructure (#1684)
  *
@@ -139,36 +141,42 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
   // Left un-annotated on purpose: the api-surface walk follows type references
   // inside function bodies, and `StageDeps` is an internal seam, not public API.
   const deps = { config, guard, startStage };
-  return {
-    research: createResearchStage(deps),
-    plan: createPlanStage(deps),
-    vote: createVoteStage(deps),
-    decompose: createDecomposeStage(deps),
-    ...createExecutionStages(deps),
-    // #6794: execution closures share the same guard and scratch directory.
-    withWorkspace: ({
-      directory,
-      root,
-      dependencies: workspaceDependencies,
-      wrapper,
-      baseline,
-    }) => {
-      const bound = {
-        ...deps,
-        workspaceDependencies,
-        workspaceRoot: root,
+  return buildBoundStages({
+    ...deps,
+    ...(config.acceptance !== undefined
+      ? { acceptanceRun: createAcceptanceRun(config.acceptance) }
+      : {}),
+  });
+}
+
+/** Both binders preserve the run's budget guard and all existing bindings. */
+function buildBoundStages(deps: StageDeps): DevPipelineStages {
+  return registerBuiltinStages<DevPipelineStages>(
+    {
+      research: createResearchStage(deps),
+      plan: createPlanStage(deps),
+      vote: createVoteStage(deps),
+      decompose: createDecomposeStage(deps),
+      ...createExecutionStages(deps),
+      withAcceptance: (acceptance) =>
+        buildBoundStages({ ...deps, acceptanceRun: createAcceptanceRun(acceptance) }),
+      withWorkspace: ({
+        directory,
+        root,
+        dependencies: workspaceDependencies,
         wrapper,
-        config: { ...config, scanTarget: directory, securityBaseline: baseline },
-      };
-      return {
-        ...createExecutionStages(bound),
-        research: createResearchStage(deps),
-        plan: createPlanStage(deps),
-        vote: createVoteStage(deps),
-        decompose: createDecomposeStage(deps),
-      };
+        baseline,
+      }) =>
+        buildBoundStages({
+          ...deps,
+          workspaceDependencies,
+          workspaceRoot: root,
+          wrapper,
+          config: { ...deps.config, scanTarget: directory, securityBaseline: baseline },
+        }),
     },
-  };
+    deps.acceptanceRun
+  );
 }
 
 /** Execution stages share a budget while targeting the per-run checkout. */

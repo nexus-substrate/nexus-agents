@@ -1,3 +1,4 @@
+import { captureAcceptanceRequest } from './acceptance-binding.js';
 /**
  * Agent Executor stages — the research/plan/decompose/implement/qaReview/
  * qualityGate/securityScan closures `createAgentStages` assembles (#1684, #6331).
@@ -7,8 +8,7 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
-import type { DevPipelineStages, QaReviewResult } from './dev-pipeline.js';
-import { buildQaPrompt } from './qa-review-budget.js';
+import type { DevPipelineStages } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
 import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../security/quality-gate.js';
 import { executeDiscovery, ResearchDiscoverInputSchema } from '../mcp/tools/research-discover.js';
@@ -29,7 +29,6 @@ import {
 import {
   flushPipelineMemory,
   recordLearning,
-  recordMemoryError,
   recordRoutingExperience,
 } from './agent-executor-memory.js';
 import {
@@ -38,7 +37,7 @@ import {
   getTrendContext,
   getWeatherContext,
 } from './agent-executor-context.js';
-import { parseQaVerdict, parseTasksFromResponse } from './agent-executor-parsers.js';
+import { parseTasksFromResponse } from './agent-executor-parsers.js';
 import {
   IMPLEMENT_ACCESS_MODE,
   implementQualitySignals,
@@ -153,6 +152,7 @@ export function createPlanStage({
   config,
   guard,
   startStage,
+  acceptanceRun,
 }: StageDeps): DevPipelineStages['plan'] {
   return async (task, research, feedback, signal) => {
     startStage('plan');
@@ -165,7 +165,9 @@ export function createPlanStage({
         ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\n${contextBlock}`
         : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
     await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-    const r = await runExpert(guard, 'architecture', prompt, 'plan', {
+    const request = captureAcceptanceRequest(acceptanceRun, 'plan', prompt);
+    const r = await runExpert(guard, 'architecture', request.prompt, 'plan', {
+      acceptanceRequest: request,
       signal,
       accessMode: 'read-only-analysis',
     });
@@ -185,12 +187,9 @@ export function createPlanStage({
       'Plan',
       `Done (${String(r.text.length)} chars, ${String(r.durationMs)}ms)`
     );
-    // #4772: do NOT fall back to `prompt`. Returning the input as the output
-    // made a failed planner indistinguishable from a successful one — the
-    // vote, and then decompose, ran against the prompt text as if it were a
-    // plan. `runExpert` already returns `{ success: false, text: '' }` on
-    // failure, so the empty string carries the signal; `planVoteLoop` stops
-    // on it rather than voting on nothing.
+    // A failed bridge can echo the request; never turn it into a generated plan.
+    // Successful empty plans still reach the pipeline's explicit empty-plan status.
+    if (!r.success) throw new Error('Planning failed: expert call unsuccessful');
     return r.text;
   };
 }
@@ -199,25 +198,34 @@ export function createDecomposeStage({
   config,
   guard,
   startStage,
+  acceptanceRun,
 }: StageDeps): DevPipelineStages['decompose'] {
   return async (plan, signal) => {
     startStage('decompose');
     await postProgress(config, 'PM', 'PM expert decomposing...');
-    const r = await runExpert(
-      guard,
-      'pm',
-      `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
+    const request = captureAcceptanceRequest(
+      acceptanceRun,
       'decompose',
-      { signal, accessMode: 'read-only-analysis' }
+      `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`
     );
-    const tasks = parseTasksFromResponse(r.text, plan);
-    emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
+    const r = await runExpert(guard, 'pm', request.prompt, 'decompose', {
+      signal,
+      accessMode: 'read-only-analysis',
+      acceptanceRequest: request,
+    });
+    // Record the routed call even when its failed output cannot become tasks.
     recordOutcome({
       sessionId: config.sessionId,
       taskId: 'decompose',
       category: 'planning',
       ...outcomeFieldsFromBridge(r),
     });
+    if (!r.success) {
+      emitStageEvent('decompose', 'failed', { error: 'Expert call unsuccessful' });
+      throw new Error('Decomposition failed: expert call unsuccessful');
+    }
+    const tasks = parseTasksFromResponse(r.text, plan);
+    emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
     await postProgress(config, 'PM', `${String(tasks.length)} task(s)`);
     return tasks;
   };
@@ -228,24 +236,25 @@ export function createImplementStage({
   guard,
   startStage,
   wrapper,
+  acceptanceRun,
 }: StageDeps): DevPipelineStages['implement'] {
   return async (task, signal) => {
     startStage(`impl-${task.id}`, 'execute');
     await postProgress(config, `Code [${task.id}]`, task.title);
     const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
     // #6792: see IMPLEMENT_ACCESS_MODE (panel decision on #6792, option B).
-    const r = await runExpert(
-      guard,
-      'code',
-      `Implement:\n\n${task.title}\n${task.description}${fb}`,
-      task.id,
-      {
-        signal,
-        accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
-        workDir: config.scanTarget,
-        wrapper,
-      }
+    const request = captureAcceptanceRequest(
+      acceptanceRun,
+      'implement',
+      `Implement:\n\n${task.title}\n${task.description}${fb}`
     );
+    const r = await runExpert(guard, 'code', request.prompt, task.id, {
+      signal,
+      acceptanceRequest: request,
+      accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
+      workDir: config.scanTarget,
+      wrapper,
+    });
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
       // model: real per-model failure attribution for the feedback bridge (#4194)
@@ -267,105 +276,13 @@ export function createImplementStage({
       task.researchMaturity
     );
     await postProgress(config, `Code [${task.id}]`, `Done (${String(r.durationMs)}ms)`);
-    // An empty text is a failed implementation (`runExpert` returns `text: ''` on failure).
-    if (r.text !== '') return implementStageText(r);
-    return `[Implementation failed: ${r.error ?? 'unknown error'}]`;
+    // Failed bridge text can echo the prompt; it is never an implementation artifact.
+    if (r.success && r.text !== '') return implementStageText(r);
+    throw new Error('Implementation failed: expert call unsuccessful or empty output');
   };
 }
 
-/** Why a QA review produced no verdict (#6776). */
-type QaUnmeasuredCause = 'call-failed' | 'unreadable';
-
-/**
- * Turn the QA expert's result into a review, failing CLOSED (#6776).
- *
- * A failed call (`runExpert` returns `text: ''` on budget skip, routing error,
- * timeout, refusal) and a reply with no readable verdict are both ABSENCE of a
- * review. `QaReviewResult.verdict` has no `unmeasured` member (it is a
- * published type, and the QA loop only distinguishes pass from not-pass), so
- * absence is recorded as `needs_work` whose feedback says the verdict was
- * unmeasured and why, plus a `qa-unmeasured:<cause>` outcome signal. The QA
- * loop is bounded, so a reviewer that keeps failing ends the task not-done
- * after its max iterations with this feedback on it.
- */
-function readQaReview(r: {
-  readonly success: boolean;
-  readonly text: string;
-  readonly error?: string | undefined;
-}): { review: QaReviewResult; unmeasured?: QaUnmeasuredCause } {
-  if (!r.success) {
-    const reason = `QA review unmeasured: the QA expert call failed (${r.error ?? 'unknown error'}); no verdict was produced.`;
-    return {
-      review: { verdict: 'needs_work', feedback: reason, issues: [reason] },
-      unmeasured: 'call-failed',
-    };
-  }
-  const parsed = parseQaVerdict(r.text);
-  if (parsed !== undefined) return { review: parsed };
-  const excerpt = r.text.trim() === '' ? '(empty reply)' : r.text.slice(0, 500);
-  const reason =
-    'QA review unmeasured: no PASS / NEEDS_WORK / REJECT verdict could be read from the reviewer reply.';
-  return {
-    review: { verdict: 'needs_work', feedback: `${reason}\n\n${excerpt}`, issues: [reason] },
-    unmeasured: 'unreadable',
-  };
-}
-
-export function createQaReviewStage({
-  config,
-  guard,
-  startStage,
-  wrapper,
-}: StageDeps): DevPipelineStages['qaReview'] {
-  return async (task, implementation, signal) => {
-    startStage(`qa-${task.id}`);
-    await postProgress(config, `QA [${task.id}]`, 'QA expert reviewing...');
-    const { prompt, coverage } = buildQaPrompt(task.title, implementation);
-    // #6768: the reviewer reads model-generated code that can come from issue
-    // text, so it runs read-only with no MCP tools (panel decision on #6768).
-    const r = await runExpert(guard, 'qa', prompt, task.id, {
-      signal,
-      accessMode: 'read-only-analysis',
-      workDir: config.scanTarget,
-      wrapper,
-    });
-    const { review: parsed, unmeasured } = readQaReview(r);
-    const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;
-    emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
-      durationMs: r.durationMs,
-      // model: real per-model failure attribution for the feedback bridge (#4194)
-      model: r.model,
-    });
-    recordOutcome({
-      sessionId: config.sessionId,
-      taskId: task.id,
-      category: 'code_review',
-      // #6521 I2: the row scores the reviewer's CALL; the verdict judges the
-      // implementation, so it rides as a signal, not as `success`.
-      ...outcomeFieldsFromBridge(r),
-      qualitySignals: [
-        `qa-verdict:${review.verdict}`,
-        ...(unmeasured !== undefined ? [`qa-unmeasured:${unmeasured}`] : []),
-      ],
-    });
-    // Write-back: persist QA outcomes to memory (#1716)
-    if (review.verdict === 'pass') {
-      recordLearning(`Task "${task.title}" passed QA`, 0.8, 'pipeline-qa');
-    } else if (unmeasured !== undefined) {
-      recordMemoryError(
-        `QA review of "${task.title}" unmeasured (${unmeasured})`,
-        'QA produced no verdict'
-      );
-    } else {
-      recordMemoryError(
-        `QA rejected "${task.title}": ${review.feedback.slice(0, 150)}`,
-        'needs rework'
-      );
-    }
-    await postProgress(config, `QA [${task.id}]`, review.verdict);
-    return review;
-  };
-}
+export { createQaReviewStage } from './agent-executor-qa.js';
 
 /**
  * Run typecheck/lint/tests for the gate, or report it unmeasured when the

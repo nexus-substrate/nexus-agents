@@ -1,3 +1,4 @@
+import type { AcceptanceContext } from '../../pipeline/acceptance-context.js';
 /**
  * run_dev_pipeline MCP Tool (#1684)
  *
@@ -10,13 +11,16 @@
 import { z } from 'zod';
 import { VotingStrategySchema } from './consensus-vote-types.js';
 import { dispatchFieldDefaultSync, modeEnumErrorNamingDispatch } from './async-dispatch-input.js';
-import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '../sdk-types.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { truncateText } from '../../utils/text-utils.js';
-import { buildStructuredOutput } from './dev-pipeline-output.js';
+import {
+  buildStructuredOutput,
+  inputFailureWithDispatchNote,
+  describeCheckpointFailure,
+} from './dev-pipeline-output.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
@@ -33,6 +37,11 @@ import { measuredTrustTier } from '../middleware/request-context.js';
 import type { TrustTier } from '../../security/trust-types.js';
 import { TaskSourceTrustTierSchema } from './task-source-trust-tier.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
+import {
+  resolveDevPipelineInput,
+  captureGoalAcceptance,
+  type AcceptanceResolveContext,
+} from './dev-pipeline-input.js';
 import {
   toolStructuredError,
   structuredToolSuccess,
@@ -205,35 +214,6 @@ export interface DevPipelineToolDeps extends BaseMcpToolDeps {
 // ============================================================================
 
 /**
- * Resolve task input from direct instructions or file.
- *
- * Async because plan files can be large and the previous synchronous read
- * blocked libuv for the duration, stalling concurrent MCP requests (#2354).
- */
-async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
-  if (input.task !== undefined && input.task.trim() !== '') {
-    return input.task;
-  }
-  if (input.planFile !== undefined) {
-    // Path traversal guard — restrict to the cwd subtree, following symlinks
-    // (security audit 2026-04-10).
-    const resolved = resolveInsideRoot(input.planFile);
-    if (resolved === null) {
-      throw new Error(`Path traversal denied: planFile must be within ${process.cwd()}`);
-    }
-    try {
-      return await fs.promises.readFile(resolved, 'utf-8');
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Error(`Plan file not found: ${resolved}`);
-      }
-      throw err;
-    }
-  }
-  throw new Error('Either task or planFile must be provided');
-}
-
-/**
  * Contain `workingDir` to the cwd subtree or the MCP client's declared
  * workspace root, following symlinks. A globally installed server runs with
  * cwd outside the user's repo (see `mcp/workspace-roots.ts`), so the
@@ -265,11 +245,10 @@ function containWorkingDir(workingDir: string | undefined): string | undefined {
 /** Create pipeline stages wired to real agents via agent-executor. */
 async function createStages(
   input: DevPipelineInput,
-  // The stage record describes caller authentication, independently of input changes.
-  trustTier: string | undefined,
-  inputSanitization: ReturnType<typeof measureInputSanitization>,
-  auditLogger?: IAuditLogger
+  context: Pick<AcceptanceResolveContext, 'trustTier' | 'auditLogger' | 'inputSanitization'>,
+  acceptance?: AcceptanceContext
 ): Promise<ReturnType<typeof createAgentStages>> {
+  const { trustTier, auditLogger, inputSanitization } = context;
   // Auto-detect tracker backend if set to 'auto' or default
   const backendChoice = input.trackerBackend;
   const backend =
@@ -279,6 +258,7 @@ async function createStages(
       ? createTaskTracker({ backend, repo: input.repo, labels: input.labels })
       : undefined;
   return createAgentStages({
+    ...(acceptance !== undefined ? { acceptance } : {}),
     dryRun: input.dryRun,
     ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
     ...(trustTier !== undefined ? { callerTrustTier: trustTier, trustTier } : {}),
@@ -321,7 +301,13 @@ export async function runDevPipelineForGoal(
     ...(dryRun !== undefined ? { dryRun } : {}),
   });
   // This plain-goal entry point has no HandlerContext to measure input changes.
-  const stages = await createStages(input, trustTier, { inputSanitization: 'unmeasured' });
+  const captured = captureGoalAcceptance(goal, trustTier, sourceTrustTier);
+  if (!captured.ok) throw captured.error;
+  const stages = await createStages(
+    input,
+    { trustTier, inputSanitization: { inputSanitization: 'unmeasured' } },
+    captured.value
+  );
   // #3712: thread the caller authentication tier into the
   // consensus→execute policy snapshot. Undefined ⇒ seam fail-closes to tier 4
   // (never infer trust from absence). The `run` entry point passes the caller's
@@ -400,6 +386,9 @@ async function executeDevPipelineBody(
  * actionable rather than a bare "failed".
  */
 function describeIncompleteRun(result: DevPipelineResult): string {
+  const checkpointFailure = describeCheckpointFailure(result);
+  if (checkpointFailure !== undefined) return checkpointFailure;
+
   if (result.planStatus !== undefined) {
     return `Pipeline stopped at the planning gate (planStatus: ${result.planStatus})`;
   }
@@ -485,9 +474,10 @@ async function runDevPipelineHandler(
   logger: ILogger,
   trustTier?: string,
   auditLogger?: IAuditLogger,
-  inputSanitization: ReturnType<typeof measureInputSanitization> = {
-    inputSanitization: 'unmeasured',
-  }
+  inputContext: {
+    inputSanitization: ReturnType<typeof measureInputSanitization>;
+    requestContext?: HandlerContext['requestContext'] | undefined;
+  } = { inputSanitization: { inputSanitization: 'unmeasured' } }
 ): Promise<ToolResult> {
   const validated = parseHandlerInput(args);
   if ('error' in validated) return validated.error;
@@ -505,11 +495,14 @@ async function runDevPipelineHandler(
   try {
     // Sync prelude — fast: input resolution + stage wiring + option build.
     // Only the pipeline BODY backgrounds in async mode (#3726).
-    const taskText = await resolveTaskInput(input);
-    const stages = await createStages(input, trustTier, inputSanitization, auditLogger);
+    const context = { logger, trustTier, auditLogger, ...inputContext };
+    const acceptance = await resolveDevPipelineInput(input, context);
+    if (!acceptance.ok)
+      return inputFailureWithDispatchNote(acceptance.error, dispatchNoteFor(input.dryRun));
+    const taskText = acceptance.value.projection.text;
+    const stages = await createStages(input, context, acceptance.value);
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
-    const hasOptions = Object.keys(pipelineOptions).length > 0;
-    const resolvedOptions = hasOptions ? pipelineOptions : undefined;
+    const resolvedOptions = Object.keys(pipelineOptions).length > 0 ? pipelineOptions : undefined;
     // #6305: the async dispatch passes `cancel_job`'s signal; the sync path
     // passes none, so its options are unchanged.
     const run = (signal?: AbortSignal): Promise<ToolResult> =>
@@ -623,7 +616,7 @@ export function registerDevPipelineTool(server: McpServer, deps: DevPipelineTool
         logger,
         ctx && measuredTrustTier(ctx.requestContext),
         deps.auditLogger,
-        measureInputSanitization(ctx)
+        { inputSanitization: measureInputSanitization(ctx), requestContext: ctx?.requestContext }
       ),
     { toolName: 'run_dev_pipeline', rateLimiter: deps.rateLimiter, logger }
   );

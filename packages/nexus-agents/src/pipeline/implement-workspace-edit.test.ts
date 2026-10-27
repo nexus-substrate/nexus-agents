@@ -142,7 +142,9 @@ describe('implement stage access mode (#6792)', () => {
       error: Object.assign(new Error('refused'), { routedCli: 'claude' }),
     });
 
-    await createImplementStage(deps())(TASK);
+    await expect(createImplementStage(deps())(TASK)).rejects.toThrow(
+      'Implementation failed: expert call unsuccessful or empty output'
+    );
 
     const row = outcomeRow(TASK.id);
     expect(row['success']).toBe(false);

@@ -13,8 +13,10 @@ function oversizedArtifact(bytes: number): Error {
   );
 }
 
-/** Read at most cap + 1 bytes, including when a file grows after stat. */
-async function readBoundedArtifact(artifactPath: string): Promise<Buffer> {
+/** Read at most cap + 1 bytes, including when a file grows after stat.
+ * Internal shared boundary for vote artifacts and pipeline acceptance files.
+ */
+export async function readBoundedArtifact(artifactPath: string): Promise<Buffer> {
   const file = await open(artifactPath, constants.O_RDONLY | constants.O_NONBLOCK);
   try {
     const stat = await file.stat();

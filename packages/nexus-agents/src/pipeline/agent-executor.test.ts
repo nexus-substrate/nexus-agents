@@ -6,6 +6,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { captureAcceptanceContext } from './acceptance-context.js';
+import { getAcceptanceSummary, isBuiltinStageSet } from './acceptance-binding.js';
+import { guardDevPipelineStages } from './dev-pipeline-deadlines.js';
 
 const {
   mockExecuteExpert,
@@ -145,6 +148,175 @@ describe('createAgentStages — central workflow hub', () => {
       .mockReset()
       .mockResolvedValue({ focus: 'gaps', success: true, analysis: {}, recommendations: [] });
     mockCheckSecurityScan.mockReset().mockResolvedValue({ verdict: 'pass', details: 'ok' });
+  });
+
+  it('delivers an independent baseline through guard, workspace and omitted PM output', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'BASELINE_SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    mockExecuteExpert.mockResolvedValue({ success: true, text: 'generated plan', durationMs: 1 });
+    const built = createAgentStages({ dryRun: true });
+    const bound = built.withAcceptance!(snapshot.value);
+    const guarded = guardDevPipelineStages(bound, {}).withWorkspace!({
+      directory: '/tmp/acceptance-test',
+      dependencies: { status: 'none' },
+    });
+    expect(await guarded.plan('task', 'research')).toBe('generated plan');
+    mockExecuteExpert.mockResolvedValue({
+      success: true,
+      text: '[{"id":"t","title":"omitted","description":"no baseline","assignedTo":"coder"}]',
+      durationMs: 1,
+    });
+    const tasks = await guarded.decompose('generated plan');
+    const task = tasks[0]!;
+    mockExecuteExpert.mockResolvedValue({ success: true, text: 'implementation', durationMs: 1 });
+    await guarded.implement(task);
+    await guarded.implement({ ...task, feedback: 'retry omitted baseline' });
+    await guarded.qaReview(task, 'x'.repeat(3100));
+    const prompts = mockExecuteExpert.mock.calls.map((call) => String(call[1]));
+    expect(prompts).toHaveLength(5);
+    expect(prompts.every((prompt) => prompt.includes('BASELINE_SENTINEL'))).toBe(true);
+    expect(prompts[4]).toContain('3000');
+    const summary = getAcceptanceSummary(guarded);
+    expect(summary.binding).toBe('host-owned');
+    expect(JSON.stringify(summary)).not.toContain('BASELINE_SENTINEL');
+    expect(summary.stages.implement).toMatchObject({
+      constructed: 2,
+      bridgeInvoked: 2,
+      routerDispatch: 'unmeasured',
+    });
+  });
+
+  it('does not certify a custom acknowledgment or empty run', () => {
+    const custom = { withAcceptance: () => custom };
+    const summary = getAcceptanceSummary(custom);
+    expect(summary.binding).toBe('unmeasured');
+    expect(summary.stages.plan.constructed).toBe('unmeasured');
+  });
+
+  it('records constructed but not bridge-invoked after the shared budget is spent', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'BASELINE_SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    mockExecuteExpert.mockResolvedValue({
+      success: true,
+      text: 'plan',
+      durationMs: 1,
+      tokensUsed: 20,
+    });
+    const bound = createAgentStages({ budget: { maxTokens: 1 } }).withAcceptance!(snapshot.value);
+    await bound.plan('task', 'research');
+    const rebound = bound.withWorkspace!({
+      directory: '/tmp/acceptance-test',
+      dependencies: { status: 'none' },
+    });
+    await expect(rebound.decompose('plan')).rejects.toThrow('Decomposition failed');
+    expect(mockExecuteExpert).toHaveBeenCalledTimes(1);
+    expect(getAcceptanceSummary(bound).stages.decompose).toMatchObject({
+      constructed: 1,
+      bridgeInvoked: 'unmeasured',
+    });
+  });
+
+  it('rejects mutable or wrong-identity structural acceptance supplied to the public binder', () => {
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    const mutable = {
+      ...snapshot.value,
+      projection: { text: 'different', identity: snapshot.value.projection.identity },
+    };
+    expect(() => createAgentStages().withAcceptance!(mutable)).toThrow(/captured/i);
+  });
+
+  it('does not turn a bridge no-adapter failure into router delivery', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'BASELINE_SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages().withWorkspace!({
+      directory: '/tmp/acceptance-test',
+      dependencies: { status: 'none' },
+    }).withAcceptance!(snapshot.value);
+    mockExecuteExpert.mockResolvedValue({
+      success: false,
+      text: '',
+      durationMs: 1,
+      error: 'No CLI adapters available',
+    });
+    await expect(stages.plan('task', 'research')).rejects.toThrow('Planning failed');
+    expect(getAcceptanceSummary(stages).stages.plan).toMatchObject({
+      constructed: 1,
+      bridgeInvoked: 1,
+      routerDispatch: 'unmeasured',
+      providerAttention: 'unmeasured',
+    });
+  });
+
+  it('never records a bridge invocation for a pre-aborted call', async () => {
+    const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'BASELINE_SENTINEL' });
+    if (!snapshot.ok) throw snapshot.error;
+    const stages = createAgentStages().withAcceptance!(snapshot.value);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(stages.plan('task', 'research', undefined, controller.signal)).rejects.toThrow();
+    expect(mockExecuteExpert).not.toHaveBeenCalled();
+    expect(getAcceptanceSummary(stages).stages.plan).toMatchObject({
+      constructed: 1,
+      bridgeInvoked: 'unmeasured',
+    });
+  });
+
+  it.each(['plan', 'implement', 'decompose'] as const)(
+    'does not turn a failed %s prompt echo into a generated artifact',
+    async (stage) => {
+      const snapshot = captureAcceptanceContext({
+        kind: 'goal',
+        source: 'PRIVATE_BASELINE_SENTINEL',
+      });
+      if (!snapshot.ok) throw snapshot.error;
+      const stages = createAgentStages({ acceptance: snapshot.value });
+      mockExecuteExpert.mockImplementation((_role: string, prompt: string) =>
+        Promise.resolve({
+          success: false,
+          text: '[No adapters] ' + prompt,
+          error: 'No CLI adapters available',
+          durationMs: 1,
+        })
+      );
+      if (stage === 'plan') {
+        await expect(stages.plan('task', 'research')).rejects.toThrow('Planning failed');
+        return;
+      }
+      if (stage === 'decompose') {
+        await expect(
+          stages.decompose('Approved plan [{"id":"echo","title":"Not model output"}]')
+        ).rejects.toThrow('Decomposition failed');
+        return;
+      }
+      await expect(
+        stages.implement({
+          id: 't',
+          title: 'Task',
+          description: 'Implement',
+          assignedTo: 'coder',
+          status: 'pending',
+        })
+      ).rejects.toThrow('Implementation failed: expert call unsuccessful');
+    }
+  );
+
+  it.each(['direct', 'guarded'] as const)(
+    'invalidates %s factory lineage after a callback is replaced',
+    (kind) => {
+      const snapshot = captureAcceptanceContext({ kind: 'goal', source: 'SENTINEL' });
+      if (!snapshot.ok) throw snapshot.error;
+      const stages = createAgentStages({ acceptance: snapshot.value });
+      const viewed = kind === 'guarded' ? guardDevPipelineStages(stages, {}) : stages;
+      expect(isBuiltinStageSet(viewed)).toBe(true);
+      stages.implement = () => Promise.resolve('custom implementation');
+      expect(isBuiltinStageSet(viewed)).toBe(false);
+      expect(getAcceptanceSummary(viewed).binding).toBe('unmeasured');
+    }
+  );
+
+  it('exposes immutable acceptance binding on built-in stage sets', () => {
+    expect(createAgentStages().withAcceptance).toBeTypeOf('function');
   });
 
   it('passes through a skipped security-scan verdict', async () => {
@@ -391,7 +563,7 @@ describe('createAgentStages — central workflow hub', () => {
   });
 
   describe('implement stage failure marker (#6331)', () => {
-    it('names an unknown error rather than interpolating undefined', async () => {
+    it('rejects a failed implementation rather than exposing a failure marker as code', async () => {
       mockExecuteExpert.mockResolvedValue({
         success: false,
         text: '',
@@ -400,16 +572,16 @@ describe('createAgentStages — central workflow hub', () => {
         error: undefined,
       });
 
-      const result = await createAgentStages().implement({
-        id: 't1',
-        title: 'Task',
-        description: 'Desc',
-        assignedTo: 'coder',
-        status: 'pending',
-      });
-
-      expect(result).toContain('[Implementation failed: unknown error]');
-      expect(result).not.toContain('undefined');
+      // The previous string marker could be approved by QA as implementation text.
+      await expect(
+        createAgentStages().implement({
+          id: 't1',
+          title: 'Task',
+          description: 'Desc',
+          assignedTo: 'coder',
+          status: 'pending',
+        })
+      ).rejects.toThrow('Implementation failed: expert call unsuccessful');
     });
   });
 
@@ -676,7 +848,7 @@ describe('createAgentStages — central workflow hub', () => {
       });
 
       const stages = createAgentStages();
-      await stages.plan('build feature A', '');
+      await expect(stages.plan('build feature A', '')).rejects.toThrow('Planning failed');
 
       const row = findRecord(appendSpy, 'pipeline-plan-');
       expect(row).toMatchObject({
@@ -856,7 +1028,7 @@ describe('createAgentStages — central workflow hub', () => {
       });
 
       const stages = createAgentStages();
-      await stages.plan('build feature A', '');
+      await expect(stages.plan('build feature A', '')).rejects.toThrow('Planning failed');
 
       const planRecord = appendSpy.mock.calls.find(
         (c: unknown[]) => (c[0] as { id?: string }).id?.startsWith('pipeline-plan-') === true
@@ -967,7 +1139,7 @@ describe('createAgentStages — central workflow hub', () => {
       });
 
       const stages = createAgentStages();
-      await stages.plan('build feature A', '');
+      await expect(stages.plan('build feature A', '')).rejects.toThrow('Planning failed');
 
       expect(findModelCalled()).toBeUndefined();
     });

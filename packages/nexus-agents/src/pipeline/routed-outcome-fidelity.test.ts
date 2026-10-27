@@ -1,11 +1,15 @@
 /**
  * Routed-outcome fidelity across the real seam (#6521 review I1).
  *
- * Runs the real plan stage through the real expert bridge. Only the
- * CompositeRouter is mocked. The outcome store and the distiller are real, so
+ * Runs real plan and decomposition stages through the real expert bridge, with
+ * mocked router responses and adapter setup. The outcome store and distiller are real, so
  * this checks the loop measures failures instead of seeing only successes.
+ * The decomposition case also rehydrates the actual JSONL-backed outcome store.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const { executeTaskMock } = vi.hoisted(() => ({ executeTaskMock: vi.fn() }));
 vi.mock('../cli-adapters/factory.js', () => ({
@@ -27,6 +31,7 @@ import { createAgentStages } from './agent-executor.js';
 import { OutcomeStore, setOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { StrategyDistiller } from '../learning/strategy-distiller.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
+import { PersistentOutcomeStore } from '../orchestration/outcomes/outcome-store-persistence.js';
 
 const ARM_FAILURE = {
   ok: false,
@@ -60,7 +65,10 @@ describe('routed outcomes reach the distiller with their failures (#6521 I1)', (
       .mockResolvedValueOnce(ARM_SUCCESS)
       .mockResolvedValueOnce(ARM_SUCCESS);
     const stages = createAgentStages();
-    for (let i = 0; i < 5; i++) await stages.plan(`task ${String(i)}`, '');
+    await expect(stages.plan('task 0', '')).rejects.toThrow(
+      'Planning failed: expert call unsuccessful'
+    );
+    for (let i = 1; i < 5; i++) await stages.plan(`task ${String(i)}`, '');
 
     const rows = store.query().filter((o) => o.model === 'pipeline');
     expect(rows).toHaveLength(5);
@@ -95,7 +103,10 @@ describe('routed outcomes reach the distiller with their failures (#6521 I1)', (
         },
       });
     const stages = createAgentStages();
-    for (let i = 0; i < 2; i++) await stages.plan(`task ${String(i)}`, '');
+    await expect(stages.plan('task 0', '')).rejects.toThrow(
+      'Planning failed: expert call unsuccessful'
+    );
+    await stages.plan('task 1', '');
 
     const rows = store.query().filter((o) => o.model === 'pipeline');
     expect(rows.map((o) => [o.cli, o.success])).toEqual([
@@ -108,5 +119,51 @@ describe('routed outcomes reach the distiller with their failures (#6521 I1)', (
     const pulls = new Map(bandit.getStats().map((s) => [s.name, s.pullCount]));
     expect(pulls.get('api:anthropic')).toBe(2);
     expect(pulls.get('claude')).toBe(0);
+  });
+
+  it('persists failed decomposition before rejecting and distils failures without duplicate successes', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'decompose-outcome-'));
+    const config = { dataDir, filePath: join(dataDir, 'outcomes.jsonl') };
+    setOutcomeStore(new PersistentOutcomeStore(config));
+    const task = {
+      id: 'task-1',
+      title: 'Implement',
+      description: 'Do the work',
+      assignedTo: 'coder',
+    };
+    executeTaskMock.mockResolvedValueOnce(ARM_FAILURE).mockResolvedValue({
+      ...ARM_SUCCESS,
+      value: { ...ARM_SUCCESS.value, text: JSON.stringify([task]) },
+    });
+    try {
+      const stages = createAgentStages();
+      await expect(stages.decompose('approved plan')).rejects.toThrow(
+        'Decomposition failed: expert call unsuccessful'
+      );
+      const failed = new PersistentOutcomeStore(config).query();
+      expect(failed).toHaveLength(1);
+      expect(failed[0]).toMatchObject({
+        cli: 'codex',
+        model: 'pipeline',
+        category: 'planning',
+        routedBy: 'composite-router',
+        success: false,
+        durationMs: 40,
+      });
+
+      for (let i = 0; i < 4; i++) {
+        await expect(stages.decompose('approved plan')).resolves.toMatchObject([task]);
+      }
+      const hydrated = new PersistentOutcomeStore(config);
+      expect(hydrated.query().map((row) => row.success)).toEqual([false, true, true, true, true]);
+      const distiller = new StrategyDistiller(hydrated);
+      distiller.distill();
+      const rule = distiller
+        .getRules()
+        .find((candidate) => candidate.patternType === 'success-rate' && candidate.cli === 'codex');
+      expect(rule?.metric).toBe(0.8);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });
