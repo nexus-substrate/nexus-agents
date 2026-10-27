@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 14.0.5
+
+### Patch Changes
+
+- [#7608](https://github.com/nexus-substrate/nexus-agents/pull/7608) [`34df23e`](https://github.com/nexus-substrate/nexus-agents/commit/34df23eb9a71f93e096494efe95cf1306883727c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve observed proposal-builder sanitization facts in local PR-review records, separately from raw diff binding and the local prefix disclosure. Records name aggregate changes across title, description, diff, and repository context without claiming voter inspection.
+
 ## 14.0.4
 
 ### Patch Changes
