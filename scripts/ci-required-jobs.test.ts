@@ -34,6 +34,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
+import { z } from 'zod';
+import { ROOT } from './script-paths.js';
 import { extractWorkflowGate } from './aggregator-shape.js';
 
 /**
@@ -64,6 +66,27 @@ const ci = parse(
 ) as CiWorkflow;
 const ciGate = extractWorkflowGate(ci, 'ci-success');
 const required = new Set(ciGate.needs);
+
+describe('staging helper pull-request verification (#7653)', () => {
+  const workflow = z
+    .object({
+      on: z.object({
+        pull_request: z.object({ paths: z.array(z.string()).nonempty() }),
+      }),
+    })
+    .parse(parse(readFileSync(join(ROOT, '.github/workflows/npm-verify.yml'), 'utf8')));
+
+  it.each([
+    'scripts/check-publish-stage.ts',
+    'scripts/script-paths.ts',
+    'scripts/stage-publish-edges.ts',
+    'scripts/stage-publish-floors.ts',
+    'scripts/stage-publish-packlist.ts',
+    'scripts/publish-env.ts',
+  ])('selects the tarball workflow for a helper-only edit to %s', (helper) => {
+    expect(workflow.on.pull_request.paths).toContain(helper);
+  });
+});
 
 describe('CI required-job wiring', () => {
   it('finds the ci-success job and its aggregator step', () => {

@@ -1,8 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
+
+import { ROOT } from './script-paths.js';
+import { parseOverrideFloors } from './stage-publish-floors.js';
 
 import {
   IN_MAJOR_BACKPORTS,
@@ -196,5 +200,25 @@ describe('in-major backports', () => {
 
   it('covers nothing once the floor it was verified against changes', () => {
     expect(backportCovers('fast-uri', '3.1.9', '>=4.3.0')).toBe(false);
+  });
+});
+
+describe('canonical workspace backport floor bindings (#7653)', () => {
+  const manifest = z
+    .object({ pnpm: z.object({ overrides: z.record(z.string(), z.string()) }) })
+    .parse(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')));
+
+  it('requires backports so floor bindings cannot pass without measurements', () => {
+    expect(IN_MAJOR_BACKPORTS).not.toHaveLength(0);
+  });
+
+  it.each(IN_MAJOR_BACKPORTS)('binds $name to its actual canonical workspace floor', (backport) => {
+    const { floors } = parseOverrideFloors(manifest.pnpm.overrides);
+    // Parse selector-scoped keys (e.g. protobufjs@<7.6.3), not just bare names.
+    const matching = floors.filter((floor) => floor.name === backport.name);
+    expect(matching, backport.name).not.toHaveLength(0);
+    for (const floor of matching) {
+      expect(floor.range, floor.key).toBe(backport.verifiedFloor);
+    }
   });
 });
