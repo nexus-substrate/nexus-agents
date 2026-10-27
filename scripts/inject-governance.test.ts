@@ -40,6 +40,8 @@ import {
   existsSync,
 } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { AjvJsonSchemaValidator } from '../packages/nexus-agents/src/mcp/sdk-facade/index.js';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import * as prettier from 'prettier';
@@ -1938,6 +1940,96 @@ describe('inject-governance server.json sync (#2327)', () => {
       expect(server.tools).toContain('survey_oss_landscape');
       expect(server.tools).toContain('supply_chain_tradeoff_panel');
     });
+  });
+});
+
+describe('server.json official Registry schema (#7560)', () => {
+  const SCHEMA_URL = 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json';
+  // Complete official schema fetched 2026-10-24; keep raw bytes unchanged offline.
+  const schemaBytes = readFileSync(
+    join(REAL_ROOT, 'scripts/fixtures/mcp-registry-server.schema-2025-12-11.json')
+  );
+  const schema = JSON.parse(schemaBytes.toString('utf-8')) as Record<string, unknown>;
+  const validate = new AjvJsonSchemaValidator().getValidator(schema);
+
+  interface Manifest {
+    description: string;
+    repository: { url: string };
+    packages: {
+      version: unknown;
+      runtimeArguments: unknown[];
+      packageArguments: unknown[];
+    }[];
+  }
+
+  function readManifest(): Manifest {
+    return JSON.parse(readFileSync(box('packages/nexus-agents/server.json'), 'utf-8')) as Manifest;
+  }
+
+  it('pins the full official schema source, dialect and raw integrity', () => {
+    expect(schema['$id']).toBe(SCHEMA_URL);
+    expect(schema['$schema']).toBe('http://json-schema.org/draft-07/schema#');
+    expect(createHash('sha256').update(schemaBytes).digest('hex')).toBe(
+      '3fba09590c99f61735d234822279f4223fab9e300c0a81e81c91ab62a4114de0'
+    );
+  });
+
+  it('validates the actual canonical sandbox manifest before injection', () => {
+    const result = validate(readManifest());
+    expect(result.valid, result.errorMessage).toBe(true);
+  });
+
+  it('preserves full-schema validity after real sandbox injection', async () => {
+    await withInjectSnapshot(async () => {
+      await runInject();
+      const result = validate(readManifest());
+      expect(result.valid, result.errorMessage).toBe(true);
+    });
+  });
+
+  it.each([
+    { field: 'description', path: 'data/description', error: '100 characters' },
+    {
+      field: 'runtimeArguments',
+      path: 'data/packages/0/runtimeArguments/0',
+      error: 'must be object',
+    },
+    {
+      field: 'packageArguments',
+      path: 'data/packages/0/packageArguments/0',
+      error: 'must be object',
+    },
+    { field: 'uri', path: 'data/repository/url', error: 'format "uri"' },
+    { field: 'version', path: 'data/packages/0/version', error: 'must be string' },
+  ])('rejects invalid $field at its intended schema path', ({ field, path, error }) => {
+    const manifest = readManifest();
+    const baseline = validate(manifest);
+    expect(baseline.valid, baseline.errorMessage).toBe(true);
+    const entry = manifest.packages[0];
+    if (entry === undefined) throw new Error('Expected the canonical npm package entry');
+    switch (field) {
+      case 'description':
+        manifest.description = 'x'.repeat(101);
+        break;
+      case 'runtimeArguments':
+        entry.runtimeArguments = ['--experimental-vm-modules'];
+        break;
+      case 'packageArguments':
+        entry.packageArguments = ['--mode=server'];
+        break;
+      case 'uri':
+        manifest.repository.url = 'TEST_FAKE_NOT_A_URI';
+        break;
+      case 'version':
+        entry.version = 42;
+        break;
+      default:
+        throw new Error(`Unknown schema-negative fixture: ${field}`);
+    }
+    const result = validate(manifest);
+    expect(result.valid).toBe(false);
+    expect(result.errorMessage).toContain(path);
+    expect(result.errorMessage).toContain(error);
   });
 });
 
