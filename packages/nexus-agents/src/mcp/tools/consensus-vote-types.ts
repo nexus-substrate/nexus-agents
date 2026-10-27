@@ -850,11 +850,11 @@ export function resetDegradedPanelCount(): void {
 }
 
 /**
- * #4132: absolute_quorum response side-effects — increment the degraded-panel
- * telemetry counter and surface the actionable re-run reason on policyReason /
- * panelWarning (when an errored voter degraded the verdict without an upstream
- * short-circuit already setting result.policyReason). Extracted to hold
- * {@link buildResponse} within its cyclomatic budget.
+ * Surface the actionable quorum reason on policyReason / panelWarning, including
+ * the standard-policy respondent floor. Increment the degraded-panel telemetry
+ * counter only for absolute_quorum. An upstream policyReason short circuit has
+ * no new resolved reason to append. Extracted to hold {@link buildResponse}
+ * within its cyclomatic budget.
  */
 function applyAbsoluteQuorumTelemetry(
   response: ConsensusVoteResponse,
@@ -869,7 +869,7 @@ function applyAbsoluteQuorumTelemetry(
   }
   if (degradeReason !== undefined) {
     response.policyReason ??= degradeReason;
-    response.panelWarning ??= degradeReason;
+    appendPanelWarning(response, degradeReason);
   }
 }
 

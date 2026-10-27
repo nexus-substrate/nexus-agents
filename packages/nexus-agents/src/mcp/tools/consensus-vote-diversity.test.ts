@@ -11,7 +11,11 @@ import { describe, it, expect } from 'vitest';
 
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
 import type { ConsensusResult } from '../../consensus/types.js';
-import { buildResponse, toAgentVoteSummary } from './consensus-vote-types.js';
+import {
+  buildResponse,
+  getDegradedPanelCount,
+  toAgentVoteSummary,
+} from './consensus-vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
 import { votesToCostInputs } from './decision-cost-recording.js';
 import { rollupDecisionCost } from '../../observability/decision-cost.js';
@@ -545,5 +549,196 @@ describe('consensus_vote response: cross-family fallback (#7106)', () => {
     ]) {
       expect(buildResponse(INPUT, extended(votes)).panelWarning ?? '').not.toContain('served');
     }
+  });
+});
+
+describe('consensus_vote response: quorum warning composition (#7568)', () => {
+  it('keeps missing model reports and the absolute approval-floor reason together', () => {
+    const votes = SEVEN.map((role, index) =>
+      seat(role, {
+        vote: {
+          decision: index < 3 ? 'approve' : 'abstain',
+          reasoning: 'fixture',
+          confidence: 0.8,
+        },
+      })
+    );
+    const result = extended(votes);
+    result.result.voteCounts = { approve: 3, reject: 0, abstain: 4, total: 7 };
+    const response = buildResponse({ ...INPUT, errorPolicy: 'absolute_quorum' }, result);
+    const reason =
+      'no_quorum: absolute quorum not met (3/5 approvals over 7-voter panel, absolute_quorum)';
+    expect(response.decision).toBe('no_quorum');
+    expect(response.voteCounts).toEqual({
+      approve: 3,
+      reject: 0,
+      abstain: 4,
+      error: 0,
+      unverifiable: 0,
+    });
+    expect(response.policyReason).toBe(reason);
+    expect(response.panelWarning).toContain('Serving-model reports 0/7');
+    expect(response.panelWarning).toContain(reason);
+  });
+
+  it('keeps the no-answer disclosure and missing-seat reason on an empty requested panel', () => {
+    const result = { ...extended([]), panelSize: 7, contrarianRequested: true };
+    const response = buildResponse({ ...INPUT, errorPolicy: 'absolute_quorum' }, result);
+    expect(response.decision).toBe('no_quorum');
+    expect(response.policyReason).toContain('7 of 7 requested voter(s) missing');
+    expect(response.panelWarning).toContain(
+      'Serving-model reports UNMEASURED: no answering seats.'
+    );
+    expect(response.panelWarning).toContain(response.policyReason);
+  });
+});
+
+/** Unique requested seats, spread across three reported serving families. */
+function reportedSeats(roles: readonly VoterRole[]): AgentVoteResult[] {
+  return roles.map((role, index) => {
+    const model =
+      index % 3 === 0 ? 'claude-opus' : index % 3 === 1 ? 'gpt-5.2' : 'gemini-3.1-pro-preview';
+    return seat(role, { model, servedModel: model });
+  });
+}
+
+function approvalFloorResult(reported: boolean): ExtendedVotingResult {
+  const votes = reportedSeats(SEVEN).map((vote, index) => ({
+    ...vote,
+    servedModel: reported ? vote.servedModel : undefined,
+    vote: {
+      decision: index < 3 ? ('approve' as const) : ('abstain' as const),
+      reasoning: 'fixture',
+      confidence: 0.8,
+    },
+  }));
+  const result = extended(votes);
+  result.result.voteCounts = { approve: 3, reject: 0, abstain: 4, total: 7 };
+  return result;
+}
+
+describe('consensus_vote response: quorum warning controls (#7568)', () => {
+  it('keeps the quorum reason without a model-coverage warning when reports are complete', () => {
+    const response = buildResponse(
+      { ...INPUT, errorPolicy: 'absolute_quorum' },
+      approvalFloorResult(true)
+    );
+    expect(response.decision).toBe('no_quorum');
+    expect(response.panelDiversity.reportCoverage).toEqual({ reported: 7, total: 7 });
+    expect(response.panelWarning).toBe(response.policyReason);
+    expect(response.panelWarning).toContain('3/5 approvals');
+    expect(response.panelWarning).not.toContain('Serving-model reports');
+  });
+
+  it('appends a standard-policy respondent-floor reason without incrementing the absolute counter', () => {
+    const before = getDegradedPanelCount();
+    const response = buildResponse(
+      { ...INPUT, errorPolicy: 'reduce_denominator' },
+      approvalFloorResult(false)
+    );
+    const reason = 'no_quorum: 3 of 7 voters decided; 5 required before a ratio is applied (#5780)';
+    expect(response.decision).toBe('no_quorum');
+    expect(response.policyReason).toBe(reason);
+    expect(response.panelWarning).toBe(
+      'Serving-model reports 0/7; unreported serving identities are UNMEASURED. ' +
+        'Model/family counts include operational attribution. ' +
+        reason
+    );
+    expect(getDegradedPanelCount()).toBe(before);
+  });
+
+  it('preserves an upstream policy reason without inventing a second warning', () => {
+    const result = {
+      ...extended(reportedSeats(SEVEN)),
+      policyReason: 'fail_closed: TEST_FAKE upstream reason',
+    };
+    const response = buildResponse({ ...INPUT, errorPolicy: 'fail_closed' }, result);
+    expect(response.decision).toBe('no_quorum');
+    expect(response.policyReason).toBe(result.policyReason);
+    expect(response.panelWarning).toBeUndefined();
+  });
+
+  it.each(['approved', 'rejected'] as const)(
+    'leaves clean fully reported %s panels warning-free',
+    (outcome) => {
+      const votes = reportedSeats(['architect', 'security', 'scope_steward']).map((vote) =>
+        outcome === 'rejected'
+          ? {
+              ...vote,
+              vote: { decision: 'reject' as const, reasoning: 'fixture', confidence: 0.8 },
+            }
+          : vote
+      );
+      const result = extended(votes);
+      result.result.outcome = outcome;
+      result.result.voteCounts =
+        outcome === 'approved'
+          ? { approve: 3, reject: 0, abstain: 0, total: 3 }
+          : { approve: 0, reject: 3, abstain: 0, total: 3 };
+      const response = buildResponse(INPUT, result);
+      expect(response.decision).toBe(outcome);
+      expect(response.policyReason).toBeUndefined();
+      expect(response.panelWarning).toBeUndefined();
+    }
+  );
+
+  it('leaves an ordinary unreported panel with only its coverage caveat', () => {
+    const votes = reportedSeats(['architect', 'security', 'scope_steward']).map((vote) => ({
+      ...vote,
+      servedModel: undefined,
+    }));
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response.decision).toBe('approved');
+    expect(response.policyReason).toBeUndefined();
+    expect(response.panelWarning).toBe(
+      'Serving-model reports 0/3; unreported serving identities are UNMEASURED. ' +
+        'Model/family counts include operational attribution.'
+    );
+  });
+
+  it('retains degradation, pin, fallback and coverage warning order before the quorum reason', () => {
+    const votes = reportedSeats(SEVEN).map((vote) => {
+      if (vote.role === 'pm')
+        return { ...vote, source: 'error' as const, error: 'TEST_FAKE failure' };
+      if (vote.role === 'architect')
+        return { ...vote, modelPinWarning: 'TEST_FAKE model pin warning' };
+      if (vote.role === 'security')
+        return {
+          ...vote,
+          assignedCli: 'codex' as const,
+          cli: 'cli-claude',
+          model: 'claude-fable-5',
+          servedModel: undefined,
+          pinnedModel: 'gpt-6.1-sol',
+          fallback: {
+            fromCli: 'codex' as const,
+            fromModel: 'gpt-6.1-sol',
+            reason: 'unknown' as const,
+          },
+        };
+      return vote;
+    });
+    const before = getDegradedPanelCount();
+    const response = buildResponse({ ...INPUT, errorPolicy: 'absolute_quorum' }, extended(votes));
+    const warning = response.panelWarning ?? '';
+    expect(response.decision).toBe('no_quorum');
+    expect(response.policyReason).toBe(
+      'no_quorum: re-run — voter(s) [pm] errored (absolute_quorum)'
+    );
+    const parts = [
+      'Panel degraded: 1 of 7 voters errored',
+      'TEST_FAKE model pin warning',
+      'Cross-family fallback:',
+      'Serving-model reports 5/6',
+      'no_quorum: re-run — voter(s) [pm] errored (absolute_quorum)',
+    ];
+    let previous = -1;
+    for (const part of parts) {
+      const position = warning.indexOf(part);
+      expect(position).toBeGreaterThan(previous);
+      previous = position;
+    }
+    expect(getDegradedPanelCount()).toBe(before + 1);
+    expect(response.voteCounts.error).toBe(1);
   });
 });
