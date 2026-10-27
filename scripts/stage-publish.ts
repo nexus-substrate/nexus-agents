@@ -50,6 +50,7 @@ import {
   parseOverrideFloors,
   type ParsedFloors,
 } from './stage-publish-floors.js';
+import { assertBundleEdges, backportPins } from './stage-publish-edges.js';
 import { assertSamePacklist, pnpmPackedFileList } from './stage-publish-packlist.js';
 import { publishEnv } from './publish-env.js';
 
@@ -223,6 +224,10 @@ function installBundle(stageDir: string, floors: ParsedFloors): void {
   assertBundleFloors(lock, floors, (line) => {
     console.log(line);
   });
+  // Every edge a bundled package declares must hold in what ships (#7614).
+  assertBundleEdges(stageDir, (line) => {
+    console.log(line);
+  });
   const npmFiles = packedFileList(stageDir);
   // The guard below reads npm's packlist; pnpm packs what is published.
   assertSamePacklist(npmFiles, pnpmPackedFileList(PACKAGE_DIR));
@@ -288,7 +293,11 @@ function writeStagedManifest(stageDir: string, floors: ParsedFloors): void {
   const manifestPath = join(stageDir, 'package.json');
   const source = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
   const staged = stageManifest(source, BUNDLED_DEPENDENCIES);
-  const { overrides, untranslated } = npmOverrides(floors.floors, staged.dependencies ?? {});
+  const { overrides, untranslated } = npmOverrides(
+    floors.floors,
+    staged.dependencies ?? {},
+    backportPins()
+  );
   for (const floor of untranslated) {
     console.log(
       `floor "${floor.key}" names a direct dependency; npm cannot override it, checked only`

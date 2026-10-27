@@ -16,6 +16,11 @@
       "name": "@google/genai",
       "hooks": { "preinstall": "echo 'preinstall: no-op'" },
       "why": "Literally an echo. The package's own `prepare` (node scripts/prepare.js) is not reachable from a registry install."
+    },
+    {
+      "name": "protobufjs",
+      "hooks": { "postinstall": "node scripts/postinstall" },
+      "why": "protobufjs 7 is bundled under @google/genai, which declares ^7 (#7614); 8.x had no hook. The script reads its own package.json and its dependent's, and if the dependent pins protobufjs without the `~` version scheme, it writes one advisory line to stderr. It fetches, builds and writes nothing. Blocked, the library is unchanged: the --ignore-scripts consumer install in #7651 runs the CLI."
     }
   ]
 }
