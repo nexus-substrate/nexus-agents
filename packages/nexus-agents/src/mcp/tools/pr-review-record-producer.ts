@@ -16,6 +16,7 @@
  * @module mcp/tools/pr-review-record-producer
  */
 
+import { z } from 'zod';
 import type { ILogger } from '../../core/index.js';
 import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
@@ -117,6 +118,43 @@ export interface PrReviewCoverageStamp {
   readonly budgetDetail: string;
 }
 
+/** Known local pre-builder reduction only; does not attest final delivery or inspection. */
+const LocalDiffReductionSchema = z
+  .object({
+    prefixCodeUnits: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    totalCodeUnits: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    prefixUtf8Bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    totalUtf8Bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    marker: z.string().min(1).max(64),
+  })
+  .strict();
+
+export type LocalDiffReduction = Readonly<z.infer<typeof LocalDiffReductionSchema>>;
+
+/** Validate measured facts against canonical input, without reapplying the local cap. */
+function localReductionStamp(args: PersistReviewRecordArgs): string {
+  if (args.localDiffReduction === undefined) return '';
+  const r = LocalDiffReductionSchema.parse(args.localDiffReduction);
+  const diff = args.input.prDiff;
+  if (
+    args.diffSource !== 'canonical-git' ||
+    args.sanitization !== undefined ||
+    args.coverage !== undefined ||
+    r.prefixCodeUnits >= r.totalCodeUnits ||
+    r.totalCodeUnits !== diff.length ||
+    r.totalUtf8Bytes !== Buffer.byteLength(diff) ||
+    r.prefixUtf8Bytes !== Buffer.byteLength(diff.slice(0, r.prefixCodeUnits))
+  ) {
+    throw new Error('Invalid local pre-builder diff reduction measurements');
+  }
+  return (
+    ` [local pre-builder diff prefix ${String(r.prefixCodeUnits)}/${String(r.totalCodeUnits)} JS code units; ` +
+    `UTF-8 ${String(r.prefixUtf8Bytes)}/${String(r.totalUtf8Bytes)} bytes; ` +
+    `marker +${String(r.marker.length)} JS code units/+${String(Buffer.byteLength(r.marker))} bytes; ` +
+    'additional inspection UNMEASURED]'
+  );
+}
+
 /** `61204` → `61,204`: the record is read by people; group the digits. */
 function bytes(n: number): string {
   return n.toLocaleString('en-US');
@@ -197,7 +235,7 @@ function coverageStamps(coverage: PrReviewCoverageStamp | undefined): string {
  * types (governor path, dependency-minimal) — is satisfied by construction:
  * a field the packer adds is not silently written, and a value the schema
  * would reject (`budgetSource`) is a compile error here, not a refused write.
- * `undefined` in ⇒ `undefined` out: a both-full review states nothing, and
+ * `undefined` in ⇒ `undefined` out: absent coverage is unspecified, and
  * the record must not carry zero-filled fields that read as a measurement.
  */
 function coverageFieldsOf(
@@ -292,10 +330,12 @@ export interface PersistReviewRecordArgs {
    * #4140/#6003/#6190: large-diff coverage; written as the structured
    * `coverage` / `bindingBounds` record fields AND stamped into the summary whenever
    * present (the packer supplies it only when the panel read was partial or the
-   * binding is a prefix — absent means both were full, and the record then
+   * binding is a prefix — absence is unspecified, and the record then
    * carries neither field).
    */
   readonly coverage?: PrReviewCoverageStamp | undefined;
+  /** Actual local pre-builder prefix reduction; absent means unspecified. */
+  readonly localDiffReduction?: LocalDiffReduction | undefined;
   /**
    * The async job's cancel signal and the seats it collected (#6750). Checked
    * first, synchronously before the append, with no `await` between the check
@@ -428,7 +468,7 @@ function buildAndPersist(
   // reviewedDiffHash (the gate's binding), so gate parity is preserved. Stamped
   // BEFORE the title: the store caps the summary at 500 chars, and a title can
   // be 500 chars on its own.
-  const stamps = coverageStamps(coverage);
+  const stamps = localReductionStamp(args) + coverageStamps(coverage);
   const coverageFields = coverageFieldsOf(coverage);
   const disclosure = sanitizationDisclosureOf(sanitization, input.prDiff);
   warnIfDiffTruncated(resolveBindingMeasurement(input.prDiff, sanitization), prNumber, logger);

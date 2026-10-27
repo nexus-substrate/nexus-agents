@@ -23,6 +23,7 @@
  * @module scripts/pr-review-local
  */
 
+import type { LocalDiffReduction } from '../packages/nexus-agents/src/mcp/tools/pr-review-record-producer.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { collectRealVotes } from '../packages/nexus-agents/src/cli/voter-agents.js';
@@ -195,31 +196,47 @@ interface ReviewResult {
   readonly baseSha: string;
   readonly headSha: string;
   /**
-   * The full canonical (ledger-excluded) `base..head` diff the voters reviewed and
-   * that gets hashed for the ledger record — undefined when the local clone could
-   * not produce it (fell back to the gh v3.diff for the review; no ledger record).
+   * Full canonical (ledger-excluded) `base..head` diff retained for raw hash
+   * binding. Pre-builder input may be a reduced prefix; additional repository
+   * inspection is unmeasured. Undefined after a gh-diff fallback (no record).
    */
   readonly canonicalDiff: string | undefined;
+  readonly localDiffReduction?: LocalDiffReduction | undefined;
 }
 
 /**
- * Produce the diff the voters review. Prefers the CANONICAL, ledger-excluded
- * `git diff base..head` (so its hash matches the gate recompute and the review can
- * feed the ledger); falls back to the GitHub `v3.diff` when the base/head commits
+ * Produce the pre-builder diff input, retaining canonical bytes for binding.
+ * Prefers ledger-excluded `git diff base..head`; an oversized input uses a prefix
+ * plus marker, without measuring actual inspection. Falls back to GitHub `v3.diff` when the base/head commits
  * are not fetchable locally (review still runs, but no record — the fallback diff
  * is not hash-parity with the gate).
  */
 async function resolveReviewDiff(
   prNumber: number,
   meta: PrMeta
-): Promise<{ reviewDiff: string; canonicalDiff: string | undefined }> {
+): Promise<{
+  reviewDiff: string;
+  canonicalDiff: string | undefined;
+  localDiffReduction?: LocalDiffReduction;
+}> {
   if (meta.baseSha !== '' && meta.headSha !== '') {
     await ensurePrCommitsLocal(prNumber, meta.baseSha);
     try {
       const full = await generateCanonicalReviewDiff(meta.baseSha, meta.headSha);
-      const reviewDiff =
-        full.length > MAX_DIFF_LENGTH ? `${full.slice(0, MAX_DIFF_LENGTH)}\n[...truncated]` : full;
-      return { reviewDiff, canonicalDiff: full };
+      if (full.length <= MAX_DIFF_LENGTH) return { reviewDiff: full, canonicalDiff: full };
+      const prefix = full.slice(0, MAX_DIFF_LENGTH);
+      const marker = '\n[...truncated]';
+      return {
+        reviewDiff: prefix + marker,
+        canonicalDiff: full,
+        localDiffReduction: {
+          prefixCodeUnits: prefix.length,
+          totalCodeUnits: full.length,
+          prefixUtf8Bytes: Buffer.byteLength(prefix),
+          totalUtf8Bytes: Buffer.byteLength(full),
+          marker,
+        },
+      };
     } catch (e) {
       console.warn(
         `  canonical git diff unavailable (${(e as Error).message.slice(0, 120)}); ` +
@@ -262,7 +279,7 @@ function mapVoterResults(voteResults: Awaited<ReturnType<typeof collectRealVotes
 async function runReview(prNumber: number): Promise<ReviewResult> {
   console.log(`\n[#${String(prNumber)}] fetching diff…`);
   const meta = await fetchPrMeta(prNumber);
-  const { reviewDiff, canonicalDiff } = await resolveReviewDiff(prNumber, meta);
+  const { reviewDiff, canonicalDiff, localDiffReduction } = await resolveReviewDiff(prNumber, meta);
   console.log(`  ${meta.title}`);
   console.log(
     // #4459: the old wording was `(canonical, ledger-excluded)`, which reads as
@@ -303,6 +320,7 @@ async function runReview(prNumber: number): Promise<ReviewResult> {
     baseSha: meta.baseSha,
     headSha: meta.headSha,
     canonicalDiff,
+    localDiffReduction,
   };
 }
 
@@ -434,6 +452,7 @@ async function runOnce(prNumber: number, post: boolean): Promise<void> {
     description: result.description,
     aggregate: result.aggregate,
     canonicalDiff: result.canonicalDiff,
+    localDiffReduction: result.localDiffReduction,
     counts: {
       approveCount: counts.approve,
       requestChangesCount: counts.rc,
