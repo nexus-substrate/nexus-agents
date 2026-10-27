@@ -19,6 +19,8 @@
  */
 import semver from 'semver';
 
+import { backportCovers, type BackportPin } from './stage-publish-edges.js';
+
 /** One side of an override key: a package name plus an optional version selector. */
 interface PackageSelector {
   name: string;
@@ -165,13 +167,15 @@ export function floorViolations(
         continue;
       }
       if (semver.satisfies(pkg.version, floor.range, INCLUDE_PRERELEASE)) continue;
+      // A patched release of the older major the dependent declares (#7614).
+      if (backportCovers(pkg.name, pkg.version)) continue;
       violations.push({ path: pkg.path, version: pkg.version, key: floor.key, range: floor.range });
     }
   }
   return violations;
 }
 
-type NpmOverrideValue = string | Record<string, string>;
+type NpmOverrideValue = string | { [key: string]: NpmOverrideValue };
 
 function selectorKey(s: PackageSelector): string {
   return s.selector === undefined ? s.name : `${s.name}@${s.selector}`;
@@ -188,6 +192,30 @@ function nestUnder(
   overrides[parent] = { ...nested, [child]: range };
 }
 
+/** Set `child` under the nested scope chain, keeping the string value as `.`. */
+function pinUnder(
+  overrides: Record<string, NpmOverrideValue>,
+  scope: readonly string[],
+  child: string,
+  range: string
+): void {
+  const [head, ...rest] = scope;
+  if (head === undefined) return;
+  const existing = overrides[head];
+  const node: Record<string, unknown> =
+    typeof existing === 'string' ? { '.': existing } : { ...(existing ?? {}) };
+  let cursor = node;
+  for (const key of rest) {
+    const next = cursor[key];
+    const copy: Record<string, unknown> =
+      typeof next === 'string' ? { '.': next } : { ...((next as object | undefined) ?? {}) };
+    cursor[key] = copy;
+    cursor = copy;
+  }
+  cursor[child] = range;
+  overrides[head] = node as NpmOverrideValue;
+}
+
 /**
  * Translate floors into npm `overrides` for the staged manifest. A top-level
  * override on a DIRECT dependency's name is refused by npm (EOVERRIDE), so
@@ -197,7 +225,8 @@ function nestUnder(
  */
 export function npmOverrides(
   floors: readonly OverrideFloor[],
-  directDependencies: Readonly<Record<string, string>>
+  directDependencies: Readonly<Record<string, string>>,
+  pins: readonly BackportPin[] = []
 ): { overrides: Record<string, NpmOverrideValue>; untranslated: OverrideFloor[] } {
   const overrides: Record<string, NpmOverrideValue> = {};
   const untranslated: OverrideFloor[] = [];
@@ -213,6 +242,9 @@ export function npmOverrides(
         typeof existing === 'object' ? { ...existing, '.': floor.range } : floor.range;
     }
   }
+  // Parent-scoped pins to the declared major (#7614). Nested wins over the
+  // open-ended floors above, which would otherwise cross the major.
+  for (const pin of pins) pinUnder(overrides, pin.scope, pin.name, pin.range);
   return { overrides, untranslated };
 }
 

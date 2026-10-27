@@ -12,6 +12,7 @@ import {
   parseOverrideFloors,
   parseOverrideKey,
 } from './stage-publish-floors.js';
+import { backportPins } from './stage-publish-edges.js';
 
 describe('parseOverrideKey', () => {
   it('reads a bare name, scoped or not', () => {
@@ -216,5 +217,46 @@ describe('the real workspace overrides', () => {
     expect(floors.length + skipped.length).toBe(Object.keys(overrides).length);
     expect(skipped).toEqual([]);
     expect(floors.map((f) => f.key)).toContain('fast-uri');
+  });
+});
+
+describe('npmOverrides with in-major pins (#7614)', () => {
+  const { floors } = parseOverrideFloors({
+    'fast-uri': '>=4.1.3',
+    '@modelcontextprotocol/sdk>ajv': '>=8.18.0',
+  });
+
+  it('nests a pin under its parent and under the repeated scope, keeping the floor as "."', () => {
+    const { overrides } = npmOverrides(floors, {}, backportPins());
+    expect(overrides['fast-uri']).toBe('>=4.1.3');
+    expect(overrides['ajv']).toEqual({ 'fast-uri': '>=3.1.9 <4' });
+    expect(overrides['@modelcontextprotocol/sdk']).toEqual({
+      ajv: { '.': '>=8.18.0', 'fast-uri': '>=3.1.9 <4' },
+    });
+  });
+
+  it('adds nothing without pins', () => {
+    expect(npmOverrides(floors, {}).overrides).not.toHaveProperty('ajv');
+  });
+});
+
+describe('floorViolations with in-major backports (#7614)', () => {
+  const { floors } = parseOverrideFloors({ 'fast-uri': '>=4.1.3' });
+  const pkg = (version: string): { path: string; name: string; version: string } => ({
+    path: 'node_modules/fast-uri',
+    name: 'fast-uri',
+    version,
+  });
+
+  it('accepts the patched release of the declared major', () => {
+    expect(floorViolations(floors, [pkg('3.1.9')])).toEqual([]);
+  });
+
+  it('still rejects an unpatched release of that major', () => {
+    expect(floorViolations(floors, [pkg('3.1.8')])).toHaveLength(1);
+  });
+
+  it('still rejects a release below the floor in the floor major', () => {
+    expect(floorViolations(floors, [pkg('4.1.2')])).toHaveLength(1);
   });
 });
