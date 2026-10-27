@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 14.0.3
+
+### Patch Changes
+
+- [#7603](https://github.com/nexus-substrate/nexus-agents/pull/7603) [`cd0d490`](https://github.com/nexus-substrate/nexus-agents/commit/cd0d490be7329d90b3526597e092fb697e4bd3c0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve producer build metadata on newly completed and failed `execute_expert` task results, including synchronous SDK fallback responses. Historical results retain their original producer metadata or its absence, and existing error metadata is preserved.
+
+  Native task creation remains blocked by [#7599](https://github.com/nexus-substrate/nexus-agents/issues/7599), so native producer provenance is UNMEASURED. This change does not enable native task creation or establish publication readiness.
+
+- [#7611](https://github.com/nexus-substrate/nexus-agents/pull/7611) [`f91d0a5`](https://github.com/nexus-substrate/nexus-agents/commit/f91d0a54117b77fc58391ab92bf4c7dd2717dc39) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve the actionable quorum reason alongside model-report coverage and other panel warnings in consensus vote responses. Decisions and policy reasons are unchanged.
+
 ## 14.0.2
 
 ### Patch Changes
