@@ -4,9 +4,8 @@ import {
   MAX_INPUT_BYTES,
   assessDependabotInventory,
   assessment,
-  parseContext,
-  type DependabotEvidenceContext,
 } from './check-dependabot-inventory.js';
+import { parseContext, type DependabotEvidenceContext } from './dependabot-inventory-context.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

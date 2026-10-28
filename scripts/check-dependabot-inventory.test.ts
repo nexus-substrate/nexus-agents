@@ -4,11 +4,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { PassThrough, Writable } from 'node:stream';
-import {
-  MAX_INPUT_BYTES,
-  assessDependabotInventory,
-  type DependabotInventoryAssessment,
-} from './check-dependabot-inventory.js';
+import { MAX_INPUT_BYTES, assessDependabotInventory } from './check-dependabot-inventory.js';
+import type { DependabotInventoryAssessment } from './dependabot-inventory-context.js';
 import { main } from './check-dependabot-inventory-cli.js';
 
 const evidence = {
