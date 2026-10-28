@@ -24,6 +24,7 @@
  * (Source: Issue #3847, epic #3845; rubric #3846)
  */
 
+import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -249,8 +250,8 @@ function main(): void {
   harvest(parseArgs(rest));
 }
 
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   main();
 }
 

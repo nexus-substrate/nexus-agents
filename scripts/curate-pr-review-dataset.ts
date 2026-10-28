@@ -23,6 +23,7 @@
  * (Source: Issue #3847, epic #3845; rubric #3846)
  */
 
+import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -249,7 +250,7 @@ function main(): void {
 }
 
 // Only run as a CLI when invoked directly (not when imported by the test).
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   main();
 }

@@ -35,6 +35,7 @@
  * (Source: #4311, epic #3845, unblocks #3849; scorer from #3848; rubric #3846)
  */
 
+import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -284,7 +285,7 @@ async function main(): Promise<void> {
   }
 }
 
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   await main();
 }

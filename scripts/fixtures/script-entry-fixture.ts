@@ -206,7 +206,16 @@ export class ScriptEntryFixture {
       'vote-record-ratification.ts',
       'build-model-registry-helpers.ts',
       'build-model-registry-types.ts',
+      'meta-shadow-soak-core.ts',
+      'curate-pr-review-dataset-schema.ts',
+      'pr-review-local-ledger.ts',
+      'pr-review-eval-run-core.ts',
+      'curate-pr-review-labeling.ts',
+      'mine-pr-review-candidates-core.ts',
+      'mine-pr-review-candidates-assemble.ts',
+      'curate-pr-review-harvest.ts',
     ]) {
+      if (helper === script) continue;
       symlinkSync(join(root, 'scripts', helper), join(checkout, 'scripts', helper));
     }
     // Valid YAML with an intentionally invalid schema reaches the real validator.
