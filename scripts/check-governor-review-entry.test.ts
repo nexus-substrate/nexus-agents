@@ -26,7 +26,9 @@ describe('governor review CLI entry boundary', () => {
 
   it.each(pathComponents)('imports without evaluating the gate under %s', (component) => {
     fixture = new ScriptEntryFixture('check-governor-review.ts', component);
-    const result = fixture.run('import');
+    // A positional argument makes process.argv[1] defined under --eval, so the
+    // URL equality remains part of what this import control exercises.
+    const result = fixture.run('import', ['--import-control']);
     assertValidEntry(result, fixture, 'import');
     expect(result.process.status).toBe(0);
     expect(result.process.stderr).toBe('');
