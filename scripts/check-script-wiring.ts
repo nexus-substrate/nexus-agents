@@ -73,6 +73,10 @@ export const SELF = 'check-script-wiring.ts';
  * test also asserts each entry against the real tree.
  */
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
+  'check-dependabot-inventory.ts':
+    'operator-run per the release checklist; open alert counts require human severity and mitigation review',
+  'check-dependabot-inventory-cli.ts':
+    'CLI implementation used by the release checklist validator; no separate CI invocation',
   'check-required-jobs.ts':
     'invoked through governor-gate.ts (#6369 step 2): the gate job runs the base-ref dispatcher, never the per-check script',
   'check-governor-review.ts':

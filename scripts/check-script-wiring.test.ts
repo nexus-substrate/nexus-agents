@@ -290,6 +290,13 @@ describe('MANUAL_ONLY against the real tree', () => {
     expect(Object.keys(MANUAL_ONLY).length).toBeGreaterThan(0);
   });
 
+  it.each(['check-dependabot-inventory.ts', 'check-dependabot-inventory-cli.ts'])(
+    '%s is explicitly documented as a release-only check',
+    (basename) => {
+      expect(MANUAL_ONLY[basename]).toMatch(/release checklist/i);
+    }
+  );
+
   it.each(Object.keys(MANUAL_ONLY))('%s exists, is enumerated, and is unwired', (basename) => {
     expect(existsSync(join(root, 'scripts', basename))).toBe(true);
     expect(inScope).toContain(basename);

@@ -34,7 +34,26 @@ The `pnpm changeset` workflow handles versioning, but the human-judgment gates b
 - [ ] `pnpm audit` shows no critical/high vulnerabilities (or each is documented + mitigated)
 - [ ] No new secrets, env vars, or credentials added without `.env.example` placeholder + docs
 - [ ] CodeQL alerts at 0 high/critical (see `security-scanning` skill)
-- [ ] `gh api repos/{owner}/{repo}/dependabot/alerts?state=open` returns clean
+- [ ] Capture and validate a fresh Dependabot inventory for this release head using the canonical GraphQL procedure below. A REST `state=open` result is not sufficient: a filtered response has previously included an explicitly `FIXED` alert.
+
+#### Dependabot inventory (accessible repository scope)
+
+Run this at the release commit and record the validator's sanitized output with the release evidence. Replace `<owner>/<repo>` and `<head-sha>` with the repository and exact commit being released; use a fresh UTC capture time. Do not add a `states` filter to the query.
+
+```bash
+set -o pipefail
+owner='<owner>'
+name='<repo>'
+query='query($owner: String!, $name: String!, $endCursor: String) { repository(owner: $owner, name: $name) { vulnerabilityAlerts(first: 100, after: $endCursor) { totalCount pageInfo { hasNextPage startCursor endCursor } edges { cursor node { id state } } } } }'
+gh api graphql --paginate -f query="$query" -F owner="$owner" -F name="$name" \
+  | jq -sc --arg query "$query" --arg owner "$owner" --arg name "$name" '{query: $query, owner: $owner, name: $name, pages: .}' \
+  | pnpm exec tsx scripts/check-dependabot-inventory.ts \
+      --repository "$owner/$name" --head-sha '<head-sha>' --captured-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+The envelope records the exact query string and repository variables passed to `gh`; `jq -s` collects the JSON objects emitted by `gh --paginate`, and the validator checks the canonical query and requires those variables to match `--repository` before assessing pages. `jq` is required for this wrapper.
+
+The validator emits counts, provenance, and finding codes only; it does not print alert IDs or raw API responses and does not make network requests. `clean` means the captured, unfiltered connection has no `OPEN` rows within the authenticated GitHub response's accessible scope. It is not a claim about alerts the credentials cannot access. `open_count` means review the open alerts' severity and mitigation before deciding release readiness; it does not by itself mean the release is blocked. `inconsistent` or `unmeasured` means the inventory did not establish a complete, trustworthy result and must not be recorded as clean. Exit codes: `0` clean, `2` open alerts found, `1` inconsistent or unmeasured. If `gh` or the validator fails, retain the failure as unmeasured evidence and investigate; do not fall back to the filtered REST query as a clean result.
 
 ### Documentation
 
