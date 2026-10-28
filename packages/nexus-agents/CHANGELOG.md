@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 15.1.1
+
+### Patch Changes
+
+- [#7691](https://github.com/nexus-substrate/nexus-agents/pull/7691) [`a43790c`](https://github.com/nexus-substrate/nexus-agents/commit/a43790cc662c5ae8831a62533fc845e158c8845e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Classify idempotency-keyed jobs by their originating MCP tool in task-state reads.
+
 ## 15.1.0
 
 ### Minor Changes
