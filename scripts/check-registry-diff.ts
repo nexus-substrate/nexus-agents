@@ -17,6 +17,7 @@
  * Exits 0 always — the workflow decides what to do with the verdict via
  * the printed JSON / Markdown.
  */
+import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 
 // ---------------------------------------------------------------------------
@@ -240,7 +241,8 @@ function readRegistry(path: string): Registry {
   return raw as Registry;
 }
 
-if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   const args = process.argv.slice(2);
   const jsonOut = args.includes('--json');
   const paths = args.filter((a) => !a.startsWith('--'));

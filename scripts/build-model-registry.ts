@@ -19,6 +19,7 @@
  */
 /* eslint-disable max-lines-per-function, complexity -- `run` is one linear fetch → validate → diff → write sequence whose branches are the three CLI modes (--dry, --offline, default); splitting it would scatter one decision across helpers */
 
+import { pathToFileURL } from 'node:url';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -235,7 +236,8 @@ function parseArgs(argv: readonly string[]): RunOptions {
 }
 
 // Only run when invoked as a script (not when imported by tests).
-if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   const options = parseArgs(process.argv.slice(2));
   run(options)
     .then((code) => process.exit(code))

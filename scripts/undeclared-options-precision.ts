@@ -36,6 +36,7 @@
  * @see Issue #5422 (the measurement), #5360 (the warning)
  */
 
+import { pathToFileURL } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { getDecisionCostFile } from '../packages/nexus-agents/src/config/learning-persistence.js';
@@ -381,8 +382,8 @@ export function run(argv: readonly string[]): { exitCode: number; output: string
   return { exitCode: measured ? 0 : 2, output };
 }
 
-const entryPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${entryPath}`) {
+const entryPath = process.argv[1];
+if (entryPath !== undefined && import.meta.url === pathToFileURL(entryPath).href) {
   const { exitCode, output } = run(process.argv.slice(2));
   process.stdout.write(output);
   process.exit(exitCode);

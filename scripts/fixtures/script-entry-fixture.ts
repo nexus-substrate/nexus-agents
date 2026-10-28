@@ -204,6 +204,8 @@ export class ScriptEntryFixture {
       'script-paths.ts',
       'model-string-drift-allowlist.ts',
       'vote-record-ratification.ts',
+      'build-model-registry-helpers.ts',
+      'build-model-registry-types.ts',
     ]) {
       symlinkSync(join(root, 'scripts', helper), join(checkout, 'scripts', helper));
     }

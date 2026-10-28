@@ -37,6 +37,7 @@
  * @see Issue #2631 (gated) and #2703 (the telemetry that feeds this)
  */
 
+import { pathToFileURL } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ROOT } from './script-paths.js';
@@ -376,7 +377,7 @@ export {
   summariseByTool,
 };
 
-const entryPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${entryPath}`) {
+const entryPath = process.argv[1];
+if (entryPath !== undefined && import.meta.url === pathToFileURL(entryPath).href) {
   process.exit(main());
 }
