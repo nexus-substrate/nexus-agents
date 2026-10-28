@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ScriptEntryFixture, type EntryResult } from './fixtures/script-entry-fixture.js';
+import { ScriptEntryFixture } from './fixtures/script-entry-fixture.js';
+import { assertEntryEnvelope, assertValidEntry } from './fixtures/script-entry-assertions.js';
 
 const paths = ['plain', 'with space', 'with#hash', 'with%percent', 'with-雪'];
 const scenarios = [
@@ -15,44 +16,6 @@ const scenarios = [
 ] as const;
 let fixture: ScriptEntryFixture | undefined;
 afterEach(() => fixture?.close());
-
-function envelope(result: EntryResult): void {
-  expect(result.process.error).toBeUndefined();
-  expect(result.process.signal).toBeNull();
-  expect(result.loaderIpcBlocked).toHaveLength(2);
-  const sealed = result.timeline.map((event) => event.name).indexOf('bootstrap:sealed');
-  expect(sealed).toBeGreaterThan(0);
-  expect(result.timeline.filter((event) => event.name === 'bootstrap:sealed')).toHaveLength(1);
-  expect(result.timeline[0]?.name).toBe('boundary:installed');
-  const startup = result.timeline.filter((event) => event.name === 'loader:tsx-ipc-BLOCKED');
-  expect(startup).toHaveLength(2);
-  for (const event of startup) {
-    expect(event.phase).toBe('startup');
-    expect(result.timeline.indexOf(event)).toBeLessThan(sealed);
-  }
-  const subjects = result.timeline.filter((event) => event.name === 'subject:resolved');
-  expect(subjects.length).toBeGreaterThan(0);
-  for (const event of subjects) {
-    expect(event.phase).toBe('sealed');
-    expect(result.timeline.indexOf(event)).toBeGreaterThan(sealed);
-  }
-  for (const event of result.timeline) expect(event.pid).toBe(result.process.pid);
-  for (const event of result.ipc) expect(event.pid).toBe(result.process.pid);
-  const ipc = result.ipc.filter((event) => event.classification === 'loader:tsx-ipc-BLOCKED');
-  expect(ipc).toHaveLength(2);
-  expect(new Set(ipc.map((event) => event.caller?.file)).size).toBe(2);
-  for (const event of ipc) expect(event.phase).toBe('startup');
-}
-
-function valid(result: EntryResult, mode: 'direct' | 'import'): void {
-  envelope(result);
-  expect(result.blocked).toEqual([]);
-  if (fixture === undefined) throw new Error('Missing owned entry fixture');
-  // This is observed Node resolution, not a claim to read the source's lexical import.meta.
-  const events = result.timeline.filter((event) => event.name === 'subject:resolved');
-  expect(events.map((event) => event.url)).toContain(pathToFileURL(fixture.entry).href);
-  if (mode === 'direct') expect(events[0]?.argv[1]).toBe(fixture.entry);
-}
 
 const pipeSetup =
   "import net from 'node:net'; import {join} from 'node:path'; const endpoint=join(process.env.TMPDIR, 'tsx-'+process.geteuid(), process.ppid+'.pipe'); ";
@@ -72,7 +35,7 @@ const code=' '.repeat(430-expression.indexOf('createConnection'))+expression;
 try {new vm.Script(code,{filename:${JSON.stringify(canonicalClient)}}).runInThisContext();} catch {}
 console.log('VM_COUNTERFEIT_CAUGHT');`;
     const result = fixture.probe(source);
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.error).toBeUndefined();
     expect(result.process.status).toBe(0);
     expect(result.process.stdout).toBe('VM_COUNTERFEIT_CAUGHT\n');
@@ -87,7 +50,7 @@ console.log('VM_COUNTERFEIT_CAUGHT');`;
       pipeSetup +
         `const b=await import(${JSON.stringify(boundary)}); let message; try {b.sealLoaderClassification();} catch(e) {message=e.message;} try {net.createConnection(endpoint,()=>{});} catch {} console.log(message);`
     );
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(0);
     expect(result.process.stdout).toBe('SEAL_ALREADY_CLOSED\n');
     expect(result.blocked).toEqual(['net.createConnection']);
@@ -108,7 +71,7 @@ console.log('VM_COUNTERFEIT_CAUGHT');`;
       filename,
       ['--sentinel']
     );
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(0);
     expect(result.blocked).toEqual([]);
     expect(JSON.parse(String(result.process.stdout))).toEqual({
@@ -125,7 +88,7 @@ describe('fixture amendment controls', () => {
   it('separately records nonempty genuine loader IPC denials without compiler-start attribution', () => {
     fixture = new ScriptEntryFixture('generate-strategy-reference.ts', 'plain');
     const result = fixture.run('import');
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(0);
     expect(result.process.stdout).toBe('TEST_IMPORT_COMPLETE\n');
     expect(Reflect.get(result, 'loaderIpcBlocked')).toHaveLength(2);
@@ -149,7 +112,7 @@ describe('fixture amendment controls', () => {
   ])('keeps subject attempts forbidden: %s', (source, name) => {
     fixture = new ScriptEntryFixture('claims-check.ts', 'plain');
     const result = fixture.probe(pipeSetup + source);
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(1);
     // A deliberately replaced formatter controls stderr, not persistent attempt evidence.
     if (!source.startsWith('Error.prepareStackTrace')) {
@@ -164,7 +127,7 @@ describe('fixture amendment controls', () => {
       "const net=require('node:net'); const path=require('node:path'); net.createConnection(path.join(process.env.TMPDIR,'tsx-'+process.geteuid(),process.ppid+'.pipe'),()=>{});",
       'client-XItNFmsq.cjs'
     );
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(1);
     expect(result.blocked).toEqual(['net.createConnection']);
   });
@@ -174,7 +137,7 @@ describe('fixture amendment controls', () => {
     const result = fixture.probe(
       pipeSetup + "try {net.createConnection(endpoint,()=>{});} catch {} console.log('caught');"
     );
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(0);
     expect(result.process.stdout).toBe('caught\n');
     expect(result.blocked).toEqual(['net.createConnection']);
@@ -185,7 +148,7 @@ describe('fixture amendment controls', () => {
     const result = fixture.probe(
       `import cp from 'node:child_process'; cp.${method}(process.execPath, ['--version']);`
     );
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(1);
     expect(result.blocked).toEqual([`child_process.${method}`]);
   });
@@ -199,7 +162,7 @@ describe('fixture amendment controls', () => {
       const result = fixture.probe(
         `import cp from 'node:child_process'; cp.spawn(${JSON.stringify(command)},${JSON.stringify(args)});`
       );
-      envelope(result);
+      assertEntryEnvelope(result);
       expect(result.process.status).toBe(1);
       expect(result.blocked).toEqual(['child_process.spawn']);
     }
@@ -210,12 +173,12 @@ describe('boundary qualification', () => {
   it.each(scenarios)('qualifies plain direct/import setup for %s', (script, diagnostic, args) => {
     fixture = new ScriptEntryFixture(script, 'plain');
     const direct = fixture.run('direct', [...args]);
-    valid(direct, 'direct');
+    assertValidEntry(direct, fixture, 'direct');
     expect(direct.process.status).toBe(1);
     expect(direct.process.stderr).toContain(diagnostic);
     expect(direct.process.stdout).toBe('');
     const imported = fixture.run('import', [...args]);
-    valid(imported, 'import');
+    assertValidEntry(imported, fixture, 'import');
     expect(imported.process.status).toBe(0);
     expect(imported.process.stderr).toBe('');
     expect(imported.process.stdout).toBe('TEST_IMPORT_COMPLETE\n');
@@ -239,7 +202,7 @@ describe('boundary qualification', () => {
   ])('records forbidden pre-import operation %s', (source, name) => {
     fixture = new ScriptEntryFixture('claims-check.ts', 'plain');
     const result = fixture.probe(source);
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.error).toBeUndefined();
     expect(result.process.status).toBe(1);
     expect(result.process.stderr).toContain(`ENTRY_BOUNDARY_BLOCKED:${name}`);
@@ -251,7 +214,7 @@ describe('boundary qualification', () => {
     const result = fixture.probe(
       "try { await fetch('https://example.invalid'); } catch {} console.log('caught');"
     );
-    envelope(result);
+    assertEntryEnvelope(result);
     expect(result.process.status).toBe(0);
     expect(result.process.stdout).toBe('caught\n');
     expect(result.blocked).toEqual(['fetch']);
@@ -260,7 +223,7 @@ describe('boundary qualification', () => {
   it('qualifies generator --check at an empty owned root before production edits', () => {
     fixture = new ScriptEntryFixture('generate-strategy-reference.ts', 'plain');
     const result = fixture.run('direct', ['--check']);
-    valid(result, 'direct');
+    assertValidEntry(result, fixture, 'direct');
     expect(result.process.status).toBe(1);
     expect(result.process.stderr).toContain('Strategy reference drift (1):');
     expect(result.process.stderr).toContain('missing:');
@@ -274,7 +237,7 @@ describe.each(scenarios)('actual readiness entry %s', (script, diagnostic, args)
   it.each(paths)('reaches the real diagnostic under %s', (component) => {
     fixture = new ScriptEntryFixture(script, component);
     const result = fixture.run('direct', [...args]);
-    valid(result, 'direct');
+    assertValidEntry(result, fixture, 'direct');
     expect(result.process.status).toBe(1);
     expect(result.process.stderr).toContain(diagnostic);
     expect(result.process.stdout).toBe('');
@@ -283,7 +246,7 @@ describe.each(scenarios)('actual readiness entry %s', (script, diagnostic, args)
   it.each(paths)('imports without executing under %s', (component) => {
     fixture = new ScriptEntryFixture(script, component);
     const result = fixture.run('import', [...args]);
-    valid(result, 'import');
+    assertValidEntry(result, fixture, 'import');
     expect(result.process.status).toBe(0);
     expect(result.process.stderr).toBe('');
     expect(result.process.stdout).toBe('TEST_IMPORT_COMPLETE\n');

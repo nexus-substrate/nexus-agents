@@ -44,6 +44,7 @@
  * (Source: Issue #4310, feeder for #3552; precedent #4224)
  */
 
+import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, statSync, readFileSync } from 'node:fs';
@@ -213,8 +214,8 @@ async function runSoak(options: SoakOptions): Promise<void> {
   );
 }
 
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   await runSoak(parseArgs(process.argv.slice(2)));
 }
 

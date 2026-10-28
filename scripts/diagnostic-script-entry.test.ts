@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { ScriptEntryFixture, type EntryResult } from './fixtures/script-entry-fixture.js';
+import { assertValidEntry } from './fixtures/script-entry-assertions.js';
 
 const paths = ['plain', 'with space', 'with#hash', 'with%percent', 'with-雪'];
 const scripts = [
@@ -16,44 +17,6 @@ const scripts = [
 type Script = (typeof scripts)[number];
 let fixture: ScriptEntryFixture | undefined;
 afterEach(() => fixture?.close());
-
-function envelope(result: EntryResult): void {
-  expect(result.process.error).toBeUndefined();
-  expect(result.process.signal).toBeNull();
-  expect(result.loaderIpcBlocked).toHaveLength(2);
-  const sealed = result.timeline.map((event) => event.name).indexOf('bootstrap:sealed');
-  expect(sealed).toBeGreaterThan(0);
-  expect(result.timeline.filter((event) => event.name === 'bootstrap:sealed')).toHaveLength(1);
-  expect(result.timeline[0]?.name).toBe('boundary:installed');
-  const startup = result.timeline.filter((event) => event.name === 'loader:tsx-ipc-BLOCKED');
-  expect(startup).toHaveLength(2);
-  for (const event of startup) {
-    expect(event.phase).toBe('startup');
-    expect(result.timeline.indexOf(event)).toBeLessThan(sealed);
-  }
-  const subjects = result.timeline.filter((event) => event.name === 'subject:resolved');
-  expect(subjects.length).toBeGreaterThan(0);
-  for (const event of subjects) {
-    expect(event.phase).toBe('sealed');
-    expect(result.timeline.indexOf(event)).toBeGreaterThan(sealed);
-  }
-  for (const event of result.timeline) expect(event.pid).toBe(result.process.pid);
-  for (const event of result.ipc) expect(event.pid).toBe(result.process.pid);
-  const ipc = result.ipc.filter((event) => event.classification === 'loader:tsx-ipc-BLOCKED');
-  expect(ipc).toHaveLength(2);
-  expect(new Set(ipc.map((event) => event.caller?.file)).size).toBe(2);
-  for (const event of ipc) expect(event.phase).toBe('startup');
-}
-
-function valid(result: EntryResult, mode: 'direct' | 'import'): void {
-  envelope(result);
-  expect(result.blocked).toEqual([]);
-  if (fixture === undefined) throw new Error('Missing owned entry fixture');
-  // This is observed Node resolution, not a claim to read the source's lexical import.meta.
-  const events = result.timeline.filter((event) => event.name === 'subject:resolved');
-  expect(events.map((event) => event.url)).toContain(pathToFileURL(fixture.entry).href);
-  if (mode === 'direct') expect(events[0]?.argv[1]).toBe(fixture.entry);
-}
 
 function sourceHash(file: string): string {
   return createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -104,7 +67,7 @@ function actualCase(script: Script, component: string, mode: 'direct' | 'import'
   const original = fileURLToPath(new URL(script, import.meta.url));
   const before = sourceHash(original);
   const result = fixture.run(mode, argumentsFor(script, missing));
-  valid(result, mode);
+  assertValidEntry(result, fixture, mode);
   expect(sourceHash(original)).toBe(before);
   expect(sourceHash(fixture.entry)).toBe(before);
   expect(readdirSync(fixture.policyRoot)).toEqual([]);
