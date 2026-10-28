@@ -36,6 +36,7 @@ import {
   appendBlocker,
 } from '../../context/structured-task-state.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { resolveIdempotency } from './job-idempotency.js';
 
 function makeState(overrides: Partial<StructuredTaskState> = {}): StructuredTaskState {
   return {
@@ -219,6 +220,29 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     updateStage(taskId, 'complete', '2026-05-01T00:05:00Z');
     appendResult(taskId, result, '2026-05-01T00:05:01Z');
   }
+
+  it('classifies keyed producer ids built by the canonical idempotency resolver', () => {
+    for (const toolName of ['orchestrate', 'run_workflow', 'consensus_vote'] as const) {
+      const resolution = resolveIdempotency(toolName, `scope22-${toolName}`, { task: toolName });
+      expect(resolution.kind).toBe('fresh');
+      if (resolution.kind !== 'fresh') throw new Error('Expected a fresh isolated idempotency key');
+      expect(toolNameFromJobId(resolution.jobId)).toBe(toolName);
+    }
+
+    // run_dev_pipeline discards this resolver ID and uses sessionId instead;
+    // keep the derived shape unmapped so it cannot imply producer provenance.
+    const unusedDevPipelineId = resolveIdempotency(
+      'run_dev_pipeline',
+      'scope22-unused-dev-pipeline-id',
+      { sessionId: 'caller-session-123' }
+    );
+    expect(unusedDevPipelineId.kind).toBe('fresh');
+    if (unusedDevPipelineId.kind !== 'fresh') {
+      throw new Error('Expected a fresh isolated idempotency key');
+    }
+    expect(toolNameFromJobId(unusedDevPipelineId.jobId)).toBe('unknown');
+    expect(toolNameFromJobId('caller-session-123')).toBe('unknown');
+  });
 
   it('reads a completed job from the task-state log', () => {
     writeCompletedTaskLog('orch-job-1', { ok: true });

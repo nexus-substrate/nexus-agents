@@ -52,6 +52,10 @@ const TOOL_NAME_BY_PREFIX: Readonly<Record<string, string>> = {
   // two-segment prefix to stay distinct.
   'job-rw': 'run_workflow',
   'job-vote': 'consensus_vote',
+  // Idempotency-keyed runAsJob dispatches use `job-${toolName}-<hash>` ids.
+  'job-orchestrate': 'orchestrate',
+  'job-run_workflow': 'run_workflow',
+  'job-consensus_vote': 'consensus_vote',
   // #3726: run_dev_pipeline async jobs mint `dp-<uuid>` ids (or reuse the
   // caller's sessionId — which has no fixed prefix, so the dual-read reader
   // resolves those from the sidecar via toolName recorded at writeJobPending).
