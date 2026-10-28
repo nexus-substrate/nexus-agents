@@ -909,6 +909,7 @@ describe('createAgentStages — central workflow hub', () => {
         expertType: 'architecture',
         cli: 'claude',
         model: 'claude-sonnet',
+        reportedModel: 'claude-sonnet',
         tokensIn: 1_000,
         tokensOut: 2_000,
       });
@@ -931,6 +932,7 @@ describe('createAgentStages — central workflow hub', () => {
         expertType: 'architecture',
         cli: 'claude',
         model: 'acme-unpriced-model-xyz',
+        reportedModel: 'acme-unpriced-model-xyz',
         tokensIn: 1_000,
         tokensOut: 2_000,
       });
@@ -953,6 +955,7 @@ describe('createAgentStages — central workflow hub', () => {
         expertType: 'architecture',
         cli: 'claude',
         model: 'claude-sonnet',
+        reportedModel: 'claude-sonnet',
         gatewayArm: 'api:custom-openai',
         tokensIn: 1_000,
         tokensOut: 2_000,

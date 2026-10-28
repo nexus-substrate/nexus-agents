@@ -3,10 +3,9 @@
  *
  * Three outcome writers put a marker in `TaskOutcome.model` instead of the
  * model that ran: the pipeline stages (`pipeline`), orchestrate workers
- * (`worker-<role>`) and consensus seats (`consensus`). Readers group on those
- * markers (the weather report and the aorchestra learnings key workers by
- * role through them), so the markers stay, and the model that answered goes
- * in `servedModel` beside them, with its cost.
+ * (`worker-<role>`) and consensus seats (`consensus`). These legacy markers
+ * remain unchanged. An admitted upstream model report is recorded separately
+ * in `servedModel`, with its cost when pricing is available.
  *
  * The cost comes from {@link servedCostDetail}, the wrapper the vote rollup
  * uses, so a row prices a call the way the usage log does. An unpriced model
@@ -40,17 +39,18 @@ type ServedOutcomeFields = Pick<
 /**
  * The `servedModel`, `costUsd`, `priceBasis` and `gatewayArm` fields for an outcome row.
  *
- * - No call, or no served model: no fields. There is nothing to attribute.
+ * - No call: no fields. No admitted model: only an independently known gateway arm;
+ *   no serving identity or price is inferred from the arm or its declaration.
  * - A served model without both token counts: `servedModel` (and `gatewayArm` if
  *   present). No price is looked up, so no basis is claimed and the cost stays unknown.
  * - Both token counts: the cost detail and `gatewayArm`. `costUsd` is present only
  *   when a price was found; an unpriced model reads `priceBasis: 'unknown'`.
  */
 export function servedOutcomeFields(call: ServedCall | undefined): ServedOutcomeFields {
-  const model = call?.model;
-  if (call === undefined || model === undefined || model.length === 0) return {};
-  const { inputTokens, outputTokens, gatewayArm } = call;
+  if (call === undefined) return {};
+  const { model, inputTokens, outputTokens, gatewayArm } = call;
   const gatewayArmField = gatewayArm !== undefined ? { gatewayArm } : {};
+  if (model === undefined || model.length === 0) return gatewayArmField;
   if (inputTokens === undefined || outputTokens === undefined) {
     return { servedModel: model, ...gatewayArmField };
   }

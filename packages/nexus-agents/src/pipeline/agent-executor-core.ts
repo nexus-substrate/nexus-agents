@@ -18,6 +18,7 @@ import type { AcceptanceContext } from './acceptance-context.js';
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
 import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
+import { validatedModelIdentity } from '../cli-adapters/model-identity.js';
 import type { IAuditLogger } from '../audit/audit-types.js';
 import type { ITaskTracker } from './task-tracker.js';
 import type { SecurityBaseline, SecurityGateResult } from './security-gate.js';
@@ -164,7 +165,7 @@ export function outcomeFieldsFromBridge(
     requestedAccessMode: r.requestedAccessMode,
     // #6624: the model that answered, priced by its gateway when one served it.
     served: {
-      model: r.model,
+      model: validatedModelIdentity(r.reportedModel),
       gatewayArm: r.gatewayArm,
       inputTokens: r.tokensIn,
       outputTokens: r.tokensOut,

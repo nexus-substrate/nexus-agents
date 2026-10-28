@@ -9,6 +9,7 @@ import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { GatewayRediscovery, setGatewayRediscovery } from '../adapters/gateway-rediscovery.js';
 import type { ILogger, IModelAdapter } from '../core/index.js';
 import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
+import type { CliResponse } from '../cli-adapters/types-core.js';
 
 const { executeTaskMock, createAllAdaptersMock, servedByBuild } = vi.hoisted(() => ({
   executeTaskMock: vi.fn(),
@@ -40,6 +41,10 @@ vi.mock('../cli-adapters/child-mcp-config.js', () => ({
 }));
 
 import { executeExpert, totalTokensFromUsage, tokenSplitFromUsage } from './expert-bridge.js';
+import { outcomeFieldsFromBridge, recordOutcome } from './agent-executor-core.js';
+import { getOutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/index.js';
+
+vi.mock('../config/learning-persistence.js', () => ({ isPersistenceEnabled: () => false }));
 
 describe('executeExpert workspace (#6358)', () => {
   beforeEach(() => {
@@ -372,5 +377,213 @@ describe('tokenSplitFromUsage (#3387)', () => {
     const usage = { inputTokens: 100, outputTokens: 50 };
     const split = tokenSplitFromUsage(usage);
     expect((split?.tokensIn ?? 0) + (split?.tokensOut ?? 0)).toBe(totalTokensFromUsage(usage));
+  });
+});
+
+describe('actual expert bridge to outcome report identity (#7569)', () => {
+  beforeEach(() => {
+    executeTaskMock.mockReset();
+    resetOutcomeStore();
+  });
+  afterEach(() => {
+    resetOutcomeStore();
+    vi.unstubAllEnvs();
+  });
+  const cases = [
+    {
+      name: 'no report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: undefined,
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'genuine different report',
+      operationalModel: 'operational-alias-7569',
+      reportedModel: 'claude-sonnet',
+      usage: true,
+      served: 'claude-sonnet',
+      basis: 'list',
+      cost: 0.033,
+    },
+    {
+      name: 'invalid empty report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: '',
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'genuine unpriced report',
+      operationalModel: 'operational-alias-7569',
+      reportedModel: 'acme-unpriced-model-xyz',
+      usage: true,
+      served: 'acme-unpriced-model-xyz',
+      basis: 'unknown',
+      cost: undefined,
+    },
+    {
+      name: 'genuine report without usage',
+      operationalModel: 'operational-alias-7569',
+      reportedModel: 'claude-sonnet',
+      usage: false,
+      served: 'claude-sonnet',
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'unresolved report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: 'pending-detection',
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'control-character report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: 'claude\nsonnet',
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'oversize report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: 'x'.repeat(201),
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+  ] as const;
+
+  function expectProjection(
+    row: Record<string, unknown>,
+    served: string | undefined,
+    basis: string | undefined,
+    cost: number | undefined
+  ): void {
+    for (const [key, expected] of [
+      ['servedModel', served],
+      ['priceBasis', basis],
+      ['costUsd', cost],
+    ] as const) {
+      if (expected === undefined) expect(Object.hasOwn(row, key)).toBe(false);
+      else expect(row[key]).toBe(expected);
+    }
+  }
+
+  function bridgeResponse(
+    reportedModel: string | undefined,
+    usage: boolean,
+    gateway: boolean,
+    operationalModel: string
+  ): CliResponse & { routedCli: 'claude'; routedDurationMs: number } {
+    return {
+      text: 'done',
+      model: operationalModel,
+      routedCli: 'claude',
+      routedDurationMs: 27,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
+      ...(usage ? { usage: { inputTokens: 1000, outputTokens: 2000, totalTokens: 3000 } } : {}),
+      ...(gateway ? { gatewayArm: 'api:custom-openai' } : {}),
+    };
+  }
+
+  function expectedBridgeUsage(
+    usage: boolean
+  ): readonly [number | undefined, number | undefined, number | undefined] {
+    return usage ? [1000, 2000, 3000] : [undefined, undefined, undefined];
+  }
+
+  async function bridgeAndRecord(
+    reportedModel: string | undefined,
+    usage: boolean,
+    gateway = false,
+    operationalModel = 'claude-sonnet'
+  ): Promise<Record<string, unknown>> {
+    const [inputTokens, outputTokens, totalTokens] = expectedBridgeUsage(usage);
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: bridgeResponse(reportedModel, usage, gateway, operationalModel),
+    });
+    const result = await executeExpert('code', 'Implement report fidelity');
+    expect(result.success).toBe(true);
+    expect(executeTaskMock).toHaveBeenCalledTimes(1);
+    expect(result.model).toBe(operationalModel);
+    expect(result.cli).toBe('claude');
+    expect(result.routedBy).toBe('composite-router');
+    expect(result.tokensIn).toBe(inputTokens);
+    expect(result.tokensOut).toBe(outputTokens);
+    expect(result.tokensUsed).toBe(totalTokens);
+    const fields = outcomeFieldsFromBridge(result);
+    expect(fields.cli).toBe('claude');
+    expect(fields.routedBy).toBe('composite-router');
+    expect(fields.served?.inputTokens).toBe(inputTokens);
+    expect(fields.served?.outputTokens).toBe(outputTokens);
+    recordOutcome({
+      taskId: 'report-7569',
+      category: 'code_generation',
+      sessionId: undefined,
+      ...fields,
+    });
+    const rows = getOutcomeStore().query();
+    expect(rows).toHaveLength(1);
+    const row = rows[0] as unknown as Record<string, unknown>;
+    expect(row).toMatchObject({
+      model: 'pipeline',
+      cli: 'claude',
+      success: true,
+      routedBy: 'composite-router',
+      durationMs: 27,
+    });
+    if (gateway) {
+      expect(row['gatewayArm']).toBe('api:custom-openai');
+      const queried = getOutcomeStore().query({ gatewayArm: 'api:custom-openai' });
+      expect(queried).toHaveLength(1);
+      expect(queried[0]?.id).toBe(row['id']);
+    }
+    if (reportedModel === undefined) expect(result).not.toHaveProperty('reportedModel');
+    else expect(result).toMatchObject({ reportedModel });
+    return row;
+  }
+
+  it.each(cases)('$name preserves independent operational identity and usage', async (c) => {
+    const row = await bridgeAndRecord(c.reportedModel, c.usage, false, c.operationalModel);
+    expectProjection(row, c.served, c.basis, c.cost);
+  });
+
+  it('prices a genuine report by the declared gateway rate', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+    const row = await bridgeAndRecord('claude-sonnet', true, true, 'operational-alias-7569');
+    expectProjection(row, 'claude-sonnet', 'declared', 0.005);
+    expect(row['gatewayArm']).toBe('api:custom-openai');
+  });
+
+  it('does not invent identity or pricing from a gateway declaration without a report', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+    const row = await bridgeAndRecord(undefined, true, true);
+    expectProjection(row, undefined, undefined, undefined);
+    // The composed helper already qualified the known arm and exact row-id query.
+  });
+  it('records an explicitly free gateway rate with a genuine report', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const row = await bridgeAndRecord('claude-sonnet', true, true, 'operational-alias-7569');
+    expectProjection(row, 'claude-sonnet', 'declared', 0);
+    expect(row['gatewayArm']).toBe('api:custom-openai');
+  });
+
+  it('keeps undeclared gateway pricing unknown despite a priced report', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    const row = await bridgeAndRecord('claude-sonnet', true, true, 'operational-alias-7569');
+    expectProjection(row, 'claude-sonnet', 'unknown', undefined);
+    expect(row['gatewayArm']).toBe('api:custom-openai');
   });
 });

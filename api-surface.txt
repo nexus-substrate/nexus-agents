@@ -3731,6 +3731,7 @@ InterfaceDeclaration ExpertBridgeResult
   readonly gatewayArm?: `api:${ string; }` | undefined
   readonly model?: string | undefined
   readonly permissionDenials?: readonly CliPermissionDenial[] | undefined
+  readonly reportedModel?: string | undefined
   readonly requestedAccessMode?: ExecutionAccessMode | undefined
   readonly routedArm?: RoutingArmId | undefined
   readonly routedBy?: "composite-router" | undefined
