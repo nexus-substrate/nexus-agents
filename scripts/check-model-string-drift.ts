@@ -25,6 +25,7 @@
 
 import { Project, Node } from 'ts-morph';
 import { relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { SRC_ROOT, ROOT } from './script-paths.js';
 import { ALLOWLIST, isAllowed } from './model-string-drift-allowlist.js';
 
@@ -182,6 +183,7 @@ function main(): void {
 }
 
 // Only run main when invoked directly, not when imported by tests.
-if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   main();
 }

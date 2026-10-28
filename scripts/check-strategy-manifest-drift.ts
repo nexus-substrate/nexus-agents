@@ -28,6 +28,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ROOT, SRC_ROOT } from './script-paths.js';
 import { parseStrategyManifestRegistry } from '../packages/nexus-agents/src/orchestration/strategy-manifest.js';
 import { STRATEGY_MANIFEST_REGISTRY } from '../packages/nexus-agents/src/orchestration/strategy-manifest-registry.js';
@@ -168,7 +169,7 @@ export function checkStrategyManifestRegistry(): boolean {
   return false;
 }
 
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   process.exit(checkStrategyManifestRegistry() ? 0 : 1);
 }
