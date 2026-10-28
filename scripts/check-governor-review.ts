@@ -39,6 +39,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   governorPathsFromCodeowners,
   GovernorSectionError,
@@ -691,7 +692,7 @@ export function runGovernorReviewGate(
   }
 }
 
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   process.exit(runGovernorReviewGate(process.argv.slice(2)));
 }
