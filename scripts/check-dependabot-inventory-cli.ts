@@ -5,17 +5,16 @@ import {
   assessDependabotInventory,
   assessment,
 } from './check-dependabot-inventory.js';
-import { parseContext, type DependabotEvidenceContext } from './dependabot-inventory-context.js';
+import { parseContext } from './dependabot-inventory-context.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-interface CliArguments extends DependabotEvidenceContext {
+interface CliArguments {
   readonly repository?: string;
   readonly headSha?: string;
   readonly capturedAt?: string;
-  readonly query?: string;
   readonly requestedState?: string;
 }
 
@@ -68,10 +67,7 @@ function unpackEvidenceEnvelope(value: unknown): {
   return { pages: value };
 }
 
-async function readCliEvidence(
-  stdin: NodeJS.ReadableStream,
-  fallbackQuery: string | undefined
-): Promise<{
+async function readCliEvidence(stdin: NodeJS.ReadableStream): Promise<{
   readonly pages: unknown;
   readonly query: string | undefined;
   readonly queryOwner: string | undefined;
@@ -82,7 +78,7 @@ async function readCliEvidence(
     const envelope = unpackEvidenceEnvelope(JSON.parse(await readBoundedStdin(stdin)) as unknown);
     return {
       pages: envelope.pages,
-      query: envelope.query ?? fallbackQuery,
+      query: envelope.query,
       queryOwner: envelope.queryOwner,
       queryName: envelope.queryName,
       finding: null,
@@ -90,7 +86,7 @@ async function readCliEvidence(
   } catch (error: unknown) {
     return {
       pages: undefined,
-      query: fallbackQuery,
+      query: undefined,
       queryOwner: undefined,
       queryName: undefined,
       finding: error instanceof RangeError ? 'input_limit_exceeded' : 'invalid_json_input',
@@ -105,7 +101,7 @@ export async function main(
   stdout: NodeJS.WritableStream = process.stdout
 ): Promise<number> {
   const cli = parseArguments(args);
-  const evidence = await readCliEvidence(stdin, cli.query);
+  const evidence = await readCliEvidence(stdin);
   const context = {
     ...cli,
     ...(evidence.query === undefined ? {} : { query: evidence.query }),

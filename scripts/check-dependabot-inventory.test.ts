@@ -454,4 +454,22 @@ describe('dependabot inventory CLI', () => {
     expect(cli.output).not.toContain(secret);
     expect(cli.output).not.toContain(unfilteredQuery);
   });
+
+  it('requires query provenance in the evidence envelope', async () => {
+    const cli = await runCli(
+      JSON.stringify({
+        owner: evidence.queryOwner,
+        name: evidence.queryName,
+        pages: [page({ nodes: [], totalCount: 0, hasNextPage: false, endCursor: null })],
+      }),
+      args
+    );
+
+    expect(cli.exitCode).toBe(1);
+    expect(JSON.parse(cli.output)).toMatchObject({
+      status: 'unmeasured',
+      queryValidated: false,
+      findings: expect.arrayContaining(['missing_or_invalid_query']),
+    });
+  });
 });
