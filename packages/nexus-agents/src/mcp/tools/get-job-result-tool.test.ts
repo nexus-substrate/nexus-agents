@@ -19,6 +19,7 @@ import { writeJobFailed } from '../jobs/job-result-store.js';
 import { toolStructuredError } from './tool-result.js';
 import { FAKE_PASSWORD } from '../../testing/test-secrets.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
+import { resolveIdempotency } from '../jobs/job-idempotency.js';
 
 type SdkCallback = (args: unknown) => Promise<{ content: readonly { text: string }[] }>;
 
@@ -160,17 +161,21 @@ describe('get_job_result producer-version disclosure (#5008)', () => {
   // stamp measures anything.
   let tmpDir: string;
   const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  const originalSource = process.env['NEXUS_JOB_RESULT_SOURCE'];
   const FIXTURE_VERSION = '9.9.9-fixture';
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'nexus-gjr-version-'));
     process.env['NEXUS_DATA_DIR'] = tmpDir;
+    delete process.env['NEXUS_JOB_RESULT_SOURCE'];
     resetNexusDataDirCache();
   });
 
   afterEach(() => {
     if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
     else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    if (originalSource === undefined) delete process.env['NEXUS_JOB_RESULT_SOURCE'];
+    else process.env['NEXUS_JOB_RESULT_SOURCE'] = originalSource;
     resetNexusDataDirCache();
     rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -208,6 +213,34 @@ describe('get_job_result producer-version disclosure (#5008)', () => {
     expect(body['found']).toBe(true);
     expect(body['producerVersionSource']).toBe('task_state');
     expect(body['producerVersionMeasured']).toBe(false);
+    expect(record).not.toHaveProperty('producerVersion');
+  });
+
+  it('classifies a keyed orchestrate record through the registered task-state callback', async () => {
+    const resolution = resolveIdempotency('orchestrate', 'scope22-get-job-result', {
+      task: 'scope22 task-state callback',
+    });
+    expect(resolution.kind).toBe('fresh');
+    if (resolution.kind !== 'fresh') throw new Error('Expected a fresh isolated idempotency key');
+
+    initTaskState({
+      taskId: resolution.jobId,
+      stage: 'planning',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'init' },
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    updateStage(resolution.jobId, 'complete', '2026-05-01T00:05:00Z');
+    appendResult(resolution.jobId, { ok: true }, '2026-05-01T00:05:01Z');
+
+    const body = await envelope(resolution.jobId);
+    const record = body['record'] as Record<string, unknown>;
+
+    expect(body['found']).toBe(true);
+    expect(body['producerVersionSource']).toBe('task_state');
+    expect(body['producerVersionMeasured']).toBe(false);
+    expect(record['toolName']).toBe('orchestrate');
     expect(record).not.toHaveProperty('producerVersion');
   });
 
