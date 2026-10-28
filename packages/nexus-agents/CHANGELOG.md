@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 15.1.0
+
+### Minor Changes
+
+- [#7688](https://github.com/nexus-substrate/nexus-agents/pull/7688) [`e6278ea`](https://github.com/nexus-substrate/nexus-agents/commit/e6278eaabbe270a4bb84df285439d7002d779f8a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record outcome serving identity and derived pricing only from validated upstream model reports. Preserve independently known gateway arms when a response provides no serving report.
+
 ## 15.0.0
 
 ### Major Changes
