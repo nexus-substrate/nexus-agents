@@ -202,6 +202,8 @@ export class ScriptEntryFixture {
     symlinkSync(join(root, 'packages'), join(checkout, 'packages'), 'dir');
     for (const helper of [
       'script-paths.ts',
+      'governor-section.ts',
+      'governor-review-panel-coverage.ts',
       'model-string-drift-allowlist.ts',
       'vote-record-ratification.ts',
       'build-model-registry-helpers.ts',
