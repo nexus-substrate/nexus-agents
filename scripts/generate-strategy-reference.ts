@@ -36,6 +36,7 @@
 
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { DOCS_ROOT } from './script-paths.js';
 import { STRATEGY_MANIFEST_REGISTRY } from '../packages/nexus-agents/src/orchestration/strategy-manifest-registry.js';
 import type { StrategyManifest } from '../packages/nexus-agents/src/orchestration/strategy-manifest.js';
@@ -216,6 +217,7 @@ function main(): void {
 
 // Only run when invoked directly (not when imported by the test for its pure
 // render/sort helpers).
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   main();
 }

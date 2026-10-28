@@ -25,6 +25,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ROOT } from './script-paths.js';
 import { loadClaimsRegistry } from '../packages/nexus-agents/src/governance/claims-registry.js';
 import {
@@ -112,7 +113,7 @@ function printClaimsVerdict(
   }
 }
 
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   process.exit(checkClaims() ? 0 : 1);
 }

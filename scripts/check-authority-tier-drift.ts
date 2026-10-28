@@ -61,6 +61,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { ROOT } from './script-paths.js';
 import {
@@ -588,7 +589,7 @@ export function checkAuthorityTierDeclarations(): boolean {
   return false;
 }
 
-const invokedPath = process.argv[1] ?? '';
-if (import.meta.url === `file://${invokedPath}`) {
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   process.exit(checkAuthorityTierDeclarations() ? 0 : 1);
 }
