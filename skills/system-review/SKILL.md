@@ -77,6 +77,6 @@ gh issue create --title "System Review: $(TZ='America/New_York' date '+%Y-%m-%d'
 
 - [ ] Each phase ran; outcome recorded in the review issue
 - [ ] Stale-issue check covered all open issues > 90 days
-- [ ] CodeQL/Scorecard/dependabot alert counts captured
+- [ ] CodeQL/Scorecard counts captured; Dependabot inventory captured using the canonical [release checklist procedure](../release/SKILL.md#dependabot-inventory-accessible-repository-scope)
 - [ ] CI health check (last 5 runs on main green)
 - [ ] Review issue closed with summary
