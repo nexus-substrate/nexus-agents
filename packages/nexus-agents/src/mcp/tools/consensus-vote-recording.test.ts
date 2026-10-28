@@ -276,15 +276,52 @@ describe('recordVoteOutcomes served model and cost (#6624)', () => {
     expect(devex !== undefined && 'costUsd' in devex).toBe(false);
   });
 
+  it('keeps a successful no-report gateway seat queryable without serving identity or price (#7569)', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+    recordVoteOutcomes(
+      [
+        {
+          ...agentVote('architect', 'approve'),
+          cli: 'claude',
+          model: 'claude-sonnet',
+          gatewayArm: 'api:custom-openai',
+          inputTokens: 1_000,
+          outputTokens: 2_000,
+        },
+      ],
+      TEST_DECISION_ID
+    );
+    const rows = getOutcomeStore().query();
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    if (row === undefined) throw new Error('Expected one concrete consensus outcome');
+    expect(row).toMatchObject({
+      model: 'consensus',
+      voterRole: 'architect',
+      cli: 'claude',
+      success: true,
+      traceId: TEST_DECISION_ID,
+      gatewayArm: 'api:custom-openai',
+    });
+    for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
+      expect(Object.hasOwn(row, key)).toBe(false);
+    }
+    const gatewayRows = getOutcomeStore().query({ gatewayArm: 'api:custom-openai' });
+    expect(gatewayRows).toHaveLength(1);
+    expect(gatewayRows[0]?.id).toBe(row.id);
+  });
+
   it('records no served fields for a seat that never reached a model', () => {
     recordVoteOutcomes(
       [{ ...agentVote('pm', 'abstain', 'error'), error: 'spawn failed' }],
       TEST_DECISION_ID
     );
-    const row = getOutcomeStore().query()[0] as unknown as Record<string, unknown>;
-    expect(row['model']).toBe('consensus');
-    for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
-      expect(key in row).toBe(false);
+    const rows = getOutcomeStore().query();
+    expect(rows).toHaveLength(1);
+    const row = rows[0] as unknown as Record<string, unknown>;
+    expect(row).toMatchObject({ model: 'consensus', success: false });
+    for (const key of ['servedModel', 'costUsd', 'priceBasis', 'gatewayArm']) {
+      expect(Object.hasOwn(row, key)).toBe(false);
     }
   });
 });

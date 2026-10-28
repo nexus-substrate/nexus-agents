@@ -18,7 +18,6 @@ import {
   requestedAccessModeOf,
   servedAccessOf,
   withRequestedAccessMode,
-  type ServedAccess,
 } from './expert-access-mode.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
@@ -118,12 +117,15 @@ export interface ExpertBridgeResult {
    */
   readonly tokensUsed?: number;
   /**
-   * Concrete model id the underlying adapter reported (`CliResponse.model`),
+   * Operational model attribution from `CliResponse.model`,
    * when present (#3387). Distinct from {@link cli} (the slot): one CLI can run
-   * several models. Undefined when the adapter didn't report a model or the
+   * several models. A selected alias is not a serving report. Undefined when
+   * the adapter supplied no operational model or the
    * bridge failed before dispatch. Required to emit a `model.called` event.
    */
   readonly model?: string;
+  /** Raw upstream identity, kept separate from operational attribution (#7569). */
+  readonly reportedModel?: string;
   /**
    * Input/output token split from the adapter's `CliResponse.usage` (#3387),
    * when reported. Best-effort like {@link tokensUsed}; both undefined together
@@ -165,14 +167,10 @@ interface RouterLike {
     execution?: { signal?: AbortSignal | undefined }
   ): Promise<{
     ok: boolean;
-    value: RoutedAttribution & {
-      text: string;
-      tokensUsed?: number;
-      model?: string;
-      tokensIn?: number;
-      tokensOut?: number;
-      gatewayArm?: EndpointArmId;
-    } & ServedAccess;
+    value: Omit<
+      ExpertBridgeResult,
+      'success' | 'expertType' | 'durationMs' | 'error' | 'requestedAccessMode'
+    >;
     error: RoutedAttribution & { message: string };
   }>;
 }
@@ -346,6 +344,9 @@ function adaptCompositeRouter(
             ...attribution,
             ...(tokensUsed !== undefined && { tokensUsed }),
             ...(model !== undefined && { model }),
+            ...(result.value.reportedModel !== undefined && {
+              reportedModel: result.value.reportedModel,
+            }),
             ...(split !== undefined && { tokensIn: split.tokensIn, tokensOut: split.tokensOut }),
             // #6624: which gateway served the model, so its cost is priced by
             // the gateway's declaration.
@@ -480,6 +481,7 @@ function toSuccessResult(
     ...attributionOf(value),
     ...(value.tokensUsed !== undefined && { tokensUsed: value.tokensUsed }),
     ...(value.model !== undefined && { model: value.model }),
+    ...(value.reportedModel !== undefined && { reportedModel: value.reportedModel }),
     ...(value.tokensIn !== undefined && { tokensIn: value.tokensIn }),
     ...(value.tokensOut !== undefined && { tokensOut: value.tokensOut }),
     ...(value.gatewayArm !== undefined && { gatewayArm: value.gatewayArm }),

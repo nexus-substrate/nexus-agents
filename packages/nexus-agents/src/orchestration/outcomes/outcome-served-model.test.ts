@@ -8,6 +8,7 @@ import { TaskOutcomeSchema } from './outcome-types.js';
 import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
 import { ModelRegistry, setDefaultRegistry } from '../../config/model-registry.js';
 import { buildInTreeEntries } from '../../config/in-tree-entries.js';
+import * as budgetArmCost from '../../cli-adapters/budget-arm-cost.js';
 
 describe('servedOutcomeFields (#6624)', () => {
   beforeEach(() => {
@@ -114,7 +115,27 @@ describe('servedOutcomeFields (#6624)', () => {
     });
   });
 
-  it('sets nothing when there is no served model', () => {
+  it.each([undefined, ''] as const)(
+    'preserves a known gateway arm without an admitted model: %s (#7569)',
+    (model) => {
+      vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+      const priceCall = vi.spyOn(budgetArmCost, 'servedCostDetail');
+      try {
+        const fields = servedOutcomeFields({
+          model,
+          gatewayArm: 'api:custom-openai',
+          inputTokens: 1_000,
+          outputTokens: 2_000,
+        });
+        expect(fields).toEqual({ gatewayArm: 'api:custom-openai' });
+        expect(priceCall).not.toHaveBeenCalled();
+      } finally {
+        priceCall.mockRestore();
+      }
+    }
+  );
+
+  it('sets nothing when there is no served model and no known gateway arm', () => {
     expect(servedOutcomeFields(undefined)).toEqual({});
     expect(servedOutcomeFields({ model: undefined, inputTokens: 1, outputTokens: 1 })).toEqual({});
     expect(servedOutcomeFields({ model: '' })).toEqual({});

@@ -14,6 +14,7 @@ import {
 import type { AgentPlan } from '../../orchestration/aorchestra/index.js';
 import type { WorkerResult } from '../../orchestration/aorchestra/index.js';
 import type { IModelAdapter } from '../../core/index.js';
+import type { CompletionResponse, TokenUsage } from '../../core/types/model.js';
 import { ok, err, createLogger, ModelError, ErrorCode } from '../../core/index.js';
 import {
   getOutcomeStore,
@@ -834,7 +835,11 @@ describe('worker outcome rows record the served model and cost (#6624)', () => {
     vi.unstubAllEnvs();
   });
 
-  function servedAdapter(model: string, gatewayArm?: string): IModelAdapter {
+  function servedAdapter(
+    model: string,
+    gatewayArm?: string,
+    reportedModel?: string
+  ): IModelAdapter {
     const adapter = makeMockAdapter('done');
     (adapter.complete as ReturnType<typeof vi.fn>).mockResolvedValue(
       ok({
@@ -842,6 +847,7 @@ describe('worker outcome rows record the served model and cost (#6624)', () => {
         usage: { inputTokens: 1_000, outputTokens: 2_000, totalTokens: 3_000 },
         stopReason: 'end_turn' as const,
         model,
+        ...(reportedModel !== undefined ? { reportedModel } : {}),
       })
     );
     return gatewayArm === undefined ? adapter : Object.assign(adapter, { gatewayArm });
@@ -862,7 +868,7 @@ describe('worker outcome rows record the served model and cost (#6624)', () => {
 
   it('records the model that answered and its registry cost beside the role marker', async () => {
     // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
-    const row = await dispatchAndRecord(servedAdapter('claude-sonnet'));
+    const row = await dispatchAndRecord(servedAdapter('claude-sonnet', undefined, 'claude-sonnet'));
     expect(row['model']).toBe('worker-code');
     expect(row['servedModel']).toBe('claude-sonnet');
     expect(row['costUsd']).toBe(0.033);
@@ -872,13 +878,17 @@ describe('worker outcome rows record the served model and cost (#6624)', () => {
   it('prices a gateway-served worker by the gateway declaration', async () => {
     vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
     // $1 / $2 per 1M: 0.001 + 0.004. The list rate would be 0.033.
-    const row = await dispatchAndRecord(servedAdapter('claude-sonnet', 'api:custom-openai'));
+    const row = await dispatchAndRecord(
+      servedAdapter('claude-sonnet', 'api:custom-openai', 'claude-sonnet')
+    );
     expect(row['servedModel']).toBe('claude-sonnet');
     expect(row['costUsd']).toBe(0.005);
   });
 
   it('records an unpriced model as an unknown cost, not $0', async () => {
-    const row = await dispatchAndRecord(servedAdapter('acme-unpriced-model-xyz'));
+    const row = await dispatchAndRecord(
+      servedAdapter('acme-unpriced-model-xyz', undefined, 'acme-unpriced-model-xyz')
+    );
     expect(row['servedModel']).toBe('acme-unpriced-model-xyz');
     expect(row['priceBasis']).toBe('unknown');
     expect('costUsd' in row).toBe(false);
@@ -893,5 +903,217 @@ describe('worker outcome rows record the served model and cost (#6624)', () => {
     for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
       expect(key in row).toBe(false);
     }
+  });
+});
+
+describe('actual worker dispatch to outcome report identity (#7569)', () => {
+  beforeEach(() => {
+    resetOutcomeStore();
+  });
+  afterEach(() => {
+    resetOutcomeStore();
+    vi.unstubAllEnvs();
+  });
+  const cases = [
+    {
+      name: 'no report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: undefined,
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'genuine different report',
+      operationalModel: 'operational-alias-7569',
+      reportedModel: 'claude-sonnet',
+      usage: true,
+      served: 'claude-sonnet',
+      basis: 'list',
+      cost: 0.033,
+    },
+    {
+      name: 'invalid empty report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: '',
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'genuine unpriced report',
+      operationalModel: 'operational-alias-7569',
+      reportedModel: 'acme-unpriced-model-xyz',
+      usage: true,
+      served: 'acme-unpriced-model-xyz',
+      basis: 'unknown',
+      cost: undefined,
+    },
+    {
+      name: 'genuine report without usage',
+      operationalModel: 'operational-alias-7569',
+      reportedModel: 'claude-sonnet',
+      usage: false,
+      served: 'claude-sonnet',
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'unresolved report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: 'pending-detection',
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'control-character report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: 'claude\nsonnet',
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+    {
+      name: 'oversize report',
+      operationalModel: 'claude-sonnet',
+      reportedModel: 'x'.repeat(201),
+      usage: true,
+      served: undefined,
+      basis: undefined,
+      cost: undefined,
+    },
+  ] as const;
+
+  function expectProjection(
+    row: Record<string, unknown>,
+    served: string | undefined,
+    basis: string | undefined,
+    cost: number | undefined
+  ): void {
+    for (const [key, expected] of [
+      ['servedModel', served],
+      ['priceBasis', basis],
+      ['costUsd', cost],
+    ] as const) {
+      if (expected === undefined) expect(Object.hasOwn(row, key)).toBe(false);
+      else expect(row[key]).toBe(expected);
+    }
+  }
+
+  function workerResponse(
+    reportedModel: string | undefined,
+    usage: boolean,
+    operationalModel: string,
+    partialUsage: boolean
+  ): Pick<CompletionResponse, 'content' | 'stopReason' | 'model' | 'reportedModel'> & {
+    usage?: Partial<TokenUsage>;
+  } {
+    return {
+      content: [{ type: 'text' as const, text: 'done' }],
+      stopReason: 'end_turn' as const,
+      model: operationalModel,
+      ...(reportedModel !== undefined ? { reportedModel } : {}),
+      ...(usage
+        ? {
+            usage: {
+              inputTokens: 1000,
+              ...(partialUsage ? {} : { outputTokens: 2000, totalTokens: 3000 }),
+            },
+          }
+        : {}),
+    };
+  }
+
+  function expectWorkerUsage(
+    worker: WorkerResult | undefined,
+    usage: boolean,
+    partialUsage: boolean
+  ): void {
+    expect(worker?.served?.inputTokens).toBe(usage ? 1000 : undefined);
+    expect(worker?.served?.outputTokens).toBe(usage && !partialUsage ? 2000 : undefined);
+  }
+
+  async function dispatchReport(
+    reportedModel: string | undefined,
+    usage: boolean,
+    gateway = false,
+    operationalModel = 'claude-sonnet',
+    partialUsage = false
+  ): Promise<Record<string, unknown>> {
+    const adapter = makeMockAdapter('done');
+    // Independent operational identity never becomes an implicit report.
+    (adapter.complete as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok(workerResponse(reportedModel, usage, operationalModel, partialUsage))
+    );
+    const selectedAdapter = gateway
+      ? Object.assign(adapter, { gatewayArm: 'api:custom-openai' })
+      : adapter;
+    const result = await executeWorkerDispatch({
+      agentPlan: makePlan(1),
+      taskDescription: 'Implement report fidelity',
+      modelAdapter: selectedAdapter,
+      logger,
+    });
+    expect(adapter.complete).toHaveBeenCalledTimes(1);
+    expect(result.results).toHaveLength(1);
+    const worker = result.results[0];
+    expect(worker?.status).toBe('success');
+    expect(worker?.resolvedCli).toBe(adapter.providerId);
+    expectWorkerUsage(worker, usage, partialUsage);
+    recordWorkerOutcomes(result.results, 'Implement report fidelity');
+    const rows = getOutcomeStore().query();
+    expect(rows).toHaveLength(1);
+    const row = rows[0] as unknown as Record<string, unknown>;
+    // makeMockAdapter providerId='test' is deliberately unknown to CliNameSchema.
+    expect(row).toMatchObject({ model: 'worker-code', cli: 'unknown', success: true });
+    if (gateway) {
+      expect(row['gatewayArm']).toBe('api:custom-openai');
+      const queried = getOutcomeStore().query({ gatewayArm: 'api:custom-openai' });
+      expect(queried).toHaveLength(1);
+      expect(queried[0]?.id).toBe(row['id']);
+    }
+    return row;
+  }
+
+  it.each(cases)('$name preserves concrete worker and usage', async (c) => {
+    const row = await dispatchReport(c.reportedModel, c.usage, false, c.operationalModel);
+    expectProjection(row, c.served, c.basis, c.cost);
+  });
+
+  it('prices a genuine report by the declared gateway rate', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+    const row = await dispatchReport('claude-sonnet', true, true, 'operational-alias-7569');
+    expectProjection(row, 'claude-sonnet', 'declared', 0.005);
+    expect(row['gatewayArm']).toBe('api:custom-openai');
+  });
+
+  it('does not invent identity or pricing from a gateway declaration without a report', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+    const row = await dispatchReport(undefined, true, true);
+    expectProjection(row, undefined, undefined, undefined);
+    // The composed helper already qualified the known arm and exact row-id query.
+  });
+  it('keeps partial worker usage without claiming a price', async () => {
+    const row = await dispatchReport('claude-sonnet', true, false, 'operational-alias-7569', true);
+    expectProjection(row, 'claude-sonnet', undefined, undefined);
+  });
+
+  it('records an explicitly free gateway rate with a genuine report', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const row = await dispatchReport('claude-sonnet', true, true, 'operational-alias-7569');
+    expectProjection(row, 'claude-sonnet', 'declared', 0);
+    expect(row['gatewayArm']).toBe('api:custom-openai');
+  });
+
+  it('keeps undeclared gateway pricing unknown despite a priced report', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    const row = await dispatchReport('claude-sonnet', true, true, 'operational-alias-7569');
+    expectProjection(row, 'claude-sonnet', 'unknown', undefined);
+    expect(row['gatewayArm']).toBe('api:custom-openai');
   });
 });

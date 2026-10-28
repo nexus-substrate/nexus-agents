@@ -76,6 +76,7 @@ import {
   type ServedCall,
 } from '../../orchestration/outcomes/outcome-served-model.js';
 import { isGatewayModelAdapter } from '../../adapters/openai-compat-adapter.js';
+import { validatedModelIdentity } from '../../cli-adapters/model-identity.js';
 
 // ============================================================================
 // Constants
@@ -461,15 +462,16 @@ function deliveredWorkerOutput(
 }
 
 /**
- * The model that answered a worker and its usage (#6624). A gateway adapter
- * names its arm, so the row is priced by the gateway's declaration.
+ * Admit the worker's raw upstream model report and preserve its usage (#7569).
+ * A transport report is not provider attestation. A gateway adapter names its
+ * arm independently, so an admitted model is priced by that declaration.
  */
 function servedCallOf(
   adapter: IModelAdapter,
-  response: { readonly model: string; readonly usage?: TokenUsage | undefined }
+  response: { readonly reportedModel?: string | undefined; readonly usage?: TokenUsage | undefined }
 ): ServedCall {
   return {
-    model: response.model,
+    model: validatedModelIdentity(response.reportedModel),
     ...(isGatewayModelAdapter(adapter) && { gatewayArm: adapter.gatewayArm }),
     ...(response.usage !== undefined && {
       inputTokens: response.usage.inputTokens,
