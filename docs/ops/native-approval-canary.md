@@ -82,7 +82,7 @@ The read-only measurement and the one-shot canary are separate actions. Dispatch
 
 The collector reads classic protection through GraphQL and separately checks active branch rulesets via `GET /repos/{owner}/{repo}/rules/branches/{branch}`. This is the rules endpoint, not the separate [classic branch protection endpoint](https://docs.github.com/en/rest/branches/branch-protection#get-branch-protection). Inaccessible, null, malformed, incomplete, or unsupported protection evidence stops the experiment. An owner's successful read does not prove that the Actions token can read it.
 
-Concurrency is fixed and reruns are refused. **Every invocation consumes the experiment**, including a transient failure or refusal. Retain run history and the fixed branch's PR history: the replay guard relies on GitHub retaining these records and does not claim tamper-proof storage. Do not delete history or choose another branch to reset it.
+Concurrency is fixed and reruns are refused. **Every canary invocation consumes the experiment**, including a transient failure or refusal. Read-only preflight measurements do not consume it. Retain run history and the fixed branch's PR history: the replay guard relies on GitHub retaining these records and does not claim tamper-proof storage. Do not delete history or choose another branch to reset it.
 
 ## Interpret the evidence and close the PR
 
