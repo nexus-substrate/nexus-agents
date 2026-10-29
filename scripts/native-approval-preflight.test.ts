@@ -53,4 +53,32 @@ describe('canary preflight provenance', () => {
   ])('rejects %s', async (_name, result) => {
     await expect(verifyCanaryPreflightRun(reader(result), RECEIPT)).rejects.toThrow();
   });
+
+  it('waits for the dispatched preflight workflow to finish before authorizing the canary', async () => {
+    vi.useFakeTimers();
+    try {
+      const read = vi
+        .fn<CanaryRead>()
+        .mockResolvedValueOnce({ ...RUN, status: 'in_progress', conclusion: null })
+        .mockResolvedValueOnce(RUN);
+      const wait = vi.fn((milliseconds: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
+      );
+      const result = verifyCanaryPreflightRun(read, RECEIPT, wait);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(result).resolves.toBeUndefined();
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(wait).toHaveBeenCalledWith(2_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops after the bounded completion poll when the preflight remains active', async () => {
+    const read = reader({ ...RUN, status: 'in_progress', conclusion: null });
+    await expect(verifyCanaryPreflightRun(read, RECEIPT, async () => {})).rejects.toThrow(
+      'preflight-run-completion-timeout'
+    );
+    expect(read).toHaveBeenCalledTimes(10);
+  });
 });

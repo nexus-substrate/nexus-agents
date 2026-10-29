@@ -79,12 +79,14 @@ const PreflightRun = z
     head_branch: z.literal('main'),
     head_sha: Sha,
     run_attempt: z.literal(1),
-    status: z.literal('completed'),
-    conclusion: z.literal('success'),
+    status: z.enum(['queued', 'in_progress', 'completed']),
+    conclusion: z.string().nullable().optional(),
     actor: z.object({ id: z.number().int().positive() }),
     path: z.string().min(1),
   })
   .loose();
+const PREFLIGHT_RUN_POLL_INTERVAL_MS = 2_000;
+const PREFLIGHT_RUN_MAX_POLLS = 10;
 const SOURCE_PATHS = [
   'scripts/native-approval-canary.ts',
   'packages/nexus-agents/src/scm/github-api-transport.ts',
@@ -111,9 +113,28 @@ type LaunchContext = Pick<Evidence, 'invocation' | 'expected' | 'governor'> & {
 
 export async function verifyCanaryPreflightRun(
   read: CanaryRead,
-  receipt: PreflightReceipt
+  receipt: PreflightReceipt,
+  wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds))
 ): Promise<void> {
-  const run = await readCanaryGet(read, `actions/runs/${String(receipt.runId)}`, PreflightRun);
+  for (let attempt = 0; attempt < PREFLIGHT_RUN_MAX_POLLS; attempt++) {
+    const run = await readCanaryGet(read, `actions/runs/${String(receipt.runId)}`, PreflightRun);
+    assertPreflightRunProvenance(run, receipt);
+    if (run.status === 'completed') {
+      if (run.conclusion !== 'success') throw new Error('preflight-run-not-successful');
+      return;
+    }
+    if (attempt === PREFLIGHT_RUN_MAX_POLLS - 1)
+      throw new Error('preflight-run-completion-timeout');
+    await wait(PREFLIGHT_RUN_POLL_INTERVAL_MS);
+  }
+  throw new Error('preflight-run-completion-timeout');
+}
+
+function assertPreflightRunProvenance(
+  run: z.infer<typeof PreflightRun>,
+  receipt: PreflightReceipt
+): void {
   if (
     run.id !== receipt.runId ||
     run.actor.id !== P.actorId ||

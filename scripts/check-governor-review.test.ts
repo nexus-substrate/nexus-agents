@@ -1884,7 +1884,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the gate scripts, shadow locations, ledger producers and canary SCM ingress are governor-owned (56 entries)', () => {
+  it('the gate scripts, shadow locations, ledger producers and canary SCM ingress are governor-owned (57 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
