@@ -236,7 +236,8 @@ describe('protected native canary workflow wiring', () => {
     const run = readPreflightWorkflow().jobs.preflight?.steps.find(
       (step) => step.run?.includes('native-approval-canary.yml/runs') === true
     )?.run;
-    expect(run).toContain('runs=$(curl --disable --fail --silent --show-error --max-time 20');
+    expect(run).toContain('run_required_read workflow-history');
+    expect(run).toContain('curl --disable --fail --silent --show-error --max-time 20');
     expect(run).toContain(
       'https://api.github.com/repos/nexus-substrate/nexus-agents/actions/workflows/native-approval-canary.yml/runs?branch=main&per_page=100'
     );
@@ -244,6 +245,27 @@ describe('protected native canary workflow wiring', () => {
     expect(run).not.toContain('GH_TOKEN');
     expect(run).toContain('.total_count == (.workflow_runs | length) and .total_count <= 100');
     expect(run).toContain('.actor.id == 14303249 or .actor.id == 41898282');
+  });
+
+  it('names every API read and response refusal without printing response data', () => {
+    const run = readPreflightWorkflow().jobs.preflight?.steps.find(
+      (step) => step.run?.includes('native-approval-canary.yml/runs') === true
+    )?.run;
+
+    expect(run).toContain("printf '::error::[native-preflight] %s: %s\\n'");
+    expect(run).toContain('run_required_read branch-protection-graphql');
+    expect(run).toContain('fail_stage branch-protection-graphql response-invalid');
+    expect(run).toContain('run_required_read branch-rules-rest');
+    expect(run).toContain('fail_stage branch-rules-rest response-invalid');
+    expect(run).toContain('actions-workflow-permissions: unmeasured');
+    expect(run).toContain('actions-workflow-permissions: unmeasured (response-invalid)');
+    expect(run).toContain('run_required_read workflow-history');
+    expect(run).toContain('fail_stage workflow-history response-invalid');
+    expect(run).toContain('fail_stage workflow-history replay-guard-rejected');
+    expect(run).toContain('fail_stage main-sha binding-mismatch');
+    expect(run).not.toContain('cat "$response"');
+    expect(run).not.toContain('cat "$rules"');
+    expect(run).not.toContain('cat "$runs_file"');
   });
 
   it('isolates explicit canary dispatch behind its own permission and receipt', () => {
