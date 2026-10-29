@@ -7,19 +7,22 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /** Schedule a timeout without passing Node's signed 32-bit timer limit. */
 export function scheduleDeadlineTimer(timeoutMs: number, onTimeout: () => void): () => void {
-  let remainingMs = timeoutMs;
+  const deadlineAt = performance.now() + timeoutMs;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let cancelled = false;
 
   const scheduleNextChunk = (): void => {
     if (cancelled) return;
+    const remainingMs = deadlineAt - performance.now();
+    if (remainingMs <= 0) {
+      onTimeout();
+      return;
+    }
     const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(1, Math.ceil(remainingMs)));
-    remainingMs -= delayMs;
     timer = setTimeout(() => {
       timer = undefined;
       if (cancelled) return;
-      if (remainingMs <= 0) onTimeout();
-      else scheduleNextChunk();
+      scheduleNextChunk();
     }, delayMs);
   };
 

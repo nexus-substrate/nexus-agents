@@ -440,6 +440,31 @@ describe('verification', () => {
       }
     });
 
+    it('honors elapsed time when a long timer wakes after its deadline', () => {
+      const maxNodeTimeoutMs = 2_147_483_647;
+      let elapsed = 0;
+      let wakeTimer: (() => void) | undefined;
+      const actualSetTimeout = globalThis.setTimeout;
+      const nowSpy = vi.spyOn(globalThis.performance, 'now').mockImplementation(() => elapsed);
+      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler) => {
+        wakeTimer = handler;
+        return actualSetTimeout(() => undefined, 60_000);
+      });
+      const onTimeout = vi.fn();
+      const cancelTimer = scheduleDeadlineTimer(maxNodeTimeoutMs + 10, onTimeout);
+      try {
+        expect(wakeTimer).toBeDefined();
+        elapsed = maxNodeTimeoutMs + 100;
+        wakeTimer?.();
+        expect(onTimeout).toHaveBeenCalledOnce();
+        expect(timeoutSpy).toHaveBeenCalledOnce();
+      } finally {
+        cancelTimer();
+        timeoutSpy.mockRestore();
+        nowSpy.mockRestore();
+      }
+    });
+
     it('rejects a NaN graph timeout instead of treating it as unbounded', async () => {
       const graph = new GraphBuilder()
         .addNode('A', () => Promise.resolve({}))
