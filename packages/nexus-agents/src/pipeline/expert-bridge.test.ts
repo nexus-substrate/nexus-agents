@@ -149,6 +149,49 @@ describe('executeExpert abort signal (#6736)', () => {
   });
 });
 
+describe('executeExpert durable capacity retry suppression (#7530)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    executeTaskMock.mockReset().mockResolvedValue({
+      ok: false,
+      error: {
+        message:
+          'Individual quota reached (RESOURCE_EXHAUSTED 429; reset after 92 hours; project secret-123)',
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('dispatches once and returns a sanitized durable-capacity cause', async () => {
+    const resultPromise = executeExpert('architecture', 'create a plan');
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+
+    expect(executeTaskMock).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('quota exceeded');
+    expect(result.error).toContain('retries were suppressed');
+    expect(result.error).not.toContain('secret-123');
+  });
+
+  it('keeps the bounded retry for an ordinary transient 429', async () => {
+    executeTaskMock
+      .mockReset()
+      .mockResolvedValueOnce({ ok: false, error: { message: 'rate limit exceeded (429)' } })
+      .mockResolvedValueOnce({ ok: true, value: { text: 'plan' } });
+    const resultPromise = executeExpert('architecture', 'create a plan');
+
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+
+    expect(result.success).toBe(true);
+    expect(executeTaskMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('executeExpert served gateway arm (#6624)', () => {
   beforeEach(() => {
     executeTaskMock.mockReset();

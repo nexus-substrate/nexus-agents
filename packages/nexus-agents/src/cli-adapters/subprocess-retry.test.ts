@@ -339,6 +339,28 @@ describe('SubprocessCliAdapter transient retry', () => {
     expect(mockSpawn).toHaveBeenCalledTimes(1);
   });
 
+  it('should dispatch an individual quota failure once, even with retries enabled (#7530)', async () => {
+    const adapter = new RetryAdapter();
+    const task: CliTask = { content: 'test' };
+    const { mockChild, stderr } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.executeTask(task, DEFAULT_OPTS);
+    stderr.emit(
+      'data',
+      Buffer.from('Individual quota reached (RESOURCE_EXHAUSTED 429; reset after 92 hours)')
+    );
+    mockChild.emit('close', 1);
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('RATE_LIMITED');
+      expect(result.error.retryable).toBe(false);
+    }
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+  });
+
   it('should NOT retry NOT_FOUND error', async () => {
     const adapter = new RetryAdapter();
     const task: CliTask = { content: 'test' };

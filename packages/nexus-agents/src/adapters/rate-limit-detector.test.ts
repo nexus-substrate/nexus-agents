@@ -391,6 +391,7 @@ describe('durable capacity caps are distinguished from transient throttles', () 
 
   it.each([
     'quota exceeded',
+    'Individual quota reached (RESOURCE_EXHAUSTED 429; reset after 92 hours)',
     'usage limit reached',
     // The claude CLI's per-model exhaustion text, measured 2026-09-13 (#6120).
     "You're out of usage credits. Switch to another model, or manage usage credits at claude.ai/settings/usage, to continue.",

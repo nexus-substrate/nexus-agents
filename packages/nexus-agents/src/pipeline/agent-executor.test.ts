@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { captureAcceptanceContext } from './acceptance-context.js';
 import { getAcceptanceSummary, isBuiltinStageSet } from './acceptance-binding.js';
 import { guardDevPipelineStages } from './dev-pipeline-deadlines.js';
+import { runDevPipeline } from './dev-pipeline.js';
 
 const {
   mockExecuteExpert,
@@ -988,6 +989,47 @@ describe('createAgentStages — central workflow hub', () => {
         expect(key in record).toBe(false);
       }
     });
+  });
+
+  it('surfaces and persists a sanitized durable quota failure through the planning entrypoint (#7530)', async () => {
+    const appendSpy = vi.fn();
+    mockGetOutcomeStore.mockReturnValue({
+      append: appendSpy,
+      query: vi.fn().mockReturnValue([]),
+    });
+    mockExecuteExpert.mockResolvedValue({
+      success: false,
+      text: '',
+      durationMs: 50,
+      expertType: 'architecture',
+      error:
+        'Individual quota reached (RESOURCE_EXHAUSTED 429; reset after 92 hours; project secret-123)',
+    });
+    const stages = createAgentStages();
+    mockExecuteVoting.mockClear();
+
+    await expect(runDevPipeline('Build a feature', stages)).rejects.toThrow(
+      /Planning failed: Durable model quota exceeded; automatic retries were suppressed/
+    );
+
+    expect(mockExecuteExpert).toHaveBeenCalledTimes(1);
+    expect(mockExecuteVoting).not.toHaveBeenCalled();
+    const recordCall = appendSpy.mock.calls.find(
+      (call: unknown[]) => (call[0] as { id?: string }).id?.startsWith('pipeline-plan-') === true
+    );
+    if (recordCall === undefined) throw new Error('no pipeline-plan- record');
+    const row = recordCall[0] as Record<string, unknown>;
+    expect(row).toMatchObject({
+      cli: 'unknown',
+      success: false,
+      failureCategory: 'rate_limit',
+      errorMessage: 'Durable model quota exceeded; automatic retries were suppressed.',
+    });
+    expect(JSON.stringify(row)).not.toContain('secret-123');
+    expect(row).not.toHaveProperty('servedModel');
+    expect(row).not.toHaveProperty('costUsd');
+    expect(row).not.toHaveProperty('inputTokens');
+    expect(row).not.toHaveProperty('outputTokens');
   });
 
   describe('recordOutcome cli threading (#2823)', () => {
