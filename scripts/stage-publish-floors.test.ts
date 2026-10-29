@@ -223,46 +223,16 @@ describe('the real workspace overrides', () => {
 
 describe('npmOverrides with in-major pins (#7614)', () => {
   const { floors } = parseOverrideFloors({
-    'fast-uri': '>=4.1.3',
-    '@modelcontextprotocol/sdk>ajv': '>=8.18.0',
+    protobufjs: '>=8.4.0 <9',
   });
 
-  it('nests a pin under its parent and under the repeated scope, keeping the floor as "."', () => {
+  it('nests a pin under its parent while keeping the workspace floor', () => {
     const { overrides } = npmOverrides(floors, {}, backportPins());
-    expect(overrides['fast-uri']).toBe('>=4.1.3');
-    expect(overrides['ajv']).toEqual({ 'fast-uri': '>=3.1.9 <4' });
-    expect(overrides['@modelcontextprotocol/sdk']).toEqual({
-      ajv: { '.': '>=8.18.0', 'fast-uri': '>=3.1.9 <4' },
-    });
+    expect(overrides.protobufjs).toBe('>=8.4.0 <9');
+    expect(overrides['@google/genai']).toEqual({ protobufjs: '>=7.6.5 <8' });
   });
 
   it('adds nothing without pins', () => {
-    expect(npmOverrides(floors, {}).overrides).not.toHaveProperty('ajv');
-  });
-});
-
-describe('floorViolations with in-major backports (#7614)', () => {
-  const { floors } = parseOverrideFloors({ 'fast-uri': '>=4.1.3' });
-  const pkg = (version: string): { path: string; name: string; version: string } => ({
-    path: 'node_modules/fast-uri',
-    name: 'fast-uri',
-    version,
-  });
-
-  it('accepts the patched release of the declared major', () => {
-    expect(floorViolations(floors, [pkg('3.1.9')])).toEqual([]);
-  });
-
-  it('still rejects an unpatched release of that major', () => {
-    expect(floorViolations(floors, [pkg('3.1.8')])).toHaveLength(1);
-  });
-
-  it('still rejects a release below the floor in the floor major', () => {
-    expect(floorViolations(floors, [pkg('4.1.2')])).toHaveLength(1);
-  });
-
-  it('rejects the backport once the floor is raised past what it was verified against', () => {
-    const raised = parseOverrideFloors({ 'fast-uri': '>=4.3.0' }).floors;
-    expect(floorViolations(raised, [pkg('3.1.9')])).toHaveLength(1);
+    expect(npmOverrides(floors, {}).overrides).not.toHaveProperty('@google/genai');
   });
 });

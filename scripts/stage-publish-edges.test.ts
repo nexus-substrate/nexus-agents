@@ -12,7 +12,6 @@ import {
   IN_MAJOR_BACKPORTS,
   assertBundleEdges,
   backportCovers,
-  backportPins,
   backportRange,
   edgeViolations,
 } from './stage-publish-edges.js';
@@ -175,31 +174,17 @@ describe('assertBundleEdges', () => {
 
 describe('in-major backports', () => {
   it('pins each dependency to the major its parent declares', () => {
-    expect(IN_MAJOR_BACKPORTS.map(backportRange)).toEqual([
-      '>=3.1.9 <4',
-      '>=7.6.5 <8',
-      '>=8.4.0 <9',
-    ]);
-  });
-
-  it('repeats the ajv pin under the sdk-scoped override', () => {
-    const scopes = backportPins()
-      .filter((p) => p.name === 'fast-uri')
-      .map((p) => p.scope.join('>'));
-    expect(scopes).toEqual(['ajv', '@modelcontextprotocol/sdk>ajv']);
+    expect(IN_MAJOR_BACKPORTS.map(backportRange)).toEqual(['>=7.6.5 <8', '>=8.4.0 <9']);
   });
 
   it('covers only patched releases of the older major', () => {
-    expect(backportCovers('fast-uri', '3.1.9', '>=4.1.3')).toBe(true);
-    expect(backportCovers('fast-uri', '3.1.8', '>=4.1.3')).toBe(false);
-    expect(backportCovers('fast-uri', '4.2.3', '>=4.1.3')).toBe(false);
     expect(backportCovers('protobufjs', '7.6.6', '>=7.6.3')).toBe(true);
     expect(backportCovers('protobufjs', '7.6.4', '>=7.6.3')).toBe(false);
     expect(backportCovers('unrelated', '1.0.0', '>=1.0.0')).toBe(false);
   });
 
   it('covers nothing once the floor it was verified against changes', () => {
-    expect(backportCovers('fast-uri', '3.1.9', '>=4.3.0')).toBe(false);
+    expect(backportCovers('protobufjs', '7.6.6', '>=7.6.6')).toBe(false);
   });
 });
 
@@ -210,6 +195,17 @@ describe('canonical workspace backport floor bindings (#7653)', () => {
 
   it('requires backports so floor bindings cannot pass without measurements', () => {
     expect(IN_MAJOR_BACKPORTS).not.toHaveLength(0);
+  });
+
+  it('scopes fast-uri floors by major without an obsolete backport override', () => {
+    const { floors } = parseOverrideFloors(manifest.pnpm.overrides);
+    expect(
+      floors.filter((floor) => floor.name === 'fast-uri').map(({ key, range }) => ({ key, range }))
+    ).toEqual([
+      { key: 'fast-uri@^3', range: '>=3.1.9 <4.0.0' },
+      { key: 'fast-uri@^4', range: '>=4.2.3 <5.0.0' },
+    ]);
+    expect(IN_MAJOR_BACKPORTS.some((backport) => backport.name === 'fast-uri')).toBe(false);
   });
 
   it.each(IN_MAJOR_BACKPORTS)('binds $name to its actual canonical workspace floor', (backport) => {
