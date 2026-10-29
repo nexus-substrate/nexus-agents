@@ -12,6 +12,22 @@ import {
   isHostUnavailableCliError,
 } from './cli-error-helpers.js';
 
+it('does not mark a long-horizon individual quota as retryable', () => {
+  const error = createCliError(
+    'RATE_LIMITED',
+    'Individual quota reached (RESOURCE_EXHAUSTED 429; reset after 92 hours)',
+    'gemini'
+  );
+
+  expect(error).toMatchObject({ code: 'RATE_LIMITED', retryable: false });
+});
+
+it('keeps a transient rate limit retryable', () => {
+  const error = createCliError('RATE_LIMITED', 'rate limit; retry after 5 seconds', 'gemini');
+
+  expect(error).toMatchObject({ code: 'RATE_LIMITED', retryable: true, retryAfterMs: 5_000 });
+});
+
 describe('host-unavailable CLI error identity (#6846)', () => {
   it('marks the execution error with a host-unavailable cause', () => {
     const error = createHostUnavailableCliError('Sandbox unavailable', 'codex');

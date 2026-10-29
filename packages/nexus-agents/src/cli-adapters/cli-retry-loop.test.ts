@@ -17,7 +17,11 @@ import {
   categorizeError,
 } from './cli-retry-loop.js';
 import type { CliRetryLoopConfig } from './cli-retry-loop.js';
-import { createCallerAbortCliError, createCallerInputCliError } from './cli-error-helpers.js';
+import {
+  createCallerAbortCliError,
+  createCallerInputCliError,
+  createCliError,
+} from './cli-error-helpers.js';
 
 // Deterministic randomness for backoff jitter
 vi.mock('../core/index.js', async (importOriginal) => {
@@ -279,6 +283,27 @@ describe('executeCliRetryLoop', () => {
     const config = makeConfig({ maxRetries: 0, allowRetry: true });
 
     const result = await executeCliRetryLoop(executeFn, config);
+
+    expect(result.ok).toBe(false);
+    expect(executeFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches a durable individual quota failure exactly once', async () => {
+    const executeFn = vi
+      .fn<() => Promise<Result<CliResponse, CliError>>>()
+      .mockResolvedValue(
+        err(
+          createCliError(
+            'RATE_LIMITED',
+            'Individual quota reached (RESOURCE_EXHAUSTED 429; reset after 92 hours)',
+            'gemini'
+          )
+        )
+      );
+    const resultPromise = executeCliRetryLoop(executeFn, makeConfig());
+
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
 
     expect(result.ok).toBe(false);
     expect(executeFn).toHaveBeenCalledTimes(1);
