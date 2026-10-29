@@ -52,8 +52,9 @@ const Environment = z.object({
 });
 const PreflightReceipt = z
   .object({
-    status: z.literal('READABLE'),
+    status: z.literal('CANARY_DISPATCH_AUTHORIZED'),
     complete: z.literal(true),
+    canaryDispatchAuthorized: z.literal(true),
     repository: z.literal(P.repository),
     repositoryId: z.literal(P.repositoryId),
     actorId: z.literal(P.actorId),
@@ -125,10 +126,13 @@ type LaunchContext = Pick<Evidence, 'invocation' | 'expected' | 'governor'> & {
 
 export async function verifyCanaryPreflightRun(
   read: CanaryRead,
-  receipt: PreflightReceipt,
+  receiptValue: unknown,
   wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise((resolve) => setTimeout(resolve, milliseconds))
 ): Promise<void> {
+  const parsedReceipt = PreflightReceipt.safeParse(receiptValue);
+  if (!parsedReceipt.success) throw new Error('preflight-receipt-invalid');
+  const receipt = parsedReceipt.data;
   for (let attempt = 0; attempt < PREFLIGHT_RUN_MAX_POLLS; attempt++) {
     const run = await readCanaryGet(read, `actions/runs/${String(receipt.runId)}`, PreflightRun);
     assertPreflightRunProvenance(run, receipt);

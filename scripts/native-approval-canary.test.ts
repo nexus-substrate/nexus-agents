@@ -10,8 +10,9 @@ import { parse as parseYaml } from 'yaml';
 const BASE = 'b'.repeat(40);
 const HEAD = 'a'.repeat(40);
 const PREFLIGHT = {
-  status: 'READABLE',
+  status: 'CANARY_DISPATCH_AUTHORIZED',
   complete: true,
+  canaryDispatchAuthorized: true,
   repository: 'nexus-substrate/nexus-agents',
   repositoryId: 1127393912,
   actorId: 14303249,
@@ -82,6 +83,29 @@ const OWNERS = [
   ...GOVERNED.map((p) => `/${p} @fixture-owner`),
   '# @governor-section-end',
 ].join('\n');
+type WorkflowStep = { run?: string; uses?: string };
+type WorkflowJob = {
+  if?: string;
+  needs?: string;
+  permissions?: Record<string, string>;
+  steps: WorkflowStep[];
+};
+type PreflightWorkflow = {
+  on: { workflow_dispatch: unknown };
+  jobs: Record<string, WorkflowJob>;
+};
+function readPreflightWorkflow(): PreflightWorkflow {
+  return parseYaml(
+    readFileSync(join(ROOT, '.github/workflows/native-approval-preflight.yml'), 'utf8')
+  ) as PreflightWorkflow;
+}
+function hasWorkflowStep(
+  job: WorkflowJob | undefined,
+  field: keyof WorkflowStep,
+  text: string
+): boolean {
+  return job?.steps.some((step) => step[field]?.includes(text) === true) ?? false;
+}
 const git = (args: readonly string[]): string => {
   if (args.join(' ') === 'rev-parse HEAD') return BASE;
   if (args.join(' ') === 'rev-parse --show-toplevel') return '/fixture/repo';
@@ -163,7 +187,7 @@ describe('native canary trusted-main launcher', () => {
 });
 
 describe('protected native canary workflow wiring', () => {
-  it('only accepts the preflight-dispatched canary and keeps Actions write on the preflight workflow', () => {
+  it('only accepts the explicitly dispatched canary with a dispatch-only permission', () => {
     const source = readFileSync(join(ROOT, '.github/workflows/native-approval-canary.yml'), 'utf8')
       .split('\n')
       .filter((line) => !line.trim().startsWith('#'))
@@ -176,6 +200,7 @@ describe('protected native canary workflow wiring', () => {
     expect(source).toContain("github.actor_id == '41898282' || github.actor_id == '14303249'");
     expect(source).toContain("github.ref == 'refs/heads/main'");
     expect(source).toContain('preflight_run_id:');
+    expect(source).toContain('native-approval-dispatch-${{ inputs.preflight_run_id }}');
     expect(source).toContain('CANARY_PREFLIGHT_RECEIPT_JSON');
     expect(source).toContain('actions/download-artifact@');
     expect(source).toContain('run-id: ${{ inputs.preflight_run_id }}');
@@ -188,44 +213,35 @@ describe('protected native canary workflow wiring', () => {
     expect(source).not.toMatch(/gh pr merge|--admin|owner-ratified|secrets\.(?!GITHUB_TOKEN)/);
   });
 
-  it('preflight is owner-dispatched, read-gated, and alone may dispatch the canary', () => {
-    const workflow = parseYaml(
-      readFileSync(join(ROOT, '.github/workflows/native-approval-preflight.yml'), 'utf8')
-    ) as {
-      on: Record<string, unknown>;
-      jobs: Record<
-        string,
-        {
-          permissions?: Record<string, string>;
-          steps: Array<{ run?: string; uses?: string }>;
-        }
-      >;
-    };
+  it('preflight is read-only by default and dispatch is disabled unless explicitly selected', () => {
+    const workflow = readPreflightWorkflow();
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
-    expect(workflow.jobs.preflight?.permissions?.['actions']).toBe('write');
+    expect(workflow.on.workflow_dispatch).toMatchObject({
+      inputs: { dispatch_canary: { type: 'boolean', default: false, required: false } },
+    });
+    expect(workflow.jobs.preflight?.permissions?.['actions']).toBe('read');
+    expect(hasWorkflowStep(workflow.jobs.preflight, 'run', 'status:"READABLE"')).toBe(true);
     expect(
-      workflow.jobs.preflight?.steps.some(
-        (step) => step.run?.includes('status:"READABLE"') === true
+      hasWorkflowStep(
+        workflow.jobs.preflight,
+        'run',
+        '.actor.id == 14303249 or .actor.id == 41898282'
       )
     ).toBe(true);
-    expect(
-      workflow.jobs.preflight?.steps.some(
-        (step) => step.run?.includes('.actor.id == 14303249 or .actor.id == 41898282') === true
-      )
-    ).toBe(true);
-    expect(
-      workflow.jobs.preflight?.steps.some((step) => step.run?.includes('/dispatches') === true)
-    ).toBe(true);
-    const upload =
-      workflow.jobs.preflight?.steps.findIndex(
-        (step) => step.uses?.startsWith('actions/upload-artifact@') === true
-      ) ?? -1;
-    const dispatch =
-      workflow.jobs.preflight?.steps.findIndex(
-        (step) => step.run?.includes('/dispatches') === true
-      ) ?? -1;
-    expect(upload).toBeGreaterThan(-1);
-    expect(dispatch).toBeGreaterThan(upload);
+    expect(hasWorkflowStep(workflow.jobs.preflight, 'run', '/dispatches')).toBe(false);
+    expect(hasWorkflowStep(workflow.jobs.preflight, 'uses', 'actions/upload-artifact@')).toBe(true);
+  });
+
+  it('isolates explicit canary dispatch behind its own permission and receipt', () => {
+    const workflow = readPreflightWorkflow();
+    const dispatch = workflow.jobs['dispatch-canary'];
+    expect(dispatch?.needs).toBe('preflight');
+    expect(dispatch?.if).toContain('inputs.dispatch_canary == true');
+    expect(dispatch?.permissions?.['actions']).toBe('write');
+    expect(hasWorkflowStep(dispatch, 'run', '/dispatches')).toBe(true);
+    expect(hasWorkflowStep(dispatch, 'run', '--repo nexus-substrate/nexus-agents')).toBe(true);
+    expect(hasWorkflowStep(dispatch, 'run', 'CANARY_DISPATCH_AUTHORIZED')).toBe(true);
+    expect(hasWorkflowStep(dispatch, 'uses', 'actions/upload-artifact@')).toBe(true);
   });
 
   it('records whether GitHub Actions can approve pull requests', () => {
