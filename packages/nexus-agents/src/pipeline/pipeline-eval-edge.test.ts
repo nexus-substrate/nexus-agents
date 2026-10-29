@@ -59,7 +59,8 @@ describe('Pipeline Eval — Rate-Limit Pattern Parity', () => {
     );
     // Regression guard: expert-bridge must not define its own pattern list
     expect(src).not.toMatch(/const\s+RATE_LIMIT_INDICATORS\s*=/);
-    expect(src).toContain('isRateLimitText');
+    expect(src).toContain("from '../adapters/rate-limit-detector.js'");
+    expect(src).toContain('classifyCapacityFailure');
   });
 
   it('canonical pattern list is non-empty and stable', () => {
