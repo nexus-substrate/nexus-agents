@@ -2,13 +2,14 @@
  * Keep the BUNDLED tree consistent with the ranges its own packages declare
  * (#7614).
  *
- * The workspace floors (`pnpm.overrides`) are open-ended (`>=4.1.3`), and npm
- * applies an override by REPLACING the dependent's declared range. So the stage
- * install resolved `fast-uri` to 4.2.3 under `ajv` (declares `^3`),
- * `protobufjs` to 8.8.1 under `@google/genai` (`^7`) and `path-to-regexp` to
- * 9.0.0 under `router` (`^8`). A consumer cannot override a bundle, and
- * `npm ci` checks every lockfile edge against its declared range, so it
- * refused to install the package.
+ * npm applies an override by REPLACING the dependent's declared range. The
+ * stage install therefore needs an in-major pin when a floor selects a newer
+ * major than the dependency declares. `fast-uri` no longer needs such a pin:
+ * its v3 and v4 floors are scoped separately, so AJV's patched v3 dependency
+ * satisfies its declared `^3` range. `protobufjs` under `@google/genai` and
+ * `path-to-regexp` under `router` still need in-major pins. A consumer cannot
+ * override a bundle, and `npm ci` checks every lockfile edge against its
+ * declared range, so it refused to install the package.
  *
  * Two halves:
  * - {@link IN_MAJOR_BACKPORTS} pins each such dependent to the patched release
@@ -57,16 +58,6 @@ export interface InMajorBackport {
  * moves its range.
  */
 export const IN_MAJOR_BACKPORTS: readonly InMajorBackport[] = [
-  {
-    parent: 'ajv',
-    alsoUnder: [['@modelcontextprotocol/sdk', 'ajv']],
-    name: 'fast-uri',
-    major: 3,
-    minimum: '3.1.9',
-    advisories:
-      'GHSA-w74x-v6f9-j3xg, -xhq7-xmqj-769h, -wjr9-j795-jxcr, -333x-w4r6-6crp (all fixed 3.1.9)',
-    verifiedFloor: '>=4.1.3',
-  },
   {
     parent: '@google/genai',
     name: 'protobufjs',
