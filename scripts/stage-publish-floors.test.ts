@@ -216,7 +216,8 @@ describe('the real workspace overrides', () => {
     const { floors, skipped } = parseOverrideFloors(overrides);
     expect(floors.length + skipped.length).toBe(Object.keys(overrides).length);
     expect(skipped).toEqual([]);
-    expect(floors.map((f) => f.key)).toContain('fast-uri');
+    expect(floors.map((f) => f.key)).toContain('fast-uri@^3');
+    expect(floors.map((f) => f.key)).toContain('fast-uri@^4');
   });
 });
 
