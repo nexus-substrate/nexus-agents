@@ -18,6 +18,8 @@ import type {
   PreconditionConfig,
   GraphExecuteOptions,
 } from './graph-types.js';
+import { emitLateHookSettlement, runHookUntilDeadline } from './graph-hook-deadline.js';
+import type { HookRunOutcome } from './graph-hook-deadline.js';
 
 const logger = createLogger({ component: 'GraphHooks' });
 
@@ -37,6 +39,8 @@ export interface PreconditionOutcome {
   readonly passed: boolean;
   readonly durationMs: number;
   readonly error?: string | undefined;
+  readonly timedOut?: boolean | undefined;
+  readonly aborted?: boolean | undefined;
 }
 
 /** Result of running verification on a node. */
@@ -44,6 +48,30 @@ export interface VerificationResult {
   readonly passed: boolean;
   readonly durationMs: number;
   readonly error?: string | undefined;
+  readonly timedOut?: boolean | undefined;
+  readonly aborted?: boolean | undefined;
+}
+
+function hookOutcomeBlocksExecution(outcome: PreconditionOutcome): boolean {
+  return outcome.timedOut === true || outcome.aborted === true;
+}
+
+function shouldStopAfterPreconditionFailure(
+  nodeId: string,
+  config: PreconditionConfig,
+  outcome: PreconditionOutcome
+): boolean {
+  if (hookOutcomeBlocksExecution(outcome)) return true;
+  if (config.required !== false) {
+    logger.warn('Required precondition failed', {
+      nodeId,
+      hook: config.name,
+      error: outcome.error,
+    });
+    return true;
+  }
+  logger.info('Optional precondition failed, continuing', { nodeId, hook: config.name });
+  return false;
 }
 
 // ============================================================================
@@ -66,7 +94,13 @@ export async function runPreconditions(
     return { passed: true, results: [] };
   }
 
-  const ctx: NodeHookContext = { nodeId: node.id, state, stepNumber };
+  const ctx: NodeHookContext = {
+    nodeId: node.id,
+    state,
+    stepNumber,
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    ...(options?.deadlineAt === undefined ? {} : { deadlineAt: options.deadlineAt }),
+  };
   const outcomes: PreconditionOutcome[] = [];
   let allPassed = true;
 
@@ -74,21 +108,9 @@ export async function runPreconditions(
     const outcome = await runSinglePrecondition(config, ctx, options);
     outcomes.push(outcome);
 
-    if (!outcome.passed) {
-      const isRequired = config.required !== false;
-      if (isRequired) {
-        allPassed = false;
-        logger.warn('Required precondition failed', {
-          nodeId: node.id,
-          hook: config.name,
-          error: outcome.error,
-        });
-        break;
-      }
-      logger.info('Optional precondition failed, continuing', {
-        nodeId: node.id,
-        hook: config.name,
-      });
+    if (!outcome.passed && shouldStopAfterPreconditionFailure(node.id, config, outcome)) {
+      allPassed = false;
+      break;
     }
   }
 
@@ -109,7 +131,13 @@ export async function runVerification(
     return { passed: true, durationMs: 0 };
   }
 
-  const ctx: NodeHookContext = { nodeId: node.id, state, stepNumber };
+  const ctx: NodeHookContext = {
+    nodeId: node.id,
+    state,
+    stepNumber,
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    ...(options?.deadlineAt === undefined ? {} : { deadlineAt: options.deadlineAt }),
+  };
   const verifyFn = node.verify;
   const base = {
     nodeId: node.id,
@@ -121,11 +149,17 @@ export async function runVerification(
 
   return executeHook<VerificationResult>(
     base,
-    () => verifyFn(ctx),
+    (signal) => verifyFn({ ...ctx, signal }),
     (durationMs) => ({ passed: true, durationMs }),
-    (durationMs, errorMsg) => {
+    (durationMs, errorMsg, failureKind) => {
       logger.warn('Verification failed', { nodeId: node.id, error: errorMsg });
-      return { passed: false, durationMs, error: errorMsg };
+      return {
+        passed: false,
+        durationMs,
+        error: errorMsg,
+        ...(failureKind === 'timeout' ? { timedOut: true } : {}),
+        ...(failureKind === 'abort' ? { aborted: true } : {}),
+      };
     }
   );
 }
@@ -259,12 +293,91 @@ interface HookBase {
   readonly options?: GraphExecuteOptions | undefined;
 }
 
+type HookFailure<T> = (
+  durationMs: number,
+  errorMsg: string,
+  failureKind?: 'timeout' | 'abort'
+) => T;
+
+function failHook<T>(args: {
+  readonly base: HookBase;
+  readonly durationMs: number;
+  readonly message: string;
+  readonly setSummary: (summary: string) => void;
+  readonly onFailure: HookFailure<T>;
+  readonly failureKind?: 'timeout' | 'abort' | undefined;
+}): T {
+  const { base, durationMs, message, setSummary, onFailure, failureKind } = args;
+  emitHookFailed({ ...base, error: message });
+  setSummary(`${base.hookPhase} failed: ${message}`);
+  return onFailure(durationMs, message, failureKind);
+}
+
+function handleHookOutcome<T>(
+  base: HookBase,
+  outcome: HookRunOutcome,
+  setSummary: (summary: string) => void,
+  onSuccess: (durationMs: number) => T,
+  onFailure: HookFailure<T>
+): T {
+  if (outcome.kind === 'aborted') {
+    const verb = outcome.failureKind === 'timeout' ? 'timed out' : 'aborted';
+    const message = `Graph execution ${verb} during ${base.hookPhase} hook`;
+    outcome.observeLateSettlement?.();
+    return failHook({
+      base,
+      durationMs: outcome.durationMs,
+      message,
+      setSummary,
+      onFailure,
+      failureKind: outcome.failureKind,
+    });
+  }
+  if (outcome.callback.kind === 'rejected') throw outcome.callback.error;
+  const result = outcome.callback.result;
+  if (result.ok) {
+    emitHookEvent({ type: 'hook_completed', ...base, durationMs: outcome.durationMs });
+    setSummary(`${base.hookPhase} passed`);
+    return onSuccess(outcome.durationMs);
+  }
+  return failHook({
+    base,
+    durationMs: outcome.durationMs,
+    message: result.error.message,
+    setSummary,
+    onFailure,
+  });
+}
+
+function makeDeadlineContext(base: HookBase): HookBase & {
+  readonly onLateSettlement: (
+    outcome: 'resolved' | 'rejected',
+    durationMs: number,
+    error?: string
+  ) => void;
+} {
+  return {
+    ...base,
+    onLateSettlement: (outcome, durationMs, error) => {
+      emitLateHookSettlement(base.options, {
+        nodeId: base.nodeId,
+        hookName: base.hookName,
+        hookPhase: base.hookPhase,
+        outcome,
+        durationMs,
+        ...(error === undefined ? {} : { error }),
+        stepNumber: base.stepNumber,
+      });
+    },
+  };
+}
+
 /** Shared logic for executing a hook with event emission and error handling. */
 async function executeHook<T>(
   base: HookBase,
-  run: () => Promise<Result<void, HookError>>,
+  run: (signal: AbortSignal) => Promise<Result<void, HookError>>,
   onSuccess: (durationMs: number) => T,
-  onFailure: (durationMs: number, errorMsg: string) => T
+  onFailure: HookFailure<T>
 ): Promise<T> {
   return withStep(
     {
@@ -274,26 +387,28 @@ async function executeHook<T>(
     async (ctx) => {
       const startTime = getTimeProvider().now();
       emitHookEvent({ type: 'hook_started', ...base });
-
       try {
-        const result = await run();
-        const durationMs = getTimeProvider().now() - startTime;
-
-        if (result.ok) {
-          emitHookEvent({ type: 'hook_completed', ...base, durationMs });
-          ctx.setSummary(`${base.hookPhase} passed`);
-          return onSuccess(durationMs);
-        }
-
-        emitHookFailed({ ...base, error: result.error.message });
-        ctx.setSummary(`${base.hookPhase} failed: ${result.error.message}`);
-        return onFailure(durationMs, result.error.message);
+        const outcome = await runHookUntilDeadline(makeDeadlineContext(base), run, startTime);
+        return handleHookOutcome(
+          base,
+          outcome,
+          (summary) => {
+            ctx.setSummary(summary);
+          },
+          onSuccess,
+          onFailure
+        );
       } catch (error: unknown) {
-        const durationMs = getTimeProvider().now() - startTime;
-        const msg = error instanceof Error ? error.message : String(error);
-        emitHookFailed({ ...base, error: msg });
-        ctx.setSummary(`${base.hookPhase} error: ${msg}`);
-        return onFailure(durationMs, msg);
+        const message = error instanceof Error ? error.message : String(error);
+        return failHook({
+          base,
+          durationMs: getTimeProvider().now() - startTime,
+          message,
+          setSummary: (summary) => {
+            ctx.setSummary(summary);
+          },
+          onFailure,
+        });
       }
     }
   );
@@ -318,8 +433,15 @@ async function runSinglePrecondition(
 
   return executeHook<PreconditionOutcome>(
     base,
-    () => config.hook(ctx),
+    (signal) => config.hook({ ...ctx, signal }),
     (durationMs) => ({ name: config.name, passed: true, durationMs }),
-    (durationMs, errorMsg) => ({ name: config.name, passed: false, durationMs, error: errorMsg })
+    (durationMs, errorMsg, failureKind) => ({
+      name: config.name,
+      passed: false,
+      durationMs,
+      error: errorMsg,
+      ...(failureKind === 'timeout' ? { timedOut: true } : {}),
+      ...(failureKind === 'abort' ? { aborted: true } : {}),
+    })
   );
 }

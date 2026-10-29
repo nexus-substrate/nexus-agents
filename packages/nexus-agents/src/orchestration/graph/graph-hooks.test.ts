@@ -10,7 +10,14 @@ import { executeGraph } from './graph-executor.js';
 import { runPreconditions, runVerification, createStateGuard } from './graph-hooks.js';
 import type { GraphEvent, NodeHookContext, HookError, PreconditionConfig } from './graph-types.js';
 import type { Result } from '../../core/index.js';
-import { ok, err } from '../../core/index.js';
+import {
+  ok,
+  err,
+  FixedTimeProvider,
+  setTimeProvider,
+  resetTimeProvider,
+} from '../../core/index.js';
+import { PipelineCallbackTracker } from '../../pipeline/pipeline-callback-tracker.js';
 
 // ============================================================================
 // Helper factories
@@ -148,11 +155,14 @@ describe('preconditions', () => {
         preconditions: [{ name: 'spy', required: true, hook: hookFn }],
       };
       await runPreconditions(node, { budget: 1000 }, 5);
-      expect(hookFn).toHaveBeenCalledWith({
-        nodeId: 'my-node',
-        state: { budget: 1000 },
-        stepNumber: 5,
-      });
+      expect(hookFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodeId: 'my-node',
+          state: { budget: 1000 },
+          stepNumber: 5,
+          signal: expect.any(AbortSignal),
+        })
+      );
     });
   });
 
@@ -248,6 +258,314 @@ describe('verification', () => {
   });
 
   describe('integrated with executeGraph', () => {
+    it('does not run a node when its optional precondition outlives the graph deadline', async () => {
+      const handler = vi.fn(() => Promise.resolve({ value: 42 }));
+      const events: GraphEvent[] = [];
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', handler, {
+          preconditions: [
+            {
+              name: 'slow-optional-check',
+              required: false,
+              hook: async () => {
+                await new Promise<void>((resolve) => setTimeout(resolve, 100));
+                return ok(undefined);
+              },
+            },
+          ],
+        })
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(
+        graph.value,
+        {},
+        {
+          timeout: 25,
+          onEvent: (event) => events.push(event),
+        }
+      );
+
+      expect(result.ok).toBe(false);
+      expect(handler).not.toHaveBeenCalled();
+      expect(events.filter((event) => event.type === 'hook_failed')).toHaveLength(1);
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      expect(events.filter((event) => event.type === 'hook_completed')).toHaveLength(0);
+      expect(events.filter((event) => event.type === 'hook_late_settlement')).toMatchObject([
+        { type: 'hook_late_settlement', hookName: 'slow-optional-check', outcome: 'resolved' },
+      ]);
+    });
+
+    it('fails a node when verification outlives the graph deadline', async () => {
+      const events: GraphEvent[] = [];
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 42 }), {
+          verify: async () => {
+            await new Promise<void>((resolve) => setTimeout(resolve, 100));
+            return ok(undefined);
+          },
+        })
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(
+        graph.value,
+        {},
+        {
+          timeout: 25,
+          onEvent: (event) => events.push(event),
+        }
+      );
+
+      expect(result.ok).toBe(false);
+      expect(events.filter((event) => event.type === 'hook_failed')).toHaveLength(1);
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      expect(events.filter((event) => event.type === 'hook_completed')).toHaveLength(0);
+      expect(events.filter((event) => event.type === 'hook_late_settlement')).toMatchObject([
+        { type: 'hook_late_settlement', hookName: 'verify', outcome: 'resolved' },
+      ]);
+    });
+
+    it('reports a timer timeout when the injected clock is fixed', async () => {
+      setTimeProvider(new FixedTimeProvider(1_000));
+      try {
+        const graph = new GraphBuilder()
+          .addState('value', overwrite(0))
+          .addNode('A', () => Promise.resolve({ value: 42 }), {
+            preconditions: [
+              {
+                name: 'fixed-clock-check',
+                required: true,
+                hook: async () => {
+                  await new Promise<void>((resolve) => setTimeout(resolve, 100));
+                  return ok(undefined);
+                },
+              },
+            ],
+          })
+          .addEdge(START, 'A')
+          .addEdge('A', END)
+          .compile();
+        expect(graph.ok).toBe(true);
+        if (!graph.ok) return;
+
+        const result = await executeGraph(graph.value, {}, { timeout: 25 });
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.error.message).toContain('timed out');
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      } finally {
+        resetTimeProvider();
+      }
+    });
+
+    it('does not turn an unbounded graph timeout into a short timer', async () => {
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 42 }), {
+          preconditions: [
+            {
+              name: 'finite-hook',
+              required: true,
+              hook: async () => {
+                await new Promise<void>((resolve) => setTimeout(resolve, 10));
+                return ok(undefined);
+              },
+            },
+          ],
+        })
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {}, { timeout: Number.POSITIVE_INFINITY });
+      expect(result.ok).toBe(true);
+    });
+
+    it('rejects a NaN graph timeout instead of treating it as unbounded', async () => {
+      const graph = new GraphBuilder()
+        .addNode('A', () => Promise.resolve({}))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(graph.value, {}, { timeout: Number.NaN });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toContain('must not be NaN');
+    });
+
+    it('returns on deadline while retaining an unsettled hook until late rejection', async () => {
+      const events: GraphEvent[] = [];
+      let rejectHook: ((error: Error) => void) | undefined;
+      let callbackSignal: AbortSignal | undefined;
+      let markEntered: (() => void) | undefined;
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve;
+      });
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 42 }), {
+          preconditions: [
+            {
+              name: 'never-settling-check',
+              required: true,
+              hook: (context: NodeHookContext): Promise<Result<void, HookError>> => {
+                callbackSignal = context.signal;
+                markEntered?.();
+                return new Promise((_resolve, reject) => {
+                  rejectHook = reject;
+                });
+              },
+            },
+          ],
+        })
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const tracker = new PipelineCallbackTracker(graph.value);
+      try {
+        const execution = executeGraph(
+          tracker.graph,
+          {},
+          {
+            timeout: 25,
+            onEvent: (event) => events.push(event),
+          }
+        );
+        await entered;
+        const result = await execution;
+        expect(result.ok).toBe(false);
+        expect(callbackSignal?.aborted).toBe(true);
+        expect(tracker.pendingCount).toBe(1);
+      } finally {
+        rejectHook?.(new Error('late rejection after deadline'));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+
+      expect(tracker.pendingCount).toBe(0);
+      expect(events.filter((event) => event.type === 'hook_failed')).toHaveLength(1);
+      expect(events.filter((event) => event.type === 'hook_late_settlement')).toMatchObject([
+        {
+          type: 'hook_late_settlement',
+          hookName: 'never-settling-check',
+          outcome: 'rejected',
+          error: 'late rejection after deadline',
+        },
+      ]);
+    });
+
+    it('aborts an active hook when the caller cancels graph execution', async () => {
+      const events: GraphEvent[] = [];
+      const controller = new AbortController();
+      let resolveHook: ((result: Result<void, HookError>) => void) | undefined;
+      let callbackSignal: AbortSignal | undefined;
+      let markEntered: (() => void) | undefined;
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve;
+      });
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 42 }), {
+          preconditions: [
+            {
+              name: 'cancelled-check',
+              required: true,
+              hook: (context: NodeHookContext): Promise<Result<void, HookError>> => {
+                callbackSignal = context.signal;
+                markEntered?.();
+                return new Promise((resolve) => {
+                  resolveHook = resolve;
+                });
+              },
+            },
+          ],
+        })
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      try {
+        const execution = executeGraph(
+          graph.value,
+          {},
+          {
+            timeout: 1_000,
+            signal: controller.signal,
+            onEvent: (event) => events.push(event),
+          }
+        );
+        await entered;
+        controller.abort(new Error('cancelled by caller'));
+        const result = await execution;
+        expect(result.ok).toBe(false);
+        expect(callbackSignal?.aborted).toBe(true);
+      } finally {
+        resolveHook?.(ok(undefined));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+
+      expect(events.filter((event) => event.type === 'hook_failed')).toHaveLength(1);
+      expect(events.filter((event) => event.type === 'hook_late_settlement')).toMatchObject([
+        { type: 'hook_late_settlement', hookName: 'cancelled-check', outcome: 'resolved' },
+      ]);
+    });
+
+    it('does not start hooks or handlers when cancellation lands at node dispatch', async () => {
+      const controller = new AbortController();
+      const handler = vi.fn(() => Promise.resolve({ value: 1 }));
+      const hook = vi.fn(() => Promise.resolve(ok(undefined)));
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', handler)
+        .addNode('B', () => Promise.resolve({}), {
+          preconditions: [{ name: 'guard', hook }],
+        })
+        .addEdge(START, 'A')
+        .addEdge(START, 'B')
+        .addEdge('A', END)
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const result = await executeGraph(
+        graph.value,
+        {},
+        {
+          signal: controller.signal,
+          timeout: 1_000,
+          onEvent: (event) => {
+            if (event.type === 'node_started') controller.abort(new Error('cancelled at dispatch'));
+          },
+        }
+      );
+
+      expect(result.ok).toBe(false);
+      expect(handler).not.toHaveBeenCalled();
+      expect(hook).not.toHaveBeenCalled();
+    });
+
     it('fails node when verification fails', async () => {
       const graph = new GraphBuilder()
         .addState('value', overwrite(0))

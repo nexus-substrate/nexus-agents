@@ -10,12 +10,18 @@
  */
 import type { GraphEvent } from '../../orchestration/graph/graph-types.js';
 
-type HookEvent = Extract<GraphEvent, { type: 'hook_started' | 'hook_completed' | 'hook_failed' }>;
+type HookEvent = Extract<
+  GraphEvent,
+  { type: 'hook_started' | 'hook_completed' | 'hook_failed' | 'hook_late_settlement' }
+>;
 
-/** Type guard for the three hook lifecycle events. */
+/** Type guard for hook lifecycle and late-settlement events. */
 function isHookEvent(event: GraphEvent): event is HookEvent {
   return (
-    event.type === 'hook_started' || event.type === 'hook_completed' || event.type === 'hook_failed'
+    event.type === 'hook_started' ||
+    event.type === 'hook_completed' ||
+    event.type === 'hook_failed' ||
+    event.type === 'hook_late_settlement'
   );
 }
 
@@ -29,6 +35,8 @@ function formatHookDetail(event: HookEvent): string {
       return `${where} in ${String(event.durationMs)}ms`;
     case 'hook_failed':
       return `${where}: ${event.error}`;
+    case 'hook_late_settlement':
+      return `${where} settled late (${event.outcome})${event.error === undefined ? '' : `: ${event.error}`}`;
   }
 }
 
