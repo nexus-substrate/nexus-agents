@@ -20,7 +20,7 @@ import {
   withRequestedAccessMode,
 } from './expert-access-mode.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
-import { isRateLimitText } from '../adapters/rate-limit-detector.js';
+import { classifyCapacityFailure } from '../adapters/rate-limit-detector.js';
 import {
   ensureGatewayDiscovered,
   gatewayDiscoveryGeneration,
@@ -514,9 +514,9 @@ async function dispatchWithRateLimitRetry(
       return toSuccessResult(result.value, expertType, durationMs);
     }
 
-    const isRateLimit = isRateLimitText(result.error.message);
+    const failure = classifyCapacityFailure(result.error.message);
     // #6736: an aborted call is not retried — the stage it served has ended.
-    if (isRateLimit && attempt < maxAttempts - 1 && signal?.aborted !== true) {
+    if (failure.retryable && attempt < maxAttempts - 1 && signal?.aborted !== true) {
       const backoffMs = RATE_LIMIT_BASE_DELAY_MS * (attempt + 1);
       logger.warn('Expert rate limited, retrying', { expertType, attempt: attempt + 1, backoffMs });
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
@@ -525,13 +525,13 @@ async function dispatchWithRateLimitRetry(
 
     // Only the final attempt is attributed: a rate-limited attempt that is
     // retried is not recorded as a routed outcome of its own.
-    logger.warn('Expert execution failed', { expertType, error: result.error.message });
+    logger.warn('Expert execution failed', { expertType, error: failure.safeMessage });
     return {
       success: false,
       text: '',
       expertType,
       durationMs,
-      error: result.error.message,
+      error: failure.safeMessage,
       ...attributionOf(result.error),
     };
   }

@@ -63,6 +63,7 @@ const TRANSIENT_RATE_LIMIT_PATTERNS = [
  */
 const DURABLE_CAPACITY_PATTERNS = [
   'quota exceeded',
+  'individual quota reached',
   'key limit',
   'usage limit',
   'out of usage credits',
@@ -106,6 +107,24 @@ export function isRateLimitText(text: string): boolean {
 export function isDurableCapacityText(text: string): boolean {
   const lower = text.toLowerCase();
   return DURABLE_CAPACITY_PATTERNS.some((p) => lower.includes(p));
+}
+
+/** Safe caller-facing cause for durable capacity failures; omits provider/account details. */
+const DURABLE_CAPACITY_FAILURE_MESSAGE =
+  'Durable model quota exceeded; automatic retries were suppressed.';
+
+/** Classify retryability and the safe message for a rate-limit failure. */
+export function classifyCapacityFailure(text: string): {
+  durable: boolean;
+  retryable: boolean;
+  safeMessage: string;
+} {
+  const durable = isDurableCapacityText(text);
+  return {
+    durable,
+    retryable: !durable && isRateLimitText(text),
+    safeMessage: durable ? DURABLE_CAPACITY_FAILURE_MESSAGE : text,
+  };
 }
 
 /** {@link isDurableCapacityText} over an unknown error value. */
