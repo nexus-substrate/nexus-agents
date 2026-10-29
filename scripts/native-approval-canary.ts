@@ -11,7 +11,11 @@ import { NATIVE_CANARY_POLICY as P } from '../packages/nexus-agents/src/governan
 import type { NativeCanaryEvidence as Evidence } from '../packages/nexus-agents/src/governance/native-approval-canary.js';
 import { executeNativeApprovalCanary } from '../packages/nexus-agents/src/governance/native-approval-canary-execute.js';
 import type { CanaryExecutionResult } from '../packages/nexus-agents/src/governance/native-approval-canary-execute.js';
-import { readCanaryJson } from '../packages/nexus-agents/src/governance/native-approval-canary-read.js';
+import {
+  readCanaryGet,
+  readCanaryJson,
+} from '../packages/nexus-agents/src/governance/native-approval-canary-read.js';
+import type { CanaryRead } from '../packages/nexus-agents/src/governance/native-approval-canary-read.js';
 import { createGitHubReviewWriter } from '../packages/nexus-agents/src/scm/github-review-writer.js';
 
 const Integer = z
@@ -25,7 +29,7 @@ const Environment = z.object({
   GITHUB_REPOSITORY: z.literal(P.repository),
   GITHUB_REPOSITORY_ID: z.literal(String(P.repositoryId)),
   CANARY_OWNER_ID: z.literal(String(P.repositoryOwnerId)),
-  GITHUB_ACTOR_ID: z.literal(String(P.actorId)),
+  GITHUB_ACTOR_ID: z.enum([String(P.actorId), String(P.dispatcherId)]),
   GITHUB_EVENT_NAME: z.literal('workflow_dispatch'),
   GITHUB_REF: z.literal('refs/heads/main'),
   GITHUB_SHA: Sha,
@@ -43,7 +47,44 @@ const Environment = z.object({
   CANARY_PR: Integer,
   CANARY_HEAD_SHA: Sha,
   CANARY_BASE_SHA: Sha,
+  CANARY_PREFLIGHT_RUN_ID: Integer,
+  CANARY_PREFLIGHT_RECEIPT_JSON: z.string().min(2).max(8192),
 });
+const PreflightReceipt = z
+  .object({
+    status: z.literal('READABLE'),
+    complete: z.literal(true),
+    repository: z.literal(P.repository),
+    repositoryId: z.literal(P.repositoryId),
+    actorId: z.literal(P.actorId),
+    event: z.literal('workflow_dispatch'),
+    ref: z.literal('refs/heads/main'),
+    workflowPath: z.literal(P.preflightWorkflowPath),
+    workflowSha: Sha,
+    runId: z.number().int().positive(),
+    runAttempt: z.literal(1),
+    observedMainSha: Sha,
+    prNumber: z.number().int().positive(),
+    headSha: Sha,
+    baseSha: Sha,
+    querySha256: z.string().regex(/^[0-9a-f]{64}$/),
+    responseSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict();
+type PreflightReceipt = z.infer<typeof PreflightReceipt>;
+const PreflightRun = z
+  .object({
+    id: z.number().int().positive(),
+    event: z.literal('workflow_dispatch'),
+    head_branch: z.literal('main'),
+    head_sha: Sha,
+    run_attempt: z.literal(1),
+    status: z.literal('completed'),
+    conclusion: z.literal('success'),
+    actor: z.object({ id: z.number().int().positive() }),
+    path: z.string().min(1),
+  })
+  .loose();
 const SOURCE_PATHS = [
   'scripts/native-approval-canary.ts',
   'packages/nexus-agents/src/scm/github-api-transport.ts',
@@ -55,6 +96,7 @@ const SOURCE_PATHS = [
   'scripts/check-native-canary-snapshot.py',
   'governance/native-approval-canary-source-snapshot.json',
   'governance/native-approval-canary-runtime-closure.json',
+  P.preflightWorkflowPath,
   P.workflowPath,
   'packages/nexus-agents/src/governance/native-approval-canary.ts',
   'packages/nexus-agents/src/scm/types.ts',
@@ -62,7 +104,75 @@ const SOURCE_PATHS = [
   'packages/nexus-agents/src/scm/github-review-receipt.ts',
 ];
 type GitRead = (args: readonly string[]) => string;
-type LaunchContext = Pick<Evidence, 'invocation' | 'expected' | 'governor'>;
+type LaunchContext = Pick<Evidence, 'invocation' | 'expected' | 'governor'> & {
+  preflight: Evidence['preflight'];
+  preflightReceipt: PreflightReceipt;
+};
+
+export async function verifyCanaryPreflightRun(
+  read: CanaryRead,
+  receipt: PreflightReceipt
+): Promise<void> {
+  const run = await readCanaryGet(read, `actions/runs/${String(receipt.runId)}`, PreflightRun);
+  if (
+    run.id !== receipt.runId ||
+    run.actor.id !== P.actorId ||
+    run.path !== P.preflightWorkflowPath ||
+    run.head_sha !== receipt.workflowSha ||
+    run.head_sha !== receipt.observedMainSha
+  )
+    throw new Error('preflight-run-provenance-mismatch');
+}
+
+function parsePreflightReceipt(value: string): PreflightReceipt {
+  try {
+    return PreflightReceipt.parse(JSON.parse(value) as unknown);
+  } catch {
+    throw new Error('preflight-receipt-invalid');
+  }
+}
+
+function environmentMatches(e: z.infer<typeof Environment>, root: string): boolean {
+  return (
+    e.GH_TOKEN === e.GITHUB_TOKEN &&
+    e.GITHUB_WORKSPACE === root &&
+    e.GITHUB_SHA === e.CANARY_WORKFLOW_SHA &&
+    e.CANARY_BASE_SHA === e.GITHUB_SHA
+  );
+}
+
+function receiptMatchesEnvironment(
+  e: z.infer<typeof Environment>,
+  receipt: PreflightReceipt
+): boolean {
+  return (
+    receipt.runId === e.CANARY_PREFLIGHT_RUN_ID &&
+    receipt.prNumber === e.CANARY_PR &&
+    receipt.headSha === e.CANARY_HEAD_SHA &&
+    receipt.baseSha === e.CANARY_BASE_SHA &&
+    receipt.observedMainSha === e.GITHUB_SHA &&
+    receipt.workflowSha === e.GITHUB_SHA
+  );
+}
+
+function preflightEvidence(receipt: PreflightReceipt): Evidence['preflight'] {
+  return {
+    complete: receipt.complete,
+    actorId: receipt.actorId,
+    event: receipt.event,
+    ref: receipt.ref,
+    workflowPath: receipt.workflowPath,
+    workflowSha: receipt.workflowSha,
+    runId: receipt.runId,
+    runAttempt: receipt.runAttempt,
+    observedMainSha: receipt.observedMainSha,
+    prNumber: receipt.prNumber,
+    headSha: receipt.headSha,
+    baseSha: receipt.baseSha,
+    querySha256: receipt.querySha256,
+    responseSha256: receipt.responseSha256,
+  };
+}
 
 function trustedSource(git: GitRead, root: string, sha: string): void {
   if (
@@ -90,12 +200,8 @@ export function readCanaryLaunchContext(
   root: string
 ): LaunchContext {
   const e = Environment.parse(env);
-  if (
-    e.GH_TOKEN !== e.GITHUB_TOKEN ||
-    e.GITHUB_WORKSPACE !== root ||
-    e.GITHUB_SHA !== e.CANARY_WORKFLOW_SHA ||
-    e.CANARY_BASE_SHA !== e.GITHUB_SHA
-  )
+  const receipt = parsePreflightReceipt(e.CANARY_PREFLIGHT_RECEIPT_JSON);
+  if (!environmentMatches(e, root) || !receiptMatchesEnvironment(e, receipt))
     throw new Error('launch-identity-mismatch');
   trustedSource(git, root, e.CANARY_WORKFLOW_SHA);
   const patterns = governorPathsFromCodeowners(owners);
@@ -104,7 +210,7 @@ export function readCanaryLaunchContext(
   }
   return {
     invocation: {
-      actorId: P.actorId,
+      actorId: Number(e.GITHUB_ACTOR_ID),
       event: e.GITHUB_EVENT_NAME,
       ref: e.GITHUB_REF,
       workflowPath: P.workflowPath,
@@ -114,6 +220,8 @@ export function readCanaryLaunchContext(
       runAttempt: 1,
     },
     expected: { pr: e.CANARY_PR, headSha: e.CANARY_HEAD_SHA, baseSha: e.CANARY_BASE_SHA },
+    preflight: preflightEvidence(receipt),
+    preflightReceipt: receipt,
     governor: {
       complete: true,
       patternCount: patterns.length,
@@ -211,6 +319,7 @@ async function main(): Promise<void> {
   try {
     context = readActualCanaryLaunch();
     snapshot = readCanarySnapshotEvidence(REPOSITORY_ROOT);
+    await verifyCanaryPreflightRun(readCanaryJson, context.preflightReceipt);
   } catch (cause) {
     const failure = launcherFailure(cause);
     persistCanaryResult(REPOSITORY_ROOT, failure, snapshot);
@@ -219,7 +328,10 @@ async function main(): Promise<void> {
     return;
   }
   const result = await executeNativeApprovalCanary({
-    ...context,
+    invocation: context.invocation,
+    expected: context.expected,
+    governor: context.governor,
+    preflight: context.preflight,
     read: readCanaryJson,
     reviewer: createGitHubReviewWriter(P.repository),
   });

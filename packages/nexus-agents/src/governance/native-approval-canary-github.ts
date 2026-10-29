@@ -40,7 +40,13 @@ const Check = z.object({
   conclusion: Text.nullable(),
 });
 const LegacyStatus = z.object({ id: Id, context: Text, state: Text });
-const Run = z.object({ id: Id, event: Text, head_branch: Text, run_attempt: Id });
+const Run = z.object({
+  id: Id,
+  event: Text,
+  head_branch: Text,
+  run_attempt: Id,
+  actor: z.object({ id: Id }),
+});
 const PriorPull = z.object({
   number: Id,
   head: z.object({ ref: z.literal(P.branch), repo: z.object({ id: z.literal(P.repositoryId) }) }),
@@ -151,12 +157,15 @@ async function readCanaryHistory(read: CanaryRead): Promise<Evidence['history']>
     throw new Error('duplicate-pr-history');
   return {
     complete: true,
-    runs: runs.map((run) => ({
-      id: run.id,
-      event: run.event,
-      ref: run.head_branch,
-      attempt: run.run_attempt,
-    })),
+    runs: runs
+      .filter((run) => run.actor.id === P.actorId || run.actor.id === P.dispatcherId)
+      .map((run) => ({
+        id: run.id,
+        event: run.event,
+        ref: run.head_branch,
+        attempt: run.run_attempt,
+        actorId: run.actor.id,
+      })),
     branchPRs: pulls.map((pull) => pull.number),
   };
 }
@@ -166,7 +175,8 @@ export async function collectCanaryEvidence(
   read: CanaryRead,
   invocation: Evidence['invocation'],
   expected: Evidence['expected'],
-  governor: Evidence['governor']
+  governor: Evidence['governor'],
+  preflight: Evidence['preflight']
 ): Promise<Evidence> {
   Id.parse(expected.pr);
   Sha.parse(expected.headSha);
@@ -188,6 +198,7 @@ export async function collectCanaryEvidence(
       defaultBranch: repo.default_branch,
     },
     invocation,
+    preflight,
     expected,
     mainSha: first.mainSha,
     latestMainSha: latest.mainSha,

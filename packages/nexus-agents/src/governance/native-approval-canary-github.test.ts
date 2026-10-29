@@ -1,7 +1,7 @@
 /** Collector tests cross real API boundary shapes into the pure policy. */
 import { describe, expect, it, vi } from 'vitest';
 import { collectCanaryEvidence } from './native-approval-canary-github.js';
-import { assessNativeApprovalCanary } from './native-approval-canary.js';
+import { assessNativeApprovalCanary, NATIVE_CANARY_POLICY as P } from './native-approval-canary.js';
 import { FIXTURE as F } from '../testing/native-approval-canary-fixtures.js';
 import type { CanaryRead } from './native-approval-canary-read.js';
 
@@ -43,7 +43,15 @@ const CHECKS = {
 };
 const RUNS = {
   total_count: 1,
-  workflow_runs: [{ id: 900, event: 'workflow_dispatch', head_branch: 'main', run_attempt: 1 }],
+  workflow_runs: [
+    {
+      id: 900,
+      event: 'workflow_dispatch',
+      head_branch: 'main',
+      run_attempt: 1,
+      actor: { id: P.dispatcherId },
+    },
+  ],
 };
 function fixtureRead(override: Record<string, unknown> = {}): CanaryRead {
   const routes: Record<string, unknown> = {
@@ -69,7 +77,7 @@ function fixtureRead(override: Record<string, unknown> = {}): CanaryRead {
   };
 }
 const collect = (read: CanaryRead): ReturnType<typeof collectCanaryEvidence> =>
-  collectCanaryEvidence(read, F.invocation, F.expected, F.governor);
+  collectCanaryEvidence(read, F.invocation, F.expected, F.governor, F.preflight);
 
 describe('GitHub native canary evidence collection', () => {
   it('produces allowed evidence from complete positive-control API responses', async () => {
@@ -124,6 +132,21 @@ describe('GitHub native canary evidence collection', () => {
       status: 'refused',
       reason: 'experiment-already-used',
     });
+  });
+  it('does not let a skipped dispatch by an unrelated actor consume the canary', async () => {
+    const e = await collect(
+      fixtureRead({
+        'actions/workflows/native-approval-canary.yml/runs': {
+          total_count: 2,
+          workflow_runs: [
+            ...RUNS.workflow_runs,
+            { ...RUNS.workflow_runs[0], id: 899, actor: { id: 12 } },
+          ],
+        },
+      })
+    );
+    expect(e.history.runs).toHaveLength(1);
+    expect(assessNativeApprovalCanary(e).status).toBe('allowed');
   });
   it('rejects a mismatched fixed-branch history response', async () => {
     await expect(

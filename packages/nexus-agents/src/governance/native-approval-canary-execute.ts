@@ -15,6 +15,7 @@ interface CanaryExecutionInput {
   invocation: Evidence['invocation'];
   expected: Evidence['expected'];
   governor: Evidence['governor'];
+  preflight: Evidence['preflight'];
 }
 export interface NativeCanaryObservation {
   status: 'eligible' | 'ineligible' | 'unmeasured';
@@ -145,7 +146,8 @@ async function measureReadback(
     input.read,
     input.invocation,
     input.expected,
-    input.governor
+    input.governor,
+    input.preflight
   );
   const evidence = {
     before,
@@ -239,7 +241,8 @@ export async function executeNativeApprovalCanary(
       input.read,
       input.invocation,
       input.expected,
-      input.governor
+      input.governor,
+      input.preflight
     );
     const decision = assessNativeApprovalCanary(before);
     if (decision.status !== 'allowed')

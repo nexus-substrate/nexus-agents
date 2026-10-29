@@ -5,6 +5,7 @@ const PATH = 'docs/fixtures/native-approval-canary.txt';
 const CONTENT = 'Nexus native approval eligibility canary v1.\n';
 const REPO_ID = 1127393912;
 const ACTOR_ID = 14303249;
+const CANARY_ACTOR_ID = 41898282;
 
 export const FIXTURE = {
   repository: {
@@ -14,7 +15,7 @@ export const FIXTURE = {
     defaultBranch: 'main',
   },
   invocation: {
-    actorId: ACTOR_ID,
+    actorId: CANARY_ACTOR_ID,
     event: 'workflow_dispatch',
     ref: 'refs/heads/main',
     workflowPath: '.github/workflows/native-approval-canary.yml',
@@ -22,6 +23,22 @@ export const FIXTURE = {
     checkoutSha: BASE,
     runId: 900,
     runAttempt: 1,
+  },
+  preflight: {
+    complete: true as const,
+    actorId: ACTOR_ID,
+    event: 'workflow_dispatch' as const,
+    ref: 'refs/heads/main' as const,
+    workflowPath: '.github/workflows/native-approval-preflight.yml',
+    workflowSha: BASE,
+    runId: 800,
+    runAttempt: 1 as const,
+    observedMainSha: BASE,
+    prNumber: 7630,
+    headSha: HEAD,
+    baseSha: BASE,
+    querySha256: 'c'.repeat(64),
+    responseSha256: 'd'.repeat(64),
   },
   expected: { pr: 7630, headSha: HEAD, baseSha: BASE },
   mainSha: BASE,
@@ -101,7 +118,7 @@ export const FIXTURE = {
   },
   history: {
     complete: true,
-    runs: [{ id: 900, event: 'workflow_dispatch', ref: 'main', attempt: 1 }],
+    runs: [{ id: 900, event: 'workflow_dispatch', ref: 'main', attempt: 1, actorId: 41898282 }],
     branchPRs: [7630],
   },
   reviews: {

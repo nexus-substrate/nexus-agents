@@ -9,12 +9,14 @@ export const NATIVE_CANARY_POLICY = {
   repositoryId: 1127393912,
   repositoryOwnerId: 285505621,
   actorId: 14303249,
+  dispatcherId: 41898282,
   reviewerId: 41898282,
   reviewerLogin: 'github-actions[bot]',
   branch: 'probe/native-approval-eligibility-v1',
   path: 'docs/fixtures/native-approval-canary.txt',
   content: 'Nexus native approval eligibility canary v1.\n',
   workflowPath: '.github/workflows/native-approval-canary.yml',
+  preflightWorkflowPath: '.github/workflows/native-approval-preflight.yml',
   checkAppId: 15368,
   requiredChecks: ['CI Success', 'Governor-path ratification gate'],
 } as const;
@@ -58,13 +60,29 @@ function repositoryCheck(e: NativeCanaryEvidence): NativeCanaryRefusal | undefin
 function invocationCheck(e: NativeCanaryEvidence): NativeCanaryRefusal | undefined {
   const i = e.invocation;
   if (
-    i.actorId !== NATIVE_CANARY_POLICY.actorId ||
+    (i.actorId !== NATIVE_CANARY_POLICY.actorId &&
+      i.actorId !== NATIVE_CANARY_POLICY.dispatcherId) ||
     i.event !== 'workflow_dispatch' ||
     i.ref !== 'refs/heads/main' ||
     i.workflowPath !== NATIVE_CANARY_POLICY.workflowPath ||
     i.runAttempt !== 1
   )
     return refused('invocation-mismatch');
+  return undefined;
+}
+
+function preflightCheck(e: NativeCanaryEvidence): NativeCanaryRefusal | undefined {
+  const p = e.preflight;
+  if (
+    p.actorId !== NATIVE_CANARY_POLICY.actorId ||
+    p.workflowPath !== NATIVE_CANARY_POLICY.preflightWorkflowPath ||
+    p.workflowSha !== e.invocation.workflowSha ||
+    p.observedMainSha !== e.mainSha ||
+    p.prNumber !== e.expected.pr ||
+    p.headSha !== e.expected.headSha ||
+    p.baseSha !== e.expected.baseSha
+  )
+    return refused('preflight-provenance-mismatch');
   return undefined;
 }
 
@@ -115,7 +133,15 @@ function pullRequestFreshnessCheck(e: NativeCanaryEvidence): NativeCanaryRefusal
 }
 
 function completenessCheck(e: NativeCanaryEvidence): NativeCanaryRefusal | undefined {
-  for (const key of ['commit', 'files', 'governor', 'checks', 'history', 'reviews'] as const) {
+  for (const key of [
+    'preflight',
+    'commit',
+    'files',
+    'governor',
+    'checks',
+    'history',
+    'reviews',
+  ] as const) {
     if (!e[key].complete) return unmeasured(`incomplete-${key}`);
   }
   return undefined;
@@ -245,6 +271,7 @@ function runIdentityCheck(e: NativeCanaryEvidence): NativeCanaryRefusal | undefi
   const run = e.history.runs[0];
   if (
     run?.id !== e.invocation.runId ||
+    run.actorId !== e.invocation.actorId ||
     run.attempt !== 1 ||
     run.event !== 'workflow_dispatch' ||
     run.ref !== 'main'
@@ -278,6 +305,7 @@ export function assessNativeApprovalCanary(evidence: unknown): NativeCanaryDecis
     completenessCheck,
     repositoryCheck,
     invocationCheck,
+    preflightCheck,
     trustedSourceCheck,
     pullRequestCheck,
     pullRequestFreshnessCheck,

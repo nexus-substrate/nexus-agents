@@ -13,6 +13,18 @@ type Rejection = { name: string; alter: (input: Evidence) => void };
 
 const REFUSALS: readonly Rejection[] = [
   {
+    name: 'preflight run from another actor',
+    alter: (x): void => {
+      x.preflight.actorId++;
+    },
+  },
+  {
+    name: 'preflight for another head',
+    alter: (x): void => {
+      x.preflight.headSha = 'f'.repeat(40);
+    },
+  },
+  {
     name: 'another repository',
     alter: (x): void => {
       x.repository.id++;

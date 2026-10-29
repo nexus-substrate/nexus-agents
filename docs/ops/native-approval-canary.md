@@ -7,6 +7,7 @@ tier: 3
 keywords: [governance, github, approval, canary, review]
 related_files:
   - .github/workflows/native-approval-canary.yml
+  - .github/workflows/native-approval-preflight.yml
   - scripts/native-approval-canary.ts
   - packages/nexus-agents/src/governance/native-approval-canary.ts
 ---
@@ -23,11 +24,11 @@ Local test prerequisites are Node/pnpm, Git, Python 3 and `jq`; the workflow-fil
 
 ### Confirm read access without spending the canary invocation
 
-The implementation PR's existing governor job performs a bounded, read-only GraphQL preflight using its Actions token with declared `contents: read` and `pull-requests: read`. It runs only for the same-repository implementation branch, after the ratification gate even when that gate fails. It neither changes that verdict nor counts as a canary dispatch. The fixed query is tested against the canary's exact query; no PR source is imported or executed by this step.
+Run **Native approval eligibility preflight** on `main` with the prepared PR/head/base tuple. It is owner-gated and reads classic protection through GraphQL plus active branch rulesets. Any missing, malformed, incomplete, or unsupported response fails the preflight. It uploads a strict receipt bound to the repository, workflow, run and attempt, owner actor, PR/head/base, observed main, and query/response digests.
 
-Before dispatch, retain a live `READABLE` receipt from that step for the final implementation head. The receipt binds the repository, workflow SHA, run/attempt, head, observed main, query/response digests and declared token permissions. Verify that the reviewed tree became trusted main. This lower-privilege read is capability evidence, not token-identity attestation or approval eligibility. The canary's fresh in-run checks remain authoritative.
+Only after the artifact upload succeeds does the preflight use its narrowly scoped `actions: write` permission to dispatch **Native approval eligibility canary**. GitHub documents that `workflow_dispatch` events created with `GITHUB_TOKEN` start workflow runs ([triggering a workflow](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)). The canary downloads the artifact by the exact preflight run ID and independently checks the run’s workflow, owner actor, event, ref, attempt, successful conclusion, and source SHA before proceeding. Caller-supplied inputs alone are not accepted as proof of a readable result.
 
-`UNMEASURED`, a skipped step, or a missing receipt prohibits dispatch. Hold the experiment inactive and investigate the prerequisite; do not retrigger workflows or expand permissions to force a preferred result. The older required-jobs REST read and an owner-authenticated read do not satisfy this GraphQL Actions-token condition. Expected read failures are classified and exit cleanly; unexpected script faults fail visibly. No `continue-on-error` flag masks them.
+An `UNMEASURED` read, skipped step, missing artifact, stale main SHA, or failed provenance check cannot dispatch an eligible canary. Investigate the prerequisite; do not retrigger or expand permissions to force a preferred result. The owner-authenticated read alone does not satisfy the Actions-token capability check. Expected read failures are classified and fail the preflight; unexpected faults fail visibly.
 
 ### Author and verify the one-shot source freeze
 
@@ -73,9 +74,9 @@ The workflow, launcher, canonical SCM write/receipt ingress, and governance modu
 
 The guard verifies repository and actor IDs, the full one-commit comparison, direct parent, git tree mode, exact blob bytes and SHA, canonical governor coverage, complete check and legacy-status coverage, current protection, and prior workflow/branch-PR/review history. It does not execute PR code or install PR dependencies.
 
-## Dispatch once from main
+## Start the experiment once from main
 
-Dispatch **Native approval eligibility canary** on `main`, supplying `pr_number`, `head_sha`, and `base_sha` from the prepared tuple. The launcher requires the exact trusted workflow/checkout commit and a clean tracked source tree. Credentials are the workflow's existing token; no personal token, new App, repository-setting change, or extra privilege is part of this experiment.
+Dispatch **Native approval eligibility preflight** on `main`, supplying `pr_number`, `head_sha`, and `base_sha` from the prepared tuple. Do not dispatch the canary directly. Its job accepts only the trusted preflight artifact and run, requires the exact trusted workflow/checkout commit, and checks a clean tracked source tree. The preflight has only the Actions permission needed to trigger the canary; the canary keeps its existing bounded review-write token.
 
 The collector reads classic protection through GraphQL and separately checks active branch rulesets. The [REST protection endpoint](https://docs.github.com/en/rest/branches/branch-protection#get-branch-protection) requires Administration read permission, which this workflow does not request. Inaccessible, null, malformed, incomplete, or unsupported protection evidence stops the experiment. An owner's successful read does not prove that the Actions token can read it.
 

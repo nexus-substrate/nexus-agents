@@ -80,6 +80,7 @@ function setup(): {
         invocation: F.invocation,
         expected: F.expected,
         governor: F.governor,
+        preflight: F.preflight,
       }),
   };
 }
@@ -122,6 +123,7 @@ describe('native canary execution', () => {
         invocation: F.invocation,
         expected: F.expected,
         governor: F.governor,
+        preflight: F.preflight,
       })
     ).toMatchObject({ status: 'unmeasured', writeAttempted: false });
   });

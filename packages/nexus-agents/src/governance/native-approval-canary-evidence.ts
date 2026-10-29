@@ -30,6 +30,22 @@ export const CanaryEvidenceSchema = z
         runAttempt: Id,
       })
       .strict(),
+    preflight: Complete.extend({
+      complete: z.literal(true),
+      actorId: Id,
+      event: z.literal('workflow_dispatch'),
+      ref: z.literal('refs/heads/main'),
+      workflowPath: Text,
+      workflowSha: Sha,
+      runId: Id,
+      runAttempt: z.literal(1),
+      observedMainSha: Sha,
+      prNumber: Id,
+      headSha: Sha,
+      baseSha: Sha,
+      querySha256: Digest,
+      responseSha256: Digest,
+    }).strict(),
     expected: z.object({ pr: Id, headSha: Sha, baseSha: Sha }).strict(),
     mainSha: Sha,
     latestMainSha: Sha,
@@ -115,7 +131,7 @@ export const CanaryEvidenceSchema = z
       .strict(),
     history: Complete.extend({
       runs: z
-        .array(z.object({ id: Id, event: Text, ref: Text, attempt: Id }).strict())
+        .array(z.object({ id: Id, event: Text, ref: Text, attempt: Id, actorId: Id }).strict())
         .max(MAX_ROWS),
       branchPRs: z.array(Id).max(MAX_ROWS),
     }).strict(),

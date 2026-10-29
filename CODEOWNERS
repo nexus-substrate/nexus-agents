@@ -43,6 +43,7 @@
 /scripts/check-native-canary-source.ts @williamzujkowski
 /scripts/check-native-canary-snapshot.py @williamzujkowski
 /.github/workflows/native-approval-canary.yml @williamzujkowski
+/.github/workflows/native-approval-preflight.yml @williamzujkowski
 /scripts/native-approval-canary.ts @williamzujkowski
 # Governance-drift injection machinery
 /scripts/inject-governance.ts @williamzujkowski

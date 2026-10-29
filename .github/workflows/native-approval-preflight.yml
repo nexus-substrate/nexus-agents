@@ -1,0 +1,143 @@
+name: Native approval eligibility preflight
+
+# A readable protection receipt is required before this workflow dispatches the
+# one-shot canary. This workflow never posts a review.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Owner-authored fixed canary PR'
+        required: true
+        type: string
+      head_sha:
+        description: 'Exact 40-character canary commit SHA'
+        required: true
+        type: string
+      base_sha:
+        description: 'Exact trusted main SHA used as its direct parent'
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: native-approval-eligibility-preflight-v1
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'nexus-substrate/nexus-agents' &&
+      github.repository_id == '1127393912' &&
+      github.actor_id == '14303249' &&
+      github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+    steps:
+      - name: Require readable protection and dispatch the receipt-bound canary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_HOST: github.com
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PREFLIGHT_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CANARY_PR: ${{ inputs.pr_number }}
+          CANARY_HEAD_SHA: ${{ inputs.head_sha }}
+          CANARY_BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'nexus-substrate/nexus-agents' ]]
+          [[ "$GITHUB_ACTOR_ID" == '14303249' ]]
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]]
+          [[ "$GITHUB_RUN_ATTEMPT" == '1' ]]
+          [[ "$CANARY_PR" =~ ^[1-9][0-9]{0,15}$ ]]
+          [[ "$CANARY_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANARY_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PREFLIGHT_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          query='query { repository(owner:"nexus-substrate",name:"nexus-agents") {
+            defaultBranchRef { name target { oid } branchProtectionRule {
+              pattern requiresApprovingReviews requiredApprovingReviewCount dismissesStaleReviews
+              requiresCodeOwnerReviews requireLastPushApproval requiresStrictStatusChecks requiresStatusChecks
+              allowsForcePushes allowsDeletions requiredStatusChecks { context app { databaseId } }
+            } } } }'
+          response=$(mktemp "${RUNNER_TEMP}/native-canary-protection.XXXXXX")
+          rules=$(mktemp "${RUNNER_TEMP}/native-canary-rules.XXXXXX")
+          trap 'rm -f "$response" "$rules"' EXIT
+          timeout -k 2s 20s gh api graphql -f query="$query" > "$response"
+          timeout -k 2s 20s gh api repos/nexus-substrate/nexus-agents/rules/branches/main > "$rules"
+          jq -e '
+            def id: type == "number" and . == floor and . > 0 and . <= 9007199254740991;
+            def sha: type == "string" and test("^[0-9a-f]{40}$");
+            def rule:
+              . as $r | type == "object" and .pattern == "main" and
+              .requiresApprovingReviews == true and .requiresStatusChecks == true and
+              (.requiredApprovingReviewCount | type == "number" and . == floor and . >= 0) and
+              all(["dismissesStaleReviews", "requiresCodeOwnerReviews", "requireLastPushApproval",
+                "requiresStrictStatusChecks", "allowsForcePushes", "allowsDeletions"][];
+                ($r[.] | type == "boolean")) and
+              (.requiredStatusChecks | type == "array" and length <= 1000 and
+                (if length == 0 then true else all(.[];
+                  (.context | type == "string" and length > 0) and (.app.databaseId | id)) end));
+            type == "object" and (has("errors") | not) and
+            (.data.repository.defaultBranchRef | .name == "main" and
+              (.target.oid | sha) and (.branchProtectionRule | rule))
+          ' "$response" >/dev/null
+          jq -e 'type == "array" and length == 0' "$rules" >/dev/null
+          observed_main=$(jq -er '.data.repository.defaultBranchRef.target.oid' "$response")
+          [[ "$observed_main" == "$CANARY_BASE_SHA" ]]
+
+          runs=$(gh api 'repos/nexus-substrate/nexus-agents/actions/workflows/native-approval-canary.yml/runs?branch=main&per_page=100')
+          jq -e '
+            .total_count == (.workflow_runs | length) and .total_count <= 100 and
+            all(.workflow_runs[]; (.actor.id | type == "number" and . == floor and . > 0)) and
+            ([.workflow_runs[] | select(.actor.id == 14303249 or .actor.id == 41898282)] | length == 0)
+          ' <<< "$runs" >/dev/null
+
+          query_sha=$(printf '%s' "$query" | sha256sum | cut -d ' ' -f 1)
+          response_sha=$(sha256sum "$response" | cut -d ' ' -f 1)
+          receipt=$(jq -cn \
+            --arg repository "$GITHUB_REPOSITORY" --arg workflowSha "$PREFLIGHT_WORKFLOW_SHA" \
+            --arg main "$observed_main" --arg head "$CANARY_HEAD_SHA" --arg base "$CANARY_BASE_SHA" \
+            --arg querySha "$query_sha" --arg responseSha "$response_sha" \
+            --argjson actor 14303249 --argjson repoId 1127393912 --argjson runId "$GITHUB_RUN_ID" \
+            --argjson pr "$CANARY_PR" \
+            '{status:"READABLE",complete:true,repository:$repository,repositoryId:$repoId,
+              actorId:$actor,event:"workflow_dispatch",ref:"refs/heads/main",
+              workflowPath:".github/workflows/native-approval-preflight.yml",
+              workflowSha:$workflowSha,runId:$runId,runAttempt:1,observedMainSha:$main,
+              prNumber:$pr,headSha:$head,baseSha:$base,querySha256:$querySha,responseSha256:$responseSha}')
+          mkdir -p "${RUNNER_TEMP}/native-canary-preflight"
+          printf '%s\n' "$receipt" > "${RUNNER_TEMP}/native-canary-preflight/receipt.json"
+          printf '### Native approval protection preflight\n\nREADABLE; receipt-bound canary dispatch follows.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain the exact preflight receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-approval-preflight-${{ github.run_id }}
+          path: ${{ runner.temp }}/native-canary-preflight/receipt.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Dispatch canary only after the receipt is retained
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_HOST: github.com
+          CANARY_PR: ${{ inputs.pr_number }}
+          CANARY_HEAD_SHA: ${{ inputs.head_sha }}
+          CANARY_BASE_SHA: ${{ inputs.base_sha }}
+          PREFLIGHT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api repos/nexus-substrate/nexus-agents/actions/workflows/native-approval-canary.yml/dispatches \
+            --method POST -f ref=main \
+            -f "inputs[pr_number]=$CANARY_PR" \
+            -f "inputs[head_sha]=$CANARY_HEAD_SHA" \
+            -f "inputs[base_sha]=$CANARY_BASE_SHA" \
+            -f "inputs[preflight_run_id]=$PREFLIGHT_RUN_ID"

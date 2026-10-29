@@ -1820,6 +1820,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/check-native-canary-source.ts',
     '/scripts/check-native-canary-snapshot.py',
     '/.github/workflows/native-approval-canary.yml',
+    '/.github/workflows/native-approval-preflight.yml',
     '/scripts/native-approval-canary.ts',
     '/scripts/inject-governance.ts',
     '/governance/',
@@ -1915,7 +1916,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/scripts/aggregator-shape.ts');
     // #5125 owner decision: this bridge selects what enters the hash chain.
     expect(set).toContain('/packages/nexus-agents/src/security/audit-bridge.ts');
-    expect(set).toHaveLength(56);
+    expect(set).toHaveLength(57);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

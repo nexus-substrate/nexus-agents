@@ -127,7 +127,15 @@ function restFixtures(): Record<string, unknown> {
     [`commits/${HEAD}/status`]: { sha: HEAD, total_count: 0, statuses: [] },
     'actions/workflows/native-approval-canary.yml/runs': {
       total_count: 1,
-      workflow_runs: [{ id: 900, event: 'workflow_dispatch', head_branch: 'main', run_attempt: 1 }],
+      workflow_runs: [
+        {
+          id: 900,
+          event: 'workflow_dispatch',
+          head_branch: 'main',
+          run_attempt: 1,
+          actor: { id: P.dispatcherId },
+        },
+      ],
     },
     pulls: [{ number: F.expected.pr, head: { ref: P.branch, repo: { id: P.repositoryId } } }],
   };
@@ -192,6 +200,7 @@ const run = (): ReturnType<typeof executeNativeApprovalCanary> =>
     invocation: F.invocation,
     expected: F.expected,
     governor: F.governor,
+    preflight: F.preflight,
   });
 beforeEach(() => {
   state.calls = [];

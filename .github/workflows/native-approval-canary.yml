@@ -19,6 +19,10 @@ on:
         description: 'Exact trusted main SHA used as its direct parent'
         required: true
         type: string
+      preflight_run_id:
+        description: 'Run ID of the successful owner-dispatched protection preflight'
+        required: true
+        type: string
 
 permissions: {}
 
@@ -32,7 +36,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'nexus-substrate/nexus-agents' &&
       github.repository_id == '1127393912' &&
-      github.actor_id == '14303249' &&
+      (github.actor_id == '41898282' || github.actor_id == '14303249') &&
       github.ref == 'refs/heads/main' && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -42,6 +46,37 @@ jobs:
       actions: read
       checks: read
     steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-approval-preflight-${{ inputs.preflight_run_id }}
+          path: ${{ runner.temp }}/native-canary-preflight
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.preflight_run_id }}
+          github-token: ${{ github.token }}
+      - name: Validate the exact downloaded preflight artifact
+        env:
+          PREFLIGHT_RUN_ID: ${{ inputs.preflight_run_id }}
+          CANARY_PR: ${{ inputs.pr_number }}
+          CANARY_HEAD_SHA: ${{ inputs.head_sha }}
+          CANARY_BASE_SHA: ${{ inputs.base_sha }}
+          PREFLIGHT_RECEIPT_PATH: ${{ runner.temp }}/native-canary-preflight/receipt.json
+        run: |
+          set -euo pipefail
+          [[ "$PREFLIGHT_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]]
+          receipt=$(jq -ce --argjson run "$PREFLIGHT_RUN_ID" --argjson pr "$CANARY_PR" \
+            --arg head "$CANARY_HEAD_SHA" --arg base "$CANARY_BASE_SHA" --arg main "$GITHUB_SHA" '
+            select(type == "object" and .status == "READABLE" and .complete == true and
+            .repository == "nexus-substrate/nexus-agents" and .repositoryId == 1127393912 and
+            .actorId == 14303249 and
+            .event == "workflow_dispatch" and .ref == "refs/heads/main" and
+            .workflowPath == ".github/workflows/native-approval-preflight.yml" and
+            .runId == $run and .runAttempt == 1 and .prNumber == $pr and
+            .headSha == $head and .baseSha == $base and .observedMainSha == $main and
+            .workflowSha == $main and
+            (.querySha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+            (.responseSha256 | type == "string" and test("^[0-9a-f]{64}$")))
+          ' "$PREFLIGHT_RECEIPT_PATH")
+          printf 'CANARY_PREFLIGHT_RECEIPT_JSON=%s\n' "$receipt" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
@@ -72,6 +107,7 @@ jobs:
           CANARY_PR: ${{ inputs.pr_number }}
           CANARY_HEAD_SHA: ${{ inputs.head_sha }}
           CANARY_BASE_SHA: ${{ inputs.base_sha }}
+          CANARY_PREFLIGHT_RUN_ID: ${{ inputs.preflight_run_id }}
       - name: Retain the measured evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

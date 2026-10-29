@@ -9,12 +9,31 @@ import { parse as parseYaml } from 'yaml';
 
 const BASE = 'b'.repeat(40);
 const HEAD = 'a'.repeat(40);
+const PREFLIGHT = {
+  status: 'READABLE',
+  complete: true,
+  repository: 'nexus-substrate/nexus-agents',
+  repositoryId: 1127393912,
+  actorId: 14303249,
+  event: 'workflow_dispatch',
+  ref: 'refs/heads/main',
+  workflowPath: '.github/workflows/native-approval-preflight.yml',
+  workflowSha: BASE,
+  runId: 800,
+  runAttempt: 1,
+  observedMainSha: BASE,
+  prNumber: 7630,
+  headSha: HEAD,
+  baseSha: BASE,
+  querySha256: 'c'.repeat(64),
+  responseSha256: 'd'.repeat(64),
+};
 const ENV = {
   GITHUB_ACTIONS: 'true',
   GITHUB_REPOSITORY: 'nexus-substrate/nexus-agents',
   GITHUB_REPOSITORY_ID: '1127393912',
   CANARY_OWNER_ID: '285505621',
-  GITHUB_ACTOR_ID: '14303249',
+  GITHUB_ACTOR_ID: '41898282',
   GITHUB_EVENT_NAME: 'workflow_dispatch',
   GITHUB_REF: 'refs/heads/main',
   GITHUB_SHA: BASE,
@@ -32,6 +51,8 @@ const ENV = {
   CANARY_PR: '7630',
   CANARY_HEAD_SHA: HEAD,
   CANARY_BASE_SHA: BASE,
+  CANARY_PREFLIGHT_RUN_ID: '800',
+  CANARY_PREFLIGHT_RECEIPT_JSON: JSON.stringify(PREFLIGHT),
 };
 const GOVERNED = [
   'scripts/native-approval-canary.ts',
@@ -44,6 +65,7 @@ const GOVERNED = [
   'scripts/check-native-canary-snapshot.py',
   'governance/native-approval-canary-source-snapshot.json',
   'governance/native-approval-canary-runtime-closure.json',
+  '.github/workflows/native-approval-preflight.yml',
   '.github/workflows/native-approval-canary.yml',
   'packages/nexus-agents/src/governance/native-approval-canary.ts',
   'packages/nexus-agents/src/scm/types.ts',
@@ -66,7 +88,8 @@ const git = (args: readonly string[]): string => {
 describe('native canary trusted-main launcher', () => {
   it('binds measured trusted source and canonical governor scope', () => {
     expect(readCanaryLaunchContext(ENV, git, OWNERS, '/fixture/repo')).toMatchObject({
-      invocation: { checkoutSha: BASE, workflowSha: BASE, actorId: 14303249 },
+      invocation: { checkoutSha: BASE, workflowSha: BASE, actorId: 41898282 },
+      preflight: { actorId: 14303249, runId: 800, observedMainSha: BASE },
       expected: { pr: 7630, headSha: HEAD, baseSha: BASE },
       governor: { complete: true, patternCount: GOVERNED.length, matches: [] },
     });
@@ -84,6 +107,8 @@ describe('native canary trusted-main launcher', () => {
     { CANARY_PR: '1;echo x' },
     { CANARY_HEAD_SHA: '../head' },
     { CANARY_BASE_SHA: HEAD },
+    { CANARY_PREFLIGHT_RUN_ID: '801' },
+    { CANARY_PREFLIGHT_RECEIPT_JSON: '{}' },
     { GH_HOST: 'other.invalid' },
     { GITHUB_API_URL: 'https://other.invalid' },
     { GITHUB_TOKEN: '' },
@@ -133,7 +158,7 @@ describe('native canary trusted-main launcher', () => {
 });
 
 describe('protected native canary workflow wiring', () => {
-  it('uses only manual dispatch, trusted main source, narrow token permissions and single-use concurrency', () => {
+  it('only accepts the preflight-dispatched canary and keeps Actions write on the preflight workflow', () => {
     const source = readFileSync(join(ROOT, '.github/workflows/native-approval-canary.yml'), 'utf8')
       .split('\n')
       .filter((line) => !line.trim().startsWith('#'))
@@ -143,8 +168,12 @@ describe('protected native canary workflow wiring', () => {
     expect(source).toContain('permissions: {}');
     expect(source).toContain('group: native-approval-eligibility-v1');
     expect(source).toContain('cancel-in-progress: false');
-    expect(source).toContain("github.actor_id == '14303249'");
+    expect(source).toContain("github.actor_id == '41898282' || github.actor_id == '14303249'");
     expect(source).toContain("github.ref == 'refs/heads/main'");
+    expect(source).toContain('preflight_run_id:');
+    expect(source).toContain('CANARY_PREFLIGHT_RECEIPT_JSON');
+    expect(source).toContain('actions/download-artifact@');
+    expect(source).toContain('run-id: ${{ inputs.preflight_run_id }}');
     expect(source).toContain('ref: ${{ github.workflow_sha }}');
     expect(source).toContain('persist-credentials: false');
     expect(source).toContain('pull-requests: write');
@@ -152,6 +181,46 @@ describe('protected native canary workflow wiring', () => {
     expect(source).toContain('run: pnpm exec tsx scripts/native-approval-canary.ts');
     expect(source).toContain('.nexus-agents/native-approval-canary/result.json');
     expect(source).not.toMatch(/gh pr merge|--admin|owner-ratified|secrets\.(?!GITHUB_TOKEN)/);
+  });
+
+  it('preflight is owner-dispatched, read-gated, and alone may dispatch the canary', () => {
+    const workflow = parseYaml(
+      readFileSync(join(ROOT, '.github/workflows/native-approval-preflight.yml'), 'utf8')
+    ) as {
+      on: Record<string, unknown>;
+      jobs: Record<
+        string,
+        {
+          permissions?: Record<string, string>;
+          steps: Array<{ run?: string; uses?: string }>;
+        }
+      >;
+    };
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
+    expect(workflow.jobs.preflight?.permissions?.['actions']).toBe('write');
+    expect(
+      workflow.jobs.preflight?.steps.some(
+        (step) => step.run?.includes('status:"READABLE"') === true
+      )
+    ).toBe(true);
+    expect(
+      workflow.jobs.preflight?.steps.some(
+        (step) => step.run?.includes('.actor.id == 14303249 or .actor.id == 41898282') === true
+      )
+    ).toBe(true);
+    expect(
+      workflow.jobs.preflight?.steps.some((step) => step.run?.includes('/dispatches') === true)
+    ).toBe(true);
+    const upload =
+      workflow.jobs.preflight?.steps.findIndex(
+        (step) => step.uses?.startsWith('actions/upload-artifact@') === true
+      ) ?? -1;
+    const dispatch =
+      workflow.jobs.preflight?.steps.findIndex(
+        (step) => step.run?.includes('/dispatches') === true
+      ) ?? -1;
+    expect(upload).toBeGreaterThan(-1);
+    expect(dispatch).toBeGreaterThan(upload);
   });
 });
 
@@ -213,14 +282,28 @@ it('checks the isolated source snapshot immediately after clean checkout before 
     };
   };
   const steps = workflow.jobs.eligibility.steps;
-  expect(steps[0]?.uses).toMatch(/^actions\/checkout@/);
-  expect(steps[0]?.with?.['clean']).toBe(true);
-  expect(steps[0]?.with?.['persist-credentials']).toBe(false);
-  expect(steps[1]?.run).toBe(
+  const artifactDownload = steps.findIndex(
+    (step) => step.uses?.startsWith('actions/download-artifact@') === true
+  );
+  const receiptValidation = steps.findIndex(
+    (step) => step.run?.includes('CANARY_PREFLIGHT_RECEIPT_JSON') === true
+  );
+  const checkout = steps.findIndex((step) => step.uses?.startsWith('actions/checkout@') === true);
+  expect(artifactDownload).toBeGreaterThanOrEqual(0);
+  expect(receiptValidation).toBeGreaterThan(artifactDownload);
+  expect(steps[receiptValidation]?.run).toContain('select(type == "object"');
+  expect(checkout).toBeGreaterThan(receiptValidation);
+  expect(steps[checkout]?.with?.['clean']).toBe(true);
+  expect(steps[checkout]?.with?.['persist-credentials']).toBe(false);
+  expect(steps[checkout + 1]?.run).toBe(
     'command -v python3\npython3 -I -S scripts/check-native-canary-snapshot.py --check\n'
   );
   for (const name of ['pnpm/action-setup@', 'actions/setup-node@'])
-    expect(steps.findIndex((step) => step.uses?.startsWith(name) === true)).toBeGreaterThan(1);
-  expect(steps.findIndex((step) => step.run?.includes('pnpm install') === true)).toBeGreaterThan(1);
+    expect(steps.findIndex((step) => step.uses?.startsWith(name) === true)).toBeGreaterThan(
+      checkout + 1
+    );
+  expect(steps.findIndex((step) => step.run?.includes('pnpm install') === true)).toBeGreaterThan(
+    checkout + 1
+  );
   expect(steps.some((step) => step.run?.includes('--write') === true)).toBe(false);
 });
