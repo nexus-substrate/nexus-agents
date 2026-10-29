@@ -42,7 +42,11 @@ import {
 } from './graph-events.js';
 import type { PreconditionOutcome } from './graph-hooks.js';
 import { runPreconditions, runVerification } from './graph-hooks.js';
-import { graphTimeoutError, isGraphTimeoutAbort } from './graph-hook-deadline.js';
+import {
+  graphTimeoutError,
+  isGraphTimeoutAbort,
+  scheduleDeadlineTimer,
+} from './graph-hook-deadline.js';
 import { categorizeOutcomeError } from '../outcomes/outcome-types.js';
 import { coarsenFailureCategory, defaultRetryable } from '../../mcp/error-envelope.js';
 import type { ErrorCategory } from '../../mcp/error-envelope.js';
@@ -56,13 +60,13 @@ function createExecutionScope(
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
   const deadlineAt = startTime + timeout;
   const deadlineController = new AbortController();
-  const timeoutTimer =
+  const cancelTimeoutTimer =
     Number.isFinite(timeout) && timeout >= 0
-      ? setTimeout(() => {
+      ? scheduleDeadlineTimer(timeout, () => {
           deadlineController.abort(
             graphTimeoutError(`Graph execution timed out after ${String(timeout)}ms`)
           );
-        }, timeout)
+        })
       : undefined;
   const signal =
     options?.signal === undefined
@@ -71,7 +75,7 @@ function createExecutionScope(
   return {
     options: { ...options, signal, deadlineAt },
     dispose: () => {
-      if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+      cancelTimeoutTimer?.();
     },
   };
 }
@@ -891,10 +895,10 @@ async function runNodeHandler(
       ? controller.signal
       : AbortSignal.any([options.signal, controller.signal]);
   throwIfAborted(signal);
-  const timer = Number.isFinite(timeout)
-    ? setTimeout(() => {
+  const cancelTimer = Number.isFinite(timeout)
+    ? scheduleDeadlineTimer(timeout, () => {
         controller.abort(new Error(`Node timed out after ${String(timeout)}ms`));
-      }, timeout)
+      })
     : undefined;
   try {
     const context = {
@@ -904,7 +908,7 @@ async function runNodeHandler(
     };
     return await withTimeout(node.handler(state, context), timeout);
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    cancelTimer?.();
   }
 }
 
@@ -1094,17 +1098,17 @@ function dedupe(ids: string[]): string[] {
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   if (!Number.isFinite(ms)) return promise;
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const cancelTimer = scheduleDeadlineTimer(ms, () => {
       reject(new Error(`Node timed out after ${String(ms)}ms`));
-    }, ms);
+    });
 
     promise
       .then((result) => {
-        clearTimeout(timer);
+        cancelTimer();
         resolve(result);
       })
       .catch((error: unknown) => {
-        clearTimeout(timer);
+        cancelTimer();
         reject(error instanceof Error ? error : new Error(String(error)));
       });
   });

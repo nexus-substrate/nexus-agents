@@ -7,6 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GraphBuilder, overwrite, START, END } from './graph-builder.js';
 import { executeGraph } from './graph-executor.js';
+import { scheduleDeadlineTimer } from './graph-hook-deadline.js';
 import { runPreconditions, runVerification, createStateGuard } from './graph-hooks.js';
 import type { GraphEvent, NodeHookContext, HookError, PreconditionConfig } from './graph-types.js';
 import type { Result } from '../../core/index.js';
@@ -391,6 +392,52 @@ describe('verification', () => {
 
       const result = await executeGraph(graph.value, {}, { timeout: Number.POSITIVE_INFINITY });
       expect(result.ok).toBe(true);
+    });
+
+    it('does not pass oversized timeouts to Node timers for graph, hook, or node deadlines', async () => {
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 42 }), {
+          preconditions: [passingHook('large-timeout-check')],
+        })
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      const maxNodeTimeoutMs = 2_147_483_647;
+      const requestedDelays: number[] = [];
+      const actualSetTimeout = globalThis.setTimeout;
+      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler, delay) => {
+        requestedDelays.push(Number(delay));
+        return actualSetTimeout(() => undefined, 60_000);
+      });
+      try {
+        const result = await executeGraph(graph.value, {}, { timeout: 3_000_000_000 });
+        expect(result.ok).toBe(true);
+        expect(requestedDelays).toHaveLength(4);
+        expect(requestedDelays.every((delay) => delay > 1 && delay <= maxNodeTimeoutMs)).toBe(true);
+      } finally {
+        timeoutSpy.mockRestore();
+      }
+    });
+
+    it('rearms long deadline timers until the full timeout elapses', async () => {
+      vi.useFakeTimers();
+      const maxNodeTimeoutMs = 2_147_483_647;
+      const onTimeout = vi.fn();
+      const cancelTimer = scheduleDeadlineTimer(maxNodeTimeoutMs + 10, onTimeout);
+      try {
+        await vi.advanceTimersByTimeAsync(maxNodeTimeoutMs);
+        expect(onTimeout).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(10);
+        expect(onTimeout).toHaveBeenCalledOnce();
+      } finally {
+        cancelTimer();
+        vi.useRealTimers();
+      }
     });
 
     it('rejects a NaN graph timeout instead of treating it as unbounded', async () => {

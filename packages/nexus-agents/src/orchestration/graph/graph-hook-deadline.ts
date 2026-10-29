@@ -3,6 +3,33 @@ import { createLogger, getTimeProvider } from '../../core/index.js';
 import type { GraphExecuteOptions, HookError } from './graph-types.js';
 
 const logger = createLogger({ component: 'GraphHookDeadline' });
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/** Schedule a timeout without passing Node's signed 32-bit timer limit. */
+export function scheduleDeadlineTimer(timeoutMs: number, onTimeout: () => void): () => void {
+  let remainingMs = timeoutMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancelled = false;
+
+  const scheduleNextChunk = (): void => {
+    if (cancelled) return;
+    const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(1, Math.ceil(remainingMs)));
+    remainingMs -= delayMs;
+    timer = setTimeout(() => {
+      timer = undefined;
+      if (cancelled) return;
+      if (remainingMs <= 0) onTimeout();
+      else scheduleNextChunk();
+    }, delayMs);
+  };
+
+  scheduleNextChunk();
+  return () => {
+    cancelled = true;
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+}
 
 export class GraphTimeoutError extends Error {
   constructor(message: string) {
@@ -179,14 +206,14 @@ export async function runHookUntilDeadline(
   }
   if (signal.aborted) return abortedHookOutcome(context, signal, startTime);
 
-  const timer =
+  const cancelTimer =
     remainingMs === undefined || !Number.isFinite(remainingMs)
       ? undefined
-      : setTimeout(() => {
+      : scheduleDeadlineTimer(remainingMs, () => {
           controller.abort(
             graphTimeoutError(`Graph execution timed out during ${context.hookPhase} hook`)
           );
-        }, remainingMs);
+        });
   const callback = Promise.resolve()
     .then(() => {
       if (signal.aborted) throw signal.reason;
@@ -194,7 +221,7 @@ export async function runHookUntilDeadline(
     })
     .then(toCallbackOutcome, toRejectedOutcome);
   const outcome = await callbackOrAbort(callback, signal);
-  if (timer !== undefined) clearTimeout(timer);
+  cancelTimer?.();
 
   if (outcome.kind === 'aborted' || deadlineElapsed(context, signal)) {
     return abortedHookOutcome(context, signal, startTime, callback);
