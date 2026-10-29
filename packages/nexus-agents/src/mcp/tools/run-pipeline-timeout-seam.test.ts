@@ -86,9 +86,9 @@ async function runDryRun(extra: Record<string, unknown>): Promise<string> {
   });
   // Hold the fake clock until the vote is running: the stages before it do
   // real I/O, and advancing the clock under them would time THEM out instead.
-  // `performance` is not faked, so this bound is real wall time.
-  const waitUntil = performance.now() + 20_000;
-  while (!voteStarted && !settled && performance.now() < waitUntil) {
+  // hrtime stays real while performance and timers are advanced together below.
+  const waitUntil = process.hrtime.bigint() + 20_000_000_000n;
+  while (!voteStarted && !settled && process.hrtime.bigint() < waitUntil) {
     await new Promise((r) => setImmediate(r));
   }
   if (!voteStarted) throw new Error(`vote stage never started: ${String(settled)}`);
@@ -100,7 +100,8 @@ async function runDryRun(extra: Record<string, unknown>): Promise<string> {
 describe('run_pipeline stage deadlines (#6730)', () => {
   beforeEach(() => {
     // setImmediate stays real: the helper yields on it while real I/O runs.
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    // Fake performance alongside timers so deadline checks share the virtual clock.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
     installStagesWithSlowVote();
   });
 
