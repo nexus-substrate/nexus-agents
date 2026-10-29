@@ -8,6 +8,7 @@ import { captureAcceptanceRequest } from './acceptance-binding.js';
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
+import { classifyCapacityFailure } from '../adapters/rate-limit-detector.js';
 import type { DevPipelineStages } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
 import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../security/quality-gate.js';
@@ -83,6 +84,23 @@ async function gatherResearch(
   const analyze = await analyzeGaps(topic);
   throwIfAborted(signal, 'Research aborted');
   return buildResearchContext(discover, analyze, topic);
+}
+
+function recordPlanOutcome(
+  sessionId: string | undefined,
+  result: Awaited<ReturnType<typeof runExpert>>
+): string | undefined {
+  const failure = classifyCapacityFailure(result.error ?? '');
+  const outcome = outcomeFieldsFromBridge(result);
+  recordOutcome({
+    sessionId,
+    taskId: 'plan',
+    category: 'architecture',
+    ...outcome,
+    ...(result.error !== undefined ? { error: failure.safeMessage } : {}),
+    ...(failure.durable && outcome.cli === undefined ? { cli: 'unknown' } : {}),
+  });
+  return failure.durable ? failure.safeMessage : undefined;
 }
 
 export function createResearchStage(deps: StageDeps): DevPipelineStages['research'] {
@@ -176,12 +194,7 @@ export function createPlanStage({
       durationMs: r.durationMs,
       model: r.model,
     });
-    recordOutcome({
-      sessionId: config.sessionId,
-      taskId: 'plan',
-      category: 'architecture',
-      ...outcomeFieldsFromBridge(r),
-    });
+    const failure = recordPlanOutcome(config.sessionId, r);
     await postProgress(
       config,
       'Plan',
@@ -189,6 +202,7 @@ export function createPlanStage({
     );
     // A failed bridge can echo the request; never turn it into a generated plan.
     // Successful empty plans still reach the pipeline's explicit empty-plan status.
+    if (!r.success && failure !== undefined) throw new Error(`Planning failed: ${failure}`);
     if (!r.success) throw new Error('Planning failed: expert call unsuccessful');
     return r.text;
   };
