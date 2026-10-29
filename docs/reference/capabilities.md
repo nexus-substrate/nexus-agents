@@ -5,7 +5,7 @@ audience: user
 
 # Repository Capabilities Index
 
-**Package Version:** 15.2.0
+**Package Version:** 15.3.0
 **Generator:** `scripts/generate-repo-index.ts`
 
 > This file is auto-generated. Do not edit manually.

@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 15.3.0
+
+### Minor Changes
+
+- [#7708](https://github.com/nexus-substrate/nexus-agents/pull/7708) [`021d1e3`](https://github.com/nexus-substrate/nexus-agents/commit/021d1e384a617331214480f106627cc5f4f9b652) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Enforce the shared graph deadline across preconditions, node handlers, and verification hooks. Timed-out hooks now abort cooperatively, report failure, and remain observed until actual settlement.
+
+### Patch Changes
+
+- [#7709](https://github.com/nexus-substrate/nexus-agents/pull/7709) [`0c0cb7b`](https://github.com/nexus-substrate/nexus-agents/commit/0c0cb7b48d9b3dfb47512a6ef2f70b35615c9f1d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Suppress futile retries for long-horizon individual quotas and preserve a sanitized planning failure cause.
+
 ## 15.2.0
 
 ### Minor Changes
