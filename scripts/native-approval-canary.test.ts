@@ -232,6 +232,20 @@ describe('protected native canary workflow wiring', () => {
     expect(hasWorkflowStep(workflow.jobs.preflight, 'uses', 'actions/upload-artifact@')).toBe(true);
   });
 
+  it('reads public workflow run history anonymously while retaining the complete-history guard', () => {
+    const run = readPreflightWorkflow().jobs.preflight?.steps.find(
+      (step) => step.run?.includes('native-approval-canary.yml/runs') === true
+    )?.run;
+    expect(run).toContain('runs=$(curl --disable --fail --silent --show-error --max-time 20');
+    expect(run).toContain(
+      'https://api.github.com/repos/nexus-substrate/nexus-agents/actions/workflows/native-approval-canary.yml/runs?branch=main&per_page=100'
+    );
+    expect(run).not.toContain('Authorization:');
+    expect(run).not.toContain('GH_TOKEN');
+    expect(run).toContain('.total_count == (.workflow_runs | length) and .total_count <= 100');
+    expect(run).toContain('.actor.id == 14303249 or .actor.id == 41898282');
+  });
+
   it('isolates explicit canary dispatch behind its own permission and receipt', () => {
     const workflow = readPreflightWorkflow();
     const dispatch = workflow.jobs['dispatch-canary'];
