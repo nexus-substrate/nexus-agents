@@ -27,6 +27,10 @@ export interface NodeHookContext {
   readonly nodeId: string;
   readonly state: Readonly<GraphState>;
   readonly stepNumber: number;
+  /** Cooperative cancellation for the current hook and its execution deadline. */
+  readonly signal?: AbortSignal | undefined;
+  /** Monotonic deadline shared by all phases in one graph execution. */
+  readonly deadlineAt?: number | undefined;
 }
 
 /**
@@ -168,6 +172,10 @@ export interface NodeContext {
    * Empty object when not resuming. Frozen.
    */
   readonly resumeValues: Readonly<Record<string, unknown>>;
+  /** Cooperative cancellation for the node and its execution deadline. */
+  readonly signal?: AbortSignal | undefined;
+  /** Monotonic deadline shared by all phases in one graph execution. */
+  readonly deadlineAt?: number | undefined;
 }
 
 /** Allowed return shapes for a NodeHandler. */
@@ -341,6 +349,11 @@ export interface GraphExecuteOptions {
   readonly signal?: AbortSignal;
   readonly timeout?: number;
   /**
+   * Monotonic absolute deadline set by executeGraph for hook phases.
+   * @internal
+   */
+  readonly deadlineAt?: number | undefined;
+  /**
    * Maximum node executions. A parallel super-step starts only when its full
    * batch fits within the remaining budget.
    */
@@ -468,6 +481,18 @@ export type GraphEvent =
       readonly hookName: string;
       readonly hookPhase: 'precondition' | 'verify';
       readonly error: string;
+      readonly stepNumber: number;
+      readonly timestamp: number;
+    }
+  | {
+      /** A timed-out hook settled after the graph already reported its failure. */
+      readonly type: 'hook_late_settlement';
+      readonly nodeId: string;
+      readonly hookName: string;
+      readonly hookPhase: 'precondition' | 'verify';
+      readonly outcome: 'resolved' | 'rejected';
+      readonly durationMs: number;
+      readonly error?: string;
       readonly stepNumber: number;
       readonly timestamp: number;
     }

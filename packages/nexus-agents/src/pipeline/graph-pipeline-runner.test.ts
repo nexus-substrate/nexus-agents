@@ -450,7 +450,8 @@ describe('stage deadlines (#6730)', () => {
   beforeEach(() => {
     voteStarted = false;
     // setImmediate stays real: runWithClock yields on it while earlier stages run.
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    // Fake performance alongside timers so deadline checks share the virtual clock.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
   });
 
   afterEach(() => {
@@ -487,9 +488,9 @@ describe('stage deadlines (#6730)', () => {
     });
     // Hold the fake clock until the vote is running, so only the vote's
     // deadline is exercised; then step it until the run settles.
-    // `performance` is not faked, so this bound is real wall time.
-    const waitUntil = performance.now() + 20_000;
-    while (!voteStarted && !settled && performance.now() < waitUntil) {
+    // hrtime stays real while performance and timers are advanced together below.
+    const waitUntil = process.hrtime.bigint() + 20_000_000_000n;
+    while (!voteStarted && !settled && process.hrtime.bigint() < waitUntil) {
       await new Promise((r) => setImmediate(r));
     }
     if (!voteStarted) throw new Error('vote stage never started');

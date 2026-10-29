@@ -42,11 +42,43 @@ import {
 } from './graph-events.js';
 import type { PreconditionOutcome } from './graph-hooks.js';
 import { runPreconditions, runVerification } from './graph-hooks.js';
+import {
+  graphTimeoutError,
+  isGraphTimeoutAbort,
+  scheduleDeadlineTimer,
+} from './graph-hook-deadline.js';
 import { categorizeOutcomeError } from '../outcomes/outcome-types.js';
 import { coarsenFailureCategory, defaultRetryable } from '../../mcp/error-envelope.js';
 import type { ErrorCategory } from '../../mcp/error-envelope.js';
 
 const logger = createLogger({ component: 'GraphExecutor' });
+
+function createExecutionScope(
+  options: GraphExecuteOptions | undefined,
+  startTime: number
+): { readonly options: GraphExecuteOptions | undefined; dispose(): void } {
+  const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  const deadlineAt = startTime + timeout;
+  const deadlineController = new AbortController();
+  const cancelTimeoutTimer =
+    Number.isFinite(timeout) && timeout >= 0
+      ? scheduleDeadlineTimer(timeout, () => {
+          deadlineController.abort(
+            graphTimeoutError(`Graph execution timed out after ${String(timeout)}ms`)
+          );
+        })
+      : undefined;
+  const signal =
+    options?.signal === undefined
+      ? deadlineController.signal
+      : AbortSignal.any([options.signal, deadlineController.signal]);
+  return {
+    options: { ...options, signal, deadlineAt },
+    dispose: () => {
+      cancelTimeoutTimer?.();
+    },
+  };
+}
 
 /**
  * Structural guard for a `PolicyBlockedError` thrown by a policy gate node
@@ -168,15 +200,27 @@ export async function executeGraph(
   initialInputs: Readonly<GraphState>,
   options?: GraphExecuteOptions
 ): Promise<Result<GraphExecutionResult, Error>> {
+  if (Number.isNaN(options?.timeout)) {
+    return err(new Error('Graph timeout must not be NaN'));
+  }
   const startTime = getTimeProvider().now();
+  const execution = createExecutionScope(options, startTime);
+  try {
+    return await executeGraphInScope(graph, initialInputs, execution.options, startTime);
+  } finally {
+    execution.dispose();
+  }
+}
+
+async function executeGraphInScope(
+  graph: CompiledGraph,
+  initialInputs: Readonly<GraphState>,
+  options: GraphExecuteOptions | undefined,
+  startTime: number
+): Promise<Result<GraphExecutionResult, Error>> {
   const initialState = initializeState(graph, initialInputs);
-
-  // Phase 3 of #2792 — read unified memory context at graph start and stash
-  // under a well-known key so node implementations can consume it without
-  // a second fetch. Best-effort: failure is logged and silently produces
-  // an empty context.
+  // Best-effort context enrichment remains inside the shared execution budget.
   await populateUnifiedContextOnState(initialState, options);
-
   const ctx: ExecutionContext = {
     state: initialState,
     allResults: [],
@@ -186,25 +230,32 @@ export async function executeGraph(
     resumeValues: options?.resumeValues ?? {},
     pendingInterrupt: undefined,
   };
-
   tryResumeFromCheckpoint(ctx, options);
-
   const loopResult = await runSuperStepLoop(graph, ctx, startTime, options);
   if (loopResult !== undefined) return loopResult;
+  const finalInterrupt = checkInterrupt(
+    startTime,
+    options?.timeout ?? DEFAULT_TIMEOUT_MS,
+    options?.signal
+  );
+  if (finalInterrupt !== undefined) {
+    return finalInterrupt as Result<GraphExecutionResult, Error>;
+  }
+  return completeGraphExecution(ctx, options, startTime);
+}
 
+function completeGraphExecution(
+  ctx: ExecutionContext,
+  options: GraphExecuteOptions | undefined,
+  startTime: number
+): Result<GraphExecutionResult, Error> {
   const totalDurationMs = getTimeProvider().now() - startTime;
-
   logger.info('Graph execution complete', {
     stepsExecuted: ctx.stepsExecuted,
     durationMs: totalDurationMs,
   });
-
-  // The halt state has to be known BEFORE the event is emitted.
-  // `runSuperStepLoop` returns `undefined` on the interrupt path, which is the
-  // same "loop ended normally" signal as running out of runnable nodes, so this
-  // used to publish a completion and only then discover it must return a
-  // `halted` checkpoint. `halted` lives on the returned `Result`, which an
-  // `onEvent` consumer such as the audit bridge never sees.
+  // Determine the halt state before emitting; `halted` lives on the returned
+  // result and would otherwise be invisible to event-only consumers.
   const wasHalted = ctx.pendingInterrupt !== undefined;
   emitExecutionComplete(
     ctx.stepsExecuted,
@@ -213,7 +264,6 @@ export async function executeGraph(
     options,
     wasHalted
   );
-
   if (ctx.pendingInterrupt !== undefined) {
     const halted = saveInterruptCheckpoint(ctx, options);
     return ok({
@@ -224,7 +274,6 @@ export async function executeGraph(
       ...(halted !== undefined ? { halted } : {}),
     });
   }
-
   return ok({
     finalState: ctx.state,
     nodeResults: ctx.allResults,
@@ -412,6 +461,9 @@ function checkInterrupt(
     return err(new Error(`Graph execution timed out after ${String(timeout)}ms`));
   }
   if (signal?.aborted === true) {
+    if (isGraphTimeoutAbort(signal)) {
+      return err(new Error(`Graph execution timed out after ${String(timeout)}ms`));
+    }
     return err(new Error('Graph execution aborted'));
   }
   return undefined;
@@ -432,6 +484,10 @@ async function runSuperStepLoop(
     if (ctx.runnableIds.length > maxSteps - ctx.stepsExecuted) break;
 
     await executeSuperStep(graph, ctx, options);
+    const completedPastBudget = checkInterrupt(startTime, timeout, signal);
+    if (completedPastBudget !== undefined) {
+      return completedPastBudget as Result<GraphExecutionResult, Error>;
+    }
     if (ctx.pendingInterrupt !== undefined) return undefined;
   }
 
@@ -738,11 +794,12 @@ function preconditionFailedResult(
   startTime: number
 ): NodeResult {
   const failed = results.find((r) => !r.passed);
+  const timedOut = results.some((result) => result.timedOut === true || result.aborted === true);
   return {
     nodeId,
     stateUpdates: {},
     durationMs: getTimeProvider().now() - startTime,
-    status: 'skipped',
+    status: timedOut ? 'failed' : 'skipped',
     error: `Precondition '${failed?.name ?? 'unknown'}' failed: ${failed?.error ?? 'unknown'}`,
   };
 }
@@ -782,8 +839,7 @@ interface ExecVerifyArgs {
 /** Executes node handler with verification, returning the NodeResult. */
 async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult> {
   const { node, nodeId, state, startTime, nodeCtx, options } = args;
-  const nodeTimeout = node.timeout ?? options?.timeout ?? DEFAULT_TIMEOUT_MS;
-  const returned = await withTimeout(node.handler(state, nodeCtx), nodeTimeout);
+  const returned = await runNodeHandler(node, state, nodeCtx, options);
   const handlerDuration = getTimeProvider().now() - startTime;
   const { stateUpdates, interrupt, gotoTarget } = extractNodeOutput(returned);
 
@@ -807,8 +863,10 @@ async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult
       durationMs: getTimeProvider().now() - startTime,
       status: 'failed',
       error: `Verification failed: ${verifyResult.error ?? 'unknown'}`,
-      // Post-step verification is a domain check — re-running won't change it.
-      ...failureClassification('business'),
+      // Deadline/cancellation failures are transient execution failures, not domain checks.
+      ...failureClassification(
+        verifyResult.timedOut === true || verifyResult.aborted === true ? 'transient' : 'business'
+      ),
     };
   }
 
@@ -819,6 +877,53 @@ async function executeWithVerification(args: ExecVerifyArgs): Promise<NodeResult
     status: 'success',
     ...(gotoTarget !== undefined ? { gotoTarget } : {}),
   };
+}
+
+async function runNodeHandler(
+  node: GraphNode,
+  state: Readonly<GraphState>,
+  nodeCtx: NodeContext,
+  options?: GraphExecuteOptions
+): Promise<NodeReturn> {
+  const timeout = resolveNodeTimeout(node, options);
+  if (Number.isNaN(timeout)) throw new Error('Node timeout must not be NaN');
+  if (timeout <= 0) throw new Error('Graph execution timed out before node handler');
+
+  const controller = new AbortController();
+  const signal =
+    options?.signal === undefined
+      ? controller.signal
+      : AbortSignal.any([options.signal, controller.signal]);
+  throwIfAborted(signal);
+  const cancelTimer = Number.isFinite(timeout)
+    ? scheduleDeadlineTimer(timeout, () => {
+        controller.abort(new Error(`Node timed out after ${String(timeout)}ms`));
+      })
+    : undefined;
+  try {
+    const context = {
+      ...nodeCtx,
+      signal,
+      ...(options?.deadlineAt === undefined ? {} : { deadlineAt: options.deadlineAt }),
+    };
+    return await withTimeout(node.handler(state, context), timeout);
+  } finally {
+    cancelTimer?.();
+  }
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (!signal.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new Error('Graph execution aborted before node handler');
+}
+
+function resolveNodeTimeout(node: GraphNode, options?: GraphExecuteOptions): number {
+  const configured = node.timeout ?? options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  const remaining =
+    options?.deadlineAt === undefined ? configured : options.deadlineAt - getTimeProvider().now();
+  return Math.min(configured, remaining);
 }
 
 /**
@@ -983,7 +1088,7 @@ function filterValidNodes(graph: CompiledGraph, ids: string[]): string[] {
 }
 
 function isTimedOut(startTime: number, timeout: number): boolean {
-  return getTimeProvider().now() - startTime > timeout;
+  return getTimeProvider().now() - startTime >= timeout;
 }
 
 function dedupe(ids: string[]): string[] {
@@ -991,18 +1096,19 @@ function dedupe(ids: string[]): string[] {
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  if (!Number.isFinite(ms)) return promise;
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const cancelTimer = scheduleDeadlineTimer(ms, () => {
       reject(new Error(`Node timed out after ${String(ms)}ms`));
-    }, ms);
+    });
 
     promise
       .then((result) => {
-        clearTimeout(timer);
+        cancelTimer();
         resolve(result);
       })
       .catch((error: unknown) => {
-        clearTimeout(timer);
+        cancelTimer();
         reject(error instanceof Error ? error : new Error(String(error)));
       });
   });

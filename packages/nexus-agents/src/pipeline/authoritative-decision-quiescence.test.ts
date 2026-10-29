@@ -8,6 +8,8 @@ import { EventBus } from './event-bus.js';
 import { PipelineRunner } from './pipeline-runner.js';
 import { PluginRegistry } from './plugin-registry.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
+import type { NodeHook } from '../orchestration/graph/graph-types.js';
+import { ok } from '../core/index.js';
 
 const PIPELINE_TIMEOUT_MS = 1_000;
 
@@ -174,5 +176,212 @@ describe('authoritative attempt ownership after node timeout', () => {
       ok: true,
       value: { success: false, error: expect.stringContaining('AdmissionConflictError') },
     });
+  });
+
+  it('keeps a timed-out graph hook owned until it settles through PipelineRunner', async () => {
+    const storageDir = mkdtempSync(join(tmpdir(), 'nexus-unsettled-hook-'));
+    directories.push(storageDir);
+    let release: () => void = () => {
+      throw new Error('Missing hook test barrier');
+    };
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let active = 0;
+    let markEntered: (() => void) | undefined;
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    const registry = new PluginRegistry();
+    registry.register({
+      manifest: {
+        id: 'test:pending',
+        version: '1.0.0',
+        description: 'Hook timeout owner fixture',
+        stages: ['execute'],
+        requiredCapabilities: [],
+        trustLevel: 'core',
+        experimental: false,
+      },
+      validateConfig: () => ({ ok: true, value: undefined }),
+      execute: () => Promise.resolve({ success: true, outputArtifacts: [], metadata: {} }),
+    });
+    const runner = new PipelineRunner();
+    const compiled = runner.compile(planFixture(), { pluginRegistry: registry });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) throw new Error(compiled.error);
+
+    const nodes = new Map(compiled.value.graph.nodes);
+    const stageNode = nodes.get('pending-plugin');
+    if (stageNode === undefined) throw new Error('Missing compiled test stage');
+    const pendingHook: NodeHook = async () => {
+      active++;
+      markEntered?.();
+      try {
+        await barrier;
+        return ok(undefined);
+      } finally {
+        active--;
+      }
+    };
+    nodes.set(stageNode.id, {
+      ...stageNode,
+      preconditions: [{ name: 'pending-hook', hook: pendingHook }],
+    });
+    const pipeline = {
+      ...compiled.value,
+      graph: { ...compiled.value.graph, nodes },
+    };
+    const task = taskFixture();
+    const store = new AuthoritativeDecisionStore({ storageDir });
+
+    try {
+      const firstExecution = runner.execute(pipeline, task, {
+        decisionStore: store,
+        decisionAttemptId: 'hook-first',
+        timeout: 25,
+      });
+      await entered;
+      const first = await firstExecution;
+      expect(first).toMatchObject({
+        ok: true,
+        value: {
+          success: false,
+          error: expect.stringContaining('UnsettledExecutionError'),
+        },
+      });
+      expect(active).toBe(1);
+
+      const retry = await runner.execute(pipeline, task, {
+        decisionStore: store,
+        decisionAttemptId: 'hook-retry',
+        timeout: 25,
+      });
+      expect(retry).toMatchObject({
+        ok: true,
+        value: { success: false, error: expect.stringContaining('AdmissionConflictError') },
+      });
+      expect(active).toBe(1);
+    } finally {
+      release();
+      await barrier;
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
+    expect(active).toBe(0);
+  });
+
+  it('times out a finite precondition through PipelineRunner before invoking the stage', async () => {
+    const storageDir = mkdtempSync(join(tmpdir(), 'nexus-slow-precondition-'));
+    directories.push(storageDir);
+    let stageCalls = 0;
+    const registry = new PluginRegistry();
+    registry.register({
+      manifest: {
+        id: 'test:pending',
+        version: '1.0.0',
+        description: 'Precondition deadline fixture',
+        stages: ['execute'],
+        requiredCapabilities: [],
+        trustLevel: 'core',
+        experimental: false,
+      },
+      validateConfig: () => ({ ok: true, value: undefined }),
+      execute: () => {
+        stageCalls++;
+        return Promise.resolve({ success: true, outputArtifacts: [], metadata: {} });
+      },
+    });
+    const runner = new PipelineRunner();
+    const compiled = runner.compile(planFixture(), { pluginRegistry: registry });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) throw new Error(compiled.error);
+
+    const nodes = new Map(compiled.value.graph.nodes);
+    const stageNode = nodes.get('pending-plugin');
+    if (stageNode === undefined) throw new Error('Missing compiled test stage');
+    nodes.set(stageNode.id, {
+      ...stageNode,
+      preconditions: [
+        {
+          name: 'finite-slow-precondition',
+          hook: async () => {
+            await new Promise<void>((resolve) => setTimeout(resolve, 100));
+            return ok(undefined);
+          },
+        },
+      ],
+    });
+    const pipeline = {
+      ...compiled.value,
+      graph: { ...compiled.value.graph, nodes },
+    };
+    const result = await runner.execute(pipeline, taskFixture(), {
+      decisionStore: new AuthoritativeDecisionStore({ storageDir }),
+      decisionAttemptId: 'slow-precondition',
+      timeout: 25,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { success: false, error: expect.stringContaining('UnsettledExecutionError') },
+    });
+    expect(stageCalls).toBe(0);
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  });
+
+  it('reports a slow verification through PipelineRunner without announcing success', async () => {
+    const storageDir = mkdtempSync(join(tmpdir(), 'nexus-slow-verification-'));
+    directories.push(storageDir);
+    const registry = new PluginRegistry();
+    registry.register({
+      manifest: {
+        id: 'test:pending',
+        version: '1.0.0',
+        description: 'Verification deadline fixture',
+        stages: ['execute'],
+        requiredCapabilities: [],
+        trustLevel: 'core',
+        experimental: false,
+      },
+      validateConfig: () => ({ ok: true, value: undefined }),
+      execute: () => Promise.resolve({ success: true, outputArtifacts: [], metadata: {} }),
+    });
+    const runner = new PipelineRunner();
+    const compiled = runner.compile(planFixture(), { pluginRegistry: registry });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) throw new Error(compiled.error);
+
+    const nodes = new Map(compiled.value.graph.nodes);
+    const stageNode = nodes.get('pending-plugin');
+    if (stageNode === undefined) throw new Error('Missing compiled test stage');
+    nodes.set(stageNode.id, {
+      ...stageNode,
+      verify: async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        return ok(undefined);
+      },
+    });
+    const pipeline = {
+      ...compiled.value,
+      graph: { ...compiled.value.graph, nodes },
+    };
+    const eventBus = new EventBus();
+    const result = await runner.execute(pipeline, taskFixture(), {
+      decisionStore: new AuthoritativeDecisionStore({ storageDir, eventBus }),
+      decisionAttemptId: 'slow-verification',
+      eventBus,
+      timeout: 25,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { success: false, error: expect.stringContaining('UnsettledExecutionError') },
+    });
+    const completedEvents = eventBus.query({ type: 'pipeline.completed' });
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0]).toMatchObject({ type: 'pipeline.completed', success: false });
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
   });
 });
