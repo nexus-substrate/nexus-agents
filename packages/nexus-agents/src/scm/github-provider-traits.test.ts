@@ -8,6 +8,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GitHubProvider } from './github-provider.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
+import type { IScmReviewer } from './types.js';
 import {
   GitHubReviewer,
   GitHubUserInfo,
@@ -243,6 +245,174 @@ describe('GitHubReviewer', () => {
       const callArgs = mockExecFile.mock.calls[0] as unknown[];
       const args = callArgs[1] as string[];
       expect(args).toContain('event=REQUEST_CHANGES');
+    });
+  });
+
+  describe('createReviewAtCommit', () => {
+    const head = 'a'.repeat(40);
+    const response = (): {
+      id: number;
+      commit_id: string;
+      state: string;
+      user: { id: number; login: string; type: string };
+    } => ({
+      id: 73,
+      commit_id: head,
+      state: 'APPROVED',
+      user: { id: 41898282, login: 'github-actions[bot]', type: 'Bot' },
+    });
+
+    it.each([
+      ['approve', 'APPROVE', 'APPROVED'],
+      ['request_changes', 'REQUEST_CHANGES', 'CHANGES_REQUESTED'],
+      ['comment', 'COMMENT', 'COMMENTED'],
+    ] as const)(
+      'binds %s to the requested commit and returns a parsed receipt',
+      async (decision, event, state) => {
+        mockExecFile.mockResolvedValue({ stdout: JSON.stringify({ ...response(), state }) });
+
+        const result = await reviewer.createReviewAtCommit(42, 'Canary review', decision, head);
+
+        expect(result).toEqual({
+          ok: true,
+          value: {
+            id: 73,
+            commitId: head,
+            state,
+            reviewerId: 41898282,
+            reviewerLogin: 'github-actions[bot]',
+            reviewerType: 'Bot',
+          },
+        });
+        expect(mockExecFile).toHaveBeenCalledTimes(1);
+        const [command, args, options] = mockExecFile.mock.calls[0] as [
+          string,
+          string[],
+          { timeout: number; maxBuffer: number; env?: Record<string, string> },
+        ];
+        expect(command).toBe('gh');
+        expect(args).toEqual(
+          expect.arrayContaining([
+            'api',
+            'repos/owner/repo/pulls/42/reviews',
+            '--method',
+            'POST',
+            `event=${event}`,
+            `commit_id=${head}`,
+            'body=Canary review',
+          ])
+        );
+        // Compare only fixture token and public limits: failed assertions must not print inherited env.
+        expect({
+          timeout: options.timeout,
+          maxBuffer: options.maxBuffer,
+          token: options.env?.['GH_TOKEN'],
+        }).toEqual({
+          timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
+          maxBuffer: 10 * 1024 * 1024,
+          token: 'test-token',
+        });
+      }
+    );
+
+    it.each([
+      '',
+      'short',
+      'a'.repeat(39),
+      'a'.repeat(41),
+      'A'.repeat(40),
+      'z'.repeat(40),
+      `${head}\n`,
+    ])('refuses invalid commit identity %j before any subprocess', async (commitId) => {
+      const result = await reviewer.createReviewAtCommit(42, 'Canary review', 'approve', commitId);
+      expect(result.ok).toBe(false);
+      expect(mockExecFile.mock.calls.length).toBe(0);
+    });
+
+    it.each([{ value: null }, { value: [head] }, { value: { toString: () => head } }])(
+      'refuses non-string commit identities before any subprocess',
+      async ({ value }) => {
+        expect(
+          (
+            await reviewer.createReviewAtCommit(
+              42,
+              'Canary review',
+              'approve',
+              value as unknown as string
+            )
+          ).ok
+        ).toBe(false);
+        expect(mockExecFile.mock.calls.length).toBe(0);
+      }
+    );
+
+    it.each([
+      ['empty', ''],
+      ['invalid JSON', 'not JSON'],
+      ['missing fields', '{}'],
+      ['missing review ID', JSON.stringify({ ...response(), id: undefined })],
+      ['invalid review ID', JSON.stringify({ ...response(), id: 0 })],
+      ['different commit', JSON.stringify({ ...response(), commit_id: 'b'.repeat(40) })],
+      ['different state', JSON.stringify({ ...response(), state: 'COMMENTED' })],
+      ['missing reviewer', JSON.stringify({ ...response(), user: undefined })],
+      [
+        'invalid reviewer ID',
+        JSON.stringify({ ...response(), user: { ...response().user, id: 0 } }),
+      ],
+      [
+        'empty reviewer login',
+        JSON.stringify({ ...response(), user: { ...response().user, login: '' } }),
+      ],
+      [
+        'unknown reviewer type',
+        JSON.stringify({ ...response(), user: { ...response().user, type: 'Unknown' } }),
+      ],
+    ])(
+      'refuses a %s receipt instead of claiming successful review creation',
+      async (_name, stdout) => {
+        mockExecFile.mockResolvedValue({ stdout });
+        expect((await reviewer.createReviewAtCommit(42, 'Canary review', 'approve', head)).ok).toBe(
+          false
+        );
+        expect(mockExecFile).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it('propagates subprocess failure through the shared transport', async () => {
+      mockExecFile.mockRejectedValue(
+        Object.assign(new Error('review denied'), { stderr: 'forbidden' })
+      );
+      const result = await reviewer.createReviewAtCommit(42, 'Canary review', 'approve', head);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('gh api failed');
+        expect(result.error.context).toMatchObject({
+          endpoint: 'repos/owner/repo/pulls/42/reviews',
+          stderr: 'forbidden',
+        });
+      }
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves legacy implementations without the optional capability', () => {
+      const legacy: IScmReviewer = {
+        getPullRequestDetail: reviewer.getPullRequestDetail.bind(reviewer),
+        getIssueDetail: reviewer.getIssueDetail.bind(reviewer),
+        createReview: reviewer.createReview.bind(reviewer),
+        listCommentDetails: reviewer.listCommentDetails.bind(reviewer),
+      };
+      expect(legacy.createReviewAtCommit).toBeUndefined();
+    });
+
+    it('wires the optional capability through the canonical full provider', async () => {
+      mockExecFile.mockResolvedValue({ stdout: JSON.stringify(response()) });
+      const provider = createFullGitHubProvider('owner/repo');
+      expect(provider.createReviewAtCommit).toBeTypeOf('function');
+      if (provider.createReviewAtCommit === undefined)
+        throw new Error('Missing commit-bound review capability');
+      expect((await provider.createReviewAtCommit(42, 'Canary review', 'approve', head)).ok).toBe(
+        true
+      );
     });
   });
 

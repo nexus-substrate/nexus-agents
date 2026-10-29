@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "paths": [
+    "packages/nexus-agents/src/config/subprocess-timeouts.ts",
+    "packages/nexus-agents/src/core/result.ts",
+    "packages/nexus-agents/src/governance/native-approval-canary-diagnostics.ts",
+    "packages/nexus-agents/src/governance/native-approval-canary-evidence.ts",
+    "packages/nexus-agents/src/governance/native-approval-canary-execute.ts",
+    "packages/nexus-agents/src/governance/native-approval-canary-files.ts",
+    "packages/nexus-agents/src/governance/native-approval-canary-github.ts",
+    "packages/nexus-agents/src/governance/native-approval-canary-read.ts",
+    "packages/nexus-agents/src/governance/native-approval-canary.ts",
+    "packages/nexus-agents/src/scm/github-api-transport.ts",
+    "packages/nexus-agents/src/scm/github-review-receipt.ts",
+    "packages/nexus-agents/src/scm/github-review-writer.ts",
+    "packages/nexus-agents/src/scm/types.ts",
+    "scripts/governor-section.ts",
+    "scripts/native-approval-canary.ts",
+    "scripts/script-paths.ts"
+  ]
+}

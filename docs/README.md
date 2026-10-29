@@ -271,26 +271,27 @@ For contributors building on the control plane and operators running it.
 | [TOOL_DEVELOPMENT.md](./development/TOOL_DEVELOPMENT.md)                       | Adding MCP tools                | Canonical |
 | [MEMORY_DEVELOPMENT.md](./development/MEMORY_DEVELOPMENT.md)                   | Memory system extensions        | Canonical |
 | [CLI_DELEGATION_GUIDE.md](./development/CLI_DELEGATION_GUIDE.md)               | CLI adapter patterns            | Canonical |
-| [CONTRIBUTION_GUIDE.md](./development/CONTRIBUTION_GUIDE.md)                   | PR workflow, git conventions    | Canonical |
+| [CONTRIBUTION_GUIDE.md](./development/CONTRIBUTION_GUIDE.md)                   | Test prerequisites, PR workflow | Canonical |
 | [SHELL_TESTING_ANTI_PATTERNS.md](./development/SHELL_TESTING_ANTI_PATTERNS.md) | Shell testing pitfalls to avoid | Canonical |
 | [PACKAGED_VS_REPO_ONLY.md](./development/PACKAGED_VS_REPO_ONLY.md)             | What ships to npm vs repo-only  | Canonical |
 | [CLI_UX_QUALITY_GATE.md](./development/CLI_UX_QUALITY_GATE.md)                 | CLI UX pre-release checklist    | Canonical |
 
 ### Operations & runbooks
 
-| Document                                                                           | Description                        | Status    |
-| ---------------------------------------------------------------------------------- | ---------------------------------- | --------- |
-| [acceptance-bound-resume-migration.md](./ops/acceptance-bound-resume-migration.md) | Recover blocked pipeline resumes   | Canonical |
-| [docops-spec.md](./ops/docops-spec.md)                                             | Canonical DocOps pipeline spec     | Canonical |
-| [docops-manifest.json](./ops/docops-manifest.json)                                 | DocOps enforcement manifest        | Canonical |
-| [docs-inventory.md](./ops/docs-inventory.md)                                       | Documentation inventory            | Canonical |
-| [release-changeset-race.md](./ops/release-changeset-race.md)                       | Publish-race runbook (#2382)       | Canonical |
-| [tmpfs-exhaustion.md](./ops/tmpfs-exhaustion.md)                                   | Scratch-exhaustion runbook (#4488) | Canonical |
-| [git-housekeeping.md](./ops/git-housekeeping.md)                                   | Git GC cleanup runbook (#3062)     | Canonical |
-| [governed-decision-cost.md](./ops/governed-decision-cost.md)                       | Governed-decision cost (#3857)     | Canonical |
-| [e2e-validation-2026-08-23.md](./ops/e2e-validation-2026-08-23.md)                 | E2E validation run, 2026-08-23     | Canonical |
-| [e2e-validation-2026-08-25.md](./ops/e2e-validation-2026-08-25.md)                 | E2E validation run, 2026-08-25     | Canonical |
-| [e2e-validation-2026-08-21.md](./ops/e2e-validation-2026-08-21.md)                 | E2E validation run, 2026-08-21     | Canonical |
+| Document                                                                           | Description                                | Status    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------ | --------- |
+| [acceptance-bound-resume-migration.md](./ops/acceptance-bound-resume-migration.md) | Recover blocked pipeline resumes           | Canonical |
+| [docops-spec.md](./ops/docops-spec.md)                                             | Canonical DocOps pipeline spec             | Canonical |
+| [docops-manifest.json](./ops/docops-manifest.json)                                 | DocOps enforcement manifest                | Canonical |
+| [docs-inventory.md](./ops/docs-inventory.md)                                       | Documentation inventory                    | Canonical |
+| [release-changeset-race.md](./ops/release-changeset-race.md)                       | Publish-race runbook (#2382)               | Canonical |
+| [native-approval-canary.md](./ops/native-approval-canary.md)                       | Native approval eligibility canary (#7621) | Canonical |
+| [tmpfs-exhaustion.md](./ops/tmpfs-exhaustion.md)                                   | Scratch-exhaustion runbook (#4488)         | Canonical |
+| [git-housekeeping.md](./ops/git-housekeeping.md)                                   | Git GC cleanup runbook (#3062)             | Canonical |
+| [governed-decision-cost.md](./ops/governed-decision-cost.md)                       | Governed-decision cost (#3857)             | Canonical |
+| [e2e-validation-2026-08-23.md](./ops/e2e-validation-2026-08-23.md)                 | E2E validation run, 2026-08-23             | Canonical |
+| [e2e-validation-2026-08-25.md](./ops/e2e-validation-2026-08-25.md)                 | E2E validation run, 2026-08-25             | Canonical |
+| [e2e-validation-2026-08-21.md](./ops/e2e-validation-2026-08-21.md)                 | E2E validation run, 2026-08-21             | Canonical |
 
 ### CI gates & coverage
 

@@ -45,6 +45,7 @@ export {
   type ScmIssueDetail,
   type ScmCommentDetail,
   type ScmReviewDecision,
+  type ScmReviewReceipt,
   type ScmUserMetadata,
   // Trait interfaces (ISP)
   type IScmReviewer,

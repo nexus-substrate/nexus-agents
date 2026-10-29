@@ -328,7 +328,7 @@ jobs:
           # no approvals stays empty. LABELS joins in its non-paginated --jq.
           set -o pipefail
           APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
-            --paginate --jq '.[] | select(.state == "APPROVED") | .user.login')
+            --paginate --jq '.[] | select(.state == "APPROVED") | select(.user.type == "User") | select(.user.login | type == "string") | select(.user.login | length > 0) | select(.user.login | test("\\[bot\\]$"; "i") | not) | .user.login')
           APPROVALS=$(jq -Rrs 'split("\n") | map(select(length > 0)) | unique |
             if length == 0 then "" else join(" ") + " " end' <<< "$APPROVALS")
           LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
@@ -583,7 +583,7 @@ jobs:
           else
             # Same pipe-free capture/global join as the pre-merge job (#5731).
             APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
-              --paginate --jq '.[] | select(.state == "APPROVED") | .user.login')
+              --paginate --jq '.[] | select(.state == "APPROVED") | select(.user.type == "User") | select(.user.login | type == "string") | select(.user.login | length > 0) | select(.user.login | test("\\[bot\\]$"; "i") | not) | .user.login')
             APPROVALS=$(jq -Rrs 'split("\n") | map(select(length > 0)) | unique |
               if length == 0 then "" else join(" ") + " " end' <<< "$APPROVALS")
             LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \

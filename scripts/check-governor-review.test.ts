@@ -935,6 +935,21 @@ describe('the governor path set matches what the docs claim (#5997)', () => {
     expect(REAL_PATTERNS).toContain('/.rules/');
   });
 
+  it.each([
+    'packages/nexus-agents/src/scm/types.ts',
+    'packages/nexus-agents/src/scm/github-provider-traits.ts',
+    'packages/nexus-agents/src/scm/github-review-receipt.ts',
+    'packages/nexus-agents/src/scm/github-api-transport.ts',
+    'packages/nexus-agents/src/scm/github-review-writer.ts',
+    'packages/nexus-agents/src/config/subprocess-timeouts.ts',
+    'packages/nexus-agents/src/core/result.ts',
+    'scripts/script-paths.ts',
+    'scripts/check-native-canary-source.ts',
+    'scripts/check-native-canary-snapshot.py',
+  ])('native canary SCM ingress %s requires governor ratification', (file) => {
+    expect(isGovernorPath(file, REAL_PATTERNS)).toBe(true);
+  });
+
   it('excludes /packages/nexus-agents/src/consensus/ — deliberately, per the #5997 panel', () => {
     // Not an oversight: routing an actively developed module through a human
     // gate is how gates come to be bypassed. If this is ever reversed, it must
@@ -1536,9 +1551,12 @@ describe('ratification evidence captures all pages without shell pipes (#5731)',
   const jobs = ['governor-ratification', 'governor-ratification-backstop'];
   interface Review {
     state: string;
-    user: { login: string };
+    user: { login: string; type?: string };
   }
-  const approved = (login: string): Review => ({ state: 'APPROVED', user: { login } });
+  const approved = (login: string): Review => ({
+    state: 'APPROVED',
+    user: { login, type: 'User' },
+  });
 
   function evidenceBody(job: string): string {
     const run = workflow.jobs[job]?.steps.find((step) => step.id === 'evidence')?.run ?? '';
@@ -1791,6 +1809,19 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/packages/nexus-agents/src/audit/',
     '/packages/nexus-agents/src/security/audit-bridge.ts',
     '/packages/nexus-agents/src/governance/',
+    '/packages/nexus-agents/src/scm/types.ts',
+    '/packages/nexus-agents/src/scm/github-provider-traits.ts',
+    '/packages/nexus-agents/src/scm/github-review-receipt.ts',
+    '/packages/nexus-agents/src/scm/github-api-transport.ts',
+    '/packages/nexus-agents/src/scm/github-review-writer.ts',
+    '/packages/nexus-agents/src/config/subprocess-timeouts.ts',
+    '/packages/nexus-agents/src/core/result.ts',
+    '/scripts/script-paths.ts',
+    '/scripts/check-native-canary-source.ts',
+    '/scripts/check-native-canary-snapshot.py',
+    '/.github/workflows/native-approval-canary.yml',
+    '/.github/workflows/native-approval-preflight.yml',
+    '/scripts/native-approval-canary.ts',
     '/scripts/inject-governance.ts',
     '/governance/',
     '/governance/claims-registry.*',
@@ -1853,7 +1884,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (44 entries)', () => {
+  it('the gate scripts, shadow locations, ledger producers and canary SCM ingress are governor-owned (57 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1885,7 +1916,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/scripts/aggregator-shape.ts');
     // #5125 owner decision: this bridge selects what enters the hash chain.
     expect(set).toContain('/packages/nexus-agents/src/security/audit-bridge.ts');
-    expect(set).toHaveLength(44);
+    expect(set).toHaveLength(57);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

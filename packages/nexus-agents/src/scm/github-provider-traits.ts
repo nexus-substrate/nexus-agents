@@ -17,12 +17,15 @@ import type {
   ScmIssueDetail,
   ScmCommentDetail,
   ScmReviewDecision,
+  ScmReviewReceipt,
   ScmUserMetadata,
   ScmFileChange,
 } from './types.js';
 import { ScmError } from './types.js';
 import { GitHubProvider } from './github-provider.js';
-import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
+import { createGitHubReviewWriter } from './github-review-writer.js';
+import { execGhApiRaw } from './github-api-transport.js';
+export { execGhApiRaw, resetGhTokenCache } from './github-api-transport.js';
 
 const logger = createLogger({ component: 'GitHubProviderTraits' });
 
@@ -88,77 +91,8 @@ interface GhApiUserJson {
 // gh API executor
 // ============================================================================
 
-/**
- * Resolves a GitHub token from env vars or `gh auth token`.
- * Caches the result to avoid repeated subprocess calls.
- */
-let cachedGhToken: string | undefined | null = null;
-let ghTokenPromise: Promise<string | undefined> | undefined;
-
-/** Reset the cached token (for testing). */
-export function resetGhTokenCache(): void {
-  cachedGhToken = null;
-  ghTokenPromise = undefined;
-}
-
-async function resolveGhToken(): Promise<string | undefined> {
-  if (cachedGhToken !== null) return cachedGhToken;
-
-  ghTokenPromise ??= resolveGhTokenImpl().finally(() => {
-    ghTokenPromise = undefined;
-  });
-  return ghTokenPromise;
-}
-
-async function resolveGhTokenImpl(): Promise<string | undefined> {
-  const envToken = process.env['GITHUB_TOKEN'] ?? process.env['GH_TOKEN'];
-  if (envToken !== undefined && envToken.length > 0) {
-    cachedGhToken = envToken;
-    return envToken;
-  }
-
-  try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const exec = promisify(execFile);
-    const { stdout } = await exec('gh', ['auth', 'token'], { timeout: 5_000 });
-    const token = stdout.trim();
-    cachedGhToken = token.length > 0 ? token : undefined;
-  } catch {
-    cachedGhToken = undefined;
-  }
-  return cachedGhToken;
-}
-
 /** Page size for paginated list endpoints; GitHub's maximum, and its default is 30. */
 const GH_API_PAGE_SIZE = 100;
-
-async function execGhApiRaw(args: readonly string[]): Promise<Result<string, ScmError>> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const exec = promisify(execFile);
-
-  // Inject token into subprocess environment to prevent keyring access failures
-  const token = await resolveGhToken();
-  const env = token !== undefined ? { ...process.env, GH_TOKEN: token } : undefined;
-
-  try {
-    const { stdout } = await exec('gh', [...args], {
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
-      ...(env !== undefined ? { env } : {}),
-    });
-    return ok(stdout.trim());
-  } catch (error) {
-    const execError = error as { message: string; stderr?: string };
-    return err(
-      new ScmError(`gh api failed: ${execError.message}`, 'github', undefined, {
-        endpoint: args[1] ?? '',
-        stderr: execError.stderr,
-      })
-    );
-  }
-}
 
 async function execGhApi(endpoint: string, method?: string): Promise<Result<string, ScmError>> {
   const args = ['api', endpoint];
@@ -297,39 +231,29 @@ export class GitHubReviewer implements IScmReviewer {
     body: string,
     decision: ScmReviewDecision
   ): Promise<Result<void, ScmError>> {
-    const repo = this.provider.repo;
-    const eventMap: Record<ScmReviewDecision, string> = {
-      approve: 'APPROVE',
-      request_changes: 'REQUEST_CHANGES',
-      comment: 'COMMENT',
-    };
+    logger.info('Creating review', { repo: this.provider.repo, prNumber, decision });
+    return createGitHubReviewWriter(this.provider.repo).createReview(prNumber, body, decision);
+  }
 
-    logger.info('Creating review', { repo, prNumber, decision });
-
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const exec = promisify(execFile);
-
-    try {
-      await exec(
-        'gh',
-        [
-          'api',
-          `repos/${repo}/pulls/${String(prNumber)}/reviews`,
-          '--method',
-          'POST',
-          '-f',
-          `body=${body}`,
-          '-f',
-          `event=${eventMap[decision]}`,
-        ],
-        { maxBuffer: 10 * 1024 * 1024, timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs }
-      );
-      return ok(undefined);
-    } catch (error) {
-      const execError = error as { message: string };
-      return err(new ScmError(`Failed to create review: ${execError.message}`, 'github'));
-    }
+  async createReviewAtCommit(
+    prNumber: number,
+    body: string,
+    decision: ScmReviewDecision,
+    commitId: string
+  ): Promise<Result<ScmReviewReceipt, ScmError>> {
+    const result = await createGitHubReviewWriter(this.provider.repo).createReviewAtCommit(
+      prNumber,
+      body,
+      decision,
+      commitId
+    );
+    logger.info('Commit-bound review result', {
+      repo: this.provider.repo,
+      prNumber,
+      decision,
+      ok: result.ok,
+    });
+    return result;
   }
 
   async getIssueDetail(issueNumber: number): Promise<Result<ScmIssueDetail, ScmError>> {
@@ -446,6 +370,7 @@ export function createFullGitHubProvider(
   return Object.assign(base, {
     getPullRequestDetail: reviewer.getPullRequestDetail.bind(reviewer),
     createReview: reviewer.createReview.bind(reviewer),
+    createReviewAtCommit: reviewer.createReviewAtCommit.bind(reviewer),
     getIssueDetail: reviewer.getIssueDetail.bind(reviewer),
     listCommentDetails: reviewer.listCommentDetails.bind(reviewer),
     fetchUserMetadata: userInfo.fetchUserMetadata.bind(userInfo),
