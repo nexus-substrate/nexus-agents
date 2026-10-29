@@ -48,7 +48,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: native-approval-preflight-${{ inputs.preflight_run_id }}
+          name: native-approval-dispatch-${{ inputs.preflight_run_id }}
           path: ${{ runner.temp }}/native-canary-preflight
           repository: ${{ github.repository }}
           run-id: ${{ inputs.preflight_run_id }}
@@ -65,7 +65,8 @@ jobs:
           [[ "$PREFLIGHT_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]]
           receipt=$(jq -ce --argjson run "$PREFLIGHT_RUN_ID" --argjson pr "$CANARY_PR" \
             --arg head "$CANARY_HEAD_SHA" --arg base "$CANARY_BASE_SHA" --arg main "$GITHUB_SHA" '
-            select(type == "object" and .status == "READABLE" and .complete == true and
+            select(type == "object" and .status == "CANARY_DISPATCH_AUTHORIZED" and
+            .canaryDispatchAuthorized == true and .complete == true and
             .repository == "nexus-substrate/nexus-agents" and .repositoryId == 1127393912 and
             .actorId == 14303249 and
             .event == "workflow_dispatch" and .ref == "refs/heads/main" and

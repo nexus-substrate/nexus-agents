@@ -1,7 +1,7 @@
 name: Native approval eligibility preflight
 
-# A readable protection receipt is required before this workflow dispatches the
-# one-shot canary. This workflow never posts a review.
+# The default path measures protection read access only. Canary dispatch is a
+# separate, explicit opt-in job with its own narrowly scoped write token.
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +17,11 @@ on:
         description: 'Exact trusted main SHA used as its direct parent'
         required: true
         type: string
+      dispatch_canary:
+        description: 'Explicitly dispatch the one-shot eligibility canary after preflight'
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -37,9 +42,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      actions: write
+      actions: read
     steps:
-      - name: Require readable protection and dispatch the receipt-bound canary
+      - name: Require readable protection and write a non-authorizing receipt
         env:
           GH_TOKEN: ${{ github.token }}
           GH_HOST: github.com
@@ -127,7 +132,7 @@ jobs:
             --arg actionsPermissionsSha "$actions_permissions_sha" \
             --argjson actor 14303249 --argjson repoId 1127393912 --argjson runId "$GITHUB_RUN_ID" \
             --argjson pr "$CANARY_PR" --argjson actionsMayApprove "$actions_may_approve" \
-            '{status:"READABLE",complete:true,repository:$repository,repositoryId:$repoId,
+          '{status:"READABLE",complete:true,canaryDispatchAuthorized:false,repository:$repository,repositoryId:$repoId,
               actorId:$actor,event:"workflow_dispatch",ref:"refs/heads/main",
               workflowPath:".github/workflows/native-approval-preflight.yml",
               workflowSha:$workflowSha,runId:$runId,runAttempt:1,observedMainSha:$main,
@@ -137,7 +142,7 @@ jobs:
               else {status:"unmeasured",reason:"api-read-unavailable"} end) }')
           mkdir -p "${RUNNER_TEMP}/native-canary-preflight"
           printf '%s\n' "$receipt" > "${RUNNER_TEMP}/native-canary-preflight/receipt.json"
-          printf '### Native approval protection preflight\n\nREADABLE; receipt-bound canary dispatch follows.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '### Native approval protection preflight\n\nREADABLE; no canary dispatch was attempted.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain the exact preflight receipt
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -145,7 +150,69 @@ jobs:
           path: ${{ runner.temp }}/native-canary-preflight/receipt.json
           if-no-files-found: error
           retention-days: 30
-      - name: Dispatch canary only after the receipt is retained
+  dispatch-canary:
+    needs: preflight
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.dispatch_canary == true &&
+      github.repository == 'nexus-substrate/nexus-agents' &&
+      github.repository_id == '1127393912' && github.actor_id == '14303249' &&
+      github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Create a distinct canary-dispatch receipt from the measured preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_HOST: github.com
+          PREFLIGHT_RUN_ID: ${{ github.run_id }}
+          PREFLIGHT_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CANARY_PR: ${{ inputs.pr_number }}
+          CANARY_HEAD_SHA: ${{ inputs.head_sha }}
+          CANARY_BASE_SHA: ${{ inputs.base_sha }}
+          RECEIPT_DIR: ${{ runner.temp }}/native-canary-dispatch
+        run: |
+          set -euo pipefail
+          [[ "$PREFLIGHT_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]]
+          [[ "$PREFLIGHT_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANARY_PR" =~ ^[1-9][0-9]{0,15}$ ]]
+          [[ "$CANARY_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANARY_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          mkdir -p "$RECEIPT_DIR/input"
+          gh run download "$PREFLIGHT_RUN_ID" --repo nexus-substrate/nexus-agents \
+            --name "native-approval-preflight-$PREFLIGHT_RUN_ID" \
+            --dir "$RECEIPT_DIR/input"
+          jq -e --argjson run "$PREFLIGHT_RUN_ID" --argjson pr "$CANARY_PR" \
+            --arg head "$CANARY_HEAD_SHA" --arg base "$CANARY_BASE_SHA" \
+            --arg workflow "$PREFLIGHT_WORKFLOW_SHA" '
+            type == "object" and .status == "READABLE" and .complete == true and
+            .canaryDispatchAuthorized == false and
+            .repository == "nexus-substrate/nexus-agents" and .repositoryId == 1127393912 and
+            .actorId == 14303249 and .event == "workflow_dispatch" and .ref == "refs/heads/main" and
+            .workflowPath == ".github/workflows/native-approval-preflight.yml" and
+            .workflowSha == $workflow and .runId == $run and .runAttempt == 1 and
+            .prNumber == $pr and .headSha == $head and .baseSha == $base and
+            .observedMainSha == $base and
+            (.querySha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+            (.responseSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+            (.actionsApprovalSetting | type == "object" and
+              (if .status == "readable" then
+                (.canApprovePullRequests | type == "boolean") and
+                (.responseSha256 | type == "string" and test("^[0-9a-f]{64}$"))
+              elif .status == "unmeasured" then .reason == "api-read-unavailable"
+              else false end))
+          ' "$RECEIPT_DIR/input/receipt.json" >/dev/null
+          jq '.status = "CANARY_DISPATCH_AUTHORIZED" | .canaryDispatchAuthorized = true' \
+            "$RECEIPT_DIR/input/receipt.json" > "$RECEIPT_DIR/receipt.json"
+      - name: Retain the explicit canary-dispatch receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-approval-dispatch-${{ github.run_id }}
+          path: ${{ runner.temp }}/native-canary-dispatch/receipt.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Dispatch the one-shot canary after the authorized receipt is retained
         env:
           GH_TOKEN: ${{ github.token }}
           GH_HOST: github.com

@@ -6,8 +6,9 @@ import { launcherFailure } from './native-approval-canary.js';
 
 const MAIN = 'b'.repeat(40);
 const RECEIPT = {
-  status: 'READABLE' as const,
+  status: 'CANARY_DISPATCH_AUTHORIZED' as const,
   complete: true as const,
+  canaryDispatchAuthorized: true as const,
   repository: P.repository,
   repositoryId: P.repositoryId,
   actorId: P.actorId,
@@ -54,6 +55,15 @@ describe('canary preflight provenance', () => {
     await expect(
       verifyCanaryPreflightRun(reader(RUN), { ...RECEIPT, actionsApprovalSetting: setting })
     ).resolves.toBeUndefined();
+  });
+
+  it.each([
+    { status: 'READABLE', canaryDispatchAuthorized: undefined },
+    { status: 'CANARY_DISPATCH_AUTHORIZED', canaryDispatchAuthorized: false },
+  ])('rejects a receipt that is not explicitly dispatch-authorized: %#', async (change) => {
+    await expect(
+      verifyCanaryPreflightRun(reader(RUN), { ...RECEIPT, ...change })
+    ).rejects.toThrow();
   });
 
   it.each([
