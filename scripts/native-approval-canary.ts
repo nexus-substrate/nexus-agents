@@ -69,6 +69,18 @@ const PreflightReceipt = z
     baseSha: Sha,
     querySha256: z.string().regex(/^[0-9a-f]{64}$/),
     responseSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    actionsApprovalSetting: z.discriminatedUnion('status', [
+      z
+        .object({
+          status: z.literal('readable'),
+          canApprovePullRequests: z.boolean(),
+          responseSha256: z.string().regex(/^[0-9a-f]{64}$/),
+        })
+        .strict(),
+      z
+        .object({ status: z.literal('unmeasured'), reason: z.literal('api-read-unavailable') })
+        .strict(),
+    ]),
   })
   .strict();
 type PreflightReceipt = z.infer<typeof PreflightReceipt>;
@@ -86,7 +98,7 @@ const PreflightRun = z
   })
   .loose();
 const PREFLIGHT_RUN_POLL_INTERVAL_MS = 2_000;
-const PREFLIGHT_RUN_MAX_POLLS = 10;
+const PREFLIGHT_RUN_MAX_POLLS = 60;
 const SOURCE_PATHS = [
   'scripts/native-approval-canary.ts',
   'packages/nexus-agents/src/scm/github-api-transport.ts',
@@ -192,6 +204,7 @@ function preflightEvidence(receipt: PreflightReceipt): Evidence['preflight'] {
     baseSha: receipt.baseSha,
     querySha256: receipt.querySha256,
     responseSha256: receipt.responseSha256,
+    actionsApprovalSetting: receipt.actionsApprovalSetting,
   };
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { verifyCanaryPreflightRun } from './native-approval-canary.js';
 import type { CanaryRead } from '../packages/nexus-agents/src/governance/native-approval-canary-read.js';
 import { NATIVE_CANARY_POLICY as P } from '../packages/nexus-agents/src/governance/native-approval-canary.js';
+import { launcherFailure } from './native-approval-canary.js';
 
 const MAIN = 'b'.repeat(40);
 const RECEIPT = {
@@ -22,6 +23,11 @@ const RECEIPT = {
   baseSha: MAIN,
   querySha256: 'c'.repeat(64),
   responseSha256: 'd'.repeat(64),
+  actionsApprovalSetting: {
+    status: 'readable' as const,
+    canApprovePullRequests: true,
+    responseSha256: 'e'.repeat(64),
+  },
 };
 const RUN = {
   id: 800,
@@ -39,6 +45,15 @@ const reader = (result: unknown): CanaryRead => vi.fn(() => Promise.resolve(resu
 describe('canary preflight provenance', () => {
   it('accepts only the successful owner run bound to the receipt', async () => {
     await expect(verifyCanaryPreflightRun(reader(RUN), RECEIPT)).resolves.toBeUndefined();
+  });
+
+  it.each([
+    { status: 'readable' as const, canApprovePullRequests: false, responseSha256: 'e'.repeat(64) },
+    { status: 'unmeasured' as const, reason: 'api-read-unavailable' as const },
+  ])('accepts a valid $status Actions approval-setting observation', async (setting) => {
+    await expect(
+      verifyCanaryPreflightRun(reader(RUN), { ...RECEIPT, actionsApprovalSetting: setting })
+    ).resolves.toBeUndefined();
   });
 
   it.each([
@@ -61,8 +76,8 @@ describe('canary preflight provenance', () => {
         .fn<CanaryRead>()
         .mockResolvedValueOnce({ ...RUN, status: 'in_progress', conclusion: null })
         .mockResolvedValueOnce(RUN);
-      const wait = vi.fn((milliseconds: number) =>
-        new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
+      const wait = vi.fn(
+        (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
       );
       const result = verifyCanaryPreflightRun(read, RECEIPT, wait);
       await vi.advanceTimersByTimeAsync(2_000);
@@ -79,6 +94,15 @@ describe('canary preflight provenance', () => {
     await expect(verifyCanaryPreflightRun(read, RECEIPT, async () => {})).rejects.toThrow(
       'preflight-run-completion-timeout'
     );
-    expect(read).toHaveBeenCalledTimes(10);
+    expect(read).toHaveBeenCalledTimes(60);
+  });
+
+  it.each([
+    'preflight-receipt-invalid',
+    'preflight-run-not-successful',
+    'preflight-run-completion-timeout',
+    'preflight-run-provenance-mismatch',
+  ])('retains the diagnostic code for %s', (code) => {
+    expect(launcherFailure(new Error(code)).diagnostic).toMatchObject({ code });
   });
 });

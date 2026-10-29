@@ -45,6 +45,18 @@ export const CanaryEvidenceSchema = z
       baseSha: Sha,
       querySha256: Digest,
       responseSha256: Digest,
+      actionsApprovalSetting: z.discriminatedUnion('status', [
+        z
+          .object({
+            status: z.literal('readable'),
+            canApprovePullRequests: z.boolean(),
+            responseSha256: Digest,
+          })
+          .strict(),
+        z
+          .object({ status: z.literal('unmeasured'), reason: z.literal('api-read-unavailable') })
+          .strict(),
+      ]),
     }).strict(),
     expected: z.object({ pr: Id, headSha: Sha, baseSha: Sha }).strict(),
     mainSha: Sha,

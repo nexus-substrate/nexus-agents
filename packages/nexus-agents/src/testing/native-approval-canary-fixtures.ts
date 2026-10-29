@@ -39,6 +39,11 @@ export const FIXTURE = {
     baseSha: BASE,
     querySha256: 'c'.repeat(64),
     responseSha256: 'd'.repeat(64),
+    actionsApprovalSetting: {
+      status: 'readable' as const,
+      canApprovePullRequests: true,
+      responseSha256: 'e'.repeat(64),
+    },
   },
   expected: { pr: 7630, headSha: HEAD, baseSha: BASE },
   mainSha: BASE,

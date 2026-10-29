@@ -74,7 +74,13 @@ jobs:
             .headSha == $head and .baseSha == $base and .observedMainSha == $main and
             .workflowSha == $main and
             (.querySha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-            (.responseSha256 | type == "string" and test("^[0-9a-f]{64}$")))
+            (.responseSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+            (.actionsApprovalSetting | type == "object" and
+              (if .status == "readable" then
+                (.canApprovePullRequests | type == "boolean") and
+                (.responseSha256 | type == "string" and test("^[0-9a-f]{64}$"))
+              elif .status == "unmeasured" then .reason == "api-read-unavailable"
+              else false end)))
           ' "$PREFLIGHT_RECEIPT_PATH")
           printf 'CANARY_PREFLIGHT_RECEIPT_JSON=%s\n' "$receipt" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,12 +114,26 @@ jobs:
           CANARY_HEAD_SHA: ${{ inputs.head_sha }}
           CANARY_BASE_SHA: ${{ inputs.base_sha }}
           CANARY_PREFLIGHT_RUN_ID: ${{ inputs.preflight_run_id }}
+      - name: Retain a fail-closed record if measurement did not produce one
+        if: always()
+        env:
+          FALLBACK_RESULT: ${{ runner.temp }}/native-canary-fallback/fallback.json
+        run: |
+          set -euo pipefail
+          if [[ -f "$GITHUB_WORKSPACE/.nexus-agents/native-approval-canary/result.json" ]]; then
+            exit 0
+          fi
+          mkdir -p "$(dirname "$FALLBACK_RESULT")"
+          jq -cn --arg runId "$GITHUB_RUN_ID" --arg actorId "$GITHUB_ACTOR_ID" \
+            '{status:"unmeasured",reason:"measurement-artifact-not-produced",writeAttempted:null,
+              workflowRunId:$runId,workflowActorId:$actorId}' > "$FALLBACK_RESULT"
       - name: Retain the measured evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-approval-eligibility-${{ github.run_id }}
           path: |
+            ${{ runner.temp }}/native-canary-fallback/fallback.json
             .nexus-agents/native-approval-canary/result.json
             .nexus-agents/native-approval-canary/source-closure.json
             .nexus-agents/native-approval-canary/source-snapshot.json

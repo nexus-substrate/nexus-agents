@@ -27,6 +27,11 @@ const PREFLIGHT = {
   baseSha: BASE,
   querySha256: 'c'.repeat(64),
   responseSha256: 'd'.repeat(64),
+  actionsApprovalSetting: {
+    status: 'readable',
+    canApprovePullRequests: true,
+    responseSha256: 'e'.repeat(64),
+  },
 };
 const ENV = {
   GITHUB_ACTIONS: 'true',
@@ -222,6 +227,35 @@ describe('protected native canary workflow wiring', () => {
     expect(upload).toBeGreaterThan(-1);
     expect(dispatch).toBeGreaterThan(upload);
   });
+
+  it('records whether GitHub Actions can approve pull requests', () => {
+    const source = readFileSync(
+      join(ROOT, '.github/workflows/native-approval-preflight.yml'),
+      'utf8'
+    );
+    expect(source).toContain('/actions/permissions/workflow');
+    expect(source).toContain('can_approve_pull_request_reviews');
+    expect(source).toContain('actionsApprovalSetting');
+    expect(source).toContain('actions_permissions_status=unmeasured');
+    expect(source).toContain('if timeout -k 2s 20s gh api');
+    expect(source).toContain("jq -r '.can_approve_pull_request_reviews'");
+    expect(source).not.toContain("jq -er '.can_approve_pull_request_reviews'");
+  });
+
+  it('pins the preflight protection query to the canonical runtime query', () => {
+    const workflow = readFileSync(
+      join(ROOT, '.github/workflows/native-approval-preflight.yml'),
+      'utf8'
+    );
+    const runtime = readFileSync(
+      join(ROOT, 'packages/nexus-agents/src/governance/native-approval-canary-read.ts'),
+      'utf8'
+    );
+    const canonical = /const PROTECTION_QUERY = `([^`]+)`;/.exec(runtime)?.[1];
+    const actual = /query='([^']+)'/s.exec(workflow)?.[1];
+    expect(canonical).toBeDefined();
+    expect(actual?.replace(/\s+/g, ' ').trim()).toBe(canonical?.replace(/\s+/g, ' ').trim());
+  });
 });
 
 it('runs the source import check before the credential-bearing launcher and retains both reports', () => {
@@ -265,10 +299,30 @@ it('runs the source import check before the credential-bearing launcher and reta
       .split('\n')
       .map((line) => line.trim())
   ).toEqual([
+    '${{ runner.temp }}/native-canary-fallback/fallback.json',
     '.nexus-agents/native-approval-canary/result.json',
     '.nexus-agents/native-approval-canary/source-closure.json',
     '.nexus-agents/native-approval-canary/source-snapshot.json',
   ]);
+});
+
+it('retains a fail-closed result when a dispatch fails before the launcher runs', () => {
+  const workflow = parseYaml(
+    readFileSync(join(ROOT, '.github/workflows/native-approval-canary.yml'), 'utf8')
+  ) as {
+    jobs: { eligibility: { steps: Array<{ name?: string; if?: string; run?: string }> } };
+  };
+  const steps = workflow.jobs.eligibility.steps;
+  const fallback = steps.findIndex(
+    (step) => step.name === 'Retain a fail-closed record if measurement did not produce one'
+  );
+  const upload = steps.findIndex((step) => step.name === 'Retain the measured evidence');
+  expect(fallback).toBeGreaterThan(-1);
+  expect(steps[fallback]?.if).toBe('always()');
+  expect(steps[fallback]?.run).toContain('measurement-artifact-not-produced');
+  expect(steps[fallback]?.run).toContain('writeAttempted:null');
+  expect(steps[fallback]?.run).not.toContain('writeAttempted:false');
+  expect(upload).toBeGreaterThan(fallback);
 });
 
 it('checks the isolated source snapshot immediately after clean checkout before all dependency tooling', () => {
