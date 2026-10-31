@@ -100,16 +100,22 @@ describe('dev pipeline scratch worktree', () => {
         if (role === 'code') {
           workspace = cwd;
           if (writeChanges) {
-            writeFileSync(join(cwd, 'scratch-6794.txt'), 'isolated change\n');
+            const packageDir = join(cwd, relative(dirname(dirname(repo)), repo));
+            writeFileSync(join(packageDir, 'scratch-6794.txt'), 'isolated change\n');
             writeFileSync(
-              join(cwd, 'package.json'),
-              readFileSync(join(cwd, 'package.json'), 'utf8') + '\n'
+              join(packageDir, 'package.json'),
+              readFileSync(join(packageDir, 'package.json'), 'utf8') + '\n'
             );
           }
         } else {
           expect(cwd).toBe(workspace);
           if (writeChanges)
-            expect(readFileSync(join(cwd, 'scratch-6794.txt'), 'utf8')).toContain('isolated');
+            expect(
+              readFileSync(
+                join(cwd, relative(dirname(dirname(repo)), repo), 'scratch-6794.txt'),
+                'utf8'
+              )
+            ).toContain('isolated');
         }
         return Promise.resolve({
           success: true,
@@ -120,12 +126,12 @@ describe('dev pipeline scratch worktree', () => {
       }
     );
     mocks.check.mockImplementation((cwd: string) => {
-      expect(cwd).toBe(workspace);
+      expect(cwd).toBe(join(workspace ?? '', relative(dirname(dirname(repo)), repo)));
       return vi.fn();
     });
     mocks.gate.mockResolvedValue({ verdict: 'pass', feedback: 'OK' });
     mocks.scan.mockImplementation((cwd: string) => {
-      expect(cwd).toBe(dirname(dirname(workspace ?? '')));
+      expect(cwd).toBe(workspace);
       return () => Promise.resolve({ verdict: 'pass', details: 'OK' });
     });
   });
@@ -164,12 +170,7 @@ describe('dev pipeline scratch worktree', () => {
         root: result.changes?.worktreePath,
       })
     );
-    expect(
-      join(
-        result.changes?.worktreePath ?? '',
-        relative(git('rev-parse', '--show-toplevel').trim(), repo)
-      )
-    ).toBe(workspace);
+    expect(result.changes?.worktreePath).toBe(workspace);
     expect(existsSync(result.changes?.worktreePath ?? '')).toBe(false);
     expect(git('worktree', 'list', '--porcelain')).not.toContain(result.changes?.worktreePath);
     expect({

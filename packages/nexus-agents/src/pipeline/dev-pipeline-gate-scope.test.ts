@@ -106,8 +106,7 @@ describe('dev pipeline security and capture scope', () => {
         writeFileSync(join(opts.workDir, changedFile), content);
         manifestAction?.(opts.workDir);
       } else {
-        expect(opts.workDir).toMatch(/\/packages\/app$/);
-        expect(opts.workDir).not.toBe(implementationDir);
+        expect(opts.workDir).toBe(implementationDir);
       }
       return Promise.resolve({ success: true, text: role === 'qa' ? 'PASS\nOK' : 'Implemented' });
     });

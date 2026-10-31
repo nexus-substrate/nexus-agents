@@ -56,6 +56,7 @@ export function createQaReviewStage({
   startStage,
   wrapper,
   acceptanceRun,
+  workspaceRoot,
 }: StageDeps): DevPipelineStages['qaReview'] {
   return async (task, implementation, signal) => {
     startStage(`qa-${task.id}`);
@@ -68,7 +69,7 @@ export function createQaReviewStage({
       acceptanceRequest: request,
       signal,
       accessMode: 'read-only-analysis',
-      workDir: config.scanTarget,
+      workDir: workspaceRoot ?? config.scanTarget,
       wrapper,
     });
     const { review: parsed, unmeasured } = readQaReview(r);
