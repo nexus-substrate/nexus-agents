@@ -5,6 +5,7 @@ import { CodexMcpAdapter } from './codex-mcp-adapter.js';
 import { isHostUnavailableCliError } from '../cli-error-helpers.js';
 import { createCodexSandboxPreflight } from '../codex-sandbox-preflight.js';
 import type { CodexSandboxPreflightResult } from '../codex-sandbox-preflight.js';
+import type { CommandWrapper } from '../exec-file-tree.js';
 
 const PANIC = 'filesystem-restricted execution requires bubblewrap to isolate app-server sockets';
 
@@ -152,5 +153,55 @@ describe.each([
     expect(
       (await adapter.execute({ content: 'review', accessMode: 'read-only-analysis' })).ok
     ).toBe(true);
+  });
+});
+
+describe('CodexCliAdapter wrapped read-only sandbox', () => {
+  it('refuses a wrapped task before using a healthy host probe or dispatching a model', async () => {
+    const sandboxProbe = vi.fn(() => Promise.resolve({ status: 'ok' as const }));
+    const adapter = new CodexCliAdapter({ sandboxProbe });
+    const initialize = vi.spyOn(adapter, 'initialize').mockResolvedValue();
+    const executeTask = vi.spyOn(adapter, 'executeTask').mockResolvedValue(ok({ text: 'unreviewed' }));
+    const wrapper: CommandWrapper = (command, args, options) => ({ command, args, options });
+
+    try {
+      const result = await adapter.execute({
+        content: 'review this change',
+        accessMode: 'read-only-analysis',
+        wrapper,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(isHostUnavailableCliError(result.error)).toBe(true);
+        expect(result.error.message).toContain('wrapped task');
+        expect(result.error.message).toContain('before model dispatch');
+      }
+      expect(sandboxProbe).not.toHaveBeenCalled();
+      expect(initialize).not.toHaveBeenCalled();
+      expect(executeTask).not.toHaveBeenCalled();
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it('preserves unwrapped Codex execution after a healthy host probe', async () => {
+    const adapter = new CodexCliAdapter({
+      sandboxProbe: () => Promise.resolve({ status: 'ok' }),
+    });
+    vi.spyOn(adapter, 'initialize').mockResolvedValue();
+    const executeTask = vi.spyOn(adapter, 'executeTask').mockResolvedValue(ok({ text: 'reviewed' }));
+
+    try {
+      const result = await adapter.execute({
+        content: 'review this change',
+        accessMode: 'read-only-analysis',
+      });
+
+      expect(result.ok).toBe(true);
+      expect(executeTask).toHaveBeenCalledOnce();
+    } finally {
+      await adapter.dispose();
+    }
   });
 });
