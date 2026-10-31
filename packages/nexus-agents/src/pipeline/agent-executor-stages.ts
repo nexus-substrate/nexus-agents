@@ -250,14 +250,8 @@ export function createDecomposeStage({
   };
 }
 
-export function createImplementStage({
-  config,
-  guard,
-  startStage,
-  wrapper,
-  acceptanceRun,
-  workspaceRoot,
-}: StageDeps): DevPipelineStages['implement'] {
+export function createImplementStage(deps: StageDeps): DevPipelineStages['implement'] {
+  const { config, guard, startStage, wrapper, acceptanceRun } = deps;
   return async (task, signal) => {
     const targets = validateImplementationTargets(task.writeTargets);
     if (targets === undefined) return 'No write requested; implementation was not dispatched.';
@@ -274,7 +268,7 @@ export function createImplementStage({
       signal,
       acceptanceRequest: request,
       accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
-      workDir: workspaceRoot ?? config.scanTarget,
+      workDir: deps.workspaceRoot ?? config.scanTarget,
       wrapper,
     });
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
