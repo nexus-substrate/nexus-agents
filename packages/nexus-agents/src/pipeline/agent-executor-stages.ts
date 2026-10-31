@@ -9,7 +9,7 @@ import { captureAcceptanceRequest } from './acceptance-binding.js';
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import { classifyCapacityFailure } from '../adapters/rate-limit-detector.js';
-import type { DevPipelineStages } from './dev-pipeline.js';
+import type { DevPipelineStages, PipelineTask } from './dev-pipeline.js';
 import { checkSecurityScan } from './security-gate.js';
 import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../security/quality-gate.js';
 import { executeDiscovery, ResearchDiscoverInputSchema } from '../mcp/tools/research-discover.js';
@@ -39,6 +39,7 @@ import {
   getWeatherContext,
 } from './agent-executor-context.js';
 import { parseTasksFromResponse } from './agent-executor-parsers.js';
+import { isAbsolute, win32 } from 'node:path';
 import {
   IMPLEMENT_ACCESS_MODE,
   implementQualitySignals,
@@ -220,7 +221,10 @@ export function createDecomposeStage({
     const request = captureAcceptanceRequest(
       acceptanceRun,
       'decompose',
-      `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`
+      `Decompose into tasks for implementation in a future fresh execution workspace.\n` +
+        `Each task must include writeTargets as either {"kind":"workspace-relative","paths":["path/from/workspace/root"]} or {"kind":"none"}.\n` +
+        `Targets must be portable relative paths from that future workspace root. Keep source files and absolute paths in description as references; never turn them into write targets.\n` +
+        `Return JSON: [{id,title,description,assignedTo,writeTargets}]\n\n${plan}`
     );
     const r = await runExpert(guard, 'pm', request.prompt, 'decompose', {
       signal,
@@ -239,6 +243,7 @@ export function createDecomposeStage({
       throw new Error('Decomposition failed: expert call unsuccessful');
     }
     const tasks = parseTasksFromResponse(r.text, plan);
+    tasks.forEach((task) => validateImplementationTargets(task.writeTargets));
     emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
     await postProgress(config, 'PM', `${String(tasks.length)} task(s)`);
     return tasks;
@@ -253,6 +258,8 @@ export function createImplementStage({
   acceptanceRun,
 }: StageDeps): DevPipelineStages['implement'] {
   return async (task, signal) => {
+    const targets = validateImplementationTargets(task.writeTargets);
+    if (targets === undefined) return 'No write requested; implementation was not dispatched.';
     startStage(`impl-${task.id}`, 'execute');
     await postProgress(config, `Code [${task.id}]`, task.title);
     const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
@@ -260,7 +267,7 @@ export function createImplementStage({
     const request = captureAcceptanceRequest(
       acceptanceRun,
       'implement',
-      `Implement:\n\n${task.title}\n${task.description}${fb}`
+      implementationPrompt(task, fb, targets)
     );
     const r = await runExpert(guard, 'code', request.prompt, task.id, {
       signal,
@@ -294,6 +301,48 @@ export function createImplementStage({
     if (r.success && r.text !== '') return implementStageText(r);
     throw new Error('Implementation failed: expert call unsuccessful or empty output');
   };
+}
+
+function validateImplementationTargets(
+  contract: PipelineTask['writeTargets']
+): string[] | undefined {
+  if (contract?.kind === 'none') return undefined;
+  if (contract?.kind !== 'workspace-relative' || contract.paths.length === 0)
+    throw new Error(
+      'Implementation write target contract is missing, unmeasured, or declares no writable targets'
+    );
+  const invalidTarget = contract.paths.find((target) => !isSafeWorkspaceTarget(target));
+  if (invalidTarget !== undefined)
+    throw new Error(`Invalid implementation write target: ${invalidTarget || '(empty)'}`);
+  return [...new Set(contract.paths)];
+}
+
+function isSafeWorkspaceTarget(target: string): boolean {
+  return (
+    target.length > 0 &&
+    !target.includes('\\') &&
+    !target.includes('\0') &&
+    !/[\u0001-\u001f\u007f]/u.test(target) &&
+    !target.includes(':') &&
+    !target.includes('$') &&
+    !target.startsWith('~') &&
+    !isAbsolute(target) &&
+    !win32.isAbsolute(target) &&
+    target.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+  );
+}
+
+function implementationPrompt(
+  task: PipelineTask,
+  feedback: string,
+  targets: readonly string[]
+): string {
+  return (
+    `Implement only within the declared workspace-relative write targets below. ` +
+    `Treat other paths in the description as references, not write targets.\n` +
+    `Workspace-relative write targets (JSON): ${JSON.stringify(targets)}\n\n` +
+    `${task.title}\n${task.description}${feedback}`
+  );
 }
 
 export { createQaReviewStage } from './agent-executor-qa.js';

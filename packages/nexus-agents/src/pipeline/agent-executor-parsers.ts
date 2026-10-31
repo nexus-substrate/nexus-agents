@@ -32,6 +32,7 @@ export function parseTasksFromResponse(response: string, fallbackPlan: string): 
         description: stringField(t, 'description', ''),
         assignedTo: 'coder' as const,
         status: 'pending' as const,
+        writeTargets: parseWriteTargets(t['writeTargets']),
       }));
     }
   } catch {
@@ -44,8 +45,24 @@ export function parseTasksFromResponse(response: string, fallbackPlan: string): 
       description: fallbackPlan,
       assignedTo: 'coder',
       status: 'pending',
+      writeTargets: { kind: 'unmeasured' },
     },
   ];
+}
+
+function parseWriteTargets(value: unknown): NonNullable<PipelineTask['writeTargets']> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return { kind: 'unmeasured' };
+  const record = value as Record<string, unknown>;
+  if (record['kind'] === 'none') return { kind: 'none' };
+  if (
+    record['kind'] === 'workspace-relative' &&
+    Array.isArray(record['paths']) &&
+    record['paths'].every((path: unknown) => typeof path === 'string')
+  ) {
+    return { kind: 'workspace-relative', paths: record['paths'] };
+  }
+  return { kind: 'unmeasured' };
 }
 
 type QaVerdict = QaReviewResult['verdict'];

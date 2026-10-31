@@ -58,6 +58,7 @@ function stages(directory = repo): DevPipelineStages {
         description: 'Add file',
         assignedTo: 'coder',
         status: 'pending',
+        writeTargets: { kind: 'workspace-relative', paths: ['src/new-file.ts'] },
       },
     ]),
   };

@@ -160,6 +160,7 @@ describe('dev pipeline security and capture scope', () => {
           description: 'Update fixture',
           assignedTo: 'coder',
           status: 'pending',
+          writeTargets: { kind: 'workspace-relative', paths: ['inside.ts'] },
         },
       ]),
     };

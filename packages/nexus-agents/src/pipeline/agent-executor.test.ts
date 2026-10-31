@@ -164,7 +164,7 @@ describe('createAgentStages — central workflow hub', () => {
     expect(await guarded.plan('task', 'research')).toBe('generated plan');
     mockExecuteExpert.mockResolvedValue({
       success: true,
-      text: '[{"id":"t","title":"omitted","description":"no baseline","assignedTo":"coder"}]',
+      text: '[{"id":"t","title":"omitted","description":"no baseline","assignedTo":"coder","writeTargets":{"kind":"workspace-relative","paths":["src/t.ts"]}}]',
       durationMs: 1,
     });
     const tasks = await guarded.decompose('generated plan');
@@ -297,6 +297,7 @@ describe('createAgentStages — central workflow hub', () => {
           description: 'Implement',
           assignedTo: 'coder',
           status: 'pending',
+          writeTargets: { kind: 'workspace-relative', paths: ['src/t.ts'] },
         })
       ).rejects.toThrow('Implementation failed: expert call unsuccessful');
     }
@@ -550,6 +551,7 @@ describe('createAgentStages — central workflow hub', () => {
         description: 'Desc',
         assignedTo: 'coder',
         status: 'pending',
+        writeTargets: { kind: 'workspace-relative', paths: ['src/t1.ts'] },
       });
 
       // Allow async fire-and-forget to settle
@@ -581,6 +583,7 @@ describe('createAgentStages — central workflow hub', () => {
           description: 'Desc',
           assignedTo: 'coder',
           status: 'pending',
+          writeTargets: { kind: 'workspace-relative', paths: ['src/t1.ts'] },
         })
       ).rejects.toThrow('Implementation failed: expert call unsuccessful');
     });
@@ -637,6 +640,7 @@ describe('createAgentStages — central workflow hub', () => {
       description: '',
       assignedTo: 'coder' as const,
       status: 'review' as const,
+      writeTargets: { kind: 'workspace-relative' as const, paths: ['src/q6776.ts'] },
     };
 
     function qaReply(over: Record<string, unknown>): void {
@@ -757,7 +761,7 @@ describe('createAgentStages — central workflow hub', () => {
           .mockResolvedValueOnce({
             ...call,
             expertType: 'pm',
-            text: '[{"id":"artifact-6858-unusual","title":"x","description":"y","assignedTo":"dev"}]',
+            text: '[{"id":"artifact-6858-unusual","title":"x","description":"y","assignedTo":"dev","writeTargets":{"kind":"workspace-relative","paths":["src/x.ts"]}}]',
           })
           .mockResolvedValueOnce({ ...call, text: 'implementation', expertType: 'code' })
           .mockResolvedValueOnce({ ...call, text: 'PASS', expertType: 'qa' });
@@ -785,7 +789,7 @@ describe('createAgentStages — central workflow hub', () => {
         .mockResolvedValueOnce({ ...routed, text: 'Plan v1', expertType: 'architecture' })
         .mockResolvedValueOnce({
           ...routed,
-          text: '[{"id":"t1","title":"x","description":"y","assignedTo":"dev"}]',
+          text: '[{"id":"t1","title":"x","description":"y","assignedTo":"dev","writeTargets":{"kind":"workspace-relative","paths":["src/x.ts"]}}]',
           expertType: 'pm',
         })
         .mockResolvedValueOnce({ ...routed, text: 'implementation done', expertType: 'code' });
@@ -1093,7 +1097,7 @@ describe('createAgentStages — central workflow hub', () => {
       mockExecuteExpert
         .mockResolvedValueOnce({
           success: true,
-          text: '[{"id":"t1","title":"x","description":"y","assignedTo":"dev"}]',
+          text: '[{"id":"t1","title":"x","description":"y","assignedTo":"dev","writeTargets":{"kind":"workspace-relative","paths":["src/x.ts"]}}]',
           durationMs: 80,
           expertType: 'pm',
           cli: 'codex',

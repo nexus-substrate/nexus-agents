@@ -108,6 +108,13 @@ const TaskSchema = z
     feedback: z.string().optional(),
     implementation: z.string().optional(),
     researchMaturity: z.number().min(0).max(1).optional(),
+    writeTargets: z
+      .discriminatedUnion('kind', [
+        z.object({ kind: z.literal('none') }).strict(),
+        z.object({ kind: z.literal('unmeasured') }).strict(),
+        z.object({ kind: z.literal('workspace-relative'), paths: z.array(z.string()) }).strict(),
+      ])
+      .optional(),
   })
   .strict();
 
@@ -122,6 +129,7 @@ export function checkpointTaskIdentities(tasks: readonly PipelineTask[]): {
     description: task.description,
     assignedTo: task.assignedTo,
     researchMaturity: task.researchMaturity,
+    writeTargets: task.writeTargets,
   }));
   const complete = tasks.map((task, i) => ({
     ...definitions[i],

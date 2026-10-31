@@ -130,6 +130,7 @@ describe('routed outcomes reach the distiller with their failures (#6521 I1)', (
       title: 'Implement',
       description: 'Do the work',
       assignedTo: 'coder',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
     };
     executeTaskMock.mockResolvedValueOnce(ARM_FAILURE).mockResolvedValue({
       ...ARM_SUCCESS,

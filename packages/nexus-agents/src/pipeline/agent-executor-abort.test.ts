@@ -9,6 +9,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const TASK = {
+  id: 't1',
+  title: 'x',
+  description: 'y',
+  assignedTo: 'coder',
+  status: 'pending',
+  writeTargets: { kind: 'workspace-relative', paths: ['src/x.ts'] },
+} as const;
+
 const bridgeResult = {
   success: true,
   text: 'ok',
@@ -18,7 +27,12 @@ const bridgeResult = {
 } as const;
 
 vi.mock('./expert-bridge.js', () => ({
-  executeExpert: vi.fn(() => Promise.resolve(bridgeResult)),
+  executeExpert: vi.fn((expertType: string) =>
+    Promise.resolve({
+      ...bridgeResult,
+      text: expertType === 'pm' ? JSON.stringify([TASK]) : bridgeResult.text,
+    })
+  ),
 }));
 vi.mock('../mcp/tools/consensus-vote.js', () => ({
   executeVoting: vi.fn().mockRejectedValue(new Error('voters unavailable')),
@@ -35,11 +49,14 @@ import { createBudgetGuard } from './budget-guard.js';
 import { executeExpert } from './expert-bridge.js';
 import { executeVoting } from '../mcp/tools/consensus-vote.js';
 
-const TASK = { id: 't1', title: 'x', description: 'y', assignedTo: 'coder', status: 'pending' };
-
 beforeEach(() => {
   vi.mocked(executeExpert).mockClear();
-  vi.mocked(executeExpert).mockImplementation(() => Promise.resolve(bridgeResult));
+  vi.mocked(executeExpert).mockImplementation((expertType: string) =>
+    Promise.resolve({
+      ...bridgeResult,
+      text: expertType === 'pm' ? JSON.stringify([TASK]) : bridgeResult.text,
+    })
+  );
   vi.mocked(executeVoting).mockClear();
   recordOutcomeMock.mockClear();
 });
@@ -86,8 +103,8 @@ describe('model-calling stages forward their signal (#6736)', () => {
 
     await stages.plan('task', 'research', undefined, signal);
     await stages.decompose('plan', signal);
-    await stages.implement(TASK as never, signal);
-    await stages.qaReview(TASK as never, 'impl', signal);
+    await stages.implement(TASK, signal);
+    await stages.qaReview(TASK, 'impl', signal);
 
     expect(expertSignals()).toEqual([signal, signal, signal, signal]);
   });

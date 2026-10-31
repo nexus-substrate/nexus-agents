@@ -366,6 +366,7 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
         description: 'Do work',
         assignedTo: 'coder' as const,
         status: 'pending' as const,
+        writeTargets: { kind: 'workspace-relative' as const, paths: ['src/history.ts'] },
       };
       coordinator.save({ type: 'decompose', tasks: [task] });
       coordinator.save({
@@ -462,7 +463,14 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
       coordinator.save({
         type: 'decompose',
         tasks: [
-          { id: 'one', title: 'Task', description: 'Work', assignedTo: 'coder', status: 'pending' },
+          {
+            id: 'one',
+            title: 'Task',
+            description: 'Work',
+            assignedTo: 'coder',
+            status: 'pending',
+            writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+          },
         ],
       });
       const file = join(directory, 'checkpoints', 'pipeline-subset-history.jsonl');
@@ -480,6 +488,7 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
                   description: 'Different work',
                   assignedTo: 'coder',
                   status: 'done',
+                  writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
                 },
               ],
         });
@@ -508,6 +517,7 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
           description: 'Work',
           assignedTo: 'coder' as const,
           status: 'pending' as const,
+          writeTargets: { kind: 'workspace-relative' as const, paths: ['src/first.ts'] },
         },
         {
           id: 'two',
@@ -515,6 +525,7 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
           description: 'Work',
           assignedTo: 'coder' as const,
           status: 'pending' as const,
+          writeTargets: { kind: 'workspace-relative' as const, paths: ['src/second.ts'] },
         },
       ];
       if (resumed) {
