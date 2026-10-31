@@ -256,6 +256,7 @@ export function createImplementStage({
   startStage,
   wrapper,
   acceptanceRun,
+  workspaceRoot,
 }: StageDeps): DevPipelineStages['implement'] {
   return async (task, signal) => {
     const targets = validateImplementationTargets(task.writeTargets);
@@ -273,7 +274,7 @@ export function createImplementStage({
       signal,
       acceptanceRequest: request,
       accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
-      workDir: config.scanTarget,
+      workDir: workspaceRoot ?? config.scanTarget,
       wrapper,
     });
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {

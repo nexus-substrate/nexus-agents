@@ -154,6 +154,17 @@ describe('implement stage access mode (#6792)', () => {
 });
 
 describe('portable implementation write targets (#7670)', () => {
+  it('runs package-scoped tasks from the scratch root used by declared write targets', async () => {
+    await createImplementStage({
+      ...deps(),
+      config: { scanTarget: '/scratch/packages/nexus-agents' },
+      workspaceRoot: '/scratch',
+    })(TASK);
+
+    const options = routedTask()['options'] as Record<string, unknown> | undefined;
+    expect(options?.['workDir']).toBe('/scratch');
+  });
+
   it('keeps absolute source references descriptive and names the portable target', async () => {
     executeTaskMock.mockResolvedValueOnce({
       ok: true,
