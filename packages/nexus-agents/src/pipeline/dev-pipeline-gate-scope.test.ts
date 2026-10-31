@@ -100,14 +100,14 @@ describe('dev pipeline security and capture scope', () => {
     content = 'export const shared = "TEST_BLOCKING";\n';
     mocks.expert.mockImplementation((role: string, _prompt: string, opts: { workDir: string }) => {
       expect(opts.workDir.startsWith(join(scratchRoot, 'vote-'))).toBe(true);
-      expect(opts.workDir).toMatch(/\/packages\/app$/);
       if (role === 'code') {
         implementationDir = opts.workDir;
-        mkdirSync(join(opts.workDir, '../..', changedFile, '..'), { recursive: true });
-        writeFileSync(join(opts.workDir, '../..', changedFile), content);
-        manifestAction?.(join(opts.workDir, '../..'));
+        mkdirSync(join(opts.workDir, changedFile, '..'), { recursive: true });
+        writeFileSync(join(opts.workDir, changedFile), content);
+        manifestAction?.(opts.workDir);
       } else {
-        expect(opts.workDir).toBe(implementationDir);
+        expect(opts.workDir).toMatch(/\/packages\/app$/);
+        expect(opts.workDir).not.toBe(implementationDir);
       }
       return Promise.resolve({ success: true, text: role === 'qa' ? 'PASS\nOK' : 'Implemented' });
     });
