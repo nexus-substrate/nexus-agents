@@ -6885,6 +6885,7 @@ InterfaceDeclaration PipelineTask
   readonly researchMaturity?: number | undefined
   readonly status: "done" | "in_progress" | "pending" | "rejected" | "review"
   readonly title: string
+  readonly writeTargets?: undefined | { readonly kind: "none"; } | { readonly kind: "unmeasured"; } | { readonly kind: "workspace-relative"; readonly paths: readonly string[]; }
 InterfaceDeclaration PipelineTemplate
   readonly dryRunStopAfter?: string | undefined
   readonly edges?: readonly PipelineEdge[] | undefined
