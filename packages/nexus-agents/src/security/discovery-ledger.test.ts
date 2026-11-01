@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { FindingSchema, ResolutionSchema, openFindings, readLedger } from './discovery-ledger.js';
+import {
+  FindingSchema,
+  ResolutionSchema,
+  findingDigest,
+  openFindings,
+  readLedger,
+} from './discovery-ledger.js';
 
 const finding = {
   timestamp: '2026-09-15T10:00:00-04:00',
@@ -248,5 +254,54 @@ describe('openFindings', () => {
       resolved: [],
       statusUnmeasured: [],
     });
+  });
+
+  it('disambiguates same-timestamp findings using content digest targets (#7652)', () => {
+    const rawFindingA = {
+      severity: 'low',
+      timestamp: '2000-01-01T00:00:00Z',
+      file: 'example/a.ts',
+      description: 'First finding',
+    };
+    const rawFindingB = {
+      severity: 'low',
+      timestamp: '2000-01-01T00:00:00Z',
+      file: 'example/b.ts',
+      description: 'Second finding',
+    };
+    const ledger = readLedger(
+      [JSON.stringify(rawFindingA), JSON.stringify(rawFindingB)].join('\n')
+    );
+    expect(ledger.findings).toHaveLength(2);
+    const [findingA, findingB] = ledger.findings;
+    expect(findingA).toBeDefined();
+    expect(findingB).toBeDefined();
+    const digestA = findingDigest(findingA!);
+    const digestB = findingDigest(findingB!);
+    expect(digestA).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(digestB).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(digestA).not.toBe(digestB);
+
+    const resA = ResolutionSchema.parse({
+      ...resolution,
+      target: digestA,
+    });
+    const statuses = openFindings(ledger.findings, [resA]);
+    expect(statuses.resolved).toEqual([findingA]);
+    expect(statuses.open).toEqual([findingB]);
+    expect(statuses.statusUnmeasured).toEqual([]);
+
+    // Target without sha256: prefix also matches
+    const hexDigestOnly = digestA.slice(7);
+    const resHex = ResolutionSchema.parse({
+      ...resolution,
+      target: hexDigestOnly,
+    });
+    expect(openFindings(ledger.findings, [resHex]).resolved).toEqual([findingA]);
+
+    // Fallback path when finding is constructed in memory without readLedger
+    const inMemoryFinding = FindingSchema.parse({ ...rawFindingA });
+    const inMemoryDigest = findingDigest(inMemoryFinding);
+    expect(inMemoryDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 });

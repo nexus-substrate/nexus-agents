@@ -1,5 +1,8 @@
 /** Parse the private discovery ledger without guessing whether a finding was closed. */
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
+
+const RAW_DIGEST = Symbol('rawDigest');
 
 /** Historical findings require only string severity; every other field passes through. */
 export const FindingSchema = z.looseObject({ severity: z.string() });
@@ -44,13 +47,25 @@ export interface FindingStatuses {
 }
 
 /** Classify JSON objects without treating an unfamiliar shape as invalid JSON. */
-function classifyRecord(value: unknown, line: number, records: LedgerRecords): void {
+function classifyRecord(
+  value: unknown,
+  line: number,
+  records: LedgerRecords,
+  rawDigest?: string
+): void {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     records.invalidLines.push(line);
     return;
   }
   const finding = FindingSchema.safeParse(value);
   if (finding.success) {
+    if (rawDigest !== undefined) {
+      Object.defineProperty(finding.data, RAW_DIGEST, {
+        value: rawDigest,
+        enumerable: false,
+        writable: false,
+      });
+    }
     records.findings.push(finding.data);
     return;
   }
@@ -76,12 +91,22 @@ export function readLedger(text: string): LedgerRecords {
   for (const [index, line] of lines.entries()) {
     try {
       const value: unknown = JSON.parse(line);
-      classifyRecord(value, index + 1, records);
+      const cleanLine = line.endsWith('\r') ? line.slice(0, -1) : line;
+      const rawDigest = `sha256:${createHash('sha256').update(cleanLine).digest('hex')}`;
+      classifyRecord(value, index + 1, records, rawDigest);
     } catch {
       records.invalidLines.push(index + 1);
     }
   }
   return records;
+}
+
+/** Compute or return the cryptographic content digest for a finding (#7652). */
+export function findingDigest(finding: Finding): string {
+  const recorded = (finding as Record<string | symbol, unknown>)[RAW_DIGEST];
+  if (typeof recorded === 'string') return recorded;
+  const canonical = JSON.stringify(finding, Object.keys(finding).sort());
+  return `sha256:${createHash('sha256').update(canonical).digest('hex')}`;
 }
 
 /** The first present identity field is authoritative; missing/non-string identities cannot be targeted. */
@@ -114,6 +139,14 @@ function hasInlineResolution(finding: Finding): boolean {
   );
 }
 
+function isResolvedFinding(finding: Finding, targets: ReadonlySet<string>): boolean {
+  if (hasInlineResolution(finding)) return true;
+  const identity = findingIdentity(finding);
+  if (identity !== undefined && targets.has(identity)) return true;
+  const digest = findingDigest(finding);
+  return targets.has(digest) || targets.has(digest.slice(7));
+}
+
 /** Closure events, canonical closed statuses and explicit inline closure evidence resolve findings. */
 export function openFindings(
   findings: readonly Finding[],
@@ -124,10 +157,8 @@ export function openFindings(
   if (findings.length === 0) return result;
   const targets = new Set(resolutions.map((resolution) => resolution.target));
   for (const finding of findings) {
-    const identity = findingIdentity(finding);
     const status = finding['status'];
-    const hasResolution = identity !== undefined && targets.has(identity);
-    if (hasResolution || hasInlineResolution(finding)) {
+    if (isResolvedFinding(finding, targets)) {
       result.resolved.push(finding);
     } else if (status === undefined || (typeof status === 'string' && OPEN_STATUSES.has(status))) {
       result.open.push(finding);
