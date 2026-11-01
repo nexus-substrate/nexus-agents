@@ -17,27 +17,40 @@ import {
 import { toPrReviewVote } from '../packages/nexus-agents/src/mcp/tools/pr-review-result-mapping.js';
 import { isFindingVerified } from '../packages/nexus-agents/src/mcp/tools/pr-review-findings.js';
 
-const WorkflowSchema = z.object({
-  jobs: z.record(
-    z.string(),
-    z.object({
-      steps: z.array(
-        z.object({
-          name: z.string().optional(),
-          run: z.string().optional(),
-          with: z.object({ script: z.string().optional() }).optional(),
-        })
-      ),
-    })
-  ),
+const StepSchema = z.object({
+  name: z.string().optional(),
+  uses: z.string().optional(),
+  run: z.string().optional(),
+  env: z.record(z.string(), z.unknown()).optional(),
+  with: z.record(z.string(), z.unknown()).optional(),
 });
-const workflow = WorkflowSchema.parse(
-  parse(readFileSync(join(process.cwd(), '.github/workflows/pr-review.yml'), 'utf8'))
+
+const JobSchema = z.object({
+  name: z.string().optional(),
+  needs: z.union([z.string(), z.array(z.string())]).optional(),
+  if: z.string().optional(),
+  permissions: z.record(z.string(), z.string()).optional(),
+  steps: z.array(StepSchema),
+});
+
+const WorkflowSchema = z.object({
+  name: z.string().optional(),
+  on: z.record(z.string(), z.unknown()).optional(),
+  permissions: z.record(z.string(), z.string()).optional(),
+  jobs: z.record(z.string(), JobSchema),
+});
+const rawWorkflowContent = readFileSync(
+  join(process.cwd(), '.github/workflows/pr-review.yml'),
+  'utf8'
 );
+const workflow = WorkflowSchema.parse(parse(rawWorkflowContent));
 const steps = Object.values(workflow.jobs).flatMap((job) => job.steps);
 const invocation = steps.find((step) => step.name === 'Run pr_review tool')?.run;
-const commentScript = steps.find((step) => step.name === 'Post review summary as PR comment')?.with
-  ?.script;
+const commentScript = (
+  steps.find((step) => step.name === 'Post review summary as PR comment')?.with as
+    | { script?: string }
+    | undefined
+)?.script;
 if (invocation === undefined || commentScript === undefined)
   throw new Error('Review steps missing');
 const heredoc = /NODE_EOF'\n([\s\S]*?)\n\s*NODE_EOF/.exec(invocation)?.[1];
@@ -51,6 +64,8 @@ const reviewScript = inlineScript.replace(
 const commentSource: string = commentScript;
 
 interface Result {
+  readonly prNumber?: number;
+  readonly headSha?: string;
   readonly summary: string;
   readonly verified: boolean;
   readonly reason?: string;
@@ -93,10 +108,45 @@ async function executeReview(
   return JSON.parse(output) as Result;
 }
 
-async function executeComment(result: Result): Promise<string> {
+interface ExecuteCommentOptions {
+  readonly artifactContent?: string | null;
+  readonly expectedPr?: string;
+  readonly expectedHeadSha?: string;
+}
+
+async function executeComment(
+  result: Result,
+  options: ExecuteCommentOptions = {}
+): Promise<string> {
   let body: string | undefined;
+  const boundResult = {
+    prNumber: 4334,
+    headSha: 'head-sha-123',
+    ...result,
+  };
+  const content =
+    options.artifactContent !== undefined
+      ? options.artifactContent
+      : JSON.stringify(boundResult);
+
   await (runInNewContext(`(async () => { ${commentSource} })()`, {
-    require: () => ({ readFileSync: () => JSON.stringify(result) }),
+    require: () => ({
+      readFileSync: () => {
+        if (content === null) {
+          throw new Error('ENOENT: no such file or directory');
+        }
+        return content;
+      },
+    }),
+    process: {
+      env: {
+        EXPECTED_PR: options.expectedPr ?? '4334',
+        EXPECTED_HEAD_SHA: options.expectedHeadSha ?? 'head-sha-123',
+      },
+      exit: (code: number) => {
+        throw new Error(`Process exited with code ${String(code)}`);
+      },
+    },
     github: {
       rest: {
         issues: {
@@ -195,5 +245,136 @@ describe('CI pr_review result and comment fidelity (#4334)', () => {
     const body = await executeComment({ summary: 'request_changes', verified: false, reviews: [] });
     expect(body).toContain('REQUEST CHANGES (UNVERIFIED — majority dissent)');
     expect(body).toContain('none produced a verified finding');
+  });
+});
+
+describe('PR review workflow security boundaries and isolation (#7696)', () => {
+  it('triggers on pull_request_target with labeled and synchronize', () => {
+    expect(workflow.on).toHaveProperty('pull_request_target');
+    expect(workflow.on).not.toHaveProperty('pull_request');
+    const prTarget = workflow.on?.['pull_request_target'] as { types?: string[] } | undefined;
+    expect(prTarget?.types).toContain('labeled');
+    expect(prTarget?.types).toContain('synchronize');
+  });
+
+  it('separates review analysis and comment posting into isolated jobs', () => {
+    expect(workflow.jobs).toHaveProperty('pr-review');
+    expect(workflow.jobs).toHaveProperty('post-comment');
+    const postJob = workflow.jobs['post-comment'];
+    expect(postJob?.needs).toBe('pr-review');
+  });
+
+  it('restricts pr-review job to read-only permissions and does not checkout PR head', () => {
+    const reviewJob = workflow.jobs['pr-review'];
+    expect(reviewJob?.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+    });
+    const checkouts =
+      reviewJob?.steps.filter((s) => s.uses?.startsWith('actions/checkout') ?? false) ?? [];
+    expect(checkouts.length).toBeGreaterThan(0);
+    for (const checkout of checkouts) {
+      const refVal = checkout.with?.['ref'];
+      const ref = typeof refVal === 'string' ? refVal : '';
+      expect(ref).not.toContain('head.sha');
+      expect(ref).not.toContain('head.ref');
+      expect(checkout.with?.['persist-credentials']).toBe(false);
+    }
+    const uploadStep = reviewJob?.steps.find(
+      (s) => s.uses?.startsWith('actions/upload-artifact') ?? false
+    );
+    expect(uploadStep).toBeDefined();
+  });
+
+  it('restricts post-comment job to write permissions without model secrets or repository checkout', () => {
+    const postJob = workflow.jobs['post-comment'];
+    expect(postJob?.permissions).toEqual({
+      'pull-requests': 'write',
+      issues: 'write',
+    });
+    const checkouts =
+      postJob?.steps.filter((s) => s.uses?.startsWith('actions/checkout') ?? false) ?? [];
+    expect(checkouts).toHaveLength(0);
+
+    const secretNames = [
+      'ANTHROPIC_API_KEY',
+      'OPENAI_API_KEY',
+      'GOOGLE_AI_API_KEY',
+      'OPENROUTER_API_KEY',
+    ];
+    for (const step of postJob?.steps ?? []) {
+      if (step.env !== undefined) {
+        for (const secret of secretNames) {
+          expect(step.env).not.toHaveProperty(secret);
+        }
+      }
+    }
+
+    const downloadStep = postJob?.steps.find(
+      (s) => s.uses?.startsWith('actions/download-artifact') ?? false
+    );
+    expect(downloadStep).toBeDefined();
+  });
+
+  it('fails closed when artifact is missing, empty, or malformed without calling createComment', async () => {
+    // Missing artifact (ENOENT)
+    await expect(
+      executeComment(
+        { summary: 'approve', verified: true, reviews: [] },
+        { artifactContent: null }
+      )
+    ).rejects.toThrow();
+
+    // Empty artifact
+    await expect(
+      executeComment(
+        { summary: 'approve', verified: true, reviews: [] },
+        { artifactContent: '' }
+      )
+    ).rejects.toThrow();
+
+    // Malformed JSON artifact
+    await expect(
+      executeComment(
+        { summary: 'approve', verified: true, reviews: [] },
+        { artifactContent: 'not valid json' }
+      )
+    ).rejects.toThrow();
+
+    // Mismatched PR number
+    await expect(
+      executeComment(
+        { summary: 'approve', verified: true, reviews: [] },
+        {
+          artifactContent: JSON.stringify({
+            prNumber: 9999,
+            headSha: 'head-sha-123',
+            summary: 'approve',
+            verified: true,
+            reviews: [],
+          }),
+          expectedPr: '4334',
+          expectedHeadSha: 'head-sha-123',
+        }
+      )
+    ).rejects.toThrow();
+
+    // Mismatched head SHA
+    await expect(
+      executeComment(
+        { summary: 'approve', verified: true, reviews: [] },
+        {
+          artifactContent: JSON.stringify({
+            prNumber: 4334,
+            headSha: 'wrong-head-sha',
+            summary: 'approve',
+            verified: true,
+            reviews: [],
+          }),
+          expectedPr: '4334',
+          expectedHeadSha: 'head-sha-123',
+        }
+      )
+    ).rejects.toThrow();
   });
 });
