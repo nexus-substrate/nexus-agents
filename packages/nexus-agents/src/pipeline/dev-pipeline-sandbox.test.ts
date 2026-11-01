@@ -97,21 +97,23 @@ it('pins private package stores and drops host IPC environment variables', () =>
     { scratch: '/scratch', gitDir: '/source/.git/worktrees/scratch', temp: '/private-temp' }
   );
   const env = invocation.options.env;
-  expect(env?.['npm_config_store_dir']).toBe('/private-temp/pnpm-store');
-  expect(env?.['npm_config_cache']).toBe('/private-temp/npm-cache');
-  expect(env?.['npm_config_cache_dir']).toBe('/private-temp/pnpm-cache');
-  expect(env?.['YARN_CACHE_FOLDER']).toBe('/private-temp/yarn-cache');
-  expect(env?.['npm_config_package_import_method']).toBe('copy');
-  expect(env?.['npm_config_enable_global_virtual_store']).toBe('false');
-  expect(env?.['NPM_CONFIG_CACHE']).toBeUndefined();
+  expect(env).toBeDefined();
+  if (env === undefined) return;
+  expect(env['npm_config_store_dir']).toBe('/private-temp/pnpm-store');
+  expect(env['npm_config_cache']).toBe('/private-temp/npm-cache');
+  expect(env['npm_config_cache_dir']).toBe('/private-temp/pnpm-cache');
+  expect(env['YARN_CACHE_FOLDER']).toBe('/private-temp/yarn-cache');
+  expect(env['npm_config_package_import_method']).toBe('copy');
+  expect(env['npm_config_enable_global_virtual_store']).toBe('false');
+  expect(env['NPM_CONFIG_CACHE']).toBeUndefined();
+  expect(env['XDG_RUNTIME_DIR']).toBe('/private-temp/runtime');
   for (const name of [
     'DBUS_SESSION_BUS_ADDRESS',
     'DBUS_SYSTEM_BUS_ADDRESS',
     'DOCKER_HOST',
-    'XDG_RUNTIME_DIR',
     'SSH_AUTH_SOCK',
   ]) {
-    expect(env?.[name]).toBeUndefined();
+    expect(env[name]).toBeUndefined();
   }
   expect(invocation.args).toContain('--tmpfs');
   expect(invocation.args).toContain('/run/user');
@@ -379,6 +381,93 @@ describe('scratch OS sandbox', () => {
         const store = invocation.options.env?.['npm_config_store_dir'];
         expect(store).toBeDefined();
         expect(existsSync(store ?? '')).toBe(true);
+      } finally {
+        sandbox.dispose();
+      }
+    }
+  );
+
+  it.skipIf(!bwrapAvailable)(
+    'installs a frozen lockfile with pnpm 12 store operation lock redirected to private runtime',
+    async () => {
+      const packageDir = join(root, 'fixture-package-pnpm12');
+      mkdirSync(packageDir);
+      writeFileSync(
+        join(packageDir, 'package.json'),
+        JSON.stringify({ name: 'sandbox-fixture-12', version: '1.0.0', main: 'index.js' })
+      );
+      writeFileSync(join(packageDir, 'index.js'), 'module.exports = 7011;');
+      const tarball = join(root, 'fixture-12.tgz');
+      execFileSync('tar', ['-czf', tarball, '-C', root, 'fixture-package-pnpm12']);
+      writeFileSync(
+        join(scratch.path, 'package.json'),
+        JSON.stringify({ dependencies: { 'sandbox-fixture-12': `file:${tarball}` } })
+      );
+      rmSync(join(scratch.path, 'package-lock.json'));
+      execFileSync('pnpm', ['install', '--lockfile-only', '--ignore-scripts'], {
+        cwd: scratch.path,
+        env: hermeticGitEnv(),
+        timeout: 30_000,
+      });
+
+      const pnpm12Launcher = join(root, 'pnpm12-launcher');
+      const launcherScript = `#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const uid = process.getuid ? process.getuid() : 1000;
+const lockDirName = 'pnpm-store-operation-locks-' + uid;
+
+let targetBase;
+if (process.env.XDG_RUNTIME_DIR) {
+  targetBase = process.env.XDG_RUNTIME_DIR;
+} else if (fs.existsSync('/run/user/' + uid)) {
+  targetBase = '/run/user/' + uid;
+} else {
+  targetBase = '/tmp';
+}
+
+const lockDir = path.join(targetBase, lockDirName);
+try {
+  fs.mkdirSync(lockDir, { recursive: true });
+  fs.chmodSync(lockDir, 0o700);
+  const fd = fs.openSync(path.join(lockDir, 'all-stores.lock'), 'w');
+  fs.closeSync(fd);
+} catch (err) {
+  process.stderr.write(
+    'Error: ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\\n\\n' +
+    '  × installing dependencies\\n' +
+    '  ╰─▶ Failed to open the store operation lock at "pnpm-store-operation-locks":\\n' +
+    '      ' + (err.message || 'Read-only file system (os error 30)') + '\\n'
+  );
+  process.exit(1);
+}
+
+const realPnpm = process.env.REAL_PNPM_BIN || 'pnpm';
+const res = spawnSync(realPnpm, process.argv.slice(2), { stdio: 'inherit' });
+process.exit(res.status ?? 0);
+`;
+      writeFileSync(pnpm12Launcher, launcherScript, { mode: 0o755 });
+
+      const sandbox = await createScratchSandbox(scratch.path, source);
+      try {
+        await execFileTree(pnpm12Launcher, ['install', '--frozen-lockfile', '--prefer-offline'], {
+          timeoutMs: 30_000,
+          cwd: scratch.path,
+          wrapper: sandbox.wrapper,
+        });
+        expect(
+          readFileSync(join(scratch.path, 'node_modules/sandbox-fixture-12/index.js'), 'utf8')
+        ).toBe('module.exports = 7011;');
+        const invocation = sandbox.wrapper('true', [], options);
+        const runtime = invocation.options.env?.['XDG_RUNTIME_DIR'];
+        expect(runtime).toBeDefined();
+        expect(existsSync(runtime ?? '')).toBe(true);
+        const uid = String(process.getuid?.() ?? 1000);
+        expect(
+          existsSync(join(runtime ?? '', `pnpm-store-operation-locks-${uid}/all-stores.lock`))
+        ).toBe(true);
       } finally {
         sandbox.dispose();
       }
