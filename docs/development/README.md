@@ -31,6 +31,7 @@ related_files:
 | CLI Delegation     | This file | [CLI_DELEGATION_GUIDE.md](./CLI_DELEGATION_GUIDE.md)               |
 | Claims Registry    | This file | [CLAIMS_REGISTRY.md](./CLAIMS_REGISTRY.md)                         |
 | Coding Standards   | This file | [CODING_STANDARDS.md](../../CODING_STANDARDS.md)                   |
+| Loader Pins        | This file | [SCRIPT_ENTRY_LOADER_PINS.md](./SCRIPT_ENTRY_LOADER_PINS.md)       |
 | Debugging          | This file | [DEBUGGING_OBSERVABILITY.md](../guides/DEBUGGING_OBSERVABILITY.md) |
 
 ---
