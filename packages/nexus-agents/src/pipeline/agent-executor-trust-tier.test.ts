@@ -17,8 +17,8 @@ import { PolicyBlockedError } from './policy-evaluator.js';
 import { getPipelineEventBus } from './event-bus.js';
 
 const { executeExpertMock } = vi.hoisted(() => ({
-  executeExpertMock: vi.fn(() =>
-    Promise.resolve({ success: true, text: 'ok', expertType: 'code', durationMs: 1, tokensUsed: 1 })
+  executeExpertMock: vi.fn((expertType: string) =>
+    Promise.resolve({ success: true, text: 'ok', expertType, durationMs: 1, tokensUsed: 1 })
   ),
 }));
 
@@ -71,7 +71,12 @@ function recordedTiers(): unknown[] {
 describe('trust tier is recorded at stage entry (#4694)', () => {
   it('records the tier the caller supplied', async () => {
     const stages = createAgentStages({ trustTier: '3' });
-    await stages.implement({ id: 't1', title: 'x', description: 'y' } as never);
+    await stages.implement({
+      id: 't1',
+      title: 'x',
+      description: 'y',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/x.ts'] },
+    } as never);
     expect(recordedTiers()).toContain('3');
   });
 
@@ -80,7 +85,12 @@ describe('trust tier is recorded at stage entry (#4694)', () => {
     // make an unmeasured run indistinguishable from a trusted one in the
     // record — and the record is the artifact a later human spot-check trusts.
     const stages = createAgentStages({});
-    await stages.implement({ id: 't2', title: 'x', description: 'y' } as never);
+    await stages.implement({
+      id: 't2',
+      title: 'x',
+      description: 'y',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/x.ts'] },
+    } as never);
 
     const tiers = recordedTiers();
     expect(tiers).toContain(UNMEASURED_TRUST_TIER);
@@ -126,8 +136,32 @@ describe('caller authentication and sanitizer observations (#4733)', () => {
       'modified',
     ],
   ] as const)('stamps all eight entries for config %j', async (config, tier, sanitization) => {
+    executeExpertMock.mockImplementation((expertType: string) =>
+      Promise.resolve({
+        success: true,
+        text:
+          expertType === 'pm'
+            ? JSON.stringify([
+                {
+                  id: 'task-4733',
+                  title: 'feature',
+                  description: 'implement feature',
+                  writeTargets: { kind: 'workspace-relative', paths: ['src/feature.ts'] },
+                },
+              ])
+            : 'ok',
+        expertType,
+        durationMs: 1,
+        tokensUsed: 1,
+      })
+    );
     const stages = createAgentStages(config);
-    const task = { id: 'task-4733', title: 'feature', description: 'implement feature' } as never;
+    const task = {
+      id: 'task-4733',
+      title: 'feature',
+      description: 'implement feature',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/feature.ts'] },
+    } as never;
     await stages.research('research feature');
     await stages.plan('feature', 'research');
     await stages.vote('plan', 'research');
@@ -178,7 +212,12 @@ describe('trust tier enforcement at stage boundary (#4694)', () => {
   it('blocks untrusted caller (tier 3) on implement stage in block mode and does not call expert', async () => {
     vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
     const stages = createAgentStages({ callerTrustTier: '3' });
-    const task = { id: 't-untrusted', title: 'feature', description: 'desc' } as never;
+    const task = {
+      id: 't-untrusted',
+      title: 'feature',
+      description: 'desc',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+    } as never;
 
     await expect(stages.implement(task)).rejects.toBeInstanceOf(PolicyBlockedError);
     expect(executeExpertMock).not.toHaveBeenCalled();
@@ -187,7 +226,12 @@ describe('trust tier enforcement at stage boundary (#4694)', () => {
   it('fails closed: blocks unmeasured/absent caller on implement stage in block mode', async () => {
     vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
     const stages = createAgentStages({});
-    const task = { id: 't-unmeasured', title: 'feature', description: 'desc' } as never;
+    const task = {
+      id: 't-unmeasured',
+      title: 'feature',
+      description: 'desc',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+    } as never;
 
     await expect(stages.implement(task)).rejects.toBeInstanceOf(PolicyBlockedError);
     expect(executeExpertMock).not.toHaveBeenCalled();
@@ -196,13 +240,23 @@ describe('trust tier enforcement at stage boundary (#4694)', () => {
   it('allows benign population (tier 1 and tier 2) on implement stage in block mode', async () => {
     vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'block');
     const stages1 = createAgentStages({ callerTrustTier: '1' });
-    const task1 = { id: 't-tier1', title: 'feature', description: 'desc' } as never;
+    const task1 = {
+      id: 't-tier1',
+      title: 'feature',
+      description: 'desc',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+    } as never;
     await expect(stages1.implement(task1)).resolves.toBeDefined();
     expect(executeExpertMock).toHaveBeenCalledTimes(1);
 
     executeExpertMock.mockClear();
     const stages2 = createAgentStages({ callerTrustTier: '2' });
-    const task2 = { id: 't-tier2', title: 'feature', description: 'desc' } as never;
+    const task2 = {
+      id: 't-tier2',
+      title: 'feature',
+      description: 'desc',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+    } as never;
     await expect(stages2.implement(task2)).resolves.toBeDefined();
     expect(executeExpertMock).toHaveBeenCalledTimes(1);
   });
@@ -227,7 +281,12 @@ describe('trust tier enforcement at stage boundary (#4694)', () => {
     const cap = capturePolicyEvents();
     try {
       const stages = createAgentStages({ callerTrustTier: '3' });
-      const task = { id: 't-warn', title: 'feature', description: 'desc' } as never;
+      const task = {
+        id: 't-warn',
+        title: 'feature',
+        description: 'desc',
+        writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+      } as never;
 
       await expect(stages.implement(task)).resolves.toBeDefined();
       expect(executeExpertMock).toHaveBeenCalledTimes(1);
@@ -245,7 +304,12 @@ describe('trust tier enforcement at stage boundary (#4694)', () => {
     });
     try {
       const stages = createAgentStages({ callerTrustTier: '3' });
-      const task = { id: 't-order', title: 'feature', description: 'desc' } as never;
+      const task = {
+        id: 't-order',
+        title: 'feature',
+        description: 'desc',
+        writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+      } as never;
       await stages.implement(task);
       throw new Error('expected PolicyBlockedError');
     } catch (e: unknown) {
@@ -261,7 +325,12 @@ describe('trust tier enforcement at stage boundary (#4694)', () => {
     const cap = capturePolicyEvents();
     try {
       const stages = createAgentStages({ callerTrustTier: '3' });
-      const task = { id: 't-off', title: 'feature', description: 'desc' } as never;
+      const task = {
+        id: 't-off',
+        title: 'feature',
+        description: 'desc',
+        writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+      } as never;
 
       await expect(stages.implement(task)).resolves.toBeDefined();
       expect(executeExpertMock).toHaveBeenCalledTimes(1);
@@ -281,7 +350,12 @@ describe('trust tier enforcement at stage boundary (#4694)', () => {
     } as unknown as IAuditLogger;
 
     const stages = createAgentStages({ callerTrustTier: '3', auditLogger });
-    const task = { id: 't-audit', title: 'feature', description: 'desc' } as never;
+    const task = {
+      id: 't-audit',
+      title: 'feature',
+      description: 'desc',
+      writeTargets: { kind: 'workspace-relative', paths: ['src/task.ts'] },
+    } as never;
     await stages.implement(task);
 
     expect(auditLogger.log).toHaveBeenCalled();

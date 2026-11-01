@@ -20,6 +20,25 @@ describe('parseTasksFromResponse', () => {
     expect(tasks[0]?.description).toBe('');
     expect(JSON.stringify(tasks)).not.toContain('[object Object]');
   });
+
+  it('preserves an explicit portable write-target contract separately from description text', () => {
+    const tasks = parseTasksFromResponse(
+      '[{"id":"report","title":"Write report","description":"Source checkout /repo/report.md is a reference","writeTargets":{"kind":"workspace-relative","paths":["validation/report.md"]}}]',
+      'fallback plan'
+    );
+
+    expect(tasks[0]?.description).toContain('/repo/report.md');
+    expect(tasks[0]?.writeTargets).toEqual({
+      kind: 'workspace-relative',
+      paths: ['validation/report.md'],
+    });
+  });
+
+  it('marks a missing write-target contract unmeasured rather than inventing one', () => {
+    const tasks = parseTasksFromResponse('[{"id":"report","title":"Write report"}]', 'plan');
+
+    expect(tasks[0]?.writeTargets).toEqual({ kind: 'unmeasured' });
+  });
 });
 
 describe('parseQaVerdict (#6776)', () => {

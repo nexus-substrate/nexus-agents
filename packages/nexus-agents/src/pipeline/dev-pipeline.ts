@@ -101,6 +101,12 @@ export interface PipelineTask {
    * (the gated live-routing use is #3815). Absent → treated as no-research (0).
    */
   readonly researchMaturity?: number | undefined;
+  /** Host-validated portable output scope. Missing means unmeasured and fails before dispatch. */
+  readonly writeTargets?:
+    | { readonly kind: 'workspace-relative'; readonly paths: readonly string[] }
+    | { readonly kind: 'none' }
+    | { readonly kind: 'unmeasured' }
+    | undefined;
 }
 
 /**
@@ -1530,6 +1536,7 @@ async function implementSingleTask(
           feedback,
           // #3234: preserve research-maturity across the rejection reconstruction.
           researchMaturity: task.researchMaturity,
+          writeTargets: task.writeTargets,
         };
       }
       return stages.implement(currentTask);
@@ -1550,6 +1557,7 @@ async function implementSingleTask(
     feedback: qaResult.feedback,
     // #3234: preserve research-maturity through to the final task.
     researchMaturity: task.researchMaturity,
+    writeTargets: task.writeTargets,
   };
   return { iterations: qaResult.iterations, task: finalTask };
 }

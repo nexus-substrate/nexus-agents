@@ -298,6 +298,7 @@ describe('bound checkpoint diagnostics and persistence', () => {
         description: 'Work',
         assignedTo: 'coder' as const,
         status: 'pending' as const,
+        writeTargets: { kind: 'workspace-relative' as const, paths: ['src/first.ts'] },
       },
     ];
     write(
@@ -363,7 +364,10 @@ describe('bound checkpoint diagnostics and persistence', () => {
       )
     );
     expect(loadCheckpointDiagnostic(sid, TEST_DIR).kind).toBe('bound');
-    const altered = implemented.map((task) => ({ ...task, description: 'Different work' }));
+    const altered = implemented.map((task) => ({
+      ...task,
+      writeTargets: { kind: 'workspace-relative' as const, paths: ['src/other.ts'] },
+    }));
     write(
       ...prefix,
       line(

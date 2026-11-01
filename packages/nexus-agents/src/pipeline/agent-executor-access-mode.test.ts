@@ -76,6 +76,7 @@ const TASK = {
   description: 'Implement the helper',
   assignedTo: 'coder' as const,
   status: 'pending' as const,
+  writeTargets: { kind: 'workspace-relative' as const, paths: ['src/helper.ts'] },
 };
 
 beforeEach(() => {
@@ -84,7 +85,11 @@ beforeEach(() => {
   executeMock.mockReset().mockImplementation((task: CliTask) =>
     Promise.resolve({
       ok: true,
-      value: { text: 'PASS', model: 'claude', accessMode: task.accessMode ?? 'default' },
+      value: {
+        text: task.content.includes('Decompose into tasks') ? JSON.stringify([TASK]) : 'PASS',
+        model: 'claude',
+        accessMode: task.accessMode ?? 'default',
+      },
     })
   );
 });

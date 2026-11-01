@@ -238,6 +238,7 @@ describe('runDevPipeline', () => {
 
   it('iterates QA when reviewer rejects then approves', async () => {
     let qaCallCount = 0;
+    const writeTargets = { kind: 'workspace-relative' as const, paths: ['src/target.ts'] };
     const stages = createMockStages({
       qaReview: vi.fn().mockImplementation((): Promise<QaReviewResult> => {
         qaCallCount++;
@@ -257,6 +258,7 @@ describe('runDevPipeline', () => {
           description: 'Do it',
           assignedTo: 'coder',
           status: 'pending',
+          writeTargets,
         },
       ] satisfies PipelineTask[]),
     });
@@ -264,6 +266,11 @@ describe('runDevPipeline', () => {
     const result = await runDevPipeline('Build feature X', stages);
     expect(result.qaIterations).toBe(2);
     expect(stages.implement).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(stages.implement).mock.calls.map(([task]) => task.writeTargets)).toEqual([
+      writeTargets,
+      writeTargets,
+    ]);
+    expect(result.tasks[0]?.writeTargets).toEqual(writeTargets);
   });
 
   it('carries baseline security evidence into the pipeline result (#7238)', async () => {
