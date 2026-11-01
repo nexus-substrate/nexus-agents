@@ -1,4 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -265,6 +266,105 @@ describe('security ledger CLI', () => {
     ].join('\n');
     writeFileSync(ledger, original);
     expect(resolve().status).toBe(1);
+    expect(readFileSync(ledger, 'utf8')).toBe(original);
+  });
+
+  it('resolves one finding among same-timestamp duplicates by content digest (#7652)', () => {
+    const rawFindingA = finding({
+      id: undefined,
+      timestamp: '2000-01-01T00:00:00Z',
+      file: 'src/a.ts',
+    });
+    const rawFindingB = finding({
+      id: undefined,
+      timestamp: '2000-01-01T00:00:00Z',
+      file: 'src/b.ts',
+    });
+    const original = `${rawFindingA}\n${rawFindingB}\n`;
+    writeFileSync(ledger, original);
+
+    // Resolving by ambiguous timestamp must fail and suggest candidate digests
+    const ambiguous = run(
+      'resolve',
+      '--target',
+      '2000-01-01T00:00:00Z',
+      '--status',
+      'fixed',
+      '--by',
+      'fixture-actor'
+    );
+    expect(ambiguous.status).toBe(1);
+    expect(ambiguous.stderr).toContain(
+      'Ambiguous target; use a unique finding id or sha256 digest'
+    );
+    expect(readFileSync(ledger, 'utf8')).toBe(original);
+
+    // Compute digest of findingA
+    const digestA = `sha256:${createHash('sha256').update(rawFindingA).digest('hex')}`;
+    const specific = run(
+      'resolve',
+      '--target',
+      digestA,
+      '--status',
+      'fixed',
+      '--by',
+      'fixture-actor'
+    );
+    expect(specific.status).toBe(0);
+
+    // Verify findingA is resolved and findingB remains open
+    const report = run('open');
+    expect(report.status).toBe(0);
+    expect(report.stdout).toContain('resolved: 1');
+    expect(report.stdout).toContain('open: 1');
+    expect(report.stdout).toContain('src/b.ts');
+
+    // Verify original bytes of the two findings are byte-for-byte preserved
+    const updated = readFileSync(ledger, 'utf8');
+    expect(updated.startsWith(original)).toBe(true);
+
+    // Attempting to resolve findingA by digest again must fail as already resolved
+    const repeat = run(
+      'resolve',
+      '--target',
+      digestA,
+      '--status',
+      'fixed',
+      '--by',
+      'fixture-actor'
+    );
+    expect(repeat.status).toBe(1);
+    expect(repeat.stderr).toContain('already resolved');
+
+    // Unknown digest fails with Unknown target
+    const unknownDigest = 'sha256:0000000000000000000000000000000000000000000000000000000000000000';
+    const unknownResult = run(
+      'resolve',
+      '--target',
+      unknownDigest,
+      '--status',
+      'fixed',
+      '--by',
+      'fixture-actor'
+    );
+    expect(unknownResult.status).toBe(1);
+    expect(unknownResult.stderr).toContain('Unknown target');
+  });
+
+  it('refuses identical findings sharing the same content digest as ambiguous (#7652)', () => {
+    const rawFinding = finding({
+      id: undefined,
+      timestamp: '2000-01-01T00:00:00Z',
+      file: 'src/identical.ts',
+    });
+    // Two exact identical duplicate lines
+    const original = `${rawFinding}\n${rawFinding}\n`;
+    writeFileSync(ledger, original);
+
+    const digest = `sha256:${createHash('sha256').update(rawFinding).digest('hex')}`;
+    const result = run('resolve', '--target', digest, '--status', 'fixed', '--by', 'fixture-actor');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Ambiguous target');
     expect(readFileSync(ledger, 'utf8')).toBe(original);
   });
 

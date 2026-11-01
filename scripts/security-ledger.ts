@@ -15,6 +15,7 @@ import { parseArgs } from 'node:util';
 import {
   ResolutionSchema,
   openFindings,
+  findingDigest,
   findingIdentity,
   readLedger,
   type Finding,
@@ -75,9 +76,25 @@ function report(path: string, countsOnly: boolean): number {
 
 function validateTarget(ledger: Ledger, target: string): void {
   if (reportInvalid(ledger)) throw new Error('Cannot resolve a ledger containing invalid lines');
-  const matches = ledger.findings.filter((finding) => findingIdentity(finding) === target);
+  const normalizedDigest = target.startsWith('sha256:') ? target : `sha256:${target}`;
+  const isDigest = /^(sha256:)?[0-9a-f]{64}$/i.test(target);
+  let matches: Finding[];
+  if (isDigest) {
+    matches = ledger.findings.filter(
+      (finding) =>
+        findingDigest(finding).toLowerCase() === normalizedDigest.toLowerCase() ||
+        findingIdentity(finding) === target
+    );
+  } else {
+    matches = ledger.findings.filter((finding) => findingIdentity(finding) === target);
+  }
   if (matches.length === 0) throw new Error('Unknown target');
-  if (matches.length > 1) throw new Error('Ambiguous target; use a unique finding id');
+  if (matches.length > 1) {
+    const candidateDigests = matches.map((m) => findingDigest(m)).join(', ');
+    throw new Error(
+      `Ambiguous target; use a unique finding id or sha256 digest: ${candidateDigests}`
+    );
+  }
   if (openFindings(matches, ledger.resolutions).resolved.length > 0) {
     throw new Error('Target is already resolved');
   }
