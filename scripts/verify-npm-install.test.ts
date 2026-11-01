@@ -318,7 +318,7 @@ describe('permanent installed package TypeScript phase (unit wiring only)', () =
       const compiles = records.filter(
         (record) => record.command === 'node' && record.source !== undefined
       );
-      expect(compiles).toHaveLength(2);
+      expect(compiles).toHaveLength(3);
       for (const compile of compiles) {
         expect(compile.args).toContain('--strict');
         expect(compile.args).toContain('--ignoreConfig');
@@ -327,15 +327,20 @@ describe('permanent installed package TypeScript phase (unit wiring only)', () =
         expect(compile.args).toContain('ES2022');
         expect(compile.args).toContain('--types');
         expect(compile.args).toContain('--typeRoots');
-        expect(compile.args).not.toContain('--lib');
         expect(compile.args).not.toContain('--skipLibCheck');
         expect(compile.args).not.toContain('--paths');
       }
-      const bare = compiles[0];
+      const bareDom = compiles[0];
       const controls = compiles[1];
-      if (bare === undefined || controls === undefined)
-        throw new Error('Both consumers must reach the compiler');
-      expect(bare.source).toContain("import { EventBus } from 'nexus-agents'");
+      const bareNodeOnly = compiles[2];
+      if (bareDom === undefined || controls === undefined || bareNodeOnly === undefined)
+        throw new Error('All consumers must reach the compiler');
+      expect(bareDom.args).not.toContain('--lib');
+      expect(controls.args).not.toContain('--lib');
+      expect(bareNodeOnly.args).toContain('--lib');
+      expect(bareNodeOnly.args).toContain('ES2022');
+      expect(bareDom.source).toContain("import { EventBus } from 'nexus-agents'");
+      expect(bareNodeOnly.source).toContain("import { EventBus } from 'nexus-agents'");
       expect(controls.source).toContain("from 'undici'");
       expect(controls.source).toContain('new ProxyAgent(');
       expect(controls.source?.match(/@ts-expect-error/g)).toHaveLength(3);

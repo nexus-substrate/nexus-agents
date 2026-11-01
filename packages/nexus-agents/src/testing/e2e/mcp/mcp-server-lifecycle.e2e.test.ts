@@ -181,7 +181,9 @@ describe('MCP Server Lifecycle E2E Tests', () => {
       // Register a simple test tool (using deprecated .tool() - testing actual MCP SDK behavior)
       // eslint-disable-next-line @typescript-eslint/no-deprecated
       server.tool('echo_test', { message: z.string().describe('Message to echo') }, (args) => ({
-        content: [{ type: 'text', text: `Echo: ${args.message}` }],
+        content: [
+          { type: 'text', text: `Echo: ${String((args as { message?: string }).message)}` },
+        ],
       }));
 
       // Connect client
@@ -232,7 +234,7 @@ describe('MCP Server Lifecycle E2E Tests', () => {
         'error_tool',
         { shouldError: z.boolean().describe('Whether to throw error') },
         (args) => {
-          if (args.shouldError) {
+          if (Boolean((args as { shouldError?: boolean }).shouldError)) {
             return {
               isError: true,
               content: [{ type: 'text', text: 'Intentional error for testing' }],
@@ -317,18 +319,23 @@ describe('MCP Server Lifecycle E2E Tests', () => {
     });
 
     it('should return error for unknown tool', async () => {
-      // MCP SDK returns isError response for unknown tools
-      const result = await client.callTool({
-        name: 'nonexistent_tool',
-        arguments: {},
-      });
+      // In SDK v1, callTool returns isError: true. In SDK v2, unknown tools reject with ProtocolError.
+      try {
+        const result = await client.callTool({
+          name: 'nonexistent_tool',
+          arguments: {},
+        });
 
-      expect(result.isError).toBe(true);
-      const content = result.content as Array<{ type: string; text?: string }>;
-      const textContent = content[0];
-      expect(textContent).toBeDefined();
-      if (textContent?.type === 'text') {
-        expect(textContent.text).toContain('not found');
+        expect(result.isError).toBe(true);
+        const content = result.content as Array<{ type: string; text?: string }>;
+        const textContent = content[0];
+        expect(textContent).toBeDefined();
+        if (textContent?.type === 'text') {
+          expect(textContent.text).toContain('not found');
+        }
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('not found');
       }
     });
   });

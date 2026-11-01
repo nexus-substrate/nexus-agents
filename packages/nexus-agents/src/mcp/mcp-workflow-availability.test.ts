@@ -94,10 +94,15 @@ describe('run_workflow startup availability over MCP (#7043)', () => {
     const listing = await client.callTool({ name: 'list_workflows', arguments: {} });
     expect(listing.isError).not.toBe(true);
     expect(JSON.stringify(listing.content)).toContain(workflow.name);
-    const run = await client.callTool({
-      name: 'run_workflow',
-      arguments: { template: workflow.name },
-    });
+    const run = await client
+      .callTool({
+        name: 'run_workflow',
+        arguments: { template: workflow.name },
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { isError: true, error: msg };
+      });
     expect(run.isError).toBe(true);
   });
 

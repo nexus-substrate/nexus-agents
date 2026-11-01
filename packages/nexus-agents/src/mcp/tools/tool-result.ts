@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import type { McpServer, RegisteredTool, ToolCallback, ToolAnnotations } from '../sdk-types.js';
+import type { McpServer, RegisteredTool, ToolAnnotations } from '../sdk-types.js';
 import type { ILogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -208,11 +208,11 @@ export function registerStructuredTool(
     outputSchema: z.ZodRawShape;
     annotations?: ToolAnnotations;
   },
-  callback: ToolCallback<z.ZodRawShape>
+  callback: (args: unknown, extra: unknown) => unknown
 ): RegisteredTool {
   return server.registerTool(
     name,
     { ...config, outputSchema: z.strictObject(config.outputSchema) },
-    callback
+    callback as never
   );
 }

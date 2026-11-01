@@ -121,7 +121,7 @@ describe('MCP SDK v2 Facade', () => {
             b: z.number().describe('Second number'),
           }),
         },
-        async ({ a, b }) => {
+        async ({ a, b }: { a: number; b: number }) => {
           await Promise.resolve();
           const sum = a + b;
           return createTextResult(`Sum is ${String(sum)}`);

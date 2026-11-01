@@ -63,6 +63,7 @@ function registerSinglePrompt(
   definition: PromptDefinition,
   logger: ILogger
 ): void {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- registerPrompt schema wrapper
   server.registerPrompt(
     definition.name,
     {

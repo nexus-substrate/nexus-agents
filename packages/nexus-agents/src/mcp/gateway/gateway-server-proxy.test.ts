@@ -4,6 +4,8 @@
  * (Source: Issue #896, Epic #888)
  */
 
+/* eslint-disable @typescript-eslint/no-deprecated -- testing mock registerTool */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { McpServer } from '../sdk-types.js';
 import { createGatewayServerProxy } from './gateway-server-proxy.js';

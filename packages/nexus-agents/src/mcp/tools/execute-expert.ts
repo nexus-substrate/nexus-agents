@@ -689,19 +689,42 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     'Returns the expert analysis including output, status, model used, token usage, ' +
     "and the expert's confidence (0-1) when it reports one.";
 
-  server.experimental.tasks.registerToolTask(
-    'execute_expert',
-    {
-      description,
-      inputSchema: EXECUTE_EXPERT_TOOL_SCHEMA,
-      execution: { taskSupport: 'optional' },
+  const tasks = (
+    server as unknown as {
+      experimental?: {
+        tasks?: {
+          registerToolTask?: (name: string, config: unknown, handler: unknown) => void;
+        };
+      };
+    }
+  ).experimental?.tasks;
 
-      annotations: getToolAnnotations('execute_expert'),
-    },
-    createTaskHandler(depsWithNotifier, logger, {
-      inputSchema: ExecuteExpertInputSchema,
-      execute: handleExecuteExpert,
-    }) as never
-  );
-  logger.info('Registered execute_expert tool with MCP Tasks support (taskSupport: optional)');
+  if (typeof tasks?.registerToolTask === 'function') {
+    tasks.registerToolTask(
+      'execute_expert',
+      {
+        description,
+        inputSchema: EXECUTE_EXPERT_TOOL_SCHEMA,
+        execution: { taskSupport: 'optional' },
+
+        annotations: getToolAnnotations('execute_expert'),
+      },
+      createTaskHandler(depsWithNotifier, logger, {
+        inputSchema: ExecuteExpertInputSchema,
+        execute: handleExecuteExpert,
+      })
+    );
+    logger.info('Registered execute_expert tool with MCP Tasks support (taskSupport: optional)');
+  } else {
+    server.registerTool(
+      'execute_expert',
+      {
+        description,
+        inputSchema: EXECUTE_EXPERT_TOOL_SCHEMA,
+        annotations: getToolAnnotations('execute_expert'),
+      },
+      handleExecuteExpert as never
+    );
+    logger.info('Registered execute_expert tool via registerTool');
+  }
 }
