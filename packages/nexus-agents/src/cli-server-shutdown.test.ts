@@ -119,17 +119,24 @@ describe('createShutdownCleanup order (#6573)', () => {
     // Finishes only once the server stops (its signal aborts), and then some
     // wind-down later, before auditing — a call that completes in the middle
     // of shutdown, which only the drain waits for.
-    server.registerTool('in_flight_tool', { description: 'test' }, async (extra) => {
-      markStarted();
-      await untilAborted(extra.signal);
-      await new Promise((resolve) => setTimeout(resolve, WIND_DOWN_MS));
-      auditLogger.logToolInvocation({
-        toolName: 'in_flight_tool',
-        outcome: 'success',
-        actor: { type: 'system', id: 'test' },
-      });
-      return { content: [{ type: 'text', text: 'done' }] };
-    });
+    server.registerTool(
+      'in_flight_tool',
+      { description: 'test' },
+      async (extra: { signal?: AbortSignal; mcpReq?: { signal?: AbortSignal } }) => {
+        markStarted();
+        const signal = extra.signal ?? extra.mcpReq?.signal;
+        if (signal !== undefined) {
+          await untilAborted(signal);
+        }
+        await new Promise((resolve) => setTimeout(resolve, WIND_DOWN_MS));
+        auditLogger.logToolInvocation({
+          toolName: 'in_flight_tool',
+          outcome: 'success',
+          actor: { type: 'system', id: 'test' },
+        });
+        return { content: [{ type: 'text', text: 'done' }] };
+      }
+    );
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const connected = await connectTransport(server, serverTransport, logger);

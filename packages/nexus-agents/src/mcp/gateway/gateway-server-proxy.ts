@@ -73,8 +73,7 @@ function createWrappedRegisterTool(
 ): (name: string, config: ToolRegistrationConfig, cb: SdkCallback) => unknown {
   return (name: string, config: ToolRegistrationConfig, cb: SdkCallback): unknown => {
     if (typeof cb !== 'function') {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any -- SDK generic boundary
-      return server.registerTool(name, config as any, cb);
+      return server.registerTool(name, config, cb);
     }
 
     // Wrap SDK callback with gateway tier-aware dispatch.
@@ -85,7 +84,6 @@ function createWrappedRegisterTool(
       return gateway.wrapTool(name, innerHandler)(args);
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any -- SDK generic boundary: registerTool requires ToolCallback<InputArgs> which can't be constructed without the original generic context
-    return server.registerTool(name, config as any, wrappedCb as any);
+    return server.registerTool(name, config, wrappedCb);
   };
 }

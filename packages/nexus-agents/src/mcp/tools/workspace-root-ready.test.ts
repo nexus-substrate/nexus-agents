@@ -1,3 +1,9 @@
+/**
+ * Workspace Root Ready Tests
+ */
+
+/* eslint-disable @typescript-eslint/no-deprecated -- verifying deprecated listRoots is never called */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

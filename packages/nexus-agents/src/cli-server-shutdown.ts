@@ -67,6 +67,7 @@ export interface InFlightToolCalls {
  */
 export function trackInFlightToolCalls(server: McpServer): InFlightToolCalls {
   const running = new Set<Promise<unknown>>();
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- wrapping registerTool for shutdown draining
   const register = server.registerTool.bind(server);
 
   const wrap = (callback: unknown): unknown => {
@@ -85,6 +86,7 @@ export function trackInFlightToolCalls(server: McpServer): InFlightToolCalls {
 
   const tracked = (name: string, config: unknown, callback: unknown): unknown =>
     Reflect.apply(register, server, [name, config, wrap(callback)]);
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- wrapping registerTool for shutdown draining
   server.registerTool = tracked as McpServer['registerTool'];
 
   return {

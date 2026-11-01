@@ -90,6 +90,38 @@ function createServerError(
  * }
  * ```
  */
+type RegisterToolFn = (
+  name: string,
+  config: Record<string, unknown>,
+  handler: (argsOrCtx: unknown, maybeCtx: unknown) => unknown
+) => void;
+
+function attachLegacyToolMethod(server: McpServer): void {
+  const serverObj = server as unknown as Record<string, unknown>;
+  if (typeof serverObj.tool === 'function') return;
+
+  serverObj.tool = function (
+    name: string,
+    schema: unknown,
+    handler: (args: Record<string, unknown>, extra: unknown) => unknown
+  ): void {
+    const config =
+      schema !== undefined &&
+      typeof schema === 'object' &&
+      schema !== null &&
+      Object.keys(schema).length > 0
+        ? { inputSchema: schema }
+        : {};
+    const registerTool = (server as unknown as { registerTool: RegisterToolFn }).registerTool;
+    registerTool.call(server, name, config, (argsOrCtx: unknown, maybeCtx: unknown) => {
+      if (maybeCtx !== undefined) {
+        return handler(argsOrCtx as Record<string, unknown>, maybeCtx);
+      }
+      return handler({}, argsOrCtx);
+    });
+  };
+}
+
 export function createServer(config?: ServerConfig): Result<ServerInstance, ServerError> {
   const serverName = config?.name ?? DEFAULT_SERVER_NAME;
   const serverVersion = config?.version ?? VERSION;
@@ -106,21 +138,25 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
       version: serverVersion,
     });
 
+    const serverOptions = {
+      capabilities: {
+        prompts: {},
+        resources: {},
+        tasks: {},
+      },
+      // Native SubstrateTaskStore cast across SDK v1 exactOptionalPropertyTypes seam
+      taskStore: getTaskStore() as never,
+    };
+
     const server = new McpServer(
       {
         name: serverName,
         version: serverVersion,
       },
-      {
-        capabilities: {
-          prompts: {},
-          resources: {},
-          tasks: {},
-        },
-        // Native SubstrateTaskStore cast across SDK v1 exactOptionalPropertyTypes seam
-        taskStore: getTaskStore() as never,
-      }
+      serverOptions
     );
+
+    attachLegacyToolMethod(server);
 
     logger.debug('MCP server created successfully');
 
@@ -181,7 +217,7 @@ export async function connectTransport(
   recordServerTransport(transportKind);
   try {
     log.info('Connecting server to transport', { transport: transportKind ?? 'unidentified' });
-    await server.connect(transport as unknown as Parameters<McpServer['connect']>[0]);
+    await server.connect(transport);
     log.debug('Server connected to transport successfully');
     return ok(undefined);
   } catch (error) {

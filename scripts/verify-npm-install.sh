@@ -296,6 +296,15 @@ DISPATCHER_CONSUMER
   if ! node "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" "${TYPE_FLAGS[@]}" dispatcher-consumer.ts; then
     fail "installed dispatcher TypeScript controls failed" 11
   fi
+  # Node-only consumer (#7583): ensure bare root imports compile without DOM
+  # globals (e.g. ambient HeadersInit from bundled MCP SDK).
+  NODE_ONLY_FLAGS=(--ignoreConfig --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --types node --typeRoots "$TYPE_CONSUMER/node_modules/@types" --lib ES2022)
+  printf 'Compiler command (Node-only):'
+  printf ' %q' node "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" "${NODE_ONLY_FLAGS[@]}" bare-consumer.ts
+  printf '\n'
+  if ! node "$TYPE_CONSUMER/node_modules/typescript/bin/tsc" "${NODE_ONLY_FLAGS[@]}" bare-consumer.ts; then
+    fail "installed public TypeScript declarations failed (bare EventBus consumer in Node-only environment) (#7583)" 11
+  fi
 )
 ok "installed package public declarations and dispatcher controls compile"
 
