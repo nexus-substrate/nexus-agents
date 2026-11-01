@@ -275,6 +275,7 @@ For contributors building on the control plane and operators running it.
 | [SHELL_TESTING_ANTI_PATTERNS.md](./development/SHELL_TESTING_ANTI_PATTERNS.md) | Shell testing pitfalls to avoid | Canonical |
 | [PACKAGED_VS_REPO_ONLY.md](./development/PACKAGED_VS_REPO_ONLY.md)             | What ships to npm vs repo-only  | Canonical |
 | [CLI_UX_QUALITY_GATE.md](./development/CLI_UX_QUALITY_GATE.md)                 | CLI UX pre-release checklist    | Canonical |
+| [SCRIPT_ENTRY_LOADER_PINS.md](./development/SCRIPT_ENTRY_LOADER_PINS.md)       | tsx loader pin maintenance      | Canonical |
 
 ### Operations & runbooks
 
