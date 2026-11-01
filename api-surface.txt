@@ -7868,6 +7868,7 @@ VariableDeclaration ResearchDiscoverInputSchema
   : z.ZodObject<{ maxResults: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; relevanceThreshold: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; sinceDate: z.ZodOptional<z.ZodString>; source: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ all: "all"; arxiv: "arxiv"; deepmind: "deepmind"; github: "github"; google_ai: "google_ai"; meta_fair: "meta_fair"; microsoft: "microsoft"; openalex: "openalex"; papers_with_code: "papers_with_code"; semantic_scholar: "semantic_scholar"; }>>>; topic: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration ResearchDiscoverResponse
   alreadyInRegistry: number
+  canonicalTopic?: string | undefined
   failedSources: string[]
   filteredByRelevance: number
   items: DiscoveredItem[]
