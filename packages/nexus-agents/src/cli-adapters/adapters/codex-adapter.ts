@@ -17,6 +17,7 @@ import { nexusMkdtempSync } from '../../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 import type { ICliResponseParser, CliTask, ModelInfo, CliName, CliError } from '../types.js';
 import { codexSandboxPreflight, createCodexSandboxGuard } from '../codex-sandbox-preflight.js';
+import { createHostUnavailableCliError } from '../cli-error-helpers.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
@@ -90,6 +91,15 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
   protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
     const base = await super.accessModeRefusal(task);
     if (base !== undefined) return base;
+    // The host-only probe cannot establish that Codex's inner read-only
+    // sandbox can start inside this task's outer wrapper. Refuse before the
+    // model call rather than authorizing nested execution from host success.
+    if (task.wrapper !== undefined) {
+      return createHostUnavailableCliError(
+        'Codex read-only sandbox is not verified inside a wrapped task; refusing before model dispatch',
+        'codex'
+      );
+    }
     if (isReadOnlyAnalysis(task)) {
       const scan = scanCodexMcpServers(
         subprocessScanContext(this.name, task),
