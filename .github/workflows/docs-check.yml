@@ -965,19 +965,25 @@ jobs:
       # Also the only PR-time check that website/package.json and
       # website/pnpm-lock.yaml agree; the deploy installs with the same flag.
       - name: Install website dependencies (own lockfile)
+        timeout-minutes: 3
         run: pnpm --dir website install --frozen-lockfile --ignore-scripts
 
+      # #7641: Bound setup so stalled apt-get/mirror operations time out explicitly
+      # without burning the 10m job budget and cancelling the audit step below.
       - name: Install Chromium
+        timeout-minutes: 4
         run: pnpm --dir website exec playwright install --with-deps chromium
 
       # The site's plugin tests left the root scripts suite with the workspace
       # (website deps are not in the root node_modules), so they run here.
       - name: Test website plugins
+        timeout-minutes: 3
         run: pnpm --dir website test
 
       # Runs even when the tests fail, so one red step cannot hide the other.
       - name: Audit website dependencies
         if: ${{ !cancelled() }}
+        timeout-minutes: 3
         run: pnpm --dir website audit --audit-level=high
 
   # ==========================================================================

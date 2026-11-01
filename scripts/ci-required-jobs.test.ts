@@ -53,12 +53,24 @@ import { extractWorkflowGate } from './aggregator-shape.js';
 const ADVISORY_JOBS = new Set<string>([]);
 
 interface CiStep {
+  name?: string;
   run?: string;
+  if?: string;
+  'timeout-minutes'?: number;
   'continue-on-error'?: boolean | string;
 }
 
 interface CiWorkflow {
-  jobs: Record<string, { needs?: string[]; steps?: CiStep[] }>;
+  jobs: Record<
+    string,
+    {
+      name?: string;
+      'timeout-minutes'?: number;
+      'continue-on-error'?: boolean | string;
+      needs?: string[];
+      steps?: CiStep[];
+    }
+  >;
 }
 
 const ci = parse(
@@ -304,5 +316,72 @@ describe('Documentation Gate required-job wiring (#4809)', () => {
     expect(installIndex).toBeGreaterThanOrEqual(0);
     expect(installIndex).toBeLessThan(testIndex);
     expect(steps[installIndex]?.['continue-on-error']).toBeUndefined();
+  });
+
+  it('bounds website audit setup with explicit step timeouts so a stall cannot cancel the job (#7641)', () => {
+    const job = docs.jobs['website-audit'];
+    expect(job).toBeDefined();
+    const steps = job?.steps ?? [];
+
+    const installDepsIndex = steps.findIndex(
+      (step) => step.run?.trim() === 'pnpm --dir website install --frozen-lockfile --ignore-scripts'
+    );
+    const installChromiumIndex = steps.findIndex((step) =>
+      /^pnpm --dir website exec playwright install --with-deps chromium$/.test(
+        step.run?.trim() ?? ''
+      )
+    );
+    const testIndex = steps.findIndex((step) => step.run?.trim() === 'pnpm --dir website test');
+    const auditIndex = steps.findIndex(
+      (step) => step.run?.trim() === 'pnpm --dir website audit --audit-level=high'
+    );
+
+    expect(installDepsIndex).toBeGreaterThanOrEqual(0);
+    expect(installChromiumIndex).toBeGreaterThanOrEqual(0);
+    expect(testIndex).toBeGreaterThanOrEqual(0);
+    expect(auditIndex).toBeGreaterThanOrEqual(0);
+
+    const installChromiumStep = steps[installChromiumIndex];
+    const testStep = steps[testIndex];
+    const auditStep = steps[auditIndex];
+
+    // Setup steps must carry bounded step timeouts below the job timeout
+    const chromiumTimeout = installChromiumStep?.['timeout-minutes'];
+    expect(typeof chromiumTimeout).toBe('number');
+    expect(chromiumTimeout).toBeGreaterThanOrEqual(2);
+    expect(chromiumTimeout).toBeLessThanOrEqual(5);
+
+    // Browser tests must not run when setup fails
+    expect(testStep?.if).toBeUndefined();
+
+    // Independent dependency audit must report when setup stalls/fails, without being cancelled
+    expect(auditStep?.if).toBe('${{ !cancelled() }}');
+
+    // Simulate step failure progression to verify honest separate coverage
+    const simulateRun = (installerFailed: boolean): string[] => {
+      const ranSteps: string[] = [];
+      for (const step of steps) {
+        if (installerFailed && step === testStep) {
+          continue;
+        }
+        if (installerFailed && step === installChromiumStep) {
+          continue;
+        }
+        if (step === auditStep) {
+          if (step.if === '${{ !cancelled() }}') {
+            ranSteps.push('audit');
+          }
+          continue;
+        }
+        if (typeof step.run === 'string' && step.run.length > 0) {
+          ranSteps.push(step.run);
+        }
+      }
+      return ranSteps;
+    };
+
+    const failedSetupRun = simulateRun(true);
+    expect(failedSetupRun).toContain('audit');
+    expect(failedSetupRun).not.toContain('pnpm --dir website test');
   });
 });

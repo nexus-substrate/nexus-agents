@@ -195,7 +195,7 @@ jobs:
   post-comment:
     name: Post review comment
     needs: pr-review
-    if: always() && needs.pr-review.result != 'cancelled'
+    if: needs.pr-review.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
