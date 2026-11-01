@@ -9,6 +9,8 @@
  * (Source: Issue #1386 — Research Synthesis Pipeline)
  */
 
+import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -228,8 +230,8 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
     'trinity-roles',
     {
       status: 'partial',
-      path: 'agents/expert-roles.ts',
-      hint: '10 expert roles, not trinity pattern',
+      path: 'agents/experts/expert-config.ts',
+      hint: `${String(Object.keys(BUILT_IN_EXPERTS).length)} expert roles, not trinity pattern`,
     },
   ],
   [

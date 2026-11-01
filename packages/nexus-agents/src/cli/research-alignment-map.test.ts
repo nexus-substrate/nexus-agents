@@ -4,8 +4,11 @@
  * @module cli/research-alignment-map.test
  * (Source: Issue #1386 — Research Synthesis Pipeline)
  */
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { TECHNIQUE_IMPLEMENTATION_MAP, FEATURE_GATE_INVENTORY } from './research-alignment-map.js';
+import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 
 describe('TECHNIQUE_IMPLEMENTATION_MAP', () => {
   it('contains routing techniques', () => {
@@ -50,6 +53,26 @@ describe('TECHNIQUE_IMPLEMENTATION_MAP', () => {
   it('self-refine-loop is now implemented', () => {
     const entry = TECHNIQUE_IMPLEMENTATION_MAP.get('self-refine-loop');
     expect(entry?.status).toBe('implemented');
+  });
+
+  it('reports the current built-in expert count for trinity roles', () => {
+    const entry = TECHNIQUE_IMPLEMENTATION_MAP.get('trinity-roles');
+    expect(entry).toBeDefined();
+    if (entry === undefined) throw new Error('trinity-roles mapping is missing');
+
+    expect(entry.hint).toContain(`${String(Object.keys(BUILT_IN_EXPERTS).length)} expert roles`);
+  });
+
+  it('points trinity roles at an existing source path', () => {
+    const entry = TECHNIQUE_IMPLEMENTATION_MAP.get('trinity-roles');
+    expect(entry).toBeDefined();
+    if (entry === undefined) throw new Error('trinity-roles mapping is missing');
+
+    expect(
+      existsSync(
+        fileURLToPath(new URL(entry.path, new URL('../', import.meta.url)))
+      )
+    ).toBe(true);
   });
 });
 
