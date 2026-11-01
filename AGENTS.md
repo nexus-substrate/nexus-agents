@@ -318,7 +318,7 @@ When the user gives a standing directive ("run autonomously", "keep working", "w
 - **Never pause to ask "what's next" while the backlog is non-empty.** Finishing a task is not a stop condition.
 - **Work the backlog top-down:** CI red / security alerts → open epics → open bugs → open PRs → CodeQL/Scorecard → stale issues → research queue.
 - **Tie-break via `consensus_vote`, not a user ask.** The vote result is the decision.
-- **Hard stops only for:** cost-gated work, destructive operations beyond the authorized blast radius, blocked-on-external with no other work, a CI failure needing a human design decision, or the same error three or more times (a genuine wedge).
+- **Hard stops only for:** cost-gated work, destructive operations beyond authorized blast radius, secret or credential exposure (Rule of Two), governance self-modification (open the PR, never land unilaterally), or publishing/spending. (Waiting on external systems, CI failures needing design decisions, and repeated errors are NOT hard stops — see [`.rules/autonomous.md`](./.rules/autonomous.md) #4463).
 - **End-of-turn protocol:** close with `Done this turn: …` / `Up next: …`. No question marks.
 
 ## Release cycle
