@@ -8,7 +8,8 @@
  * (Source: MCP Protocol 2025-11-25)
  */
 
-import { McpServer } from './sdk-types.js';
+import { McpServer as SdkV1McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from './sdk-types.js';
 import { StdioServerTransport, type Transport } from './sdk-facade/index.js';
 
 import {
@@ -148,13 +149,13 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
       taskStore: getTaskStore() as never,
     };
 
-    const server = new McpServer(
+    const server = new SdkV1McpServer(
       {
         name: serverName,
         version: serverVersion,
       },
       serverOptions
-    );
+    ) as unknown as McpServer;
 
     attachLegacyToolMethod(server);
 
@@ -217,7 +218,9 @@ export async function connectTransport(
   recordServerTransport(transportKind);
   try {
     log.info('Connecting server to transport', { transport: transportKind ?? 'unidentified' });
-    await server.connect(transport);
+    await (server as unknown as SdkV1McpServer).connect(
+      transport as unknown as Parameters<SdkV1McpServer['connect']>[0]
+    );
     log.debug('Server connected to transport successfully');
     return ok(undefined);
   } catch (error) {
