@@ -15,7 +15,7 @@ export interface RegisteredTool {
   update(config: Record<string, unknown>): void;
   [key: string]: unknown;
 }
-export type ToolCallback<Args = unknown> = (args: Args, extra: unknown) => unknown;
+type ToolCallback<Args = unknown> = (args: Args, extra: unknown) => unknown;
 
 declare module '@modelcontextprotocol/server' {
   interface McpServer {
