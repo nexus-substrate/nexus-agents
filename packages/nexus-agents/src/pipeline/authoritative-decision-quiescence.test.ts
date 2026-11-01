@@ -359,7 +359,7 @@ describe('authoritative attempt ownership after node timeout', () => {
     nodes.set(stageNode.id, {
       ...stageNode,
       verify: async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        await new Promise<void>((resolve) => setTimeout(resolve, 300));
         return ok(undefined);
       },
     });
@@ -372,7 +372,7 @@ describe('authoritative attempt ownership after node timeout', () => {
       decisionStore: new AuthoritativeDecisionStore({ storageDir, eventBus }),
       decisionAttemptId: 'slow-verification',
       eventBus,
-      timeout: 25,
+      timeout: 150,
     });
 
     expect(result).toMatchObject({
@@ -382,6 +382,6 @@ describe('authoritative attempt ownership after node timeout', () => {
     const completedEvents = eventBus.query({ type: 'pipeline.completed' });
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0]).toMatchObject({ type: 'pipeline.completed', success: false });
-    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
   });
 });
