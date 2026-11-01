@@ -1,4 +1,7 @@
-/** Owned actual-module entry fixture; no production entry helper (#7680). */
+/**
+ * Owned actual-module entry fixture; no production entry helper (#7680, #7685).
+ * See docs/development/SCRIPT_ENTRY_LOADER_PINS.md for loader-pin maintenance.
+ */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {

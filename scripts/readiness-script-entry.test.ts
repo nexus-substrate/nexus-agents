@@ -1,4 +1,7 @@
-/** Actual readiness entry/import boundaries and pre-import guard controls (#7680). */
+/**
+ * Actual readiness entry/import boundaries and pre-import guard controls (#7680, #7685).
+ * See docs/development/SCRIPT_ENTRY_LOADER_PINS.md for loader-pin maintenance.
+ */
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
