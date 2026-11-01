@@ -38,7 +38,8 @@ import type {
 // Test Fixtures
 // ============================================================================
 
-const TEST_REGISTRY_PATH = path.join(getProjectRoot(), REGISTRY_PATH);
+const TEST_REGISTRY_PATH =
+  process.env['NEXUS_TEST_RESEARCH_REGISTRY_PATH'] ?? path.join(getProjectRoot(), REGISTRY_PATH);
 
 // Check if real registry exists for integration tests. Inspects content
 // rather than just `existsSync` — #2470 auto-scaffolding can create an
@@ -523,26 +524,14 @@ describe('Generators', () => {
 // Integration Tests (with real registry)
 // ============================================================================
 
-// Pre-check: can we parse the registry?
-const registryParseable =
-  hasRealRegistry &&
-  (() => {
-    const result = parseRegistry({ registryPath: TEST_REGISTRY_PATH });
-    if (!result.ok) {
-      console.warn(
-        `Registry parse failed (skipping integration tests): ${result.error.message.slice(0, 200)}`
-      );
-      return false;
-    }
-    return true;
-  })();
-
-describe.skipIf(!registryParseable)('Integration Tests (Real Registry)', () => {
+// Gate only on genuine fixture presence (#7675). A populated fixture that fails parsing
+// must fail in beforeAll rather than silently skipping the suite.
+describe.skipIf(!hasRealRegistry)('Integration Tests (Real Registry)', () => {
   let index: ResearchIndex;
 
   beforeAll(() => {
     const result = parseRegistry({ registryPath: TEST_REGISTRY_PATH });
-    if (!result.ok) throw new Error(result.error.message);
+    if (!result.ok) throw new Error(`Registry parse failed: ${result.error.message}`);
     index = result.value;
   });
 
