@@ -5,8 +5,8 @@
  * `JobResult` shape so `get_job_result` (and, later, `list_jobs`) can read
  * an async job's result from the canonical task-state log instead of the
  * sidecar. This is the **reader half** of the sidecar→Stage-2 migration:
- * it is flag-gated with the sidecar as the default, so production behavior
- * is unchanged until the writer half (#3091) makes `jobId === taskId` real.
+ * task-state reads are enabled by default, while setting
+ * `NEXUS_JOB_RESULT_SOURCE=sidecar` selects the legacy sidecar-only reader.
  *
  * Mapping contract (see #3090):
  * - status: `cancellation` present → `cancelled`; `stage==='complete'` →
