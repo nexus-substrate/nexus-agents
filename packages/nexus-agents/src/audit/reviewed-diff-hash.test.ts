@@ -87,11 +87,12 @@ describe('canonical git diff is config-invariant (panel condition A — cross-en
     const base = git(['rev-parse', 'HEAD~1']).trim();
     const head = git(['rev-parse', 'HEAD']).trim();
 
-    // Config set A — non-default context, patience algorithm, mnemonic prefixes.
+    // Config set A — non-default context, patience algorithm, mnemonic prefixes, short abbrev.
     git(['config', 'diff.context', '9']);
     git(['config', 'diff.algorithm', 'patience']);
     git(['config', 'diff.mnemonicPrefix', 'true']);
     git(['config', 'core.autocrlf', 'true']);
+    git(['config', 'core.abbrev', '7']);
     const diffA = git(canonicalGitDiffArgs(base, head));
     const hashA = computeReviewedDiffHash(diffA);
 
@@ -100,12 +101,48 @@ describe('canonical git diff is config-invariant (panel condition A — cross-en
     git(['config', 'diff.context', '1']);
     git(['config', 'diff.algorithm', 'histogram']);
     git(['config', 'diff.noprefix', 'true']);
+    git(['config', 'core.abbrev', '11']);
     const diffB = git(canonicalGitDiffArgs(base, head));
     const hashB = computeReviewedDiffHash(diffB);
 
     expect(diffA).toBe(diffB); // byte-identical output
     expect(hashA).toBe(hashB); // therefore identical hash
     expect(hashA).toHaveLength(64);
+  });
+
+  it('produces an identical hash across differing core.abbrev settings (#7619)', () => {
+    const base = git(['rev-parse', 'HEAD~1']).trim();
+    const head = git(['rev-parse', 'HEAD']).trim();
+
+    git(['config', 'core.abbrev', '7']);
+    const diff7 = git(canonicalGitDiffArgs(base, head));
+    const hash7 = computeReviewedDiffHash(diff7);
+
+    git(['config', 'core.abbrev', '11']);
+    const diff11 = git(canonicalGitDiffArgs(base, head));
+    const hash11 = computeReviewedDiffHash(diff11);
+
+    git(['config', 'core.abbrev', 'auto']);
+    const diffAuto = git(canonicalGitDiffArgs(base, head));
+    const hashAuto = computeReviewedDiffHash(diffAuto);
+
+    // Verify index line contains full 40-hex object IDs on both sides
+    const indexLine = diff7.split('\n').find((l) => l.startsWith('index '));
+    expect(indexLine).toMatch(/^index [0-9a-f]{40}\.\.[0-9a-f]{40} \d{6}$/);
+
+    expect(diff7).toBe(diff11);
+    expect(diff7).toBe(diffAuto);
+    expect(hash7).toBe(hash11);
+    expect(hash7).toBe(hashAuto);
+
+    // Negative control: changing source body still changes the hash
+    writeFileSync(join(repo, 'f.txt'), 'line1\nline2\nCHANGED_AGAIN\nline4\nline5\nline6\n');
+    git(['add', '.']);
+    git(['commit', '-q', '-m', 'changed head']);
+    const newHead = git(['rev-parse', 'HEAD']).trim();
+    const diffNew = git(canonicalGitDiffArgs(base, newHead));
+    const hashNew = computeReviewedDiffHash(diffNew);
+    expect(hashNew).not.toBe(hash7);
   });
 
   it('producer-side and gate-side compute the SAME hash for the reviewed diff', () => {

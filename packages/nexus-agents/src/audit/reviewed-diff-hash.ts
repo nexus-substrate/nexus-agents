@@ -60,6 +60,8 @@ export const MAX_REVIEWED_DIFF_BYTES = 50_000;
  *    `a/`,`b/` prefixes regardless of local config.
  *  - `--no-color` / `--no-ext-diff` — no ANSI, no external differ.
  *  - `--no-renames` — rename detection output is config/version-sensitive; off.
+ *  - `--full-index` — pin full blob hashes on the index line so output does not
+ *    vary with host core.abbrev or object-database collision scaling (#7619).
  *  - `-U3` — pin the context-line count (git default is 3, but it is configurable).
  *  - `<base>..<head>` — TWO-DOT range (base→head), NOT three-dot/merge-base.
  * {@link canonicalGitDiffArgs} appends the range, then the `--` separator and the
@@ -78,6 +80,7 @@ export const CANONICAL_GIT_DIFF_ARGS: readonly string[] = Object.freeze([
   '--no-color',
   '--no-ext-diff',
   '--no-renames',
+  '--full-index',
   '-U3',
 ]);
 
