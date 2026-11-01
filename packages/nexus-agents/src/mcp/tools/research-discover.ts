@@ -178,6 +178,8 @@ export type ResearchDiscoverDeps = BaseMcpToolDeps;
 export interface ResearchDiscoverResponse {
   /** Topic that was searched */
   topic: string;
+  /** Canonical taxonomy topic if aliased or categorized (#7540) */
+  canonicalTopic?: string;
   /** Sources queried */
   sourcesQueried: string[];
   /** Sources that failed during discovery */
@@ -494,10 +496,13 @@ export async function executeDiscovery(
   logger: ILogger,
   signal?: AbortSignal
 ): Promise<ResearchDiscoverResponse> {
-  // Normalize topic to canonical form (Issue #1576 Wave 4)
+  // Preserve search intent for provider queries and relevance scoring (#7540),
+  // while retaining canonical taxonomy classification.
+  const searchTopic = rawInput.topic;
+  const canonicalTopic = normalizeTopicToCanonical(searchTopic);
   const input: ResearchDiscoverInput = {
     ...rawInput,
-    topic: normalizeTopicToCanonical(rawInput.topic),
+    topic: searchTopic,
   };
   const registry = await getExistingArxivIds();
   const {
@@ -510,11 +515,11 @@ export async function executeDiscovery(
   const totalFound = allItems.length;
   const inRegistry = allItems.filter((i) => i.alreadyInRegistry).length;
 
-  // Apply relevance filtering to remove off-topic results
+  // Apply relevance filtering using search topic to preserve query intent (#7540)
   const threshold = input.relevanceThreshold;
   const relevantItems = filterByRelevance(
     allItems.filter((i) => !i.alreadyInRegistry),
-    input.topic,
+    searchTopic,
     threshold
   ).slice(0, input.maxResults);
 
@@ -528,7 +533,8 @@ export async function executeDiscovery(
   }
 
   const response: ResearchDiscoverResponse = {
-    topic: input.topic,
+    topic: searchTopic,
+    canonicalTopic,
     sourcesQueried: sourcesToQuery,
     failedSources,
     items: relevantItems,
@@ -734,6 +740,7 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
 // actually sends.
 const RESEARCH_DISCOVER_OUTPUT_SCHEMA = {
   topic: z.string().optional(),
+  canonicalTopic: z.string().optional(),
   sourcesQueried: z.array(z.string()).optional(),
   failedSources: z.array(z.string()).optional(),
   items: z.array(z.unknown()).optional(),
