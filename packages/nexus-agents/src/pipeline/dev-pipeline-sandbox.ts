@@ -99,6 +99,7 @@ export function buildSandboxInvocation(
       env: {
         ...env,
         TMPDIR: paths.temp,
+        XDG_RUNTIME_DIR: join(paths.temp, 'runtime'),
         npm_config_store_dir: join(paths.temp, 'pnpm-store'),
         npm_config_cache: join(paths.temp, 'npm-cache'),
         npm_config_cache_dir: join(paths.temp, 'pnpm-cache'),
@@ -210,6 +211,7 @@ export async function createScratchSandbox(
       temp,
     };
     seedCodexHome(join(temp, CODEX_HOME_DIR));
+    mkdirSync(join(temp, 'runtime'), { mode: 0o700, recursive: true });
     // Even intent-to-add creates the empty blob. Keep all object writes private.
     const objects = join(paths.gitDir, 'sandbox-objects');
     mkdirSync(objects);
