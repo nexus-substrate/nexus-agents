@@ -1,5 +1,39 @@
 # nexus-agents
 
+## 15.4.0
+
+### Minor Changes
+
+- [#7712](https://github.com/nexus-substrate/nexus-agents/pull/7712) [`e8d137c`](https://github.com/nexus-substrate/nexus-agents/commit/e8d137cedd4ed2c1991aa0921899f5512cd8e081) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep implementation write targets portable across scratch workspaces and bind them to task checkpoints. ([#7670](https://github.com/nexus-substrate/nexus-agents/issues/7670))
+
+- [#7722](https://github.com/nexus-substrate/nexus-agents/pull/7722) [`3404403`](https://github.com/nexus-substrate/nexus-agents/commit/3404403ab99cb04f207e6d70da50cdd9e0d3cc81) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security-ledger): disambiguate legacy finding identities via content digest ([#7652](https://github.com/nexus-substrate/nexus-agents/issues/7652))
+
+  Enable resolution of historical findings in `.security-discoveries.jsonl` that share identical timestamps without unique `id` fields. Resolvers and `pnpm sec:resolve` support content-bound targeting via SHA-256 digest (`--target sha256:<hex>`). Original historical lines and bytes remain immutable. Ambiguous target errors list candidate finding digests to guide operators.
+
+### Patch Changes
+
+- [#7730](https://github.com/nexus-substrate/nexus-agents/pull/7730) [`4ea7f88`](https://github.com/nexus-substrate/nexus-agents/commit/4ea7f8820ab436d12adcc5788941976b9031cbe9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Pin `--full-index` in `CANONICAL_GIT_DIFF_ARGS` so canonical reviewed-diff hashes remain invariant across Git object-database sizes and host `core.abbrev` configurations ([#7619](https://github.com/nexus-substrate/nexus-agents/issues/7619)).
+
+- [#7713](https://github.com/nexus-substrate/nexus-agents/pull/7713) [`70f6155`](https://github.com/nexus-substrate/nexus-agents/commit/70f61554a1151513c2f4ce7799d269a85d3586fe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refuse wrapped Codex read-only tasks before model dispatch when the host-only sandbox probe cannot verify the nested sandbox context.
+
+- [#7718](https://github.com/nexus-substrate/nexus-agents/pull/7718) [`ee0d3da`](https://github.com/nexus-substrate/nexus-agents/commit/ee0d3daa2687cc464b98f3d34701557552cdb6ec) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep Gemini execution and voter availability circuit breakers aligned through the shared circuit breaker registry.
+
+- [#7726](https://github.com/nexus-substrate/nexus-agents/pull/7726) [`f1fe583`](https://github.com/nexus-substrate/nexus-agents/commit/f1fe583d483bb96a3eaed90d891a982c66c648db) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Resolve Node-only ambient HeadersInit compilation error in bundled MCP declaration types ([#7583](https://github.com/nexus-substrate/nexus-agents/issues/7583)).
+
+- [#7725](https://github.com/nexus-substrate/nexus-agents/pull/7725) [`00eb256`](https://github.com/nexus-substrate/nexus-agents/commit/00eb256004d272d094878670fbf86e537cbbb9e1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Redirect package manager runtime directory to private writable boundary in dev pipeline bubblewrap sandbox, fixing `ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK` with pnpm 12 ([#7612](https://github.com/nexus-substrate/nexus-agents/issues/7612)).
+
+- [#7720](https://github.com/nexus-substrate/nexus-agents/pull/7720) [`b292754`](https://github.com/nexus-substrate/nexus-agents/commit/b2927547d00bdf1768b9df7992158a594abd07ee) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Isolate PR review workflow: split read analysis (trusted base checkout, model secrets, read-only permissions) from unprivileged artifact validation and comment posting ([#7696](https://github.com/nexus-substrate/nexus-agents/issues/7696)).
+
+- [#7727](https://github.com/nexus-substrate/nexus-agents/pull/7727) [`286c082`](https://github.com/nexus-substrate/nexus-agents/commit/286c082a259453e8f4e68371368e0e44d6ea1bb3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve research discovery search query intent during provider queries and relevance scoring while retaining canonical taxonomy classification in `canonicalTopic` ([#7540](https://github.com/nexus-substrate/nexus-agents/issues/7540)).
+
+- [#7719](https://github.com/nexus-substrate/nexus-agents/pull/7719) [`e0c3759`](https://github.com/nexus-substrate/nexus-agents/commit/e0c375907a5bed9e962e736d8c333df5fa1576a5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fail standalone research index integration tests when populated registry fixture contains invalid data.
+
+- [#7714](https://github.com/nexus-substrate/nexus-agents/pull/7714) [`f58f412`](https://github.com/nexus-substrate/nexus-agents/commit/f58f412ba2dd89483e21a9fcf2986ad286777989) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep the research synthesis `trinity-roles` alignment count and source path current with the built-in expert registry.
+
+- [#7721](https://github.com/nexus-substrate/nexus-agents/pull/7721) [`281312b`](https://github.com/nexus-substrate/nexus-agents/commit/281312bba823be9d9dfbf59a5b85ebf679d04c96) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct task-state reader default documentation in module header to reflect that task-state reads default to enabled ([#7690](https://github.com/nexus-substrate/nexus-agents/issues/7690)).
+
+- [#7723](https://github.com/nexus-substrate/nexus-agents/pull/7723) [`28f482a`](https://github.com/nexus-substrate/nexus-agents/commit/28f482ab58b20740402c78186f5cc930dacf7852) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Bound website audit setup steps with explicit timeouts so intermittent Chromium apt or download stalls report cleanly without cancelling the job or skipping independent dependency audits ([#7641](https://github.com/nexus-substrate/nexus-agents/issues/7641)).
+
 ## 15.3.0
 
 ### Minor Changes
