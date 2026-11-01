@@ -94,10 +94,11 @@ function openCodeCandidates(requested: string): string[] {
 }
 
 /**
- * The id a response reports for `cliId`, and so the id cost is priced by: the
+ * The operational attribution id recorded in `CliResponse.model` for `cliId`: the
  * canonical registry id when one names this model (with or without the
- * `openrouter/` prefix), else the opencode id itself — which an unpriced
- * lookup then reports as unknown rather than at the default's price.
+ * `openrouter/` prefix), else the opencode id itself. This is request/inventory-derived
+ * attribution sent as `--model`, distinct from a transport serving report; serving
+ * cost remains unmeasured when no provider report is returned (#7572).
  */
 function reportedModelId(requested: string, cliId: string): string {
   const bare = cliId.startsWith(OPENROUTER_PREFIX) ? cliId.slice(OPENROUTER_PREFIX.length) : cliId;
@@ -112,7 +113,10 @@ function reportedModelId(requested: string, cliId: string): string {
 interface ResolvedOpenCodeModel {
   /** The id passed as `--model`. */
   readonly cliId: string;
-  /** The id the response reports, which cost is priced by. */
+  /**
+   * The request/inventory-derived operational attribution recorded in `CliResponse.model`
+   * (#7572), distinct from an attested transport serving report.
+   */
   readonly reportedAs: string;
 }
 
@@ -313,10 +317,11 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   }
 
   /**
-   * #6599: an explicitly requested model is resolved to an opencode id before
-   * the run, and the response reports the model that ran so cost and outcome
-   * attribution price it rather than the adapter default. With no requested
-   * model the path is unchanged.
+   * #6599, #7572: an explicitly requested model is resolved to an opencode id before
+   * the run, and the response records that resolved attribution in `CliResponse.model`
+   * for operational outcome tracking rather than the adapter default. This is
+   * request/inventory-derived attribution, distinct from an attested transport
+   * serving report. With no requested model the path is unchanged.
    */
   override async execute(
     task: CliTask,

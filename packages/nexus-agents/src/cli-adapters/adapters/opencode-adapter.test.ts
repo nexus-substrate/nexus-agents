@@ -1136,7 +1136,7 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
     expect(spawnedArgs()).not.toContain('--model');
   });
 
-  it('reports the resolved model on the response, so cost prices the model that ran', async () => {
+  it('records resolved operational model attribution on the response (#6599, #7572)', async () => {
     const a = await adapterWithInventory(INVENTORY);
     const res = await a.execute({ content: 'x', model: 'qwen/qwen3-coder' });
     expect(res.ok).toBe(true);
