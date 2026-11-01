@@ -48,8 +48,7 @@ const steps = Object.values(workflow.jobs).flatMap((job) => job.steps);
 const invocation = steps.find((step) => step.name === 'Run pr_review tool')?.run;
 const commentScript = (
   steps.find((step) => step.name === 'Post review summary as PR comment')?.with as
-    | { script?: string }
-    | undefined
+    { script?: string } | undefined
 )?.script;
 if (invocation === undefined || commentScript === undefined)
   throw new Error('Review steps missing');
@@ -125,9 +124,7 @@ async function executeComment(
     ...result,
   };
   const content =
-    options.artifactContent !== undefined
-      ? options.artifactContent
-      : JSON.stringify(boundResult);
+    options.artifactContent !== undefined ? options.artifactContent : JSON.stringify(boundResult);
 
   await (runInNewContext(`(async () => { ${commentSource} })()`, {
     require: () => ({
@@ -262,6 +259,7 @@ describe('PR review workflow security boundaries and isolation (#7696)', () => {
     expect(workflow.jobs).toHaveProperty('post-comment');
     const postJob = workflow.jobs['post-comment'];
     expect(postJob?.needs).toBe('pr-review');
+    expect(postJob?.if).toBe("needs.pr-review.result == 'success'");
   });
 
   it('restricts pr-review job to read-only permissions and does not checkout PR head', () => {
@@ -319,18 +317,12 @@ describe('PR review workflow security boundaries and isolation (#7696)', () => {
   it('fails closed when artifact is missing, empty, or malformed without calling createComment', async () => {
     // Missing artifact (ENOENT)
     await expect(
-      executeComment(
-        { summary: 'approve', verified: true, reviews: [] },
-        { artifactContent: null }
-      )
+      executeComment({ summary: 'approve', verified: true, reviews: [] }, { artifactContent: null })
     ).rejects.toThrow();
 
     // Empty artifact
     await expect(
-      executeComment(
-        { summary: 'approve', verified: true, reviews: [] },
-        { artifactContent: '' }
-      )
+      executeComment({ summary: 'approve', verified: true, reviews: [] }, { artifactContent: '' })
     ).rejects.toThrow();
 
     // Malformed JSON artifact
