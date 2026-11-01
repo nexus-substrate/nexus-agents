@@ -45,10 +45,13 @@ import {
 } from '../cli-timeout-profiles.js';
 import {
   CliCircuitBreaker,
+  CircuitBreakerRegistry,
   DEFAULT_CIRCUIT_BREAKER_CONFIG,
   type CircuitBreakerConfig,
   type CircuitBreakerSnapshot,
 } from '../circuit-breaker.js';
+import { getDefaultCliCircuitBreakerRegistry } from '../cli-circuit-breaker.js';
+import { breakerKeys } from '../breaker-key.js';
 import { GEMINI_LEGACY_DEFAULTS, createCircuitOpenError } from './gemini-adapter-helpers.js';
 import { executeCliRetryLoop } from '../cli-retry-loop.js';
 import { GEMINI_CLI_COMMAND } from '../cli-error-envelope.js';
@@ -69,6 +72,8 @@ export interface GeminiConfig extends BaseAdapterOptions {
   readonly maxDelayMs?: number;
   /** Circuit breaker configuration */
   readonly circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
+  /** Optional circuit breaker registry (defaults to shared getDefaultCliCircuitBreakerRegistry) */
+  readonly circuitBreakerRegistry?: CircuitBreakerRegistry;
   /** Enable circuit breaker (default: true) */
   readonly enableCircuitBreaker?: boolean;
   /** Injectable bwrap sandbox probe for read-only analysis mode */
@@ -87,7 +92,10 @@ export interface GeminiExecutionResult {
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<GeminiConfig, 'logger' | 'circuitBreakerConfig' | 'sandboxProbe' | 'platform'>
+  Omit<
+    GeminiConfig,
+    'logger' | 'circuitBreakerConfig' | 'circuitBreakerRegistry' | 'sandboxProbe' | 'platform'
+  >
 > = {
   model: DEFAULT_GEMINI_CLI_MODEL,
   maxRetries: 3,
@@ -181,17 +189,28 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     this.adapterLogger = options?.logger ?? createLogger({ component: 'gemini-adapter' });
     this.platform = options?.platform ?? process.platform;
     this.sandboxProbe = options?.sandboxProbe ?? createBwrapPreflight(undefined, this.platform);
+    this.circuitBreaker = this.initCircuitBreaker(options, mergedConfig.enableCircuitBreaker);
+  }
 
-    // Initialize circuit breaker if enabled
-    if (mergedConfig.enableCircuitBreaker) {
+  private initCircuitBreaker(
+    options?: GeminiConfig,
+    enableCircuitBreaker = true
+  ): CliCircuitBreaker | null {
+    if (!enableCircuitBreaker) {
+      return null;
+    }
+    const registry = options?.circuitBreakerRegistry ?? getDefaultCliCircuitBreakerRegistry();
+    const armKey = breakerKeys.forArm({ name: this.name, model: this.model });
+    if (options?.circuitBreakerConfig !== undefined) {
       const cbConfig: CircuitBreakerConfig = {
         ...DEFAULT_CIRCUIT_BREAKER_CONFIG,
-        ...options?.circuitBreakerConfig,
+        ...options.circuitBreakerConfig,
       };
-      this.circuitBreaker = new CliCircuitBreaker('gemini', cbConfig);
-    } else {
-      this.circuitBreaker = null;
+      const customBreaker = new CliCircuitBreaker(armKey, cbConfig);
+      registry.setArmBreaker(armKey, customBreaker);
+      return customBreaker;
     }
+    return registry.getArmBreaker(armKey);
   }
 
   /** Key-free model enumeration via the models.dev snapshot (#3405). */

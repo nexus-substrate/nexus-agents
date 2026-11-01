@@ -381,6 +381,14 @@ export class CircuitBreakerRegistry {
     return snapshots;
   }
 
+  /** Replaces or registers a breaker for an arm (#7716). */
+  setArmBreaker(armId: ObservedArmId, breaker: CliCircuitBreaker): void {
+    for (const listener of this.globalListeners) {
+      breaker.addStateChangeListener(listener);
+    }
+    this.breakers.set(armId, breaker);
+  }
+
   resetAll(): void {
     for (const breaker of this.breakers.values()) {
       breaker.reset();
