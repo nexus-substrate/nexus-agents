@@ -1426,6 +1426,7 @@ ClassDeclaration CircuitBreakerRegistry
   reset(cliName: CliName) => void
   resetAll() => void
   resetArm(armId: ObservedArmId) => void
+  setArmBreaker(armId: ObservedArmId, breaker: CliCircuitBreaker) => void
 InterfaceDeclaration CircuitBreakerSnapshot
   readonly config: CircuitBreakerConfig
   readonly failureCount: number
@@ -4263,6 +4264,7 @@ InterfaceDeclaration GeminiConfig
   extends BaseAdapterOptions
   readonly baseDelayMs?: number | undefined
   readonly circuitBreakerConfig?: Partial<CircuitBreakerConfig> | undefined
+  readonly circuitBreakerRegistry?: CircuitBreakerRegistry | undefined
   readonly enableCircuitBreaker?: boolean | undefined
   readonly maxDelayMs?: number | undefined
   readonly maxRetries?: number | undefined
