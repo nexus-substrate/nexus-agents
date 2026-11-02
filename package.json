@@ -92,7 +92,7 @@
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^4.1.12",
     "cspell": "^10.4.0",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "eslint-plugin-jsdoc": "^64.5.4",
     "husky": "^9.1.7",
     "knip": "^6.42.1",
