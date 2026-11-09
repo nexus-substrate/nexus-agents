@@ -26,7 +26,7 @@ jobs:
       # the repo to be checked out first (#1495).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: github/codeql-action/init@bb471cdcf4dda2c934c5b656f554d43c1434ed13 # v4
+      - uses: github/codeql-action/init@fbfa9f37476c0024508d051f3c34fcca3366b0e2 # v4
         with:
           languages: javascript-typescript
           build-mode: none
