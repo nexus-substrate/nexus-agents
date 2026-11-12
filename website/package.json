@@ -20,7 +20,7 @@
     "@astrojs/check": "^0.9.10",
     "@astrojs/markdown-satteri": "^0.4.4",
     "@astrojs/sitemap": "^3.7.4",
-    "@astrojs/svelte": "~9.1.0",
+    "@astrojs/svelte": "~9.1.2",
     "astro": "~7.4.0",
     "astro-pagefind": "2.0.1",
     "mermaid": "^11.17.2",
