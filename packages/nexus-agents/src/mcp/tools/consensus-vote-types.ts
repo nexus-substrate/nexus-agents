@@ -212,16 +212,28 @@ export const ConsensusVoteInputSchema = z.object({
         '"declare", not "MUST", because the warning is what the code actually holds — it is ' +
         'tightened back only in the same change that promotes the warning to a refusal.'
     ),
+  workspace: z
+    .string()
+    .min(1)
+    .max(4096)
+    .optional()
+    .describe(
+      'Working directory the voter seats are pointed at (#7751), so a panel run by a shared MCP ' +
+        'server reviews the repository the caller is asking about instead of the server process cwd. ' +
+        'Relative paths resolve against the server cwd; the path must exist, be a directory, and sit ' +
+        'inside a git repository — its repository root is used. Defaults to the server cwd. When ' +
+        'supplied it is also the root `artifactPath` must stay within.'
+    ),
   artifactPath: z
     .string()
     .min(1)
     .max(4096)
     .optional()
     .describe(
-      'UTF-8 artifact file within the repository root (server cwd). Its content is inlined ' +
-        "into every seat's proposal with a SHA-256 digest; maximum 256 KiB. Missing, empty, " +
-        'binary (NUL byte), oversized, and escaping paths are rejected. Seats read the ' +
-        'inlined text, not the tree.'
+      'UTF-8 artifact file within the repository root (`workspace` when supplied, else the server ' +
+        "cwd). Its content is inlined into every seat's proposal with a SHA-256 digest; maximum " +
+        '256 KiB. Missing, empty, binary (NUL byte), oversized, and escaping paths are rejected. ' +
+        'Seats read the inlined text, not the tree.'
     ),
   options: z
     .array(z.string().min(1).max(200))
