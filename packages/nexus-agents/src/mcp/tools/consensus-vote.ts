@@ -46,6 +46,7 @@ import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { resolvePanelWorkspace } from '../../cli/panel-workspace.js';
+import { resolveCallerWorkspace } from './consensus-vote-caller-workspace.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
 import type {
@@ -883,6 +884,8 @@ async function handleConsensusVote(
   try {
     const result = await executeVoting(args, logger, {
       ...(deps.gatewayAdapters !== undefined && { gatewayAdapters: deps.gatewayAdapters }),
+      // #7751: the caller's directory, already resolved to its repository root.
+      workspace: args.workspace,
       signal,
       onVoteCollected,
     });
@@ -1032,8 +1035,19 @@ async function runSyncConsensusVote(
 async function prepareVoteArtifact(
   input: ConsensusVoteInput
 ): Promise<{ ok: true; value: ConsensusVoteInput } | { ok: false; error: ToolResult }> {
-  if (input.artifactPath === undefined) return { ok: true, value: input };
-  const resolved = resolveInsideRoot(input.artifactPath);
+  // #7751: resolve the panel directory once, before any seat runs, so an unusable
+  // workspace fails as a validation error instead of becoming a blind seat, and so
+  // the artifact root is the same directory the seats are handed.
+  const workspace = resolveCallerWorkspace(input.workspace);
+  if (!workspace.ok) {
+    return {
+      ok: false,
+      error: toolStructuredError({ errorCategory: 'validation', message: workspace.reason }),
+    };
+  }
+  const withWorkspace: ConsensusVoteInput = { ...input, workspace: workspace.value };
+  if (input.artifactPath === undefined) return { ok: true, value: withWorkspace };
+  const resolved = resolveInsideRoot(input.artifactPath, workspace.value);
   if (resolved === null) {
     return {
       ok: false,
@@ -1049,7 +1063,7 @@ async function prepareVoteArtifact(
       resolved,
       basename(input.artifactPath)
     );
-    return { ok: true, value: { ...input, proposal } };
+    return { ok: true, value: { ...withWorkspace, proposal } };
   } catch (error: unknown) {
     return {
       ok: false,
