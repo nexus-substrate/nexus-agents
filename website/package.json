@@ -21,7 +21,7 @@
     "@astrojs/markdown-satteri": "^0.4.4",
     "@astrojs/sitemap": "^3.7.4",
     "@astrojs/svelte": "~9.1.0",
-    "astro": "~7.4.0",
+    "astro": "~7.4.7",
     "astro-pagefind": "2.0.1",
     "mermaid": "^11.17.2",
     "remarque-tokens": "0.32.0",
