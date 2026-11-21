@@ -29,7 +29,11 @@ import {
   type VoterAttemptKind,
 } from './voter-attempt-events.js';
 import { observeLateVoter } from './voter-late-settlement.js';
-import { getMcpSafeDeadlineMs, VOTE_TIMEOUTS } from '../config/timeouts.js';
+import {
+  getAsyncJobSafeDeadlineMs,
+  getMcpSafeDeadlineMs,
+  VOTE_TIMEOUTS,
+} from '../config/timeouts.js';
 import { reaskUnresolvedOption } from './voter-option-reask.js';
 
 /** Worst-case legitimate vote time plus stagger and buffer (#1871). */
@@ -44,23 +48,44 @@ export function computeOverallConsensusDeadlineMs(
   return perVoteBudget + staggerBudget + VOTE_TIMEOUTS.overallDeadlineBufferMs;
 }
 
-/** One deadline for first pass, backoff, and retry; clamped below the MCP wrapper (#2105). */
+/**
+ * What bounds a panel's run (#7764): an MCP `request` (the sync path, clamped below the
+ * `consensus_vote` wrapper, #2105) or an `async-job` body (the `dispatch: "async"` path, which has no
+ * MCP request and is bounded by the `async-job-body` guard instead).
+ */
+export type PanelRunsAs = 'request' | 'async-job';
+
+/**
+ * One deadline for first pass, backoff, and retry, clamped below whatever bounds the run. Before
+ * #7764 the async path was clamped to the sync request cap too, so `dispatch: "async"` hit the same
+ * 890 s cutoff as a sync call while the job's own guard was 3600 s.
+ */
 export function resolvePanelDeadline(
-  timeoutMs: number,
-  maxRetries: number,
-  roleCount: number,
-  interDelayMs: number,
+  budget: {
+    readonly timeoutMs: number;
+    readonly maxRetries: number;
+    readonly roleCount: number;
+    readonly interDelayMs: number;
+    /** Omitted ⇒ `request`, the pre-#7764 clamp. */
+    readonly runsAs?: PanelRunsAs | undefined;
+  },
   logger: ILogger
 ): { overallDeadlineMs: number; deadlineAtMs: number } {
+  const { timeoutMs, maxRetries, roleCount, interDelayMs } = budget;
+  const runsAs = budget.runsAs ?? 'request';
   const computedDeadlineMs = computeOverallConsensusDeadlineMs(
     timeoutMs,
     maxRetries,
     roleCount,
     interDelayMs
   );
-  const overallDeadlineMs = getMcpSafeDeadlineMs(computedDeadlineMs, 'consensus_vote');
+  const overallDeadlineMs =
+    runsAs === 'async-job'
+      ? getAsyncJobSafeDeadlineMs(computedDeadlineMs)
+      : getMcpSafeDeadlineMs(computedDeadlineMs, 'consensus_vote');
   if (overallDeadlineMs < computedDeadlineMs) {
-    logger.debug('Consensus deadline clamped to MCP wrapper timeout', {
+    logger.debug('Consensus deadline clamped below the guard bounding the run', {
+      runsAs,
       computedDeadlineMs,
       overallDeadlineMs,
     });

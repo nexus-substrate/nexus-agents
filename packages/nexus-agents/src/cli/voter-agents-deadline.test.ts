@@ -13,7 +13,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
-import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
+import {
+  computeOverallConsensusDeadlineMs,
+  launchVotesWithOverallDeadline,
+  resolvePanelDeadline,
+} from './voter-agents-deadline.js';
+import {
+  getAsyncJobSafeDeadlineMs,
+  getMcpSafeDeadlineMs,
+  VOTE_TIMEOUTS,
+} from '../config/timeouts.js';
 import { ResilientAdapter } from '../adapters/resilient-adapter.js';
 
 const silentLogger: ILogger = {
@@ -960,5 +969,43 @@ describe('fallover disclosure (#6115)', () => {
     const result = await launchOne('scope_steward', seat, fallback, 'No model adapter available');
     expect(result?.assignedCli).toBe('codex');
     expect(result?.fallback).toEqual({ fromCli: 'codex', reason: 'unknown' });
+  });
+});
+
+describe('resolvePanelDeadline clamps below the guard that bounds the run (#7764)', () => {
+  const quietLogger = (): ILogger =>
+    ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) as unknown as ILogger;
+  // The defaults the #7764 report hit: 300 s per attempt, two retries, a 5-seat panel.
+  const timeoutMs = VOTE_TIMEOUTS.defaultMs;
+  const maxRetries = VOTE_TIMEOUTS.maxRetries;
+  const computed = computeOverallConsensusDeadlineMs(timeoutMs, maxRetries, 5, 2_000);
+  const budget = { timeoutMs, maxRetries, roleCount: 5, interDelayMs: 2_000 };
+
+  it('the defaults compute a budget above the sync request cap, so a sync panel is clamped', () => {
+    const { overallDeadlineMs } = resolvePanelDeadline(budget, quietLogger());
+    expect(computed).toBeGreaterThan(getMcpSafeDeadlineMs(computed, 'consensus_vote'));
+    expect(overallDeadlineMs).toBe(getMcpSafeDeadlineMs(computed, 'consensus_vote'));
+  });
+
+  it('an async-job panel keeps the full computed budget, because the job guard is far larger', () => {
+    const { overallDeadlineMs } = resolvePanelDeadline(
+      { ...budget, runsAs: 'async-job' },
+      quietLogger()
+    );
+    expect(overallDeadlineMs).toBe(computed);
+    expect(overallDeadlineMs).toBeGreaterThan(getMcpSafeDeadlineMs(computed, 'consensus_vote'));
+  });
+
+  it('omitting runsAs keeps the request clamp (no behaviour change for existing callers)', () => {
+    const omitted = resolvePanelDeadline(budget, quietLogger());
+    const request = resolvePanelDeadline({ ...budget, runsAs: 'request' }, quietLogger());
+    expect(omitted.overallDeadlineMs).toBe(request.overallDeadlineMs);
+  });
+
+  it('getAsyncJobSafeDeadlineMs caps at the job guard less the buffer, and never drops below the floor', () => {
+    const huge = getAsyncJobSafeDeadlineMs(Number.MAX_SAFE_INTEGER);
+    expect(huge).toBeLessThan(Number.MAX_SAFE_INTEGER);
+    expect(getAsyncJobSafeDeadlineMs(huge + 1)).toBe(huge);
+    expect(getAsyncJobSafeDeadlineMs(1)).toBe(getMcpSafeDeadlineMs(1, 'consensus_vote'));
   });
 });

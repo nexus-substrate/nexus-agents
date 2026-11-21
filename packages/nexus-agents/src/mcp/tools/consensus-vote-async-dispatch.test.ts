@@ -195,6 +195,44 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
     }
   );
 
+  it.each([
+    ['async', 'async-job'],
+    ['sync', 'request'],
+  ] as const)(
+    'a %s vote tells the collector what bounds its run, so its panel deadline uses that guard (#7764)',
+    async (dispatch, runsAs) => {
+      collectRealVotesMock.mockImplementation(({ roles }) =>
+        Promise.resolve(
+          roles.map((role) => ({
+            role,
+            vote: { decision: 'approve', reasoning: 'approve fixture', confidence: 0.9 },
+            processingTimeMs: 17,
+            source: 'llm',
+            cli: 'codex',
+            model: 'fixture-model',
+          }))
+        )
+      );
+      const handler = captureHandler();
+      const result = await handler(
+        { proposal: 'deadline guard seam', quickMode: true, dispatch },
+        CTX
+      );
+      const jobId = (JSON.parse(result.content[0]!.text) as Record<string, unknown>)['jobId'] as
+        string | undefined;
+      if (dispatch === 'async') {
+        await vi.waitFor(
+          () => {
+            expect(readJobResult(jobId!)?.status).toBe('complete');
+          },
+          { timeout: 10_000, interval: 20 }
+        );
+      }
+      const opts = collectRealVotesMock.mock.calls[0]?.[0] as { runsAs?: string } | undefined;
+      expect(opts?.runsAs).toBe(runsAs);
+    }
+  );
+
   it('returns a structured sync error for an empty panel without decision records (#6885)', async () => {
     collectRealVotesMock.mockResolvedValue([]);
     const result = await captureHandler()(

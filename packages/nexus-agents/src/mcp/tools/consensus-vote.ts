@@ -100,6 +100,7 @@ import type {
   ErrorPolicy,
   ExtendedVotingResult,
 } from './consensus-vote-types.js';
+import type { PanelRunsAs } from '../../cli/voter-agents-deadline.js';
 
 export type {
   VotingStrategy,
@@ -531,6 +532,8 @@ export async function executeVoting(
      * each seat settles. Retained through the escalation re-vote.
      */
     onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
+    /** #7764: `async-job` when this runs inside a job body; retained through the escalation re-vote. */
+    runsAs?: PanelRunsAs | undefined;
   }
 ): Promise<ExtendedVotingResult> {
   // #6110: resolve the target project ONCE per vote (the escalation re-vote
@@ -644,6 +647,8 @@ async function executeVotingInner(
     panelWorkspace: string;
     /** #6162: per-seat heartbeat, forwarded to `collectRealVotes`. */
     onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
+    /** #7764: what bounds the run, forwarded to `collectRealVotes`. */
+    runsAs?: PanelRunsAs | undefined;
   }
 ): Promise<ExtendedVotingResult> {
   const strategy = resolveStrategy(input);
@@ -672,6 +677,7 @@ async function executeVotingInner(
     workspaceSha: opts.workspaceSha,
     signal: opts.signal,
     onVoteCollected: opts.onVoteCollected,
+    runsAs: opts.runsAs,
   });
   // #6735: a cancelled vote stops here, before the engine, with only the
   // seats that cast a vote — no verdict is computed from a partial panel.
@@ -888,6 +894,9 @@ async function handleConsensusVote(
       workspace: args.workspace,
       signal,
       onVoteCollected,
+      // #7764: a job body is bounded by the async-job guard, not the sync request cap it was dispatched
+      // from, so its panel deadline is clamped to that guard.
+      runsAs: jobId !== undefined ? 'async-job' : 'request',
     });
     // #6735: the ledger append goes first. It throws VoteCancelledError when a
     // cancel landed during its lock wait, and a cancelled vote must not then
