@@ -542,6 +542,23 @@ export function getMcpSafeDeadlineMs(computedMs: number, toolName: string): numb
 }
 
 /**
+ * Clamp a deadline that is raced inside a backgrounded job body (#7764). A job body runs under the
+ * `async-job-body` class, with no MCP request to outlive, so the request cap of the tool that dispatched
+ * it does not bound it: its effective guard does (honouring `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS`),
+ * less the same safety buffer, so the internal deadline fires before the job's own guard. One exception:
+ * the floor below wins, so a guard overridden below `floor + perToolSafetyBufferMs` reaps the job before
+ * the panel deadline fires (the same floor `getMcpSafeDeadlineMs` applies to a request cap).
+ *
+ * @param computedMs - The internal deadline the caller derived (e.g. the consensus overall deadline).
+ * @returns Clamped deadline in milliseconds, never below the floor `getMcpSafeDeadlineMs` uses.
+ */
+export function getAsyncJobSafeDeadlineMs(computedMs: number): number {
+  const safeCap = resolveClassGuardMs('async-job-body') - MCP_TIMEOUTS.perToolSafetyBufferMs;
+  const floor = Math.floor(MCP_TIMEOUTS.defaultMs / 2);
+  return Math.max(Math.min(computedMs, safeCap), floor);
+}
+
+/**
  * Workflow execution timeouts.
  */
 export const WORKFLOW_TIMEOUTS = {

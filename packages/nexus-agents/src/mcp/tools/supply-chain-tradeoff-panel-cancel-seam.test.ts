@@ -112,4 +112,20 @@ describe('supply_chain_tradeoff_panel hands cancel_job’s signal to the collect
     await captureHandler()({ proposal: 'Should we adopt dep X?', quickMode: true }, CTX);
     expect(collectorOptions()['signal']).toBeUndefined();
   });
+
+  // #7764: an async panel body is bounded by its job guard, so the collector must be told it runs
+  // as one; otherwise it clamps the panel to the sync request cap and slow seats expire early.
+  it('async dispatch: the collector is told it runs as an async job (#7764)', async () => {
+    await captureHandler()(
+      { proposal: 'Should we adopt dep X?', quickMode: true, dispatch: 'async' },
+      CTX
+    );
+    await new Promise((r) => setImmediate(r));
+    expect(collectorOptions()['runsAs']).toBe('async-job');
+  });
+
+  it('sync path: the collector keeps the request clamp (#7764)', async () => {
+    await captureHandler()({ proposal: 'Should we adopt dep X?', quickMode: true }, CTX);
+    expect(collectorOptions()['runsAs']).toBe('request');
+  });
 });

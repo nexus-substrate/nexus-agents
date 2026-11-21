@@ -29,6 +29,7 @@ import type {
   ExtendedVotingResult,
   VotingStrategy,
 } from './consensus-vote-types.js';
+import type { PanelRunsAs } from '../../cli/voter-agents-deadline.js';
 
 /** Options forwarded unchanged to the full-panel re-vote (#4040, #5393, #6110). */
 interface RevoteOpts {
@@ -42,6 +43,8 @@ interface RevoteOpts {
   workspaceSha?: string | undefined;
   /** #6162: per-seat heartbeat, retained through the re-vote. */
   onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
+  /** #7764: an escalation re-vote inside a job body is bounded by the same async-job guard. */
+  runsAs?: PanelRunsAs | undefined;
 }
 
 /**

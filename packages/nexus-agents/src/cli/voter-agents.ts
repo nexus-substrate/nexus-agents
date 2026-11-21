@@ -251,6 +251,12 @@ export async function executeAgentVote(
  * Options for collecting votes from multiple agents.
  */
 export interface CollectRealVotesOptions extends VoterAgentOptions {
+  /**
+   * What bounds this panel's run (#7764): `async-job` when it runs inside a backgrounded job body, so
+   * its overall deadline is clamped to that job's guard rather than the sync request cap. Omitted ⇒
+   * `request` (unchanged).
+   */
+  readonly runsAs?: voterDeadline.PanelRunsAs | undefined;
   /** Repository checkout used by every panel seat. */
   readonly workspace?: string | undefined;
   readonly workspaceSha?: string | undefined;
@@ -422,10 +428,13 @@ export async function collectRealVotes(
   };
   // Clamp once, then share the same cutoff across both passes and backoff (#6811).
   const { overallDeadlineMs, deadlineAtMs } = voterDeadline.resolvePanelDeadline(
-    voteOptions.timeoutMs,
-    voteOptions.maxRetries,
-    roles.length,
-    interDelay,
+    {
+      timeoutMs: voteOptions.timeoutMs,
+      maxRetries: voteOptions.maxRetries,
+      roleCount: roles.length,
+      interDelayMs: interDelay,
+      runsAs: options.runsAs,
+    },
     logger
   );
   const results = await collectPanelPasses(

@@ -585,6 +585,8 @@ function collectReviewVotes(
     gatewayAdapters?: readonly IModelAdapter[];
     signal?: AbortSignal | undefined;
     onVoteCollected?: (() => void) | undefined;
+    /** Set only by the async job body (#3731). */
+    jobId?: string | undefined;
   }
 ): Promise<readonly AgentVoteResult[]> {
   return collectRealVotes({
@@ -597,6 +599,8 @@ function collectReviewVotes(
     ...(panel.seats?.ok === true && { roleAdapters: panel.seats.seats }),
     signal: opts.signal,
     onVoteCollected: opts.onVoteCollected,
+    // #7764: a job body is bounded by the async-job guard, not the sync request cap.
+    runsAs: opts.jobId !== undefined ? 'async-job' : 'request',
   });
 }
 
