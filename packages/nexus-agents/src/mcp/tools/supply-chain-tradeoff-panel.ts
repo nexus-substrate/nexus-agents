@@ -31,6 +31,7 @@ import {
 } from './tool-result.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import type { PanelRunsAs } from '../../cli/voter-agents-deadline.js';
 import {
   resolveAndLogVoterProject,
   VoterProjectInputSchema,
@@ -425,7 +426,9 @@ async function executeTradeoffPanelBody(
    */
   signal?: AbortSignal,
   /** `runAsJob`'s liveness heartbeat (#6162), fired per settled seat. Absent in sync mode. */
-  onVoteCollected?: () => void
+  onVoteCollected?: () => void,
+  /** #7764: an async body is bounded by its job guard, not the dispatching request's cap. */
+  runsAs: PanelRunsAs = 'request'
 ): Promise<ToolResult> {
   const axes = input.axes ?? DEFAULT_AXES;
   const roles = input.quickMode ? QUICK_PANEL : FULL_PANEL;
@@ -442,6 +445,7 @@ async function executeTradeoffPanelBody(
     project: project.name,
     signal,
     onVoteCollected,
+    runsAs,
   });
 
   const votes = voteResults.map((r) => toPanelVote(r, axes));
@@ -498,7 +502,7 @@ async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise
         // `signalAccepted` from `run.length`. The signal reaches `collectRealVotes`,
         // so a cancel stops the un-launched seats; `progress` heartbeats per seat.
         run: (_jobId, _input, signal, progress) =>
-          executeTradeoffPanelBody(input, ctx.logger, signal, progress),
+          executeTradeoffPanelBody(input, ctx.logger, signal, progress, 'async-job'),
         logger: ctx.logger,
       });
     }
