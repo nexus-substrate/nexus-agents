@@ -532,6 +532,15 @@ export const MCP_TIMEOUTS = {
  * @returns Clamped deadline in milliseconds.
  * (Source: Issue #2105 — consensus_vote overallDeadlineMs > MCP wrapper)
  */
+export function getMcpSafeDeadlineMs(computedMs: number, toolName: string): number {
+  const perToolCap = MCP_TIMEOUTS.perTool[toolName] ?? MCP_TIMEOUTS.defaultMs;
+  const safeCap = perToolCap - MCP_TIMEOUTS.perToolSafetyBufferMs;
+  const floor = Math.floor(MCP_TIMEOUTS.defaultMs / 2);
+  // Never return less than the floor (keeps tools usable under tight caps).
+  const capped = Math.min(computedMs, safeCap);
+  return Math.max(capped, floor);
+}
+
 /**
  * Clamp a deadline that is raced inside a backgrounded job body (#7764). A job body runs under the
  * `async-job-body` class, with no MCP request to outlive, so the request cap of the tool that dispatched
@@ -545,15 +554,6 @@ export function getAsyncJobSafeDeadlineMs(computedMs: number): number {
   const safeCap = resolveClassGuardMs('async-job-body') - MCP_TIMEOUTS.perToolSafetyBufferMs;
   const floor = Math.floor(MCP_TIMEOUTS.defaultMs / 2);
   return Math.max(Math.min(computedMs, safeCap), floor);
-}
-
-export function getMcpSafeDeadlineMs(computedMs: number, toolName: string): number {
-  const perToolCap = MCP_TIMEOUTS.perTool[toolName] ?? MCP_TIMEOUTS.defaultMs;
-  const safeCap = perToolCap - MCP_TIMEOUTS.perToolSafetyBufferMs;
-  const floor = Math.floor(MCP_TIMEOUTS.defaultMs / 2);
-  // Never return less than the floor (keeps tools usable under tight caps).
-  const capped = Math.min(computedMs, safeCap);
-  return Math.max(capped, floor);
 }
 
 /**

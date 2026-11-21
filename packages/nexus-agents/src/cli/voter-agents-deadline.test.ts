@@ -10,7 +10,7 @@
  * createErrorVoteResult('overall consensus deadline exceeded'), so partial
  * results always come back within a bounded wall-clock time.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import {
@@ -21,6 +21,8 @@ import {
 import {
   getAsyncJobSafeDeadlineMs,
   getMcpSafeDeadlineMs,
+  MCP_TIMEOUTS,
+  resolveClassGuardMs,
   VOTE_TIMEOUTS,
 } from '../config/timeouts.js';
 import { ResilientAdapter } from '../adapters/resilient-adapter.js';
@@ -1007,5 +1009,33 @@ describe('resolvePanelDeadline clamps below the guard that bounds the run (#7764
     expect(huge).toBeLessThan(Number.MAX_SAFE_INTEGER);
     expect(getAsyncJobSafeDeadlineMs(huge + 1)).toBe(huge);
     expect(getAsyncJobSafeDeadlineMs(1)).toBe(getMcpSafeDeadlineMs(1, 'consensus_vote'));
+  });
+
+  describe('the cap is the effective async-job-body guard, override included', () => {
+    const OVERRIDE = 'NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS';
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('with no override, the cap is the resolved job guard less the per-tool buffer', () => {
+      expect(getAsyncJobSafeDeadlineMs(Number.MAX_SAFE_INTEGER)).toBe(
+        resolveClassGuardMs('async-job-body') - MCP_TIMEOUTS.perToolSafetyBufferMs
+      );
+    });
+
+    it('an override below the computed budget clamps an async panel to it, and leaves a sync panel alone', () => {
+      // 600 s: below the computed budget, above the floor, and different from the 890 s request
+      // clamp, so a cap hard-coded to either the default guard or the request cap fails here.
+      const overrideMs = 600_000;
+      vi.stubEnv(OVERRIDE, String(overrideMs));
+      expect(resolveClassGuardMs('async-job-body')).toBe(overrideMs);
+
+      const asyncRun = resolvePanelDeadline({ ...budget, runsAs: 'async-job' }, quietLogger());
+      expect(asyncRun.overallDeadlineMs).toBe(overrideMs - MCP_TIMEOUTS.perToolSafetyBufferMs);
+      expect(asyncRun.overallDeadlineMs).toBeLessThan(computed);
+
+      const syncRun = resolvePanelDeadline(budget, quietLogger());
+      expect(syncRun.overallDeadlineMs).toBe(getMcpSafeDeadlineMs(computed, 'consensus_vote'));
+    });
   });
 });
